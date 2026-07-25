@@ -404,6 +404,9 @@ and request balancing remain responsibilities of the shared data layer → see
   subscriptions → **state-management**.
 - User-facing labels, placeholders, accessibility text, and messages when the
   application uses i18n → **localization**.
-- Error handling, user feedback, logging, and reporting →
-  **logging-errors**.
+- Error propagation, reporting, retry, and recovery boundaries →
+  **error-handling**.
+- Error, success, warning, fallback, and recovery presentation →
+  **user-feedback**.
+- Structured diagnostics and transports → **logging**.
 - Lint, formatting, typecheck, and build verification → **code-quality**.

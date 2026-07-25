@@ -209,7 +209,8 @@ the narrowest operation and treat buffer clearing as best effort, not a
 security guarantee.
 
 Follow **native-integration** for capability and RPC boundaries and
-**logging-errors** for sensitive diagnostic data.
+**logging** for keeping secrets out of diagnostic records and
+**error-handling** for safe incident context.
 
 ## Allow Explicit Process Stores
 
@@ -257,4 +258,6 @@ Before finishing state-management work:
   implementation.
 - **native-integration** owns OS-backed storage, cryptography, privileged
   capabilities, and renderer bridges.
-- **logging-errors** owns safe error reporting and sensitive-data redaction.
+- **logging** owns diagnostic records and the rule that secrets never enter
+  them.
+- **error-handling** owns incident-reporting policy and safe reporting context.

@@ -29,13 +29,15 @@ metadata.
 | [api-integration](plugins/client/skills/api-integration/SKILL.md) | Typed transports, contracts, mock data, server state, queries, mutations, and cache invalidation |
 | [code-quality](plugins/client/skills/code-quality/SKILL.md) | Code hygiene, type safety, automated linting, formatting, and verification |
 | [components](plugins/client/skills/components/SKILL.md) | UI primitives, composition, effects, ownership, and async render states |
+| [error-handling](plugins/client/skills/error-handling/SKILL.md) | Error ownership, propagation, reporting, retry, recovery, and failure boundaries |
 | [file-structure](plugins/client/skills/file-structure/SKILL.md) | File placement, directory ownership, co-location, entrypoints, and structural changes |
 | [forms](plugins/client/skills/forms/SKILL.md) | Form state, schemas, validation, submission, and server field errors |
 | [localization](plugins/client/skills/localization/SKILL.md) | Source-text keys, context, typed resources, interpolation, plurals, and enum labels |
-| [logging-errors](plugins/client/skills/logging-errors/SKILL.md) | Logging, reporting, feedback, typed outcomes, and sensitive data |
+| [logging](plugins/client/skills/logging/SKILL.md) | Structured records, child loggers, transports, persistence, and runtime delivery |
 | [native-integration](plugins/client/skills/native-integration/SKILL.md) | Modular native RPC, typed handlers, renderer clients, capabilities, and host registries |
 | [routing](plugins/client/skills/routing/SKILL.md) | URL contracts, page trees, layouts, guards, navigation, and router composition |
 | [state-management](plugins/client/skills/state-management/SKILL.md) | Client state, persistence, selectors, hydration, and secure storage adapters |
+| [user-feedback](plugins/client/skills/user-feedback/SKILL.md) | Contextual success, warning, error, fallback, and recovery presentation |
 
 ## Content boundaries
 
@@ -52,7 +54,6 @@ metadata.
 
 ## Status
 
-The client collection is a legacy baseline under active review. Its canonical
-location and domain-neutral boundary are established; each skill's technical
-guidance still needs an explicit review before it should be considered current
-best practice.
+The client collection is the canonical, actively maintained source for these
+development practices. Continue validating the guidance against real projects
+and update the owning skill when practice exposes a missing case.

@@ -79,7 +79,7 @@ import { UiButton } from '@/ui/UiButton'   import { UiButton } from '../../../ui
   `_` (e.g. `(_event) => …`).
 - No stray `console`. If a log is genuinely required, scope a single
   `eslint-disable-next-line` — and prefer the repo's logger (see
-  **logging-errors**).
+  **logging**).
 - React Hooks rules apply; keep hook dependency lists correct.
 - Let the linter sort/dedupe imports. Disable rules narrowly and only with a
   reason, never blanket-disable a whole file casually.
@@ -125,5 +125,5 @@ target repo configures; do not impose this baseline on a repo that disagrees.
 
 - React component behavior, effect alternatives, and internal ordering —
   **components**.
-- Logger instead of `console` — **logging-errors**.
+- Logger instead of `console` — **logging**.
 - Native/main-process build checks — **native-integration**.

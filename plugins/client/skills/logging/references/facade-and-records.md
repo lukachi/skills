@@ -12,6 +12,7 @@ child behavior, message conventions, levels, or error argument.
 - [Explicit Application Events](#explicit-application-events)
 - [Level Semantics](#level-semantics)
 - [Error Values](#error-values)
+- [Diagnostic Origins](#diagnostic-origins)
 - [Transport Dispatch](#transport-dispatch)
 
 ## Minimal Contract
@@ -34,6 +35,7 @@ interface LogRecord {
   scope: LogScope
   context?: LogContext
   error?: unknown
+  originStack?: string
 }
 
 interface Logger {
@@ -283,6 +285,46 @@ log.error("Request failed", error, {
 Do not teach the logger to discover `status`, `details`, response bodies, or
 domain-specific properties from arbitrary errors.
 
+## Diagnostic Origins
+
+An optional `originStack` belongs to the record itself, not ordinary event
+context. It describes where the facade was called or where later asynchronous
+work was initiated.
+
+Capture it before dispatch:
+
+```ts
+function emit(
+  level: LogLevel,
+  message: string,
+  context?: LogContext,
+  error?: unknown,
+  suppliedOriginStack?: string,
+): void {
+  const originStack =
+    suppliedOriginStack ?? captureOriginForConfiguredPolicy(level)
+
+  dispatch({
+    timestamp: Date.now(),
+    kind: "log",
+    level,
+    message,
+    scope,
+    ...(context === undefined ? {} : { context: { ...context } }),
+    ...(error === undefined ? {} : { error }),
+    ...(originStack === undefined ? {} : { originStack }),
+  })
+}
+```
+
+Do not capture inside `dispatch()` or `transport.write()`: the first meaningful
+frame will already be logging infrastructure. Do not concatenate the result
+with `error.stack`.
+
+Keep capture policy at bootstrap so development can retain more detail than a
+high-volume production runtime. Read `trace-origins.md` for portable capture,
+async origins, native boundaries, and source-map requirements.
+
 ## Transport Dispatch
 
 The core behavior can remain conceptually small:
@@ -291,8 +333,8 @@ The core behavior can remain conceptually small:
 function emit(
   level: LogLevel,
   message: string,
-  context?: LogContext,
-  error?: unknown,
+      context?: LogContext,
+      error?: unknown,
 ): void {
   const record: LogRecord = {
     timestamp: Date.now(),

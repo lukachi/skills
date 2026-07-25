@@ -232,7 +232,9 @@ it fit a form; compose around it.
 - `mutationOptions`, query/mutation key factories, and cache invalidation placement
   -> **api-integration** (separate skill from state management).
 - Submit success and failure feedback (`showError` / `showSuccess` or the
-  repository's equivalent) -> **logging-errors**.
+  repository's equivalent) -> **user-feedback**.
+- Submit failure propagation, reporting, retry, and Error Boundary policy ->
+  **error-handling**.
 - Page/feature placement of the form module and where its files live -> **file-structure**.
 
 ## Anti-Patterns

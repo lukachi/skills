@@ -13,6 +13,7 @@ flushing, or teardown.
 - [React Native](#react-native)
 - [Electron And Electrobun](#electron-and-electrobun)
 - [File Persistence](#file-persistence)
+- [Stack And Origin Preservation](#stack-and-origin-preservation)
 - [Telemetry](#telemetry)
 - [Tests](#tests)
 
@@ -168,6 +169,11 @@ Register the method as ordinary native infrastructure. Do not expose log
 ingestion to an agent or user-facing capability catalog unless a separate,
 explicit product requirement calls for it.
 
+The wire record should preserve `originStack` and, for an actual error, a
+minimal `errorText` and `errorStack`. Keep them as separate fields. Do not send
+an `Error` instance, concatenate stacks, or introduce a generic domain error
+serializer.
+
 The transport may apply the smallest wire-only representation change required
 by the RPC implementation. Do not place that conversion in the core logger or
 reuse it as a general application error model.
@@ -242,10 +248,30 @@ the host composition root.
 Keep the stored representation stable enough for inspection, but do not turn
 the file transport into a universal object or error serializer.
 
-Errors need a small boundary representation. Scope and context should already
-contain plain diagnostic values; if they are circular or unsupported by the
-wire, dropping that record is preferable to adding a recursive sanitizer to the
-shared logger.
+Errors need a small boundary representation. Preserve the standard text and
+stack of an actual `Error`; use the established small string fallback for other
+values. Preserve an existing `originStack` independently. Scope and context
+should already contain plain diagnostic values; if they are circular or
+unsupported by the wire, dropping that record is preferable to adding a
+recursive sanitizer to the shared logger.
+
+## Stack And Origin Preservation
+
+The transport must not invent a later origin:
+
+- a browser persistence transport keeps the facade-captured origin;
+- a React Native native-file transport keeps the JavaScript error and origin
+  strings without depending on private LogBox or Metro APIs;
+- a renderer RPC transport keeps renderer stacks;
+- a desktop host writes received renderer stacks directly instead of replacing
+  them with handler or file-writer frames;
+- a host-side failure remains a separate host error correlated by a safe request
+  identifier.
+
+Production persistence is useful only when the corresponding web, Node,
+Hermes, or native source maps and symbols can be matched to the exact release
+or OTA update. Read `trace-origins.md` for the capture helper, platform details,
+symbolication, and verification matrix.
 
 ## Telemetry
 
@@ -306,6 +332,8 @@ Verify:
 - queue limits and drop policy are enforced;
 - flush sends the remaining batch;
 - host ingestion preserves renderer metadata and timestamps.
+- original error stacks remain unchanged after repeated transport delivery;
+- origin stacks survive queues and renderer-to-host delivery as separate data;
 - telemetry transports ignore ordinary records unless their policy explicitly
   includes them;
 - event identity survives any RPC or persistence boundary.

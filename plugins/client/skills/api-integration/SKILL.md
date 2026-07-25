@@ -367,8 +367,9 @@ Before finishing an API change, verify:
 ## Related skills
 
 - Client state that does not mirror an external source: `state-management`.
-- Existing global query and mutation logging or an established application
-  error flow: `logging-errors`. The no-invention rule above remains binding.
+- Query or mutation failure propagation, reporting, retry, and duplicate
+  suppression: `error-handling`. The no-invention rule above remains binding.
+- User-visible query and mutation outcomes: `user-feedback`.
 - Wiring mutations to form submission: `forms`.
 - Broader source-tree ownership decisions: `file-structure`.
 - Rendering loading, error, empty, and data states from an API query:

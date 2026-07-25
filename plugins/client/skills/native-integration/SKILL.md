@@ -336,6 +336,10 @@ follow **components**, including its strict guidance on avoiding `useEffect`.
 - Native client errors and external-service access → **api-integration**.
 - Secure persisted state consuming a native provider → **state-management**.
 - Native deep links entering the route tree → **routing**.
-- Host and renderer logging/error boundaries → **logging-errors**.
+- Host and renderer diagnostic delivery → **logging**.
+- Native failure propagation, exception reporting, and runtime boundaries →
+  **error-handling**.
+- Native-originated user notifications and recovery presentation →
+  **user-feedback**.
 - Formatting, linting, type-checking, tests, and native build checks →
   **code-quality**.

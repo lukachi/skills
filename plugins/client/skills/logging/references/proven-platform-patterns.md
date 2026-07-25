@@ -22,8 +22,9 @@ The IndexedDB transport owns batching, retention, queries, export, and mapping
 between the current common record and any legacy stored schema.
 
 New errors should receive the transport's minimal string fallback before JSONL
-export. Other non-cloneable context still fails best effort; do not add a
-recursive common serializer.
+export. Preserve an actual error stack and any separately captured origin stack.
+Other non-cloneable context still fails best effort; do not add a recursive
+common serializer.
 
 ## React Native
 
@@ -41,6 +42,10 @@ core/logging/transports/native-file.ts
 Initialize once before application features start. Register a best-effort flush
 when the established app lifecycle leaves the active state. Skip the native
 file transport on web.
+
+Keep the original `Error` for console and incident providers. Persist its
+standard stack separately from a facade- or operation-captured origin. Release
+and OTA-update traces require their matching Hermes source maps.
 
 Keep filesystem behavior inside the transport and test the installed API
 version. In particular, determine whether move/rename operations mutate the
@@ -66,7 +71,8 @@ logger
 
 The renderer transport should only be installed when the preload bridge exists,
 so browser previews and Storybook remain valid consumers. The main handler
-writes received records straight to the file transport.
+writes received records straight to the file transport, including renderer
+error and origin stacks.
 
 Keep incident capture in error handling:
 
@@ -121,11 +127,13 @@ Across all four variants, verify:
 
 - shallow scope and context snapshots;
 - original local error identity before a boundary;
-- boundary-local lossy error strings;
+- boundary-local error text and standard stack without domain conversion;
+- origin stacks kept separate from error stacks;
 - bounded async queues and deterministic flush;
 - independent transport failures;
 - stable persisted schemas or explicit adapters;
 - no native requests when the native bridge is absent;
 - no host re-logging of renderer records.
+- matching source maps or symbols for production releases and updates;
 - explicit event identity preserved across transports;
 - no accidental promotion of ordinary `info` logs into remote events.

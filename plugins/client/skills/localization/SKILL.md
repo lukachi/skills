@@ -495,5 +495,6 @@ backend-provided labels are localized unless the API contract guarantees it.
 
 - Localized validation messages and form lifecycle → **forms**.
 - User-facing component copy and locale-reactive rendering → **components**.
-- Localized success, error, and notification feedback → **logging-errors**.
+- Localized success, error, warning, notification, and recovery feedback →
+  **user-feedback**.
 - Placement of localization modules and resource files → **file-structure**.
