@@ -291,23 +291,25 @@ An optional `originStack` belongs to the record itself, not ordinary event
 context. It describes where the facade was called or where later asynchronous
 work was initiated.
 
-Capture it before dispatch:
+Capture it in the public method before dispatch:
 
 ```ts
-function emit(
-  level: LogLevel,
+function error(
   message: string,
-  context?: LogContext,
   error?: unknown,
-  suppliedOriginStack?: string,
+  context?: LogContext,
+  options?: LogCallOptions,
 ): void {
+  const captureOrigin =
+    options?.captureOrigin ?? captureOriginForConfiguredPolicy("error")
   const originStack =
-    suppliedOriginStack ?? captureOriginForConfiguredPolicy(level)
+    options?.originStack ??
+    (captureOrigin ? captureTraceOrigin().stack : undefined)
 
   dispatch({
     timestamp: Date.now(),
     kind: "log",
-    level,
+    level: "error",
     message,
     scope,
     ...(context === undefined ? {} : { context: { ...context } }),
@@ -320,6 +322,11 @@ function emit(
 Do not capture inside `dispatch()` or `transport.write()`: the first meaningful
 frame will already be logging infrastructure. Do not concatenate the result
 with `error.stack`.
+
+Do not hide the capture in a generic private emitter or origin resolver either:
+that helper becomes the leading frame. An observer with no real operation
+origin passes `{ captureOrigin: false }`; ordinary feature calls rely on the
+configured runtime policy.
 
 Keep capture policy at bootstrap so development can retain more detail than a
 high-volume production runtime. Read `trace-origins.md` for portable capture,

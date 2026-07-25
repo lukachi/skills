@@ -133,6 +133,13 @@ Create an `Error` fallback only at a boundary that requires an actual `Error`
 instance, such as an exception-reporting SDK or render boundary, and retain the
 original value as `cause` when useful.
 
+An established privacy or redaction adapter may need a safe representation for
+one specific sink. Keep it at that sink. If legacy code must produce a redacted
+replacement `Error`, verify that it does not replace the only surviving failure
+stack: retain the original locally when safe and carry its unchanged standard
+stack explicitly in the sink-local error or record. Do not promote that
+exception into a generic error conversion pipeline.
+
 ## Make Incident Reporting Explicit
 
 Reporting means sending a failure to an incident or diagnostic backend. It is

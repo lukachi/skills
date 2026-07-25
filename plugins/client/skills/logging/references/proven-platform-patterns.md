@@ -45,7 +45,10 @@ file transport on web.
 
 Keep the original `Error` for console and incident providers. Persist its
 standard stack separately from a facade- or operation-captured origin. Release
-and OTA-update traces require their matching Hermes source maps.
+and OTA-update traces require their matching Hermes source maps. Include stable
+release correlation in the root scope, such as the application version,
+runtime version, and update identifier; an OTA stack without its exact update
+identity cannot be matched reliably to an artifact.
 
 Keep filesystem behavior inside the transport and test the installed API
 version. In particular, determine whether move/rename operations mutate the

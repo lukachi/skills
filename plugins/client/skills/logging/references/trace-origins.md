@@ -111,6 +111,20 @@ Make the policy configurable at the runtime composition root. Feature code must
 not contain environment checks solely to decide whether a logger captures its
 call site.
 
+The method-level options should also support an explicit opt-out:
+
+```ts
+interface LogCallOptions {
+  readonly captureOrigin?: boolean
+  readonly originStack?: string
+}
+```
+
+Use `captureOrigin: false` for infrastructure observers that have no genuine
+earlier operation origin, such as a declarative Query cache callback, a global
+error listener, an RPC ingestion handler, or a file writer. Their local stack
+is an observation location, not a useful substitute for the caller.
+
 ## Preserve Origins In Records
 
 Keep the record shape explicit:
@@ -130,6 +144,12 @@ interface LogRecord {
 Capture `originStack` at the public facade call, not inside `dispatch()` or a
 transport. Allow an established reporter or operation wrapper to provide an
 earlier origin captured before an async boundary.
+
+The distinction includes private facade helpers. If a public method delegates
+automatic capture to a generic `emit()` or `resolveOrigin()` helper, that helper
+becomes the leading frame. Capture directly while executing the public method,
+then pass the raw stack into the private emitter. Do not trim the helper by a
+fixed line count.
 
 Do not concatenate:
 
@@ -169,6 +189,9 @@ function toWireError(error: unknown) {
 
 This is not a domain error serializer. Do not traverse causes, discover custom
 properties, or maintain an error-class registry in logging infrastructure.
+When extending a stored or wire schema, keep legacy fields readable until the
+transport performs an explicit migration; new records can populate
+`errorText`, `errorStack`, and `originStack` without rewriting old data.
 
 ## Async And Framework Boundaries
 

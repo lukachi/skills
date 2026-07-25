@@ -24,6 +24,7 @@ const queryClient = new QueryClient({
       if (isExpectedCancellation(error)) return
 
       reportError(error, {
+        captureOrigin: false,
         module: "query",
         context: {
           queryFamily: String(query.queryKey[0] ?? "unknown"),
@@ -37,6 +38,11 @@ const queryClient = new QueryClient({
 This is a policy option, not a mandatory pattern. Reporting every cache error
 without classification creates noise from cancellation, background refetch,
 offline behavior, and expected authorization or domain outcomes.
+
+`captureOrigin: false` is deliberate in a declarative Query observer: the
+query's rejection stack is primary, while a newly captured cache-callback stack
+only identifies observation. A Mutation observer may instead receive an
+earlier `originStack` captured per execution as shown below.
 
 Do not serialize an entire query key, mutation variables, or transport payload
 into reporting context. Select only the safe identifiers needed for diagnosis.

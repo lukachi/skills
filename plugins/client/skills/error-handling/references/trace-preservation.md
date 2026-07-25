@@ -141,11 +141,21 @@ Avoid global `Error.prepareStackTrace` overrides and stack-string rewriting.
 They are engine-specific and can interfere with source-map and incident
 provider processing.
 
+An established redaction adapter is another replacement boundary. If it creates
+a safe `Error` instance or record for one sink, preserve the received error in
+the local flow when safe and copy its unchanged standard stack explicitly into
+that sink-local diagnostic shape. A newly constructed redacted error otherwise
+points to the sanitizer, which makes the privacy layer look like the failure
+origin.
+
 ## Framework Boundaries
 
 - TanStack Query cache callbacks are observers. Preserve the rejection and use
   explicit ownership metadata; read `tanstack-query.md` for exact invocation
   origins.
+- Disable automatic logger-origin capture in observers that have no earlier
+  operation origin. Their stack is still available when intentionally needed,
+  but it must not be mislabeled as the caller.
 - React error boundaries receive an error stack and a component stack. Preserve
   both as separate diagnostic fields.
 - Global `error` and `unhandledrejection` listeners are terminal backstops. Use

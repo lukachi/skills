@@ -155,8 +155,14 @@ queue flush, RPC handler, or file writer.
 - Keep an original `Error` value unchanged in the local record.
 - Capture an optional origin stack synchronously at the public logger call or
   before scheduling work that will finish across an async boundary.
+- Perform automatic capture in the public method itself. Capturing in a shared
+  private emitter or origin resolver leaves that helper as the leading frame.
 - Store the origin separately, for example as `originStack`; never append it to
   `error.stack`.
+- Let infrastructure observers explicitly suppress automatic capture when they
+  have no earlier origin. A Query cache callback, global error listener, RPC
+  handler, and file writer must not label their observation stack as the
+  operation origin.
 - Preserve a received renderer or worker origin when a host persists the
   record. Do not replace it with the host ingestion stack.
 - Do not remove frames by a fixed `split(...).slice(n)` rule. Stack formats and
@@ -293,6 +299,7 @@ Before finishing logging work, verify that:
 - persisted and remote production stacks are symbolicated against artifacts
   from the exact application release or update;
 - existing persisted-log schemas remain readable or have an explicit migration;
+- infrastructure observers can suppress misleading automatic origin capture;
 - transport failures cannot recurse through the logger;
 - no new normalization, sanitizer, or error-type registry was introduced;
 - sensitive values are absent from records and transport payloads.
