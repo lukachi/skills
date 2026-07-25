@@ -34,7 +34,7 @@ pnpm build                   bun run build
   repo's scripts; some lint scripts run with `--fix --max-warnings=0`).
 - Fix everything to zero warnings/errors. Do not leave a red checker.
 - If the change touches native/main-process code or packaging, also run the
-  relevant native build/dev check — see **electron-integration**.
+  relevant native build/dev check — see **native-integration**.
 
 ## TypeScript: strict and honest
 
@@ -126,4 +126,4 @@ target repo configures; do not impose this baseline on a repo that disagrees.
 - React component behavior, effect alternatives, and internal ordering —
   **components**.
 - Logger instead of `console` — **logging-errors**.
-- Native/main-process build checks — **electron-integration**.
+- Native/main-process build checks — **native-integration**.

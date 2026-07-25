@@ -29,11 +29,11 @@ metadata.
 | [api-integration](plugins/client/skills/api-integration/SKILL.md) | Typed transports, contracts, mock data, server state, queries, mutations, and cache invalidation |
 | [code-quality](plugins/client/skills/code-quality/SKILL.md) | Code hygiene, type safety, automated linting, formatting, and verification |
 | [components](plugins/client/skills/components/SKILL.md) | UI primitives, composition, effects, ownership, and async render states |
-| [electron-integration](plugins/client/skills/electron-integration/SKILL.md) | Desktop native bridges, IPC, native modules, deep links, and updates |
 | [file-structure](plugins/client/skills/file-structure/SKILL.md) | File placement, directory ownership, co-location, entrypoints, and structural changes |
 | [forms](plugins/client/skills/forms/SKILL.md) | Form state, schemas, validation, submission, and server field errors |
 | [localization](plugins/client/skills/localization/SKILL.md) | Translation keys, resources, interpolation, and typed enum labels |
 | [logging-errors](plugins/client/skills/logging-errors/SKILL.md) | Logging, reporting, feedback, typed outcomes, and sensitive data |
+| [native-integration](plugins/client/skills/native-integration/SKILL.md) | Modular native RPC, typed handlers, renderer clients, capabilities, and host registries |
 | [routing](plugins/client/skills/routing/SKILL.md) | URL contracts, page trees, layouts, guards, navigation, and router composition |
 | [state-management](plugins/client/skills/state-management/SKILL.md) | Client state, persistence, selectors, hydration, and secure storage adapters |
 

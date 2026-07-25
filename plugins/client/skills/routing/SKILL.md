@@ -326,5 +326,5 @@ routed Storybook/test harness must reproduce production route identity.
 - Route loader queries and cache ownership → **api-integration**.
 - Page and layout component implementation → **components**.
 - Non-routing placement inside a page boundary → **file-structure**.
-- Native deep-link transport and event handling → **electron-integration** or
+- Native deep-link transport and event handling → **native-integration** or
   the project's platform integration skill.
