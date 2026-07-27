@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readlink, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdtemp,
+  mkdir,
+  readFile,
+  readlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -24,6 +31,10 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   assert.match(await readFile(join(target, "AGENTS.md"), "utf8"), /wfctl:begin/);
   assert.equal(await readlink(join(target, "CLAUDE.md")), "AGENTS.md");
   assert.match(await readFile(join(target, "knowledge/index.md"), "utf8"), /okf_version/);
+  await access(join(target, ".agents/skills/setup-workflow-environment/SKILL.md"));
+  await access(join(target, ".agents/skills/analyze-with-graphify/SKILL.md"));
+  await access(join(target, ".agents/skills/curate-project-knowledge/SKILL.md"));
+  await assert.rejects(access(join(target, ".agents/skills/manage-project-work/SKILL.md")));
 
   const second = await buildInstallPlan({
     target,
@@ -58,9 +69,10 @@ test("preserves existing instruction files and existing Claude skills directory"
     "../../.agents/skills/analyze-with-graphify",
   );
   assert.match(
-    await readFile(join(target, ".agents/skills/manage-project-work/SKILL.md"), "utf8"),
-    /one living specification/,
+    await readFile(join(target, ".agents/skills/curate-project-knowledge/SKILL.md"), "utf8"),
+    /Curate current truth/,
   );
+  await assert.rejects(access(join(target, ".agents/skills/manage-project-work/SKILL.md")));
 
   const syncPlan = await buildInstallPlan({
     target,
@@ -121,6 +133,13 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
   }));
   await mkdir(join(leaf, "graphify-out"));
   await writeFile(join(leaf, "graphify-out/graph.json"), "{}\n", "utf8");
+
+  await access(join(leaf, ".agents/skills/setup-workflow-environment/SKILL.md"));
+  await access(join(leaf, ".agents/skills/analyze-with-graphify/SKILL.md"));
+  await access(join(leaf, ".agents/skills/align-project-knowledge/SKILL.md"));
+  await access(join(leaf, ".agents/skills/manage-project-work/SKILL.md"));
+  await access(join(leaf, ".agents/skills/verify-project-work/SKILL.md"));
+  await assert.rejects(access(join(leaf, ".agents/skills/curate-project-knowledge/SKILL.md")));
 
   assert.equal(
     doctorPassed(await runDoctor(knowledge, { graphifyAvailable: true })),

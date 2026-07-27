@@ -3,6 +3,12 @@ import { resolve } from "node:path";
 import { applyInstallPlan } from "./applier.js";
 import { findDistributionRoot, renderAgentInstructions } from "./assets.js";
 import {
+  applyBootstrapPlan,
+  buildBootstrapPlan,
+  summarizeBootstrapPlan,
+} from "./bootstrap.js";
+import type { BootstrapAgent } from "./bootstrap.js";
+import {
   createConfig,
   errorMessage,
   readConfig,
@@ -23,6 +29,7 @@ const main = new Command()
   .command("apply", installCommand("Apply a conflict-free installation plan.", true))
   .command("init", installCommand("Initialize a workflow environment.", true))
   .command("sync", syncCommand())
+  .command("bootstrap", bootstrapCommand())
   .command("render", renderCommand())
   .command("doctor", doctorCommand())
   .command("work", workCommand());
@@ -98,6 +105,55 @@ function syncCommand() {
         printJson({ ...summarizePlan(plan), applied: result });
       } else {
         process.stdout.write(`Synchronized ${result.changed} change(s) in ${target}\n`);
+      }
+    });
+}
+
+function bootstrapCommand() {
+  return new Command()
+    .description("Install the user-level setup skill for clean repositories.")
+    .command("plan", bootstrapActionCommand(false))
+    .command("install", bootstrapActionCommand(true));
+}
+
+function bootstrapActionCommand(apply: boolean) {
+  return new Command()
+    .description(
+      apply
+        ? "Install or safely update the user-level setup skill."
+        : "Show the user-level setup skill installation plan.",
+    )
+    .option("--agent <agent:string>", "codex, claude, or both.", { default: "both" })
+    .option("--codex-skills-root <path:string>", "Override the Codex user skills root.")
+    .option("--claude-skills-root <path:string>", "Override the Claude user skills root.")
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options) => {
+      const plan = await buildBootstrapPlan({
+        agent: parseBootstrapAgent(options.agent),
+        ...(options.codexSkillsRoot
+          ? { codexSkillsRoot: resolve(options.codexSkillsRoot) }
+          : {}),
+        ...(options.claudeSkillsRoot
+          ? { claudeSkillsRoot: resolve(options.claudeSkillsRoot) }
+          : {}),
+      });
+      if (!apply) {
+        printBootstrapPlan(plan, options.json === true);
+        if (plan.operations.some((operation) => operation.status === "conflict")) {
+          process.exitCode = 2;
+        }
+        return;
+      }
+
+      const result = await applyBootstrapPlan(plan);
+      if (options.json) {
+        printJson({ ...summarizeBootstrapPlan(plan), applied: result });
+      } else {
+        process.stdout.write(
+          `Installed bootstrap skill with ${result.changed} change(s)\n${
+            result.statePaths.map((path) => `State: ${path}`).join("\n")
+          }\n`,
+        );
       }
     });
 }
@@ -240,6 +296,13 @@ function parseProfile(value: string): Profile {
   return value;
 }
 
+function parseBootstrapAgent(value: string): BootstrapAgent {
+  if (value !== "codex" && value !== "claude" && value !== "both") {
+    throw new Error(`Invalid agent "${value}"; expected codex, claude, or both`);
+  }
+  return value;
+}
+
 function parseWorkMode(value: string): WorkMode {
   if (value !== "full" && value !== "slice" && value !== "handoff") {
     throw new Error(`Invalid mode "${value}"; expected full, slice, or handoff`);
@@ -264,6 +327,24 @@ function printPlan(plan: Awaited<ReturnType<typeof buildInstallPlan>>, json: boo
   for (const operation of plan.operations) {
     process.stdout.write(
       `${operation.status.toUpperCase().padEnd(9)} ${operation.kind.padEnd(13)} ${operation.path} — ${operation.reason}\n`,
+    );
+  }
+}
+
+function printBootstrapPlan(
+  plan: Awaited<ReturnType<typeof buildBootstrapPlan>>,
+  json: boolean,
+): void {
+  if (json) {
+    printJson(summarizeBootstrapPlan(plan));
+    return;
+  }
+  process.stdout.write(`Bootstrap skill plan: ${plan.agent}\n`);
+  for (const operation of plan.operations) {
+    process.stdout.write(
+      `${operation.status.toUpperCase().padEnd(9)} ${operation.agent.padEnd(7)} ${
+        operation.path
+      } — ${operation.reason}\n`,
     );
   }
 }

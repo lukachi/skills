@@ -25,6 +25,20 @@ const KNOWLEDGE_DIRECTORIES = [
   "changes/archive",
 ];
 
+const COMMON_SKILLS = [
+  "analyze-with-graphify",
+  "setup-workflow-environment",
+];
+
+const PROFILE_SKILLS: Record<PlanOptions["profile"], string[]> = {
+  knowledge: ["curate-project-knowledge"],
+  leaf: [
+    "align-project-knowledge",
+    "manage-project-work",
+    "verify-project-work",
+  ],
+};
+
 export async function buildInstallPlan(options: PlanOptions): Promise<InstallPlan> {
   const target = resolve(options.target);
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
@@ -51,13 +65,21 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
   operations.push(await planManagedBlock(target, "AGENTS.md", instructions));
   operations.push(await planClaudeInstructions(target, instructions));
 
-  await planOwnedTree({
-    sourceRoot: join(distributionRoot, "skills"),
-    destinationRoot: ".agents/skills",
-    target,
-    state,
-    operations,
-  });
+  const skillNames = skillsForProfile(options.profile);
+  for (const skillName of skillNames) {
+    const sourceRoot = join(distributionRoot, "skills", skillName);
+    const files = await collectFiles(sourceRoot);
+    if (files.length === 0) {
+      throw new Error(`Workflow skill is missing from distribution: ${sourceRoot}`);
+    }
+    await planOwnedTree({
+      sourceRoot,
+      destinationRoot: join(".agents/skills", skillName),
+      target,
+      state,
+      operations,
+    });
+  }
 
   const ruleRoots = [
     join(distributionRoot, "rules/common"),
@@ -90,7 +112,7 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
     });
   }
 
-  await planClaudeSkills(target, distributionRoot, operations);
+  await planClaudeSkills(target, skillNames, operations);
 
   return {
     target,
@@ -401,7 +423,7 @@ async function planOwnedFile(
 
 async function planClaudeSkills(
   target: string,
-  distributionRoot: string,
+  skillNames: string[],
   operations: PlanOperation[],
 ): Promise<void> {
   const path = ".claude/skills";
@@ -438,7 +460,6 @@ async function planClaudeSkills(
       return;
     }
 
-    const skillNames = await topLevelDirectories(join(distributionRoot, "skills"));
     for (const skillName of skillNames) {
       const childPath = normalizeRelative(join(path, skillName));
       const linkTarget = normalizeRelative(join("../../.agents/skills", skillName));
@@ -513,9 +534,8 @@ async function planSymlink(
   }
 }
 
-async function topLevelDirectories(root: string): Promise<string[]> {
-  const files = await collectFiles(root);
-  return [...new Set(files.map((file) => file.split(sep)[0]).filter(Boolean) as string[])].sort();
+export function skillsForProfile(profile: PlanOptions["profile"]): string[] {
+  return [...COMMON_SKILLS, ...PROFILE_SKILLS[profile]].sort();
 }
 
 function normalizeRelative(path: string): string {

@@ -11,6 +11,9 @@
 ## Skills
 
 - Install canonical skills under `.agents/skills`.
+- Install `setup-workflow-environment` and `analyze-with-graphify` for both profiles.
+- Install `curate-project-knowledge` only for the knowledge profile.
+- Install alignment, work management, and verification skills only for the leaf profile.
 - Link `.claude/skills` to `../.agents/skills` when the Claude directory is absent.
 - When `.claude/skills` already exists as a directory, add only missing per-skill links.
 

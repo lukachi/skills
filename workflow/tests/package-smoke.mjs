@@ -33,7 +33,7 @@ try {
 
   const packaged = join(sandbox, "package");
   assert.equal(existsSync(join(packaged, "skills/manage-project-work/SKILL.md")), true);
-  assert.equal(existsSync(join(packaged, "rules/common/workflow-routing.md")), true);
+  assert.equal(existsSync(join(packaged, "rules/leaf/workflow-routing.md")), true);
   assert.equal(existsSync(join(packaged, "templates/knowledge/knowledge/index.md")), true);
 
   const target = join(sandbox, "consumer");
@@ -53,6 +53,38 @@ try {
   const summary = JSON.parse(plan.stdout);
   assert.equal(summary.profile, "knowledge");
   assert.ok(summary.counts.create > 0);
+
+  const bootstrap = spawnSync(
+    "node",
+    [
+      join(packaged, "dist/cli.js"),
+      "bootstrap",
+      "install",
+      "--agent",
+      "both",
+      "--codex-skills-root",
+      join(sandbox, "user/.agents/skills"),
+      "--claude-skills-root",
+      join(sandbox, "user/.claude/skills"),
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(bootstrap.status, 0, bootstrap.stderr || bootstrap.stdout);
+  assert.equal(
+    existsSync(join(
+      sandbox,
+      "user/.agents/skills/setup-workflow-environment/SKILL.md",
+    )),
+    true,
+  );
+  assert.equal(
+    existsSync(join(
+      sandbox,
+      "user/.claude/skills/setup-workflow-environment/SKILL.md",
+    )),
+    true,
+  );
 
   process.stdout.write("package: ok\n");
 } finally {

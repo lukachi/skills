@@ -36,6 +36,28 @@ node /absolute/path/to/agent-skills/workflow/dist/cli.js --help
 deno run -A /absolute/path/to/agent-skills/workflow/dist/cli.js --help
 ```
 
+## User-level bootstrap skill
+
+Install the setup skill once so Codex or Claude can bootstrap clean repositories
+through `wfctl`:
+
+```sh
+wfctl bootstrap plan --agent both
+wfctl bootstrap install --agent both
+```
+
+Codex receives the skill at `~/.agents/skills/setup-workflow-environment`.
+Claude receives it at `~/.claude/skills/setup-workflow-environment`. Existing
+different files are conflicts and are never overwritten.
+
+Project installations remain profile-specific:
+
+| Profile | Installed skills |
+| --- | --- |
+| Both | `setup-workflow-environment`, `analyze-with-graphify` |
+| Knowledge | `curate-project-knowledge` |
+| Leaf | `align-project-knowledge`, `manage-project-work`, `verify-project-work` |
+
 ## Bootstrap
 
 Always inspect the plan before applying it:

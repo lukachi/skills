@@ -33,6 +33,7 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - `wfctl apply <profile>`: apply a conflict-free plan.
 - `wfctl init <profile>`: one-command alias for apply.
 - `wfctl sync`: update owned assets using the installed profile.
+- `wfctl bootstrap plan|install`: safely install the user-level setup skill for Codex, Claude, or both.
 - `wfctl render agents`: print the managed instruction block for manual insertion.
 - `wfctl doctor`: diagnose installation, Graphify, Git, and knowledge linkage.
 - `wfctl work begin`: create a central living spec and a leaf pointer.
@@ -45,6 +46,8 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - Never replace an existing file or directory with a symlink.
 - Abort apply when any conflict exists.
 - Update an owned file only when its current hash matches the last installed hash.
+- Install only profile-relevant project skills; keep the setup and Graphify skills common.
+- Never overwrite a different user-level bootstrap skill.
 - Keep deterministic data on stdout; diagnostics and interactive UI belong on stderr.
 - Support non-interactive and JSON output for agents and CI.
 
@@ -59,6 +62,8 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - [x] Completed flush requires recorded verification and emits Git/worktree metadata.
 - [x] Partial or abandoned work can flush without a false completion claim.
 - [x] Built CLI runs under Node, Bun, and Deno.
+- [x] Knowledge and leaf profiles receive only their relevant skills.
+- [x] The user-level setup skill installs safely for Codex and Claude.
 
 ## Progress
 

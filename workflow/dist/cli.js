@@ -4947,7 +4947,7 @@ function findFlag(flags) {
 }
 
 // src/cli.ts
-import { resolve as resolve7 } from "node:path";
+import { resolve as resolve8 } from "node:path";
 
 // src/applier.ts
 import { randomUUID } from "node:crypto";
@@ -5133,6 +5133,18 @@ var KNOWLEDGE_DIRECTORIES = [
   "changes/active",
   "changes/archive"
 ];
+var COMMON_SKILLS = [
+  "analyze-with-graphify",
+  "setup-workflow-environment"
+];
+var PROFILE_SKILLS = {
+  knowledge: ["curate-project-knowledge"],
+  leaf: [
+    "align-project-knowledge",
+    "manage-project-work",
+    "verify-project-work"
+  ]
+};
 async function buildInstallPlan(options) {
   const target = resolve3(options.target);
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
@@ -5155,13 +5167,21 @@ async function buildInstallPlan(options) {
   );
   operations.push(await planManagedBlock(target, "AGENTS.md", instructions));
   operations.push(await planClaudeInstructions(target, instructions));
-  await planOwnedTree({
-    sourceRoot: join2(distributionRoot, "skills"),
-    destinationRoot: ".agents/skills",
-    target,
-    state,
-    operations
-  });
+  const skillNames = skillsForProfile(options.profile);
+  for (const skillName of skillNames) {
+    const sourceRoot = join2(distributionRoot, "skills", skillName);
+    const files = await collectFiles(sourceRoot);
+    if (files.length === 0) {
+      throw new Error(`Workflow skill is missing from distribution: ${sourceRoot}`);
+    }
+    await planOwnedTree({
+      sourceRoot,
+      destinationRoot: join2(".agents/skills", skillName),
+      target,
+      state,
+      operations
+    });
+  }
   const ruleRoots = [
     join2(distributionRoot, "rules/common"),
     join2(distributionRoot, `rules/${options.profile}`)
@@ -5191,7 +5211,7 @@ async function buildInstallPlan(options) {
       operations
     });
   }
-  await planClaudeSkills(target, distributionRoot, operations);
+  await planClaudeSkills(target, skillNames, operations);
   return {
     target,
     profile: options.profile,
@@ -5464,7 +5484,7 @@ async function planOwnedFile(target, relativePath, content, state) {
     };
   }
 }
-async function planClaudeSkills(target, distributionRoot, operations) {
+async function planClaudeSkills(target, skillNames, operations) {
   const path = ".claude/skills";
   const absolute = join2(target, path);
   try {
@@ -5496,7 +5516,6 @@ async function planClaudeSkills(target, distributionRoot, operations) {
       });
       return;
     }
-    const skillNames = await topLevelDirectories(join2(distributionRoot, "skills"));
     for (const skillName of skillNames) {
       const childPath = normalizeRelative(join2(path, skillName));
       const linkTarget = normalizeRelative(join2("../../.agents/skills", skillName));
@@ -5563,9 +5582,8 @@ async function planSymlink(target, relativePath, linkTarget) {
     };
   }
 }
-async function topLevelDirectories(root) {
-  const files = await collectFiles(root);
-  return [...new Set(files.map((file) => file.split(sep2)[0]).filter(Boolean))].sort();
+function skillsForProfile(profile) {
+  return [...COMMON_SKILLS, ...PROFILE_SKILLS[profile]].sort();
 }
 function normalizeRelative(path) {
   const normalized = path.split(sep2).join("/");
@@ -5666,15 +5684,226 @@ function isMissing(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
+// src/bootstrap.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import {
+  lstat as lstat3,
+  mkdir as mkdir2,
+  readFile as readFile5,
+  rename as rename2,
+  writeFile as writeFile2
+} from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname as dirname3, join as join4, resolve as resolve4 } from "node:path";
+var SETUP_SKILL = "setup-workflow-environment";
+async function buildBootstrapPlan(options) {
+  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+  const sourceRoot = join4(distributionRoot, "skills", SETUP_SKILL);
+  const sourceFiles = await collectFiles(sourceRoot);
+  if (sourceFiles.length === 0) {
+    throw new Error(`Bootstrap skill is missing from distribution: ${sourceRoot}`);
+  }
+  const targets = bootstrapTargets(options);
+  const operations = [];
+  for (const target of targets) {
+    const state = await readBootstrapState(target.statePath);
+    for (const relativePath of sourceFiles) {
+      const content = await readFile5(join4(sourceRoot, relativePath), "utf8");
+      operations.push(await planBootstrapFile(target, relativePath, content, state));
+    }
+  }
+  return {
+    agent: options.agent,
+    targets,
+    operations: operations.sort(
+      (left, right) => left.agent.localeCompare(right.agent) || left.path.localeCompare(right.path)
+    )
+  };
+}
+async function applyBootstrapPlan(plan) {
+  const conflicts = plan.operations.filter((operation) => operation.status === "conflict");
+  if (conflicts.length > 0) {
+    throw new Error(
+      `Refusing to apply ${conflicts.length} bootstrap conflict(s): ${conflicts.map((operation) => operation.path).join(", ")}`
+    );
+  }
+  let changed = 0;
+  for (const operation of plan.operations) {
+    if (operation.status === "unchanged") {
+      continue;
+    }
+    await assertExpectedState2(operation);
+    await writeAtomic2(operation.path, operation.content ?? "");
+    changed += 1;
+  }
+  const statePaths = [];
+  for (const target of plan.targets) {
+    const files = {};
+    for (const operation of plan.operations) {
+      if (operation.agent === target.agent && operation.content !== void 0) {
+        files[operation.relativePath] = { sha256: hashContent(operation.content) };
+      }
+    }
+    const state = {
+      schemaVersion: 1,
+      installedVersion: WORKFLOW_VERSION,
+      files
+    };
+    await writeAtomic2(target.statePath, `${JSON.stringify(state, null, 2)}
+`);
+    statePaths.push(target.statePath);
+  }
+  return { changed, statePaths };
+}
+function summarizeBootstrapPlan(plan) {
+  const counts = Object.fromEntries(
+    ["create", "update", "unchanged", "conflict"].map((status) => [
+      status,
+      plan.operations.filter((operation) => operation.status === status).length
+    ])
+  );
+  return {
+    agent: plan.agent,
+    targets: plan.targets.map(({ agent, skillsRoot, skillRoot }) => ({
+      agent,
+      skillsRoot,
+      skillRoot
+    })),
+    counts,
+    operations: plan.operations.map(
+      ({ content: _content, expectedHash: _expectedHash, ...operation }) => operation
+    )
+  };
+}
+function bootstrapTargets(options) {
+  const requested = options.agent === "both" ? ["codex", "claude"] : [options.agent];
+  return requested.map((agent) => {
+    const configured = agent === "codex" ? options.codexSkillsRoot : options.claudeSkillsRoot;
+    const defaultRoot = agent === "codex" ? join4(homedir(), ".agents/skills") : join4(homedir(), ".claude/skills");
+    const skillsRoot = resolve4(configured ?? defaultRoot);
+    const skillRoot = join4(skillsRoot, SETUP_SKILL);
+    return {
+      agent,
+      skillsRoot,
+      skillRoot,
+      statePath: join4(skillRoot, ".wfctl-state.json")
+    };
+  });
+}
+async function planBootstrapFile(target, relativePath, content, state) {
+  const path = join4(target.skillRoot, relativePath);
+  const desiredHash = hashContent(content);
+  try {
+    const stat = await lstat3(path);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      return {
+        agent: target.agent,
+        path,
+        relativePath,
+        status: "conflict",
+        reason: "destination exists and is not a regular file"
+      };
+    }
+    const currentHash = hashContent(await readFile5(path));
+    if (currentHash === desiredHash) {
+      return {
+        agent: target.agent,
+        path,
+        relativePath,
+        status: "unchanged",
+        reason: "bootstrap skill file is current",
+        content,
+        expectedHash: currentHash
+      };
+    }
+    const installedHash = state?.files[relativePath]?.sha256;
+    if (installedHash && installedHash === currentHash) {
+      return {
+        agent: target.agent,
+        path,
+        relativePath,
+        status: "update",
+        reason: "managed bootstrap skill file matches the installed version",
+        content,
+        expectedHash: currentHash
+      };
+    }
+    return {
+      agent: target.agent,
+      path,
+      relativePath,
+      status: "conflict",
+      reason: installedHash ? "managed bootstrap skill file was locally modified" : "destination exists without wfctl ownership"
+    };
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return {
+        agent: target.agent,
+        path,
+        relativePath,
+        status: "create",
+        reason: "bootstrap skill file is absent",
+        content
+      };
+    }
+    return {
+      agent: target.agent,
+      path,
+      relativePath,
+      status: "conflict",
+      reason: `cannot inspect bootstrap skill file: ${errorMessage(error)}`
+    };
+  }
+}
+async function readBootstrapState(path) {
+  try {
+    const parsed = JSON.parse(await readFile5(path, "utf8"));
+    if (parsed.schemaVersion !== 1 || !parsed.files) {
+      throw new Error("invalid state shape");
+    }
+    return parsed;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return void 0;
+    }
+    throw new Error(`Cannot read bootstrap state ${path}: ${errorMessage(error)}`);
+  }
+}
+async function assertExpectedState2(operation) {
+  if (operation.status === "create") {
+    try {
+      await lstat3(operation.path);
+      throw new Error(`${operation.path} appeared after planning`);
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return;
+      }
+      throw error;
+    }
+  }
+  if (operation.expectedHash) {
+    const currentHash = hashContent(await readFile5(operation.path));
+    if (currentHash !== operation.expectedHash) {
+      throw new Error(`${operation.path} changed after planning`);
+    }
+  }
+}
+async function writeAtomic2(path, content) {
+  await mkdir2(dirname3(path), { recursive: true });
+  const temporary = join4(dirname3(path), `.wfctl-${randomUUID2()}.tmp`);
+  await writeFile2(temporary, content, "utf8");
+  await rename2(temporary, path);
+}
+
 // src/doctor.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { access as access2 } from "node:fs/promises";
 import { constants as constants2 } from "node:fs";
-import { join as join4, resolve as resolve5 } from "node:path";
+import { join as join5, resolve as resolve6 } from "node:path";
 
 // src/git.ts
 import { spawnSync } from "node:child_process";
-import { basename, resolve as resolve4 } from "node:path";
+import { basename, resolve as resolve5 } from "node:path";
 function readRepositoryMetadata(root) {
   const topLevel = git(root, ["rev-parse", "--show-toplevel"], true);
   const gitDirRaw = git(root, ["rev-parse", "--git-dir"], true);
@@ -5682,8 +5911,8 @@ function readRepositoryMetadata(root) {
   const branch = git(root, ["symbolic-ref", "--short", "-q", "HEAD"]) || "DETACHED";
   const commit = git(root, ["rev-parse", "HEAD"]) || "unknown";
   const remote = git(root, ["config", "--get", "remote.origin.url"]);
-  const gitDir = resolve4(topLevel, gitDirRaw);
-  const commonDir = resolve4(topLevel, commonDirRaw);
+  const gitDir = resolve5(topLevel, gitDirRaw);
+  const commonDir = resolve5(topLevel, commonDirRaw);
   return {
     repository: repositoryId(remote, commonDir),
     checkout: basename(topLevel),
@@ -5728,7 +5957,7 @@ function repositoryId(remote, commonDir) {
 
 // src/doctor.ts
 async function runDoctor(targetInput, options = {}) {
-  const target = resolve5(targetInput);
+  const target = resolve6(targetInput);
   const checks = [];
   let config;
   try {
@@ -5752,7 +5981,7 @@ async function runDoctor(targetInput, options = {}) {
   });
   checks.push(await pathCheck(
     "graphify-graph",
-    join4(target, "graphify-out/graph.json"),
+    join5(target, "graphify-out/graph.json"),
     "warn",
     "Graphify graph is ready",
     "Graphify graph has not been built"
@@ -5760,7 +5989,7 @@ async function runDoctor(targetInput, options = {}) {
   const knowledgeRoot = resolveKnowledgeRoot(target, config);
   checks.push(await pathCheck(
     "knowledge",
-    join4(knowledgeRoot, "knowledge/index.md"),
+    join5(knowledgeRoot, "knowledge/index.md"),
     "fail",
     `Knowledge bundle found at ${knowledgeRoot}`,
     `Knowledge bundle is missing at ${knowledgeRoot}`
@@ -5769,7 +5998,7 @@ async function runDoctor(targetInput, options = {}) {
     for (const directory of ["raw", "changes/active", "changes/archive"]) {
       checks.push(await pathCheck(
         `knowledge-${directory}`,
-        join4(target, directory),
+        join5(target, directory),
         "fail",
         `${directory} exists`,
         `${directory} is missing`
@@ -5823,9 +6052,9 @@ async function pathCheck(name, path, missingStatus, presentMessage, missingMessa
 }
 
 // src/work.ts
-import { access as access3, mkdir as mkdir2, readFile as readFile5, rename as rename2, unlink, writeFile as writeFile2 } from "node:fs/promises";
+import { access as access3, mkdir as mkdir3, readFile as readFile6, rename as rename3, unlink, writeFile as writeFile3 } from "node:fs/promises";
 import { constants as constants3 } from "node:fs";
-import { dirname as dirname3, join as join5, resolve as resolve6, sep as sep3 } from "node:path";
+import { dirname as dirname4, join as join6, resolve as resolve7, sep as sep3 } from "node:path";
 
 // node_modules/yaml/browser/dist/nodes/identity.js
 var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
@@ -12198,7 +12427,7 @@ function stringValue(value) {
 
 // src/work.ts
 async function beginWork(options) {
-  const target = resolve6(options.target);
+  const target = resolve7(options.target);
   const config = await readConfig(target);
   if (config.profile !== "leaf") {
     throw new Error("Work records must be started from a leaf repository");
@@ -12221,13 +12450,13 @@ async function beginWork(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const date = now.toISOString().slice(0, 10);
   const slug = normalizeSlug(options.slug);
-  const id = await uniqueWorkId(join5(knowledgeRoot, "changes/active"), `${date}-${slug}`);
+  const id = await uniqueWorkId(join6(knowledgeRoot, "changes/active"), `${date}-${slug}`);
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const templatePath = join5(
+  const templatePath = join6(
     distributionRoot,
     "skills/manage-project-work/assets/work-spec.md"
   );
-  const template = parseWorkSpec(await readFile5(templatePath, "utf8"));
+  const template = parseWorkSpec(await readFile6(templatePath, "utf8"));
   const createdAt = now.toISOString();
   template.metadata = {
     ...template.metadata,
@@ -12246,13 +12475,13 @@ async function beginWork(options) {
       queries: options.graphQuery ? [options.graphQuery] : []
     }
   };
-  const activeDirectory = join5(knowledgeRoot, "changes/active", id);
-  const specPath = join5(activeDirectory, "SPEC.md");
-  const pointerPath = join5(target, ".workflow/current", `${id}.json`);
-  await mkdir2(activeDirectory, { recursive: false });
-  await writeFile2(specPath, serializeWorkSpec(template), { encoding: "utf8", flag: "wx" });
-  await mkdir2(dirname3(pointerPath), { recursive: true });
-  await writeFile2(
+  const activeDirectory = join6(knowledgeRoot, "changes/active", id);
+  const specPath = join6(activeDirectory, "SPEC.md");
+  const pointerPath = join6(target, ".workflow/current", `${id}.json`);
+  await mkdir3(activeDirectory, { recursive: false });
+  await writeFile3(specPath, serializeWorkSpec(template), { encoding: "utf8", flag: "wx" });
+  await mkdir3(dirname4(pointerPath), { recursive: true });
+  await writeFile3(
     pointerPath,
     `${JSON.stringify({
       schemaVersion: 1,
@@ -12266,11 +12495,11 @@ async function beginWork(options) {
   return { id, specPath, pointerPath };
 }
 async function verifyWork(targetInput, id) {
-  const target = resolve6(targetInput);
+  const target = resolve7(targetInput);
   const config = await readConfig(target);
   const knowledgeRoot = resolveKnowledgeRoot(target, config);
-  const specPath = join5(knowledgeRoot, "changes/active", id, "SPEC.md");
-  const document = parseWorkSpec(await readFile5(specPath, "utf8"));
+  const specPath = join6(knowledgeRoot, "changes/active", id, "SPEC.md");
+  const document = parseWorkSpec(await readFile6(specPath, "utf8"));
   return {
     id,
     specPath,
@@ -12278,37 +12507,37 @@ async function verifyWork(targetInput, id) {
   };
 }
 async function flushWork(options) {
-  const target = resolve6(options.target);
+  const target = resolve7(options.target);
   const config = await readConfig(target);
   const knowledgeRoot = resolveKnowledgeRoot(target, config);
-  const activeDirectory = join5(knowledgeRoot, "changes/active", options.id);
-  const specPath = join5(activeDirectory, "SPEC.md");
-  const document = parseWorkSpec(await readFile5(specPath, "utf8"));
+  const activeDirectory = join6(knowledgeRoot, "changes/active", options.id);
+  const specPath = join6(activeDirectory, "SPEC.md");
+  const document = parseWorkSpec(await readFile6(specPath, "utf8"));
   if (options.outcome === "completed") {
     const issues = completionIssues(document, true);
     if (issues.length > 0) {
       throw new Error(`Completed flush is blocked: ${issues.join("; ")}`);
     }
   }
-  const archivePath = join5(knowledgeRoot, "changes/archive", options.id);
+  const archivePath = join6(knowledgeRoot, "changes/archive", options.id);
   await assertAbsent(archivePath, "archive");
   const now = options.now ?? /* @__PURE__ */ new Date();
   const metadata = readRepositoryMetadata(target);
-  const rawDirectory = join5(
+  const rawDirectory = join6(
     knowledgeRoot,
     "raw",
     now.toISOString().slice(0, 4),
     now.toISOString().slice(5, 7)
   );
   const rawName = `${compactTimestamp(now)}--${safeName(metadata.repository)}--${safeName(options.id)}.md`;
-  const rawPath = join5(rawDirectory, rawName);
+  const rawPath = join6(rawDirectory, rawName);
   await assertAbsent(rawPath, "raw record");
   const raw = buildRawRecord(document, metadata, options.outcome, options.id, now);
-  await mkdir2(rawDirectory, { recursive: true });
-  await writeFile2(rawPath, raw, { encoding: "utf8", flag: "wx" });
-  await mkdir2(dirname3(archivePath), { recursive: true });
-  await rename2(activeDirectory, archivePath);
-  await removePointer(join5(target, ".workflow/current", `${options.id}.json`));
+  await mkdir3(rawDirectory, { recursive: true });
+  await writeFile3(rawPath, raw, { encoding: "utf8", flag: "wx" });
+  await mkdir3(dirname4(archivePath), { recursive: true });
+  await rename3(activeDirectory, archivePath);
+  await removePointer(join6(target, ".workflow/current", `${options.id}.json`));
   return { id: options.id, outcome: options.outcome, rawPath, archivePath };
 }
 function buildRawRecord(document, repository, outcome, id, now) {
@@ -12346,23 +12575,23 @@ ${document.body.trimStart()}`;
 }
 async function assertGraphReady(target) {
   try {
-    await access3(join5(target, "graphify-out/graph.json"), constants3.R_OK);
+    await access3(join6(target, "graphify-out/graph.json"), constants3.R_OK);
   } catch {
     throw new Error("Graphify graph is missing; build graphify-out/graph.json before starting work");
   }
 }
 async function assertKnowledgeRoot(root) {
   try {
-    await access3(join5(root, "knowledge/index.md"), constants3.R_OK);
+    await access3(join6(root, "knowledge/index.md"), constants3.R_OK);
   } catch {
     throw new Error(`Knowledge repository is not initialized: ${root}`);
   }
 }
 async function assertKnowledgeReference(root, reference) {
   const normalized = reference.replace(/^\/+/, "");
-  const absolute = resolve6(root, normalized);
-  const boundary = `${resolve6(root)}${sep3}`;
-  if (absolute !== resolve6(root) && !absolute.startsWith(boundary)) {
+  const absolute = resolve7(root, normalized);
+  const boundary = `${resolve7(root)}${sep3}`;
+  if (absolute !== resolve7(root) && !absolute.startsWith(boundary)) {
     throw new Error("Knowledge reference escapes the knowledge repository");
   }
   try {
@@ -12375,7 +12604,7 @@ async function uniqueWorkId(activeRoot, base) {
   for (let index = 1; index < 1e3; index += 1) {
     const candidate = index === 1 ? base : `${base}-${index}`;
     try {
-      await access3(join5(activeRoot, candidate), constants3.F_OK);
+      await access3(join6(activeRoot, candidate), constants3.F_OK);
     } catch {
       return candidate;
     }
@@ -12417,7 +12646,7 @@ function safeName(value) {
 }
 
 // src/cli.ts
-var main = new Command().name("wfctl").version(WORKFLOW_VERSION).description("Bootstrap and enforce a shared agent project workflow.").throwErrors().command("plan", installCommand("Show the exact installation plan.", false)).command("apply", installCommand("Apply a conflict-free installation plan.", true)).command("init", installCommand("Initialize a workflow environment.", true)).command("sync", syncCommand()).command("render", renderCommand()).command("doctor", doctorCommand()).command("work", workCommand());
+var main = new Command().name("wfctl").version(WORKFLOW_VERSION).description("Bootstrap and enforce a shared agent project workflow.").throwErrors().command("plan", installCommand("Show the exact installation plan.", false)).command("apply", installCommand("Apply a conflict-free installation plan.", true)).command("init", installCommand("Initialize a workflow environment.", true)).command("sync", syncCommand()).command("bootstrap", bootstrapCommand()).command("render", renderCommand()).command("doctor", doctorCommand()).command("work", workCommand());
 try {
   await main.parse(process.argv.slice(2));
 } catch (error) {
@@ -12428,8 +12657,8 @@ try {
 function installCommand(description, apply) {
   return new Command().description(description).arguments("<profile:string>").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-k, --knowledge <path:string>", "Knowledge repository for a leaf profile.").option("--json", "Print machine-readable JSON.").action(async (options, profileValue) => {
     const profile = parseProfile(profileValue);
-    const target = resolve7(options.target);
-    const knowledge = options.knowledge ? resolve7(options.knowledge) : void 0;
+    const target = resolve8(options.target);
+    const knowledge = options.knowledge ? resolve8(options.knowledge) : void 0;
     const plan = await buildInstallPlan({
       target,
       profile,
@@ -12456,7 +12685,7 @@ State: ${result.statePath}
 }
 function syncCommand() {
   return new Command().description("Synchronize an existing workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--plan", "Show the plan without applying it.").option("--json", "Print machine-readable JSON.").action(async (options) => {
-    const target = resolve7(options.target);
+    const target = resolve8(options.target);
     const config = await readConfig(target);
     const knowledge = config.profile === "leaf" ? resolveKnowledgeRoot(target, config) : void 0;
     const plan = await buildInstallPlan({
@@ -12480,16 +12709,47 @@ function syncCommand() {
     }
   });
 }
+function bootstrapCommand() {
+  return new Command().description("Install the user-level setup skill for clean repositories.").command("plan", bootstrapActionCommand(false)).command("install", bootstrapActionCommand(true));
+}
+function bootstrapActionCommand(apply) {
+  return new Command().description(
+    apply ? "Install or safely update the user-level setup skill." : "Show the user-level setup skill installation plan."
+  ).option("--agent <agent:string>", "codex, claude, or both.", { default: "both" }).option("--codex-skills-root <path:string>", "Override the Codex user skills root.").option("--claude-skills-root <path:string>", "Override the Claude user skills root.").option("--json", "Print machine-readable JSON.").action(async (options) => {
+    const plan = await buildBootstrapPlan({
+      agent: parseBootstrapAgent(options.agent),
+      ...options.codexSkillsRoot ? { codexSkillsRoot: resolve8(options.codexSkillsRoot) } : {},
+      ...options.claudeSkillsRoot ? { claudeSkillsRoot: resolve8(options.claudeSkillsRoot) } : {}
+    });
+    if (!apply) {
+      printBootstrapPlan(plan, options.json === true);
+      if (plan.operations.some((operation) => operation.status === "conflict")) {
+        process.exitCode = 2;
+      }
+      return;
+    }
+    const result = await applyBootstrapPlan(plan);
+    if (options.json) {
+      printJson({ ...summarizeBootstrapPlan(plan), applied: result });
+    } else {
+      process.stdout.write(
+        `Installed bootstrap skill with ${result.changed} change(s)
+${result.statePaths.map((path) => `State: ${path}`).join("\n")}
+`
+      );
+    }
+  });
+}
 function renderCommand() {
   return new Command().description("Render text for manual integration.").command(
     "agents",
     new Command().description("Render the wfctl AGENTS.md / CLAUDE.md managed block.").option("-p, --profile <profile:string>", "knowledge or leaf.", { required: true }).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-k, --knowledge <path:string>", "Knowledge repository for a leaf profile.").action(async (options) => {
       const profile = parseProfile(options.profile);
-      const target = resolve7(options.target);
+      const target = resolve8(options.target);
       const config = createConfig(
         profile,
         target,
-        options.knowledge ? resolve7(options.knowledge) : void 0
+        options.knowledge ? resolve8(options.knowledge) : void 0
       );
       const distributionRoot = await findDistributionRoot();
       const body = await renderAgentInstructions(
@@ -12592,6 +12852,12 @@ function parseProfile(value) {
   }
   return value;
 }
+function parseBootstrapAgent(value) {
+  if (value !== "codex" && value !== "claude" && value !== "both") {
+    throw new Error(`Invalid agent "${value}"; expected codex, claude, or both`);
+  }
+  return value;
+}
 function parseWorkMode(value) {
   if (value !== "full" && value !== "slice" && value !== "handoff") {
     throw new Error(`Invalid mode "${value}"; expected full, slice, or handoff`);
@@ -12615,6 +12881,20 @@ function printPlan(plan, json) {
   for (const operation of plan.operations) {
     process.stdout.write(
       `${operation.status.toUpperCase().padEnd(9)} ${operation.kind.padEnd(13)} ${operation.path} \u2014 ${operation.reason}
+`
+    );
+  }
+}
+function printBootstrapPlan(plan, json) {
+  if (json) {
+    printJson(summarizeBootstrapPlan(plan));
+    return;
+  }
+  process.stdout.write(`Bootstrap skill plan: ${plan.agent}
+`);
+  for (const operation of plan.operations) {
+    process.stdout.write(
+      `${operation.status.toUpperCase().padEnd(9)} ${operation.agent.padEnd(7)} ${operation.path} \u2014 ${operation.reason}
 `
     );
   }

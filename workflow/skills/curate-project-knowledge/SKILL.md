@@ -10,7 +10,7 @@ Curate current truth without erasing evidence or manufacturing certainty.
 ## Procedure
 
 1. Define the topic or bounded raw set being reconciled.
-2. Use Graphify to map related raw records, curated concepts, decisions, repositories, and code evidence.
+2. Invoke `analyze-with-graphify` to map related raw records, curated concepts, decisions, repositories, and code evidence.
 3. Establish provenance for each material claim.
 4. Separate:
    - original intent,
