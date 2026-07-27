@@ -16,8 +16,13 @@ Install through deterministic `wfctl` operations while preserving all unowned co
 5. Run `wfctl plan <profile> --target <path> --json` with `--knowledge <path>` for a leaf.
 6. Review every reported conflict. Never use a destructive replacement to make the plan pass.
 7. If instruction files require a semantic merge, use `wfctl render agents` and insert the rendered managed block in the appropriate location.
-8. Run `wfctl apply` only after the plan is conflict-free.
-9. Run `wfctl doctor --target <path>` and report any remaining failure.
+8. Confirm that `PROJECT_WORKFLOW.md` preserves any pre-existing text outside
+   the managed block. Use `wfctl render guide` when the markers require a
+   maintainer-controlled semantic merge.
+9. Run `wfctl apply` only after the plan is conflict-free.
+10. Run `wfctl doctor --target <path>` and report any remaining failure.
+11. Point the maintainer to `PROJECT_WORKFLOW.md`; it defines their review
+    responsibilities for both profiles.
 
 Use `wfctl sync` for an existing installation. Read [the installation contract](references/install-contract.md) when handling unusual files or symlinks.
 

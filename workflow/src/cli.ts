@@ -1,7 +1,11 @@
 import { Command } from "@cliffy/command";
 import { resolve } from "node:path";
 import { applyInstallPlan } from "./applier.js";
-import { findDistributionRoot, renderAgentInstructions } from "./assets.js";
+import {
+  findDistributionRoot,
+  renderAgentInstructions,
+  renderMaintainerGuide,
+} from "./assets.js";
 import {
   applyBootstrapPlan,
   buildBootstrapPlan,
@@ -70,7 +74,7 @@ function installCommand(description: string, apply: boolean) {
         printJson({ ...summarizePlan(plan), applied: result });
       } else {
         process.stdout.write(
-          `Applied ${result.changed} change(s) to ${plan.target}\nState: ${result.statePath}\n`,
+          `Applied ${result.changed} change(s) to ${plan.target}\nState: ${result.statePath}\nGuide: ${resolve(plan.target, "PROJECT_WORKFLOW.md")}\n`,
         );
       }
     });
@@ -183,6 +187,30 @@ function renderCommand() {
             config.knowledge?.path,
           );
           process.stdout.write(`<!-- wfctl:begin -->\n${body}\n<!-- wfctl:end -->\n`);
+        }),
+    )
+    .command(
+      "guide",
+      new Command()
+        .description("Render the maintainer-facing project workflow guide.")
+        .option("-p, --profile <profile:string>", "knowledge or leaf.", { required: true })
+        .option("-t, --target <path:string>", "Target repository.", { default: "." })
+        .option("-k, --knowledge <path:string>", "Knowledge repository for a leaf profile.")
+        .action(async (options) => {
+          const profile = parseProfile(options.profile);
+          const target = resolve(options.target);
+          const config = createConfig(
+            profile,
+            target,
+            options.knowledge ? resolve(options.knowledge) : undefined,
+          );
+          const distributionRoot = await findDistributionRoot();
+          const guide = await renderMaintainerGuide(
+            distributionRoot,
+            profile,
+            config.knowledge?.path,
+          );
+          process.stdout.write(`<!-- wfctl:begin -->\n${guide}\n<!-- wfctl:end -->\n`);
         }),
     );
 }

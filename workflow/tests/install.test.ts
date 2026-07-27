@@ -31,6 +31,14 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   assert.match(await readFile(join(target, "AGENTS.md"), "utf8"), /wfctl:begin/);
   assert.equal(await readlink(join(target, "CLAUDE.md")), "AGENTS.md");
   assert.match(await readFile(join(target, "knowledge/index.md"), "utf8"), /okf_version/);
+  assert.match(
+    await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
+    /OKF defines portable Markdown concepts/,
+  );
+  assert.match(
+    await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
+    /Knowledge repository practice/,
+  );
   await access(join(target, ".agents/skills/setup-workflow-environment/SKILL.md"));
   await access(join(target, ".agents/skills/analyze-with-graphify/SKILL.md"));
   await access(join(target, ".agents/skills/curate-project-knowledge/SKILL.md"));
@@ -45,6 +53,30 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
     second.operations.every((operation) => operation.status === "unchanged"),
     true,
   );
+});
+
+test("renders a profile-specific leaf guide with the configured knowledge path", async () => {
+  const root = await temporaryDirectory("wfctl-leaf-guide-");
+  const knowledge = join(root, "knowledge");
+  const leaf = join(root, "leaf");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+
+  const guide = await readFile(join(leaf, "PROJECT_WORKFLOW.md"), "utf8");
+  assert.match(guide, /Leaf repository practice/);
+  assert.match(guide, /Project knowledge: `\.\.\/knowledge`/);
+  assert.match(guide, /maintainer_review\.completion/);
 });
 
 test("preserves existing instruction files and existing Claude skills directory", async () => {
@@ -109,6 +141,26 @@ test("reports a conflict when an owned file was locally modified", async () => {
   );
   assert.equal(conflict?.status, "conflict");
   assert.match(conflict?.reason ?? "", /locally modified/);
+});
+
+test("preserves a pre-existing maintainer guide outside the managed block", async () => {
+  const target = await temporaryDirectory("wfctl-guide-conflict-");
+  await writeFile(join(target, "PROJECT_WORKFLOW.md"), "# Existing workflow\n", "utf8");
+
+  const plan = await buildInstallPlan({
+    target,
+    profile: "knowledge",
+    distributionRoot,
+  });
+  const guideOperation = plan.operations.find((operation) =>
+    operation.path === "PROJECT_WORKFLOW.md"
+  );
+  assert.equal(guideOperation?.status, "update");
+  await applyInstallPlan(plan);
+  const guide = await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8");
+  assert.match(guide, /^# Existing workflow/m);
+  assert.match(guide, /<!-- wfctl:begin -->/);
+  assert.match(guide, /Maintainer review gates/);
 });
 
 test("doctor accepts initialized knowledge and leaf repositories", async () => {

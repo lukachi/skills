@@ -42,6 +42,7 @@ for (const runtime of cases) {
     `${runtime.name} apply failed:\n${applied.stderr || applied.stdout}`,
   );
   assert.equal(existsSync(join(target, "AGENTS.md")), true);
+  assert.equal(existsSync(join(target, "PROJECT_WORKFLOW.md")), true);
   assert.equal(readlinkSync(join(target, "CLAUDE.md")), "AGENTS.md");
 
   const converged = spawnSync(runtime.command, planArgs, { encoding: "utf8" });

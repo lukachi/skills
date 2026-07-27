@@ -19,13 +19,19 @@ Curate current truth without erasing evidence or manufacturing certainty.
    - superseded behavior,
    - unresolved contradiction.
 5. Ask the maintainer when chronology or authority cannot be established.
-6. Update or create the smallest set of OKF concepts that expresses current truth.
-7. Preserve previous decisions:
+6. Present a review packet for material claims about intent, product meaning,
+   architecture, ownership, contracts, decisions, risk, or resolved
+   contradictions.
+7. Update or create the smallest set of OKF concepts that expresses current truth.
+8. Preserve previous decisions:
    - link the successor to the predecessor,
    - mark the predecessor `deprecated`,
    - explain what changed and why.
-8. Set honest `generated`, `verified`, `status`, `stale_after`, and `sources`.
-9. Update affected `index.md` and newest-first `log.md`.
-10. Validate the bundle and report draft or unresolved concepts.
+9. Set honest `generated`, `verified`, `status`, `stale_after`, and `sources`.
+   Record `verified` by `human:<id>` only after explicit review of the current
+   material claims. Do not infer human approval from `status: stable`.
+10. Update affected `index.md` and newest-first `log.md`.
+11. Validate the bundle and report draft or unresolved concepts.
 
 Read [the knowledge model](references/knowledge-model.md) before first-time convergence or decision migration.
+Follow `PROJECT_WORKFLOW.md` for maintainer review boundaries and packet format.

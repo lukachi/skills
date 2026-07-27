@@ -59,6 +59,14 @@ export async function runDoctor(
     `Knowledge bundle is missing at ${knowledgeRoot}`,
   ));
 
+  checks.push(await pathCheck(
+    "maintainer-guide",
+    join(target, "PROJECT_WORKFLOW.md"),
+    "fail",
+    "Maintainer guide is present",
+    "PROJECT_WORKFLOW.md is missing",
+  ));
+
   if (config.profile === "knowledge") {
     for (const directory of ["raw", "changes/active", "changes/archive"]) {
       checks.push(await pathCheck(

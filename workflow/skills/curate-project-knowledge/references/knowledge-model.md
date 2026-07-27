@@ -22,4 +22,7 @@
 
 Authority is claim-specific. Prefer direct code evidence for implementation reality, human-reviewed current decisions for intent, and primary external sources for external facts. A newer agent-written document is not automatically more authoritative.
 
-Use OKF source records and stable footnote IDs for important claims. Keep `generated` separate from `verified`. A concept without human confirmation must not be represented as human-reviewed.
+Use OKF source records and stable footnote IDs for important claims. Keep
+`generated`, `verified`, and `status` separate. A stable concept can still be
+unverified or machine-confirmed. A concept without explicit human confirmation
+of its current material claims must not be represented as human-reviewed.

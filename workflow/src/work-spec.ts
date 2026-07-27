@@ -31,6 +31,7 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   const verification = recordValue(metadata.verification);
   const alignment = recordValue(metadata.knowledge_alignment);
   const graph = recordValue(metadata.graph_evidence);
+  const maintainerReview = recordValue(metadata.maintainer_review);
 
   if (requireCompleted && metadata.status !== "completed") {
     issues.push("status must be completed");
@@ -64,6 +65,8 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
     if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
       issues.push("knowledge_alignment.conflicts must be resolved");
     }
+    reviewIssues("framing", maintainerReview, issues);
+    reviewIssues("completion", maintainerReview, issues);
   }
 
   return issues;
@@ -83,4 +86,27 @@ function nonEmptyArray(value: unknown): value is unknown[] {
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function reviewIssues(
+  stage: "framing" | "completion",
+  review: Record<string, unknown> | undefined,
+  issues: string[],
+): void {
+  const entry = recordValue(review?.[stage]);
+  const prefix = `maintainer_review.${stage}`;
+  if (entry?.status !== "approved") {
+    issues.push(`${prefix}.status must be approved`);
+  }
+  if (!stringValue(entry?.by).startsWith("human:")) {
+    issues.push(`${prefix}.by must identify a human actor`);
+  }
+  if (!isIsoDateTime(stringValue(entry?.at))) {
+    issues.push(`${prefix}.at must be an ISO 8601 datetime`);
+  }
+}
+
+function isIsoDateTime(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+    && !Number.isNaN(Date.parse(value));
 }

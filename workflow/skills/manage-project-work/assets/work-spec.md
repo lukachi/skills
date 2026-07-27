@@ -18,6 +18,17 @@ knowledge_alignment:
   conflicts: []
 graph_evidence:
   queries: []
+maintainer_review:
+  framing:
+    status: pending
+    by: ""
+    at: ""
+    notes: []
+  completion:
+    status: pending
+    by: ""
+    at: ""
+    notes: []
 verification:
   result: pending
   acceptance_reviewed: false

@@ -28,5 +28,11 @@ Completion is a claim that requires fresh, reviewable evidence.
    - Separate verified facts from inference.
    - Record all remaining risks and unresolved work.
    - Do not use passing tests as proof of untested acceptance criteria.
+6. **Maintainer completion review**
+   - Present acceptance results, implementation evidence, checks, deviations,
+     and remaining risks as a compact review packet.
+   - Record only an explicit maintainer decision under
+     `maintainer_review.completion`.
+   - Do not treat silence or the agent's own judgment as approval.
 
 Read [the completion gate](references/completion-gate.md) and update the spec's structured `verification` fields. Run `wfctl work verify` for structural consistency. Only then set `status: completed`.

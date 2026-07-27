@@ -29,6 +29,19 @@ export async function renderAgentInstructions(
     .trim();
 }
 
+export async function renderMaintainerGuide(
+  distributionRoot: string,
+  profile: Profile,
+  knowledgePath?: string,
+): Promise<string> {
+  const common = await readFile(join(distributionRoot, "templates/guides/common.md"), "utf8");
+  const specific = await readFile(join(distributionRoot, `templates/guides/${profile}.md`), "utf8");
+  return `${common.trimEnd()}\n${specific}`
+    .replaceAll("{{PROFILE}}", profile)
+    .replaceAll("{{KNOWLEDGE_PATH}}", knowledgePath ?? ".")
+    .trim();
+}
+
 export async function collectFiles(root: string): Promise<string[]> {
   if (!await exists(root)) {
     return [];

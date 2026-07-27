@@ -23,6 +23,15 @@
 - Mirror namespaced rule files under `.claude/rules`.
 - Route Codex to `.workflow/rules` through the managed `AGENTS.md` block.
 
+## Maintainer guide
+
+- Install `PROJECT_WORKFLOW.md` as a managed, visible root document for both
+  profiles, using a managed block that preserves text outside the markers.
+- Render profile-specific content and the configured knowledge path.
+- Treat malformed or duplicated managed markers as a conflict.
+- Use `wfctl render guide` for a maintainer-controlled merge or alternate
+  destination.
+
 ## Ownership
 
 `.workflow/state.json` records the hash of every installed owned file. Update an owned file only when the on-disk hash still matches the prior installed hash. Equal content is safe to adopt. Any other pre-existing content is a conflict.

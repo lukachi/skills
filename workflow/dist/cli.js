@@ -4980,6 +4980,12 @@ async function renderAgentInstructions(distributionRoot, profile, knowledgePath)
   return `${common.trimEnd()}
 ${specific}`.replaceAll("{{KNOWLEDGE_PATH}}", knowledgePath ?? "(not configured)").trim();
 }
+async function renderMaintainerGuide(distributionRoot, profile, knowledgePath) {
+  const common = await readFile(join(distributionRoot, "templates/guides/common.md"), "utf8");
+  const specific = await readFile(join(distributionRoot, `templates/guides/${profile}.md`), "utf8");
+  return `${common.trimEnd()}
+${specific}`.replaceAll("{{PROFILE}}", profile).replaceAll("{{KNOWLEDGE_PATH}}", knowledgePath ?? ".").trim();
+}
 async function collectFiles(root) {
   if (!await exists(root)) {
     return [];
@@ -5167,6 +5173,12 @@ async function buildInstallPlan(options) {
   );
   operations.push(await planManagedBlock(target, "AGENTS.md", instructions));
   operations.push(await planClaudeInstructions(target, instructions));
+  const guide = await renderMaintainerGuide(
+    distributionRoot,
+    options.profile,
+    config.knowledge?.path
+  );
+  operations.push(await planManagedBlock(target, "PROJECT_WORKFLOW.md", guide));
   const skillNames = skillsForProfile(options.profile);
   for (const skillName of skillNames) {
     const sourceRoot = join2(distributionRoot, "skills", skillName);
@@ -5993,6 +6005,13 @@ async function runDoctor(targetInput, options = {}) {
     "fail",
     `Knowledge bundle found at ${knowledgeRoot}`,
     `Knowledge bundle is missing at ${knowledgeRoot}`
+  ));
+  checks.push(await pathCheck(
+    "maintainer-guide",
+    join5(target, "PROJECT_WORKFLOW.md"),
+    "fail",
+    "Maintainer guide is present",
+    "PROJECT_WORKFLOW.md is missing"
   ));
   if (config.profile === "knowledge") {
     for (const directory of ["raw", "changes/active", "changes/archive"]) {
@@ -12378,6 +12397,7 @@ function completionIssues(document, requireCompleted) {
   const verification = recordValue(metadata.verification);
   const alignment = recordValue(metadata.knowledge_alignment);
   const graph = recordValue(metadata.graph_evidence);
+  const maintainerReview = recordValue(metadata.maintainer_review);
   if (requireCompleted && metadata.status !== "completed") {
     issues.push("status must be completed");
   }
@@ -12409,6 +12429,8 @@ function completionIssues(document, requireCompleted) {
     if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
       issues.push("knowledge_alignment.conflicts must be resolved");
     }
+    reviewIssues("framing", maintainerReview, issues);
+    reviewIssues("completion", maintainerReview, issues);
   }
   return issues;
 }
@@ -12423,6 +12445,22 @@ function nonEmptyArray(value) {
 }
 function stringValue(value) {
   return typeof value === "string" ? value : "";
+}
+function reviewIssues(stage, review, issues) {
+  const entry = recordValue(review?.[stage]);
+  const prefix = `maintainer_review.${stage}`;
+  if (entry?.status !== "approved") {
+    issues.push(`${prefix}.status must be approved`);
+  }
+  if (!stringValue(entry?.by).startsWith("human:")) {
+    issues.push(`${prefix}.by must identify a human actor`);
+  }
+  if (!isIsoDateTime(stringValue(entry?.at))) {
+    issues.push(`${prefix}.at must be an ISO 8601 datetime`);
+  }
+}
+function isIsoDateTime(value) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
 
 // src/work.ts
@@ -12678,6 +12716,7 @@ function installCommand(description, apply) {
       process.stdout.write(
         `Applied ${result.changed} change(s) to ${plan.target}
 State: ${result.statePath}
+Guide: ${resolve8(plan.target, "PROJECT_WORKFLOW.md")}
 `
       );
     }
@@ -12759,6 +12798,27 @@ function renderCommand() {
       );
       process.stdout.write(`<!-- wfctl:begin -->
 ${body}
+<!-- wfctl:end -->
+`);
+    })
+  ).command(
+    "guide",
+    new Command().description("Render the maintainer-facing project workflow guide.").option("-p, --profile <profile:string>", "knowledge or leaf.", { required: true }).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-k, --knowledge <path:string>", "Knowledge repository for a leaf profile.").action(async (options) => {
+      const profile = parseProfile(options.profile);
+      const target = resolve8(options.target);
+      const config = createConfig(
+        profile,
+        target,
+        options.knowledge ? resolve8(options.knowledge) : void 0
+      );
+      const distributionRoot = await findDistributionRoot();
+      const guide = await renderMaintainerGuide(
+        distributionRoot,
+        profile,
+        config.knowledge?.path
+      );
+      process.stdout.write(`<!-- wfctl:begin -->
+${guide}
 <!-- wfctl:end -->
 `);
     })

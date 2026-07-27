@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readlink } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
-import { collectFiles, findDistributionRoot, renderAgentInstructions } from "./assets.js";
+import {
+  collectFiles,
+  findDistributionRoot,
+  renderAgentInstructions,
+  renderMaintainerGuide,
+} from "./assets.js";
 import { createConfig, errorMessage, isMissingFileError, readState } from "./config.js";
 import { upsertManagedBlock } from "./managed-block.js";
 import type {
@@ -64,6 +69,13 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
   );
   operations.push(await planManagedBlock(target, "AGENTS.md", instructions));
   operations.push(await planClaudeInstructions(target, instructions));
+
+  const guide = await renderMaintainerGuide(
+    distributionRoot,
+    options.profile,
+    config.knowledge?.path,
+  );
+  operations.push(await planManagedBlock(target, "PROJECT_WORKFLOW.md", guide));
 
   const skillNames = skillsForProfile(options.profile);
   for (const skillName of skillNames) {

@@ -63,6 +63,20 @@ test("runs the completed central work lifecycle", async () => {
     checks: [{ command: "bun run test", result: "passed" }],
     unresolved: [],
   };
+  document.metadata.maintainer_review = {
+    framing: {
+      status: "approved",
+      by: "human:test-maintainer",
+      at: "2026-07-28T10:05:00.000Z",
+      notes: [],
+    },
+    completion: {
+      status: "approved",
+      by: "human:test-maintainer",
+      at: "2026-07-28T11:55:00.000Z",
+      notes: [],
+    },
+  };
   document.body = document.body.replaceAll("- [ ]", "- [x]");
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
 
@@ -82,6 +96,54 @@ test("runs the completed central work lifecycle", async () => {
   assert.match(raw, /worktree: false/);
   await access(join(flushed.archivePath, "SPEC.md"));
   await assert.rejects(access(started.pointerPath));
+});
+
+test("blocks significant completion without explicit maintainer reviews", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-review-gate-"));
+  const knowledge = join(root, "knowledge-repo");
+  const leaf = join(root, "leaf-repo");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  initializeGit(knowledge);
+  initializeGit(leaf);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+  await mkdir(join(leaf, "graphify-out"));
+  await writeFile(join(leaf, "graphify-out/graph.json"), "{}\n", "utf8");
+
+  const started = await beginWork({
+    target: leaf,
+    slug: "review-gate",
+    title: "Review gate",
+    mode: "full",
+    knowledgeRef: "knowledge/index.md",
+    graphQuery: "Trace review gate",
+    distributionRoot,
+    now: new Date("2026-07-28T10:00:00.000Z"),
+  });
+  const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  document.metadata.verification = {
+    result: "passed",
+    acceptance_reviewed: true,
+    implementation_reviewed: true,
+    checks: [{ command: "bun test", result: "passed" }],
+    unresolved: [],
+  };
+  document.body = document.body.replaceAll("- [ ]", "- [x]");
+  await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+
+  const verified = await verifyWork(leaf, started.id);
+  assert.ok(verified.issues.includes("maintainer_review.framing.status must be approved"));
+  assert.ok(verified.issues.includes("maintainer_review.completion.status must be approved"));
 });
 
 test("allows a lightweight handoff to flush as partial or abandoned", async () => {

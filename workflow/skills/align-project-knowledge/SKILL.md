@@ -27,5 +27,8 @@ Do not design from code and memory alone. Establish the project's current intent
 
 - `raw/` is evidence, not current truth.
 - A later timestamp does not automatically make a source authoritative.
+- `status: stable` means ready for consumption, not human-reviewed.
+- A human verification predating a meaningful content update does not prove the
+  update was reviewed.
 - When sources or code disagree and the correct intent cannot be established, ask the maintainer.
 - Preserve unresolved uncertainty explicitly. Do not create a spec that silently selects one interpretation.

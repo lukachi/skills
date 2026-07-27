@@ -35,6 +35,7 @@ try {
   assert.equal(existsSync(join(packaged, "skills/manage-project-work/SKILL.md")), true);
   assert.equal(existsSync(join(packaged, "rules/leaf/workflow-routing.md")), true);
   assert.equal(existsSync(join(packaged, "templates/knowledge/knowledge/index.md")), true);
+  assert.equal(existsSync(join(packaged, "templates/guides/common.md")), true);
 
   const target = join(sandbox, "consumer");
   const plan = spawnSync(
@@ -53,6 +54,22 @@ try {
   const summary = JSON.parse(plan.stdout);
   assert.equal(summary.profile, "knowledge");
   assert.ok(summary.counts.create > 0);
+
+  const renderedGuide = spawnSync(
+    "node",
+    [
+      join(packaged, "dist/cli.js"),
+      "render",
+      "guide",
+      "--profile",
+      "knowledge",
+      "--target",
+      target,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(renderedGuide.status, 0, renderedGuide.stderr || renderedGuide.stdout);
+  assert.match(renderedGuide.stdout, /Maintainer review gates/);
 
   const bootstrap = spawnSync(
     "node",

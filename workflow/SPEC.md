@@ -35,6 +35,8 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - `wfctl sync`: update owned assets using the installed profile.
 - `wfctl bootstrap plan|install`: safely install the user-level setup skill for Codex, Claude, or both.
 - `wfctl render agents`: print the managed instruction block for manual insertion.
+- `wfctl render guide`: print the profile-specific maintainer operating guide
+  for manual merge or alternate placement.
 - `wfctl doctor`: diagnose installation, Graphify, Git, and knowledge linkage.
 - `wfctl work begin`: create a central living spec and a leaf pointer.
 - `wfctl work verify`: validate the structural completion gate without claiming semantic correctness.
@@ -50,6 +52,8 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - Never overwrite a different user-level bootstrap skill.
 - Keep deterministic data on stdout; diagnostics and interactive UI belong on stderr.
 - Support non-interactive and JSON output for agents and CI.
+- Install one visible, profile-specific `PROJECT_WORKFLOW.md` through a managed
+  block that preserves pre-existing maintainer content.
 
 ## Verification criteria
 
@@ -64,6 +68,9 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - [x] Built CLI runs under Node, Bun, and Deno.
 - [x] Knowledge and leaf profiles receive only their relevant skills.
 - [x] The user-level setup skill installs safely for Codex and Claude.
+- [x] Both profiles receive a maintainer-facing operating guide.
+- [x] Significant completed work requires explicit framing and completion review
+  records from a human actor.
 
 ## Progress
 
@@ -75,6 +82,8 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - [x] Complete and validate rules, skills, and templates.
 - [x] Add automated tests and runtime smoke checks.
 - [x] Dry-run against the named DnD repositories.
+- [x] Define maintainer review boundaries without conflating OKF trust and
+  lifecycle.
 
 ## Out of scope for v1
 

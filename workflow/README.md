@@ -73,8 +73,15 @@ wfctl apply leaf --target /path/to/source-repository \
 ```
 
 Use `wfctl render agents --profile knowledge|leaf` when an instruction file
-needs a maintainer-controlled semantic merge. Use `wfctl sync` for an existing
-installation and `wfctl doctor` after installation.
+needs a maintainer-controlled semantic merge. Use `wfctl render guide` when a
+pre-existing `PROJECT_WORKFLOW.md` requires the same treatment. Use
+`wfctl sync` for an existing installation and `wfctl doctor` after
+installation.
+
+Every profile receives a visible root `PROJECT_WORKFLOW.md`. It is the
+maintainer-facing guide: it explains the raw/changes/knowledge boundary, work
+routing, review packets, and the exact decisions that require human approval.
+The agent-facing rules enforce the same gates.
 
 ## Project work
 
@@ -94,7 +101,8 @@ wfctl work flush 2026-07-28-world-loop --outcome completed
 ```
 
 `verify` enforces structural honesty; it does not replace semantic review of the
-implementation. Partial and abandoned work must be flushed with their real
-outcome.
+implementation. Significant completion also requires explicit framing and
+completion decisions recorded under `maintainer_review`. Partial and abandoned
+work must be flushed with their real outcome.
 
 See [SPEC.md](SPEC.md) for the complete model and safety contract.
