@@ -1,0 +1,4 @@
+interface:
+  display_name: "Curate Project Knowledge"
+  short_description: "Turn raw history into current knowledge"
+  default_prompt: "Use $curate-project-knowledge to reconcile raw records into trustworthy current project knowledge."

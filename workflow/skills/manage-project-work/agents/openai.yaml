@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Project Work"
+  short_description: "Drive one living spec and progress file"
+  default_prompt: "Use $manage-project-work to classify this task and maintain its living specification and progress."

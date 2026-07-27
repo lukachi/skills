@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Test and analysis output
+coverage/
+.nyc_output/
+graphify-out/
+*.tsbuildinfo
+
+# Package and tool artifacts
+*.tgz
+*.log
+*.tmp
+.eslintcache
+
+# Local environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local agent settings
+.claude/settings.local.json
+
+# Editors and operating systems
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

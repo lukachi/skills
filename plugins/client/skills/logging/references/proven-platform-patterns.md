@@ -77,15 +77,30 @@ so browser previews and Storybook remain valid consumers. The main handler
 writes received records straight to the file transport, including renderer
 error and origin stacks.
 
-Keep incident capture in error handling:
+Choose one incident policy.
 
 ```ts
+// Diagnostic logger and explicit incident reporter are separate.
 log.error("Workspace load failed", error, { workspaceId })
 reporting.captureException(error)
 ```
 
-The reporting layer may use a breadcrumb transport, but the logger must not
-automatically turn every error record into an incident.
+Use that shape when some error logs are diagnostic-only. Ensure one owner calls
+both operations once; do not add a second global observer for the same failure.
+
+Alternatively, a repository may define every error record as incident-worthy:
+
+```text
+reportError(error)
+    -> one logger.error record
+        -> console and file transports
+        -> incident-provider transport
+```
+
+In that policy, the provider transport owns `captureException` and receives the
+original local `Error`. Application reporting code must not also call the
+provider SDK. If only selected errors are incidents, add an explicit record kind
+or call option rather than deriving intent from text.
 
 When the renderer also uses OpenReplay or another session provider, keep its
 event adapter in that provider package:
@@ -97,9 +112,14 @@ feature logger.event(...)
         -> OpenReplay event transport
 ```
 
-The provider transport forwards only explicit event records. Exception capture
-remains an error-reporting decision, while initialization, identity, consent,
-and reset remain provider control operations.
+The provider transport always forwards explicit event records. Under the
+repository's incident policy it may also forward eligible error records,
+preserving the original `Error`, scope, context, and separate `originStack`.
+Create a fallback `Error` only inside the provider boundary when its SDK
+requires one and the record contains a non-Error value.
+
+Initialization, identity, consent, and reset remain provider control operations;
+they are not log transports.
 
 ## Electrobun
 

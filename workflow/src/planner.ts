@@ -1,0 +1,536 @@
+import { createHash } from "node:crypto";
+import { lstat, readFile, readlink } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
+import { collectFiles, findDistributionRoot, renderAgentInstructions } from "./assets.js";
+import { createConfig, errorMessage, isMissingFileError, readState } from "./config.js";
+import { upsertManagedBlock } from "./managed-block.js";
+import type {
+  InstallPlan,
+  PlanOperation,
+  PlanOptions,
+  WorkflowConfig,
+  WorkflowState,
+} from "./types.js";
+
+const REQUIRED_DIRECTORIES = [
+  ".agents/skills",
+  ".claude/rules",
+  ".workflow/rules",
+  ".workflow/current",
+];
+
+const KNOWLEDGE_DIRECTORIES = [
+  "raw",
+  "changes/active",
+  "changes/archive",
+];
+
+export async function buildInstallPlan(options: PlanOptions): Promise<InstallPlan> {
+  const target = resolve(options.target);
+  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+  const state = await readState(target);
+  const config = createConfig(options.profile, target, options.knowledge);
+  const operations: PlanOperation[] = [];
+
+  for (const directory of REQUIRED_DIRECTORIES) {
+    operations.push(await planDirectory(target, directory));
+  }
+  if (options.profile === "knowledge") {
+    for (const directory of KNOWLEDGE_DIRECTORIES) {
+      operations.push(await planDirectory(target, directory));
+    }
+  }
+
+  operations.push(await planConfig(target, config));
+
+  const instructions = await renderAgentInstructions(
+    distributionRoot,
+    options.profile,
+    config.knowledge?.path,
+  );
+  operations.push(await planManagedBlock(target, "AGENTS.md", instructions));
+  operations.push(await planClaudeInstructions(target, instructions));
+
+  await planOwnedTree({
+    sourceRoot: join(distributionRoot, "skills"),
+    destinationRoot: ".agents/skills",
+    target,
+    state,
+    operations,
+  });
+
+  const ruleRoots = [
+    join(distributionRoot, "rules/common"),
+    join(distributionRoot, `rules/${options.profile}`),
+  ];
+  for (const ruleRoot of ruleRoots) {
+    await planOwnedTree({
+      sourceRoot: ruleRoot,
+      destinationRoot: ".workflow/rules",
+      target,
+      state,
+      operations,
+    });
+    await planOwnedTree({
+      sourceRoot: ruleRoot,
+      destinationRoot: ".claude/rules",
+      target,
+      state,
+      operations,
+    });
+  }
+
+  if (options.profile === "knowledge") {
+    await planOwnedTree({
+      sourceRoot: join(distributionRoot, "templates/knowledge"),
+      destinationRoot: ".",
+      target,
+      state,
+      operations,
+    });
+  }
+
+  await planClaudeSkills(target, distributionRoot, operations);
+
+  return {
+    target,
+    profile: options.profile,
+    ...(config.knowledge ? { knowledgePath: config.knowledge.path } : {}),
+    operations: sortOperations(operations),
+  };
+}
+
+export function summarizePlan(plan: InstallPlan): Record<string, unknown> {
+  const counts = Object.fromEntries(
+    ["create", "update", "unchanged", "conflict"].map((status) => [
+      status,
+      plan.operations.filter((operation) => operation.status === status).length,
+    ]),
+  );
+  return {
+    target: plan.target,
+    profile: plan.profile,
+    ...(plan.knowledgePath ? { knowledgePath: plan.knowledgePath } : {}),
+    counts,
+    operations: plan.operations.map(({ content: _content, expectedHash: _expected, ...operation }) =>
+      operation
+    ),
+  };
+}
+
+export function hashContent(content: string | Buffer): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+async function planConfig(target: string, desired: WorkflowConfig): Promise<PlanOperation> {
+  const relativePath = ".workflow/config.json";
+  const absolute = join(target, relativePath);
+  const content = `${JSON.stringify(desired, null, 2)}\n`;
+  try {
+    const existing = await readFile(absolute, "utf8");
+    const parsed = JSON.parse(existing) as Partial<WorkflowConfig>;
+    const sameKnowledge = desired.profile !== "leaf"
+      || parsed.knowledge?.path === desired.knowledge?.path;
+    if (
+      parsed.schemaVersion === desired.schemaVersion
+      && parsed.profile === desired.profile
+      && sameKnowledge
+    ) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "unchanged",
+        reason: "existing workflow configuration is compatible",
+        content: existing,
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath,
+      status: "conflict",
+      reason: "existing workflow configuration differs; update it explicitly",
+    };
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "conflict",
+        reason: `cannot inspect configuration: ${errorMessage(error)}`,
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath,
+      status: "create",
+      reason: "workflow configuration is absent",
+      content,
+    };
+  }
+}
+
+async function planDirectory(target: string, relativePath: string): Promise<PlanOperation> {
+  try {
+    const stat = await lstat(join(target, relativePath));
+    if (stat.isDirectory()) {
+      return {
+        kind: "directory",
+        path: relativePath,
+        status: "unchanged",
+        reason: "directory exists",
+      };
+    }
+    return {
+      kind: "directory",
+      path: relativePath,
+      status: "conflict",
+      reason: "path exists and is not a directory",
+    };
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return {
+        kind: "directory",
+        path: relativePath,
+        status: "create",
+        reason: "directory is absent",
+      };
+    }
+    return {
+      kind: "directory",
+      path: relativePath,
+      status: "conflict",
+      reason: `cannot inspect directory: ${errorMessage(error)}`,
+    };
+  }
+}
+
+async function planManagedBlock(
+  target: string,
+  relativePath: string,
+  body: string,
+): Promise<PlanOperation> {
+  const absolute = join(target, relativePath);
+  try {
+    const stat = await lstat(absolute);
+    if (stat.isSymbolicLink()) {
+      return {
+        kind: "managed-block",
+        path: relativePath,
+        status: "conflict",
+        reason: "instruction file is a symlink not owned by this operation",
+      };
+    }
+    if (!stat.isFile()) {
+      return {
+        kind: "managed-block",
+        path: relativePath,
+        status: "conflict",
+        reason: "instruction path exists and is not a regular file",
+      };
+    }
+    const existing = await readFile(absolute, "utf8");
+    const merged = upsertManagedBlock(existing, body);
+    if (!merged.content) {
+      return {
+        kind: "managed-block",
+        path: relativePath,
+        status: "conflict",
+        reason: merged.error ?? "cannot update managed block",
+      };
+    }
+    const status = merged.content === existing ? "unchanged" : "update";
+    return {
+      kind: "managed-block",
+      path: relativePath,
+      status,
+      reason: status === "unchanged" ? "managed block is current" : "managed block will be updated",
+      content: merged.content,
+      expectedHash: hashContent(existing),
+    };
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      return {
+        kind: "managed-block",
+        path: relativePath,
+        status: "conflict",
+        reason: `cannot inspect instruction file: ${errorMessage(error)}`,
+      };
+    }
+    const merged = upsertManagedBlock("", body);
+    return {
+      kind: "managed-block",
+      path: relativePath,
+      status: "create",
+      reason: "instruction file is absent",
+      content: merged.content ?? "",
+    };
+  }
+}
+
+async function planClaudeInstructions(
+  target: string,
+  body: string,
+): Promise<PlanOperation> {
+  const path = "CLAUDE.md";
+  const absolute = join(target, path);
+  try {
+    const stat = await lstat(absolute);
+    if (stat.isSymbolicLink()) {
+      const current = await readlink(absolute);
+      return current === "AGENTS.md"
+        ? {
+          kind: "symlink",
+          path,
+          status: "unchanged",
+          reason: "CLAUDE.md already links to AGENTS.md",
+          linkTarget: current,
+        }
+        : {
+          kind: "symlink",
+          path,
+          status: "conflict",
+          reason: `CLAUDE.md links to ${current}, not AGENTS.md`,
+        };
+    }
+    return await planManagedBlock(target, path, body);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return {
+        kind: "symlink",
+        path,
+        status: "create",
+        reason: "CLAUDE.md is absent",
+        linkTarget: "AGENTS.md",
+      };
+    }
+    return {
+      kind: "symlink",
+      path,
+      status: "conflict",
+      reason: `cannot inspect CLAUDE.md: ${errorMessage(error)}`,
+    };
+  }
+}
+
+async function planOwnedTree(input: {
+  sourceRoot: string;
+  destinationRoot: string;
+  target: string;
+  state: WorkflowState | undefined;
+  operations: PlanOperation[];
+}): Promise<void> {
+  for (const sourceRelative of await collectFiles(input.sourceRoot)) {
+    const destination = normalizeRelative(join(input.destinationRoot, sourceRelative));
+    const content = await readFile(join(input.sourceRoot, sourceRelative), "utf8");
+    input.operations.push(
+      await planOwnedFile(input.target, destination, content, input.state),
+    );
+  }
+}
+
+async function planOwnedFile(
+  target: string,
+  relativePath: string,
+  content: string,
+  state: WorkflowState | undefined,
+): Promise<PlanOperation> {
+  const absolute = join(target, relativePath);
+  const desiredHash = hashContent(content);
+  try {
+    const stat = await lstat(absolute);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "conflict",
+        reason: "owned destination exists and is not a regular file",
+      };
+    }
+    const existing = await readFile(absolute);
+    const currentHash = hashContent(existing);
+    if (currentHash === desiredHash) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "unchanged",
+        reason: "owned file is current",
+        content,
+        expectedHash: currentHash,
+        track: true,
+      };
+    }
+    const installedHash = state?.files[relativePath]?.sha256;
+    if (installedHash && installedHash === currentHash) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "update",
+        reason: "owned file matches the previous installed version",
+        content,
+        expectedHash: currentHash,
+        track: true,
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath,
+      status: "conflict",
+      reason: installedHash
+        ? "owned file was locally modified"
+        : "destination exists without wfctl ownership",
+    };
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "create",
+        reason: "owned file is absent",
+        content,
+        track: true,
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath,
+      status: "conflict",
+      reason: `cannot inspect owned file: ${errorMessage(error)}`,
+    };
+  }
+}
+
+async function planClaudeSkills(
+  target: string,
+  distributionRoot: string,
+  operations: PlanOperation[],
+): Promise<void> {
+  const path = ".claude/skills";
+  const absolute = join(target, path);
+  try {
+    const stat = await lstat(absolute);
+    if (stat.isSymbolicLink()) {
+      const current = await readlink(absolute);
+      operations.push(
+        current === "../.agents/skills"
+          ? {
+            kind: "symlink",
+            path,
+            status: "unchanged",
+            reason: "Claude skills link is current",
+            linkTarget: current,
+          }
+          : {
+            kind: "symlink",
+            path,
+            status: "conflict",
+            reason: `Claude skills links to ${current}`,
+          },
+      );
+      return;
+    }
+    if (!stat.isDirectory()) {
+      operations.push({
+        kind: "symlink",
+        path,
+        status: "conflict",
+        reason: "Claude skills path exists and is not a directory",
+      });
+      return;
+    }
+
+    const skillNames = await topLevelDirectories(join(distributionRoot, "skills"));
+    for (const skillName of skillNames) {
+      const childPath = normalizeRelative(join(path, skillName));
+      const linkTarget = normalizeRelative(join("../../.agents/skills", skillName));
+      operations.push(await planSymlink(target, childPath, linkTarget));
+    }
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      operations.push({
+        kind: "symlink",
+        path,
+        status: "create",
+        reason: "Claude skills path is absent",
+        linkTarget: "../.agents/skills",
+      });
+      return;
+    }
+    operations.push({
+      kind: "symlink",
+      path,
+      status: "conflict",
+      reason: `cannot inspect Claude skills: ${errorMessage(error)}`,
+    });
+  }
+}
+
+async function planSymlink(
+  target: string,
+  relativePath: string,
+  linkTarget: string,
+): Promise<PlanOperation> {
+  try {
+    const stat = await lstat(join(target, relativePath));
+    if (!stat.isSymbolicLink()) {
+      return {
+        kind: "symlink",
+        path: relativePath,
+        status: "conflict",
+        reason: "path exists and is not a symlink",
+      };
+    }
+    const current = await readlink(join(target, relativePath));
+    return current === linkTarget
+      ? {
+        kind: "symlink",
+        path: relativePath,
+        status: "unchanged",
+        reason: "symlink is current",
+        linkTarget,
+      }
+      : {
+        kind: "symlink",
+        path: relativePath,
+        status: "conflict",
+        reason: `symlink points to ${current}`,
+      };
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return {
+        kind: "symlink",
+        path: relativePath,
+        status: "create",
+        reason: "symlink is absent",
+        linkTarget,
+      };
+    }
+    return {
+      kind: "symlink",
+      path: relativePath,
+      status: "conflict",
+      reason: `cannot inspect symlink: ${errorMessage(error)}`,
+    };
+  }
+}
+
+async function topLevelDirectories(root: string): Promise<string[]> {
+  const files = await collectFiles(root);
+  return [...new Set(files.map((file) => file.split(sep)[0]).filter(Boolean) as string[])].sort();
+}
+
+function normalizeRelative(path: string): string {
+  const normalized = path.split(sep).join("/");
+  return normalized === "." ? normalized : normalized.replace(/^\.\//, "");
+}
+
+function sortOperations(operations: PlanOperation[]): PlanOperation[] {
+  const kindOrder: Record<PlanOperation["kind"], number> = {
+    directory: 0,
+    file: 1,
+    "managed-block": 2,
+    symlink: 3,
+  };
+  return operations.sort((left, right) =>
+    kindOrder[left.kind] - kindOrder[right.kind] || left.path.localeCompare(right.path)
+  );
+}

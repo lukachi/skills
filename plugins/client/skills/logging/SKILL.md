@@ -192,7 +192,12 @@ register persistence, RPC, or telemetry transports at bootstrap.
 Provider-specific telemetry transports belong to the provider integration
 module. For example, an OpenReplay renderer package may expose a transport that
 maps explicit event records to `trackEvent`, while application features remain
-unaware of OpenReplay.
+unaware of OpenReplay. If the repository deliberately defines every `error`
+record as incident-worthy, the provider transport may also map those records to
+`captureException`. That choice makes `logger.error` part of the incident
+contract: do not keep a second reporting facade that captures the same failure.
+If diagnostic errors and incidents differ, represent that distinction
+explicitly instead of guessing from a message.
 
 Read `references/platform-transports.md` when adding transports, file
 persistence, Electron renderer-to-main delivery, batching, flushing, or
@@ -268,8 +273,12 @@ error-conversion pipeline.
 ## Keep Observability Concerns Distinct
 
 - Sentry-style breadcrumbs may be implemented as a logging transport.
-- Capturing an exception as an incident is an error-reporting decision; do not
-  automatically capture every `logger.error`.
+- Decide whether `logger.error` means a diagnostic error or an incident-worthy
+  error. Do not automatically capture every error unless the repository makes
+  that contract explicit.
+- When an incident provider is a logger transport, emit one eligible record and
+  let normal fan-out reach local persistence and the provider. Do not call the
+  provider separately from the same `reportError` flow.
 - Stable typed application events may travel through the logging pipeline when
   the facade and record distinguish them from ordinary logs.
 - Metrics, timings, and analytics events must not be derived from human log

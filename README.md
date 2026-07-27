@@ -57,3 +57,14 @@ metadata.
 The client collection is the canonical, actively maintained source for these
 development practices. Continue validating the guidance against real projects
 and update the owning skill when practice exposes a missing case.
+
+## Project workflow
+
+The [`workflow/`](workflow/) package is the canonical source for `wfctl`, shared
+project-work rules, consumer skills, and knowledge/leaf bootstrap templates.
+It installs versioned assets without replacing existing agent instructions and
+keeps active work specifications in a configured central knowledge repository.
+
+The implementation contract and current progress live in
+[`workflow/SPEC.md`](workflow/SPEC.md). Development and command usage are in
+[`workflow/README.md`](workflow/README.md).

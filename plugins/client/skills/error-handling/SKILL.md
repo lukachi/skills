@@ -146,8 +146,11 @@ Reporting means sending a failure to an incident or diagnostic backend. It is
 not synonymous with logging or showing feedback.
 
 - Report once, at the boundary with the best safe diagnostic context.
-- Keep provider SDKs behind the repository's reporting facade.
-- Do not turn every `logger.error()` into an incident automatically.
+- Keep provider SDKs behind the repository's reporting facade or
+  provider-owned logger transport.
+- Do not turn every `logger.error()` into an incident unless the repository
+  explicitly defines the error level that way. When it does, reporting emits
+  one logger record and must not call the provider separately.
 - Do not make `showError()` secretly report through a boolean option.
 - Avoid reporting expected cancellation, validation failures, authorization
   outcomes, or other explicitly handled states unless project policy requires
@@ -164,6 +167,12 @@ failure.
 Initialize global rejection and uncaught-error listeners once at the runtime
 composition root. They catch failures that escaped normal ownership; they are
 not a replacement for local recovery.
+
+Treat these listeners as terminal observers. Pass the supplied error or
+rejection reason into the configured logger with automatic origin capture
+disabled. When an incident provider is a logger transport, this one record must
+fan out to both persistence and incident capture; do not call the provider
+again from the listener.
 
 Use React, route, or application error boundaries to:
 
