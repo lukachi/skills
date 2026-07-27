@@ -14,25 +14,24 @@
     "templates"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "bun scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
-    "test:runtime": "node tests/runtime-smoke.mjs",
-    "test:package": "node tests/package-smoke.mjs",
-    "check": "pnpm typecheck && pnpm test && pnpm build && pnpm test:runtime && pnpm test:package"
+    "test": "bun test tests/*.test.ts",
+    "test:runtime": "bun tests/runtime-smoke.mjs",
+    "test:package": "bun tests/package-smoke.mjs",
+    "check": "bun run typecheck && bun run test && bun run build && bun run test:runtime && bun run test:package"
   },
-  "packageManager": "pnpm@11.4.0",
+  "packageManager": "bun@1.3.0",
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "@cliffy/command": "jsr:1.2.1",
+    "@cliffy/command": "npm:@jsr/cliffy__command@1.2.1",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
     "esbuild": "^0.28.1",
-    "tsx": "^4.23.1",
     "typescript": "^7.0.2"
   }
 }

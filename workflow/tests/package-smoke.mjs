@@ -15,14 +15,14 @@ const sandbox = mkdtempSync(join(tmpdir(), "wfctl-package-"));
 
 try {
   const packed = spawnSync(
-    "pnpm",
-    ["pack", "--pack-destination", sandbox],
+    "bun",
+    ["pm", "pack", "--destination", sandbox],
     { cwd: packageRoot, encoding: "utf8" },
   );
   assert.equal(packed.status, 0, packed.stderr || packed.stdout);
 
   const archive = readdirSync(sandbox).find((entry) => entry.endsWith(".tgz"));
-  assert.ok(archive, "pnpm pack did not produce an archive");
+  assert.ok(archive, "bun pm pack did not produce an archive");
 
   const extracted = spawnSync(
     "tar",

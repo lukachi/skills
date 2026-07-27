@@ -60,7 +60,7 @@ test("runs the completed central work lifecycle", async () => {
     result: "passed",
     acceptance_reviewed: true,
     implementation_reviewed: true,
-    checks: [{ command: "pnpm test", result: "passed" }],
+    checks: [{ command: "bun run test", result: "passed" }],
     unresolved: [],
   };
   document.body = document.body.replaceAll("- [ ]", "- [x]");
@@ -153,6 +153,8 @@ function initializeGit(root: string): void {
       "user.name=wfctl tests",
       "-c",
       "user.email=wfctl@example.invalid",
+      "-c",
+      "commit.gpgSign=false",
       "commit",
       "-q",
       "-m",

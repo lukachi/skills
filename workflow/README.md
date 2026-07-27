@@ -12,24 +12,27 @@ symlinks that are safe for their existing layout.
 Requirements:
 
 - Node.js 20 or newer
-- pnpm
-- Bun and Deno for the full runtime compatibility check
+- Bun 1.3 or newer
+- Deno for the full runtime compatibility check
 
 ```sh
-pnpm install
-pnpm check
+bun install
+bun run check
 ```
 
-Until the package is published, run the built CLI directly:
+Until the package is published, build and register the local executable:
 
 ```sh
-node /absolute/path/to/agent-skills/workflow/dist/cli.js --help
+bun run build
+bun link
+wfctl --help
 ```
 
-The bundled executable also runs with Bun and Deno:
+The bundled executable can also be run directly with Bun, Node.js, or Deno:
 
 ```sh
 bun /absolute/path/to/agent-skills/workflow/dist/cli.js --help
+node /absolute/path/to/agent-skills/workflow/dist/cli.js --help
 deno run -A /absolute/path/to/agent-skills/workflow/dist/cli.js --help
 ```
 
