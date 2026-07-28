@@ -94,9 +94,12 @@ Project installations remain profile-specific:
 ## Initialize
 
 `init` always previews its changes and dependency preflight before applying
-them. A missing/old QMD, missing QMD native skill source, non-Git target, invalid
-knowledge link, or missing Graphify in a leaf stops before any workflow file is
-written. Skill scope defaults
+them. When a new knowledge target is not yet a Git repository, interactive
+setup offers to initialize it. Automation must opt in with `--init-git`;
+`--dry-run --init-git` reports the planned initialization without creating
+`.git`. A leaf must already be an existing Git repository. A missing/old QMD,
+missing QMD native skill source, invalid knowledge link, or missing Graphify in
+a leaf stops before any workflow file is written. Skill scope defaults
 to the project and can be changed interactively or with `--skills user|none`.
 The setup agent should execute initialization, upgrades, and diagnostics when
 it has terminal access; manual commands remain available for bootstrap and
@@ -104,6 +107,9 @@ recovery.
 
 ```sh
 wfctl init knowledge --target /path/to/project-knowledge
+
+wfctl init knowledge --target /path/to/project-knowledge \
+  --init-git --yes
 
 wfctl init leaf --target /path/to/source-repository \
   --knowledge /path/to/project-knowledge
@@ -113,6 +119,12 @@ Use `wfctl init ... --dry-run` for a non-mutating preview, `wfctl upgrade` for
 an existing installation, and `wfctl check` for diagnostics. Existing text
 outside managed blocks is preserved. Replaceable file conflicts require an
 explicit per-file decision and a backup; structural conflicts stop installation.
+Human-readable output uses colored sections and compacts repeated skill and
+directory checks; `--json` remains the complete machine-readable report. When
+QMD semantic models or embeddings are missing, the health report prints the
+exact `qmd pull`, `qmd embed`, and verification path instead of raw model
+diagnostics. Long-running leaf graph construction shows a terminal spinner and
+an explicit completion result.
 
 Knowledge initialization builds the deterministic relationship graph and runs
 `qmd update`, so structural navigation and lexical BM25 retrieval are part of
@@ -155,12 +167,12 @@ wfctl knowledge reconstruct close <case-id> --outcome completed
 ```
 
 Before the first default reconstruction, the agent inspects the source
-registry. It uses an available active worktree, announces and selects the sole
-available candidate when none is active, or asks the maintainer to choose in
+registry. It uses an available selected worktree, announces and selects the sole
+available candidate when no default is selected, or asks the maintainer to choose in
 project terms when several candidates are valid. The agent executes the
 corresponding `sources` commands itself. Baseline reconstruction includes
 every registered repository and fails when any repository has no available
-active worktree. An explicit repeated `--leaf` scope may use known inactive
+selected worktree. An explicit repeated `--leaf` scope may use known alternative
 worktrees without changing the saved selection. The agent completes one
 dossier per selected repository, then reconciles partial observations into whole-project
 capabilities, flows, and contracts. Repository names, roles, and count are

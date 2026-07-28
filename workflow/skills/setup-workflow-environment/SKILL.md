@@ -35,6 +35,10 @@ manual or automation-oriented instructions.
    installed `analyze-with-graphify` gate also requires the official native
    session skill. Knowledge retrieval and raw intake use QMD, not Graphify.
 4. Identify whether the target is a `knowledge` or `leaf` repository.
+   A knowledge target may be a new directory without Git: ask the maintainer
+   for authority to initialize it and pass `--init-git`. In an interactive
+   terminal, `wfctl` asks this itself. A leaf must already be an existing Git
+   repository; never use `--init-git` to turn an arbitrary leaf path into one.
 5. For a leaf repository, obtain the local knowledge-repository path. Do not guess it.
 6. Inspect existing `AGENTS.md`, `CLAUDE.md`, `.claude/rules`, `.agents/skills`, and `.claude/skills`, including symlink targets.
 7. Run `wfctl init <knowledge|leaf> --target <path>` with `--knowledge <path>`
@@ -74,10 +78,12 @@ manual or automation-oriented instructions.
     a leaf, confirm `graphify-graph` passes and refers to this checkout, not a
     sibling repository or another worktree, and confirm `graphify-ignore`
     passes. Confirm `repository-connection` identifies this exact known
-    checkout and reports whether it is active or inactive for reconstruction.
+    checkout and reports whether it is selected as the default, awaiting
+    selection, or registered as an alternative for reconstruction.
     For a knowledge repository, report registered repositories, known
-    worktrees, and explicit active reconstruction selections. A missing active
-    selection is a visible warning during setup. Do not select during
+    worktrees, and explicit default reconstruction selections. Deferred
+    selection is healthy during setup and must not be reported as a warning.
+    Do not select during
     initialization; `reconstruct-project-knowledge` owns contextual selection
     when reconstruction is actually requested.
 14. For a knowledge profile, run `wfctl knowledge validate` and

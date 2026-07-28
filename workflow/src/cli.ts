@@ -1,4 +1,14 @@
 import { Command } from "@cliffy/command";
+import ora from "ora";
+import {
+  bold,
+  cyan,
+  dim,
+  green,
+  red,
+  setColorEnabled,
+  yellow,
+} from "@jsr/std__fmt/colors";
 import { createInterface } from "node:readline/promises";
 import { resolve } from "node:path";
 import { applyInstallPlan } from "./applier.js";
@@ -11,7 +21,7 @@ import {
 import {
   commandFailure,
   runInstallPreflight,
-  updateGraphifyGraph,
+  updateGraphifyGraphAsync,
   updateQmdIndex,
 } from "./dependencies.js";
 import { doctorPassed, runDoctor } from "./doctor.js";
@@ -30,8 +40,10 @@ import {
   addLeafRepository,
   ensureRepositoryRegistry,
   listRepositoryConnections,
+  type ReconstructionSelection,
   selectLeafRepository,
 } from "./repository-registry.js";
+import { initializeGitRepository, isGitRepository } from "./git.js";
 import {
   beginProjectReconstruction,
   closeProjectReconstruction,
@@ -39,7 +51,10 @@ import {
 } from "./reconstruction.js";
 import type {
   AgentTarget,
+  DoctorCheck,
+  DoctorReport,
   InstallPlan,
+  OperationStatus,
   Profile,
   SkillScope,
   WorkMode,
@@ -59,6 +74,8 @@ import {
   renderAgentInstructions,
   renderMaintainerGuide,
 } from "./assets.js";
+
+setColorEnabled(process.stdout.isTTY === true && !("NO_COLOR" in process.env));
 
 const main = new Command()
   .name("wfctl")
@@ -107,6 +124,10 @@ function initCommand() {
       "Print agents or guide content for manual integration, then exit.",
     )
     .option("--dry-run", "Preview files and dependency checks without applying them.")
+    .option(
+      "--init-git",
+      "Initialize Git when creating a knowledge repository.",
+    )
     .option("-y, --yes", "Accept defaults and safe changes without prompting.")
     .option("--json", "Print machine-readable output; use with --dry-run or --yes.")
     .action(async (options, profileValue) => {
@@ -140,6 +161,13 @@ function initCommand() {
         );
         return;
       }
+      const initializeGit = await resolveGitInitialization({
+        target,
+        profile,
+        requested: options.initGit === true,
+        dryRun: options.dryRun === true,
+        ...promptOptions,
+      });
       const preferences = await resolveInstallPreferences({
         ...(options.skills ? { skills: options.skills } : {}),
         ...(options.agents ? { agents: options.agents } : {}),
@@ -150,6 +178,7 @@ function initCommand() {
         profile,
         ...(knowledge ? { knowledge } : {}),
         ...preferences,
+        initializeGit,
         dryRun: options.dryRun === true,
         yes: options.yes === true,
         json: options.json === true,
@@ -197,6 +226,7 @@ async function installWorkflow(input: {
   knowledge?: string;
   scope: SkillScope;
   agents: AgentTarget[];
+  initializeGit?: boolean;
   dryRun: boolean;
   yes: boolean;
   json: boolean;
@@ -216,6 +246,7 @@ async function installWorkflow(input: {
     target: input.target,
     profile: input.profile,
     ...(input.knowledge ? { knowledge: input.knowledge } : {}),
+    initializeGit: input.initializeGit === true,
     requireQmdSkill: input.scope !== "none",
   });
   const preflightPassed = preflight.every((check) => check.status !== "fail");
@@ -263,6 +294,9 @@ async function installWorkflow(input: {
   if (!input.yes && !input.json && !await confirm("Continue with installation?")) {
     throw new Error("Installation stopped by user");
   }
+  if (input.initializeGit && !isGitRepository(input.target)) {
+    initializeGitRepository(input.target);
+  }
 
   const skillTransaction = installSkillsTransactional({
     target: input.target,
@@ -284,7 +318,7 @@ async function installWorkflow(input: {
     ? (await ensureRepositoryRegistry(input.target), undefined)
     : await addLeafRepository(input.knowledge!, input.target);
   const graphifyUpdate = input.profile === "leaf"
-    ? updateGraphifyGraph(input.target)
+    ? await refreshGraphifyGraph(input.target, input.json)
     : undefined;
   if (input.profile === "knowledge") {
     const validation = await validateKnowledge(input.target);
@@ -326,28 +360,61 @@ async function installWorkflow(input: {
     });
   } else {
     process.stdout.write(
-      `Installed ${applied.changed} workflow change(s) in ${resolved.target}\n`
-        + `Guide: ${resolve(resolved.target, "PROJECT_WORKFLOW.md")}\n`,
+      `\n${green("✓")} ${bold("Workflow installed")}\n`
+        + `  ${dim("Target")}  ${resolved.target}\n`
+        + `  ${dim("Changes")} ${applied.changed}\n`
+        + `  ${dim("Guide")}   ${resolve(resolved.target, "PROJECT_WORKFLOW.md")}\n`,
     );
     if (repositoryCheckout) {
       process.stdout.write(
-        `Registered leaf checkout: ${repositoryCheckout.repository} `
-          + `(${repositoryCheckout.worktreeId}) -> ${repositoryCheckout.knowledgeRoot}\n`
-          + `${
-            repositoryCheckout.active
-              ? "This checkout remains active for reconstruction.\n"
-              : "It is not active for reconstruction; select it explicitly from knowledge.\n"
-          }`,
+        `\n${bold("Repository connection")}\n`
+          + `  ${repositoryCheckout.repository} (${repositoryCheckout.worktreeId})\n`
+          + `  ${dim("Knowledge")} ${repositoryCheckout.knowledgeRoot}\n`
+          + `\n${bold("Reconstruction source")}\n`
+          + reconstructionSourceMessage(
+            repositoryCheckout.repository,
+            repositoryCheckout.selection,
+          ),
       );
     }
     for (const backup of applied.backups) {
-      process.stdout.write(`Backup: ${backup}\n`);
+      process.stdout.write(`  ${yellow("!")} Backup created: ${backup}\n`);
     }
     printCheck(report);
   }
   if (!doctorPassed(report)) {
     process.exitCode = 2;
   }
+}
+
+async function refreshGraphifyGraph(
+  target: string,
+  quiet: boolean,
+) {
+  if (quiet) {
+    return await updateGraphifyGraphAsync(target);
+  }
+
+  const pending = "Building source graph with Graphify — this may take a minute";
+  if (!process.stdout.isTTY) {
+    process.stdout.write(`\n${cyan("…")} ${pending}\n`);
+    const result = await updateGraphifyGraphAsync(target);
+    process.stdout.write(
+      result.status === 0
+        ? `${green("✓")} Source graph ready\n`
+        : `${red("✗")} Source graph build failed\n`,
+    );
+    return result;
+  }
+
+  const spinner = ora({ text: pending, stream: process.stdout }).start();
+  const result = await updateGraphifyGraphAsync(target);
+  if (result.status === 0) {
+    spinner.succeed("Source graph ready");
+  } else {
+    spinner.fail("Source graph build failed");
+  }
+  return result;
 }
 
 async function resolveConflicts(
@@ -830,13 +897,13 @@ function knowledgeReconstructCommand() {
 function knowledgeSourcesCommand() {
   return new Command()
     .description(
-      "Register all known leaf worktrees and explicitly select one active reconstruction checkout per repository.",
+      "Register leaf worktrees and select one default reconstruction checkout per repository.",
     )
     .command(
       "add",
       new Command()
         .description(
-          "Add or refresh one known leaf checkout without changing the active reconstruction selection.",
+          "Add or refresh one known leaf checkout without changing the selected default.",
         )
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
         .option("--leaf <path:string>", "Initialized leaf checkout.", { required: true })
@@ -851,11 +918,8 @@ function knowledgeSourcesCommand() {
                 + `Checkout: ${result.root}\n`
                 + `Worktree: ${result.worktreeId} (${result.branch})\n`
                 + `Revision: ${result.commit}\n`
-                + `${
-                  result.active
-                    ? "Selection: ACTIVE\n"
-                    : "Selection: inactive; use sources select to make it active\n"
-                }`,
+                + `\n${bold("Reconstruction source")}\n`
+                + reconstructionSourceMessage(result.repository, result.selection),
             );
           }
         }),
@@ -864,7 +928,7 @@ function knowledgeSourcesCommand() {
       "select",
       new Command()
         .description(
-          "Explicitly select one previously added worktree as the active reconstruction checkout for its repository.",
+          "Select one previously added worktree as the default reconstruction checkout.",
         )
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
         .option("--leaf <path:string>", "Previously added leaf checkout.", { required: true })
@@ -875,10 +939,12 @@ function knowledgeSourcesCommand() {
             printJson(result);
           } else {
             process.stdout.write(
-              `Selected active checkout for ${result.repository}\n`
+              `Selected default checkout for ${result.repository}\n`
                 + `Checkout: ${result.root}\n`
                 + `Worktree: ${result.worktreeId} (${result.branch})\n`
-                + `Revision at selection: ${result.commit}\n`,
+                + `Revision at selection: ${result.commit}\n`
+                + `\n${bold("Reconstruction source")}\n`
+                + reconstructionSourceMessage(result.repository, result.selection),
             );
           }
         }),
@@ -886,7 +952,7 @@ function knowledgeSourcesCommand() {
     .command(
       "list",
       new Command()
-        .description("List every known worktree and show the active reconstruction selection.")
+        .description("List every known worktree and show the default reconstruction checkout.")
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
         .option("--json", "Print machine-readable JSON.")
         .action(async (options) => {
@@ -903,9 +969,13 @@ function knowledgeSourcesCommand() {
                 `${entry.connected ? "REGISTERED" : "NO CHECKOUTS"} ${entry.repository}\n`,
               );
               for (const checkout of entry.checkouts) {
+                const selection = checkout.selection === "selected"
+                  ? "SELECTED    "
+                  : checkout.selection === "alternative"
+                  ? "ALTERNATIVE "
+                  : "AVAILABLE   ";
                 process.stdout.write(
-                  `  ${checkout.active ? "ACTIVE  " : "        "}`
-                    + `${checkout.available ? "READY   " : "MISSING "} `
+                  `  ${selection}${checkout.available ? "READY   " : "MISSING "} `
                     + `${checkout.root} (${checkout.worktreeId})`
                     + `${
                       checkout.branch
@@ -915,12 +985,29 @@ function knowledgeSourcesCommand() {
                 );
               }
               if (entry.checkouts.length > 0 && !entry.activeRoot) {
-                process.stdout.write("  SELECT REQUIRED before default reconstruction\n");
+                process.stdout.write(
+                  "  Selection is not required yet; the agent will choose when reconstruction starts.\n",
+                );
               }
             }
           }
         }),
     );
+}
+
+function reconstructionSourceMessage(
+  repository: string,
+  selection: ReconstructionSelection,
+): string {
+  if (selection === "selected") {
+    return `  ${green("✓")} Selected as the default checkout for ${repository}.\n`;
+  }
+  if (selection === "alternative") {
+    return `  ${cyan("○")} Registered as an alternative checkout.\n`
+      + `    ${dim("Another worktree is currently selected.")}\n`;
+  }
+  return `  ${cyan("○")} Registered; selection is not required yet.\n`
+    + `    ${dim("The agent will select a checkout when reconstruction starts.")}\n`;
 }
 
 function knowledgeRawCommand() {
@@ -1139,6 +1226,32 @@ async function installedKnowledgePath(
   }
 }
 
+async function resolveGitInitialization(input: {
+  target: string;
+  profile: Profile;
+  requested: boolean;
+  dryRun: boolean;
+  yes: boolean;
+  json: boolean;
+}): Promise<boolean> {
+  if (input.requested && input.profile !== "knowledge") {
+    throw new Error("--init-git is only available for knowledge repositories");
+  }
+  if (isGitRepository(input.target)) {
+    return false;
+  }
+  if (
+    input.profile !== "knowledge"
+    || input.dryRun
+    || input.yes
+    || input.json
+    || !interactive()
+  ) {
+    return input.requested;
+  }
+  return await confirmDefaultYes("Git repository not found. Initialize it here?");
+}
+
 async function printInstructions(
   artifact: string,
   target: string,
@@ -1233,18 +1346,29 @@ function printPlan(plan: InstallPlan): void {
     counts: Record<string, number>;
   };
   process.stdout.write(
-      `Workflow preview: ${plan.profile} -> ${plan.target}\n`
-      + `Create ${summary.counts.create ?? 0}, update ${summary.counts.update ?? 0}, `
-      + `delete ${summary.counts.delete ?? 0}, unchanged ${summary.counts.unchanged ?? 0}, `
-      + `conflicts ${summary.counts.conflict ?? 0}\n`,
+    `\n${bold("Workflow preview")}\n`
+      + `  ${dim("Profile")} ${plan.profile}\n`
+      + `  ${dim("Target")}  ${plan.target}\n`
+      + `  ${operationCount("create", summary.counts.create ?? 0)}  `
+      + `${operationCount("update", summary.counts.update ?? 0)}  `
+      + `${operationCount("delete", summary.counts.delete ?? 0)}  `
+      + `${operationCount("conflict", summary.counts.conflict ?? 0)}  `
+      + `${dim(`${summary.counts.unchanged ?? 0} unchanged`)}\n`,
   );
-  for (const operation of plan.operations) {
-    if (operation.status === "unchanged") {
+
+  for (
+    const status of ["conflict", "delete", "update", "create"] satisfies OperationStatus[]
+  ) {
+    const operations = plan.operations.filter((operation) => operation.status === status);
+    if (operations.length === 0) {
       continue;
     }
-    process.stdout.write(
-      `${operation.status.toUpperCase().padEnd(9)} ${operation.path} — ${operation.reason}\n`,
-    );
+    process.stdout.write(`\n${operationHeading(status, operations.length)}\n`);
+    for (const operation of operations) {
+      process.stdout.write(
+        `  ${operationSymbol(status)} ${operation.path} ${dim(`— ${operation.reason}`)}\n`,
+      );
+    }
   }
 }
 
@@ -1263,31 +1387,338 @@ function printSkillSummary(input: {
   scope: SkillScope;
   agents: AgentTarget[];
 }): void {
+  process.stdout.write(`\n${bold("Agent skills")}\n`);
   if (input.scope === "none") {
-    process.stdout.write("Skills: not installed\n");
+    process.stdout.write(`  ${yellow("!")} Installation disabled\n`);
     return;
   }
   process.stdout.write(
-    `Skills: ${input.scope} scope for ${input.agents.join(", ")} via skills CLI\n`,
+    `  ${green("✓")} ${input.scope} scope for ${input.agents.join(", ")} via skills CLI\n`,
   );
 }
 
-function printDependencyChecks(checks: Awaited<ReturnType<typeof runDoctor>>["checks"]): void {
-  process.stdout.write("Dependency preflight:\n");
+function printDependencyChecks(checks: DoctorCheck[]): void {
+  process.stdout.write(`\n${bold("Dependency preflight")}\n`);
   for (const check of checks) {
-    process.stdout.write(
-      `${check.status.toUpperCase().padEnd(4)} ${check.name}: ${check.message}\n`,
-    );
+    printCheckLine(check);
   }
 }
 
-function printCheck(report: Awaited<ReturnType<typeof runDoctor>>): void {
-  process.stdout.write(`Workflow check: ${report.target}\n`);
-  for (const check of report.checks) {
+function printCheck(report: DoctorReport): void {
+  process.stdout.write(
+    `\n${bold("Workflow health")}\n`
+      + `  ${dim("Target")} ${report.target}\n`,
+  );
+  for (const section of checkSections(compactChecks(report.checks))) {
+    process.stdout.write(`\n${cyan(bold(section.title))}\n`);
+    for (const check of section.checks) {
+      printCheckLine(check);
+    }
+  }
+  printQmdSetup(report.checks);
+  printCheckSummary(report.checks);
+}
+
+function compactChecks(checks: DoctorCheck[]): DoctorCheck[] {
+  const skillChecks = checks.filter((check) => isSkillCheck(check));
+  const directoryChecks = checks.filter((check) => isKnowledgeDirectoryCheck(check));
+  const firstSkill = skillChecks[0];
+  const firstDirectory = directoryChecks[0];
+  const compact: DoctorCheck[] = [];
+
+  for (const check of checks) {
+    if (isSkillCheck(check)) {
+      if (check === firstSkill) {
+        compact.push(...compactGroup(skillChecks, "agent-skills", skillSummaryMessage));
+      }
+      continue;
+    }
+    if (isKnowledgeDirectoryCheck(check)) {
+      if (check === firstDirectory) {
+        compact.push(...compactGroup(
+          directoryChecks,
+          "knowledge-directories",
+          (passed) => `${passed} required workflow directories are present`,
+        ));
+      }
+      continue;
+    }
+    compact.push(check);
+  }
+  return compact;
+}
+
+function compactGroup(
+  checks: DoctorCheck[],
+  name: string,
+  passMessage: (passed: number) => string,
+): DoctorCheck[] {
+  const passed = checks.filter((check) => check.status === "pass");
+  const issues = checks.filter((check) => check.status !== "pass");
+  return [
+    ...(passed.length > 0
+      ? [{ name, status: "pass" as const, message: passMessage(passed.length) }]
+      : []),
+    ...issues,
+  ];
+}
+
+function skillSummaryMessage(passed: number): string {
+  return `${passed} agent skill ${passed === 1 ? "installation" : "installations"} verified`;
+}
+
+function isSkillCheck(check: DoctorCheck): boolean {
+  return /^(codex|claude|user)-skill-/.test(check.name);
+}
+
+function isKnowledgeDirectoryCheck(check: DoctorCheck): boolean {
+  return check.name.startsWith("knowledge-") && check.message.endsWith(" exists");
+}
+
+function checkSections(checks: DoctorCheck[]): Array<{
+  title: string;
+  checks: DoctorCheck[];
+}> {
+  const order = [
+    "Environment",
+    "Agent skills",
+    "Knowledge retrieval",
+    "Source analysis",
+    "Knowledge base",
+    "Repositories",
+    "Installation",
+    "Other",
+  ];
+  const sections = new Map<string, DoctorCheck[]>();
+  for (const check of checks) {
+    const title = checkSection(check.name);
+    const current = sections.get(title) ?? [];
+    current.push(check);
+    sections.set(title, current);
+  }
+  return order.flatMap((title) => {
+    const sectionChecks = sections.get(title);
+    return sectionChecks ? [{ title, checks: sectionChecks }] : [];
+  });
+}
+
+function checkSection(name: string): string {
+  if (name === "config" || name === "git") {
+    return "Environment";
+  }
+  if (name === "agent-skills" || name === "workflow-skills" || isSkillName(name)) {
+    return "Agent skills";
+  }
+  if (name.startsWith("qmd-")) {
+    return "Knowledge retrieval";
+  }
+  if (name.startsWith("graphify-")) {
+    return "Source analysis";
+  }
+  if (
+    name === "knowledge"
+    || name === "maintainer-guide"
+    || name === "curated-knowledge"
+    || name === "knowledge-graph"
+    || name === "knowledge-directories"
+    || name.startsWith("knowledge-")
+  ) {
+    return "Knowledge base";
+  }
+  if (name.startsWith("repository-")) {
+    return "Repositories";
+  }
+  if (name === "installation") {
+    return "Installation";
+  }
+  return "Other";
+}
+
+function isSkillName(name: string): boolean {
+  return /^(codex|claude|user)-skill-/.test(name);
+}
+
+function printCheckLine(check: DoctorCheck): void {
+  process.stdout.write(
+    `  ${checkSymbol(check.status)} ${bold(checkLabel(check.name))} `
+      + `${dim(`— ${humanCheckMessage(check)}`)}\n`,
+  );
+}
+
+function checkSymbol(status: DoctorCheck["status"]): string {
+  if (status === "pass") {
+    return green("✓");
+  }
+  if (status === "warn") {
+    return yellow("!");
+  }
+  return red("✗");
+}
+
+function humanCheckMessage(check: DoctorCheck): string {
+  if (check.name === "qmd-models" && check.status !== "pass") {
+    if (check.message.includes("did not report")) {
+      return "Semantic model status could not be verified";
+    }
+    return check.message.includes("pull --refresh")
+      ? "Semantic model cache contains an invalid model file"
+      : "Semantic models are not installed";
+  }
+  if (check.name === "qmd-embeddings" && check.status !== "pass") {
+    const count = check.message.match(/(\d+)\s+active documents need embeddings/i)?.[1];
+    return count
+      ? `${count} indexed documents need semantic embeddings`
+      : "Semantic embeddings are missing or stale";
+  }
+  return check.message.split(/\r?\n/).find((line) => line.trim() !== "")?.trim()
+    ?? check.message;
+}
+
+function checkLabel(name: string): string {
+  const labels: Record<string, string> = {
+    config: "Profile",
+    git: "Git repository",
+    "agent-skills": "Agent skills",
+    "workflow-skills": "Agent skills",
+    "qmd-version": "QMD version",
+    "qmd-native-skill": "QMD agent skill",
+    "qmd-index-config": "QMD collections",
+    "qmd-status": "QMD index",
+    "qmd-bm25-index": "Lexical search",
+    "qmd-doctor": "QMD diagnostics",
+    "qmd-models": "Semantic models",
+    "qmd-embeddings": "Semantic embeddings",
+    "qmd-update": "Lexical index update",
+    "graphify-cli": "Graphify CLI",
+    "graphify-graph": "Source graph",
+    "graphify-scope": "Graphify scope",
+    "graphify-ignore": "Graphify Git ignore",
+    knowledge: "Knowledge bundle",
+    "knowledge-repository": "Knowledge repository",
+    "maintainer-guide": "Maintainer guide",
+    "curated-knowledge": "Curated knowledge",
+    "knowledge-graph": "Knowledge graph",
+    "knowledge-directories": "Workflow directories",
+    "repository-registry": "Leaf repositories",
+    "repository-connection": "Repository connection",
+    installation: "Workflow assets",
+  };
+  return labels[name] ?? name.replaceAll("-", " ");
+}
+
+function printQmdSetup(checks: DoctorCheck[]): void {
+  const models = checks.find((check) => check.name === "qmd-models");
+  const embeddings = checks.find((check) => check.name === "qmd-embeddings");
+  const needsModels = models !== undefined && models.status !== "pass";
+  const needsEmbeddings = embeddings !== undefined && embeddings.status !== "pass";
+  if (!needsModels && !needsEmbeddings) {
+    return;
+  }
+
+  const knowledge = checks.find((check) => check.name === "knowledge");
+  const knowledgeRoot = knowledge?.message.match(/ found at (.+)$/)?.[1];
+  const steps = [
+    ...(needsModels
+      ? [qmdModelSetupStep(models)]
+      : []),
+    ...(needsEmbeddings
+      ? [{ command: "qmd embed", detail: "Build or refresh semantic embeddings" }]
+      : []),
+    { command: "wfctl check", detail: "Verify that semantic search is ready" },
+  ];
+
+  process.stdout.write(
+    `\n${yellow(bold("Next step · Enable semantic search"))}\n`
+      + `  Run these commands from ${
+        knowledgeRoot ? cyan(knowledgeRoot) : "the connected knowledge repository"
+      }:\n`,
+  );
+  for (const [index, step] of steps.entries()) {
     process.stdout.write(
-      `${check.status.toUpperCase().padEnd(4)} ${check.name}: ${check.message}\n`,
+      `  ${index + 1}. ${cyan(step.command.padEnd(12))} ${dim(step.detail)}\n`,
     );
   }
+  process.stdout.write(
+    `  ${dim("Lexical BM25 search remains available until setup is complete.")}\n`,
+  );
+}
+
+function qmdModelSetupStep(check: DoctorCheck | undefined): {
+  command: string;
+  detail: string;
+} {
+  if (check?.message.includes("pull --refresh")) {
+    return {
+      command: "qmd pull --refresh",
+      detail: "Replace invalid cached semantic model files",
+    };
+  }
+  if (check?.message.includes("did not report")) {
+    return {
+      command: "qmd doctor",
+      detail: "Inspect why semantic model state is unavailable",
+    };
+  }
+  return {
+    command: "qmd pull",
+    detail: "Download local semantic models (~2 GB, once)",
+  };
+}
+
+function printCheckSummary(checks: DoctorCheck[]): void {
+  const passed = checks.filter((check) => check.status === "pass").length;
+  const warnings = checks.filter((check) => check.status === "warn").length;
+  const failed = checks.filter((check) => check.status === "fail").length;
+  process.stdout.write(
+    `\n${bold("Summary")}  ${green(`${passed} checks passed`)}  `
+      + `${
+        warnings > 0
+          ? yellow(`${warnings} ${warnings === 1 ? "warning" : "warnings"}`)
+          : dim("0 warnings")
+      }  `
+      + `${
+        failed > 0
+          ? red(`${failed} ${failed === 1 ? "check failed" : "checks failed"}`)
+          : dim("0 failed")
+      }\n`,
+  );
+}
+
+function operationCount(status: OperationStatus, count: number): string {
+  const value = status === "conflict"
+    ? `${count} ${count === 1 ? "conflict" : "conflicts"}`
+    : `${count} to ${status}`;
+  if (status === "create") {
+    return green(value);
+  }
+  if (status === "update") {
+    return cyan(value);
+  }
+  if (status === "delete" || status === "conflict") {
+    return count > 0 ? red(value) : dim(value);
+  }
+  return dim(value);
+}
+
+function operationHeading(status: OperationStatus, count: number): string {
+  const label = `${status[0]?.toUpperCase()}${status.slice(1)} (${count})`;
+  if (status === "create") {
+    return green(bold(label));
+  }
+  if (status === "update") {
+    return cyan(bold(label));
+  }
+  return red(bold(label));
+}
+
+function operationSymbol(status: OperationStatus): string {
+  if (status === "create") {
+    return green("+");
+  }
+  if (status === "update") {
+    return cyan("~");
+  }
+  return red(status === "delete" ? "−" : "!");
 }
 
 async function confirm(question: string): Promise<boolean> {
@@ -1296,6 +1727,14 @@ async function confirm(question: string): Promise<boolean> {
   }
   const answer = (await ask(`${question} [y/N] `)).toLowerCase();
   return answer === "y" || answer === "yes";
+}
+
+async function confirmDefaultYes(question: string): Promise<boolean> {
+  if (!interactive()) {
+    return false;
+  }
+  const answer = (await ask(`${question} [Y/n] `)).toLowerCase();
+  return answer === "" || answer === "y" || answer === "yes";
 }
 
 async function ask(question: string): Promise<string> {

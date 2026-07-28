@@ -74,12 +74,16 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - `wfctl init [knowledge|leaf]`: preview the file plan and dependency
   preflight, resolve safe conflicts, install a workflow, and build the
   profile's required local index (`qmd` plus the authored knowledge graph for
-  knowledge; Graphify for a leaf).
+  knowledge; Graphify for a leaf). Interactive knowledge initialization may
+  offer to run `git init`; non-interactive callers must opt in with
+  `--init-git`. Leaf initialization never creates a Git repository.
 - `wfctl upgrade`: update an existing installation using its recorded configuration.
 - `wfctl check`: diagnose installation, Git, knowledge linkage, Graphify
   requirements for leaf repositories, QMD version/core health, lexical-index
   readiness, deterministic knowledge-graph freshness, and optional semantic
-  readiness.
+  readiness. Human terminal output must group checks, summarize repetitive
+  successes, color statuses when supported, and turn missing QMD semantic
+  setup into explicit next-step commands. JSON output retains every raw check.
 - `wfctl knowledge raw inventory`: compare committed raw `path + blob ID`
   identities with active and archived intake coverage without semantic
   indexing.

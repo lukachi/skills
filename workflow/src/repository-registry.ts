@@ -45,11 +45,14 @@ interface LocalRepositoryRegistry {
   selections: Record<string, string>;
 }
 
+export type ReconstructionSelection = "selected" | "deferred" | "alternative";
+
 export interface RepositoryCheckout {
   root: string;
   worktreeId: string;
   connectedAt: string;
   active: boolean;
+  selection: ReconstructionSelection;
   available: boolean;
   branch?: string;
   commit?: string;
@@ -73,10 +76,12 @@ export interface AddLeafResult {
   branch: string;
   commit: string;
   active: boolean;
+  selection: ReconstructionSelection;
 }
 
 export interface SelectLeafResult extends AddLeafResult {
   active: true;
+  selection: "selected";
 }
 
 export async function ensureRepositoryRegistry(
@@ -139,6 +144,10 @@ export async function addLeafRepository(
   ].sort(compareBindings);
 
   await updateRegistries(knowledgeRoot, durable, local);
+  const selection = reconstructionSelection(
+    local.selections[metadata.repository],
+    leafRoot,
+  );
   return {
     knowledgeRoot,
     repository: metadata.repository,
@@ -146,7 +155,8 @@ export async function addLeafRepository(
     worktreeId: metadata.worktreeId,
     branch: metadata.branch,
     commit: metadata.commit,
-    active: local.selections[metadata.repository] === leafRoot,
+    active: selection === "selected",
+    selection,
   };
 }
 
@@ -185,6 +195,7 @@ export async function selectLeafRepository(
     branch: metadata.branch,
     commit: metadata.commit,
     active: true,
+    selection: "selected",
   };
 }
 
@@ -200,7 +211,10 @@ export async function listRepositoryConnections(
     );
     const activeRoot = local.selections[entry.repository];
     const checkouts = bindings.map((binding) =>
-      inspectKnownCheckout(binding, activeRoot === binding.root)
+      inspectKnownCheckout(
+        binding,
+        reconstructionSelection(activeRoot, binding.root),
+      )
     );
     return {
       repository: entry.repository,
@@ -481,8 +495,9 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 
 function inspectKnownCheckout(
   binding: LocalRepositoryBinding,
-  active: boolean,
+  selection: ReconstructionSelection,
 ): RepositoryCheckout {
+  const active = selection === "selected";
   try {
     const current = readRepositoryMetadata(binding.root);
     if (
@@ -494,6 +509,7 @@ function inspectKnownCheckout(
         worktreeId: binding.worktree_id,
         connectedAt: binding.connected_at,
         active,
+        selection,
         available: false,
       };
     }
@@ -502,6 +518,7 @@ function inspectKnownCheckout(
       worktreeId: current.worktreeId,
       connectedAt: binding.connected_at,
       active,
+      selection,
       available: true,
       branch: current.branch,
       commit: current.commit,
@@ -512,9 +529,21 @@ function inspectKnownCheckout(
       worktreeId: binding.worktree_id,
       connectedAt: binding.connected_at,
       active,
+      selection,
       available: false,
     };
   }
+}
+
+function reconstructionSelection(
+  activeRoot: string | undefined,
+  checkoutRoot: string,
+): ReconstructionSelection {
+  return activeRoot === checkoutRoot
+    ? "selected"
+    : activeRoot
+    ? "alternative"
+    : "deferred";
 }
 
 function durableRemote(metadata: RepositoryMetadata): string {

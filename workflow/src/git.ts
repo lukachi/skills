@@ -45,6 +45,17 @@ export function isGitRepository(root: string): boolean {
   return result.status === 0 && result.stdout.trim() === "true";
 }
 
+export function initializeGitRepository(root: string): void {
+  const result = spawnSync("git", ["-C", root, "init"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.status !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim() || "git init failed";
+    throw new Error(`Unable to initialize Git repository: ${detail}`);
+  }
+}
+
 function git(root: string, args: string[], required = false): string {
   const result = spawnSync("git", ["-C", root, ...args], {
     encoding: "utf8",

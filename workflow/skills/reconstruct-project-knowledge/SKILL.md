@@ -79,7 +79,7 @@ authority, review, or a source choice that cannot be resolved safely.
    ```
 
    Repeated `--leaf` is an explicit checkout override and may name a known
-   inactive worktree without changing the stored active selection. A baseline
+   alternative worktree without changing the stored default selection. A baseline
    override must still include every registered repository. An `audit` may
    deliberately select a subset, but its title and scope must say so.
 7. Run `wfctl knowledge reconstruct check <case-id>` and read the complete

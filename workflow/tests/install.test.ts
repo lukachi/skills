@@ -16,7 +16,11 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { applyInstallPlan } from "../src/applier.js";
 import type { ToolRunner } from "../src/dependencies.js";
-import { doctorPassed, runDoctor } from "../src/doctor.js";
+import {
+  doctorPassed,
+  qmdModelCacheCheck,
+  runDoctor,
+} from "../src/doctor.js";
 import { writeKnowledgeGraph } from "../src/knowledge-graph.js";
 import { buildInstallPlan, hashContent } from "../src/planner.js";
 import {
@@ -364,12 +368,23 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
   assert.ok(knowledgeReport.checks.some((check) =>
     check.name === "knowledge-graph" && check.status === "pass"
   ));
+  assert.ok(knowledgeReport.checks.some((check) =>
+    check.name === "repository-registry"
+    && check.status === "pass"
+    && /selection is deferred/.test(check.message)
+  ));
   const leafReport = await runDoctor(leaf, { runner: healthyToolRunner });
   assert.equal(
     doctorPassed(leafReport),
     true,
     JSON.stringify(leafReport.checks.filter((check) => check.status === "fail")),
   );
+  assert.ok(leafReport.checks.some((check) =>
+    check.name === "repository-connection"
+    && check.status === "pass"
+    && /selection is deferred/.test(check.message)
+    && !/inactive/i.test(check.message)
+  ));
 
   const rootIndex = join(knowledge, "knowledge/index.md");
   await writeFile(
@@ -439,6 +454,36 @@ test("doctor rejects a leaf without a local Graphify graph", async () => {
   ));
 });
 
+test("doctor ignores QMD etag metadata but rejects real model-cache failures", () => {
+  const etagFalsePositive = qmdModelCacheCheck(
+    "⚠ model cache: invalid 1: embedding: hf:example/model.gguf "
+      + "(/Users/test/.cache/qmd/models/model.gguf.etag: not valid GGUF "
+      + '(expected magic "GGUF", got "\\"9d3", 0 KB)). '
+      + "Next: run `qmd pull --refresh` (or remove the bad cached file)",
+  );
+  assert.deepEqual(etagFalsePositive, {
+    name: "qmd-models",
+    status: "pass",
+    message: "Semantic models are ready",
+  });
+
+  const invalidModel = qmdModelCacheCheck(
+    "⚠ model cache: invalid 1: embedding: hf:example/model.gguf "
+      + "(/Users/test/.cache/qmd/models/model.gguf: not valid GGUF "
+      + '(expected magic "GGUF", got "<!DO", 318 MB)). '
+      + "Next: run `qmd pull --refresh` (or remove the bad cached file)",
+  );
+  assert.equal(invalidModel.status, "warn");
+  assert.match(invalidModel.message, /qmd pull --refresh/);
+
+  const missingModel = qmdModelCacheCheck(
+    "⚠ model cache: missing 1/3: embedding: hf:example/model.gguf. "
+      + "Next: run `qmd pull`",
+  );
+  assert.equal(missingModel.status, "warn");
+  assert.match(missingModel.message, /qmd pull/);
+});
+
 test("registers many worktrees without silently changing the active selection", async () => {
   const root = await temporaryDirectory("wfctl-registry-worktrees-");
   const knowledge = join(root, "knowledge");
@@ -463,6 +508,7 @@ test("registers many worktrees without silently changing the active selection", 
     profile: "knowledge",
     distributionRoot,
   }));
+  const registrations = [];
   for (const leaf of [main, feature]) {
     await applyInstallPlan(await buildInstallPlan({
       target: leaf,
@@ -470,8 +516,12 @@ test("registers many worktrees without silently changing the active selection", 
       knowledge,
       distributionRoot,
     }));
-    await addLeafRepository(knowledge, leaf);
+    registrations.push(await addLeafRepository(knowledge, leaf));
   }
+  assert.deepEqual(
+    registrations.map((entry) => entry.selection),
+    ["deferred", "deferred"],
+  );
 
   let connections = await listRepositoryConnections(knowledge);
   assert.equal(connections.length, 1);
@@ -482,20 +532,27 @@ test("registers many worktrees without silently changing the active selection", 
     /no active reconstruction checkout/,
   );
 
-  await selectLeafRepository(knowledge, feature);
+  const selectedFeature = await selectLeafRepository(knowledge, feature);
+  assert.equal(selectedFeature.selection, "selected");
   assert.deepEqual(
     await resolveReconstructionLeaves(knowledge, [], "baseline"),
     [await realpath(feature)],
   );
-  await addLeafRepository(knowledge, main);
+  const refreshedMain = await addLeafRepository(knowledge, main);
+  assert.equal(refreshedMain.selection, "alternative");
   connections = await listRepositoryConnections(knowledge);
   assert.equal(connections[0]?.activeRoot, await realpath(feature));
   assert.equal(
     connections[0]?.checkouts.find((entry) => entry.active)?.root,
     await realpath(feature),
   );
+  assert.deepEqual(
+    connections[0]?.checkouts.map((entry) => entry.selection).sort(),
+    ["alternative", "selected"],
+  );
 
-  await selectLeafRepository(knowledge, main);
+  const selectedMain = await selectLeafRepository(knowledge, main);
+  assert.equal(selectedMain.selection, "selected");
   assert.deepEqual(
     await resolveReconstructionLeaves(knowledge, [], "baseline"),
     [await realpath(main)],

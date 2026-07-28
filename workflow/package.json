@@ -39,7 +39,9 @@
     "yaml": "^2.9.0"
   },
   "dependencies": {
+    "@jsr/std__fmt": "1.0.10",
     "mdast-util-from-markdown": "2.0.3",
+    "ora": "9.0.0",
     "skills": "1.5.20"
   }
 }

@@ -17,13 +17,13 @@ const leaf = mkdtempSync(join(tmpdir(), "wfctl-leaf-integration-"));
 const marker = `raw-only-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 try {
-  run("git", ["init", "-q", target]);
   const initialized = run("node", [
     join(packageRoot, "dist/cli.js"),
     "init",
     "knowledge",
     "--target",
     target,
+    "--init-git",
     "--yes",
     "--json",
   ]);
@@ -110,6 +110,28 @@ try {
     readFileSync(join(leaf, ".gitignore"), "utf8"),
     /graphify-out\//,
   );
+
+  const visibleRefresh = run("node", [
+    join(packageRoot, "dist/cli.js"),
+    "upgrade",
+    "--target",
+    leaf,
+    "--yes",
+  ]);
+  assert.match(
+    visibleRefresh.stdout,
+    /Building source graph with Graphify — this may take a minute/,
+  );
+  assert.match(visibleRefresh.stdout, /Source graph ready/);
+  assert.match(
+    visibleRefresh.stdout,
+    /Registered; selection is not required yet/,
+  );
+  assert.match(
+    visibleRefresh.stdout,
+    /The agent will select a checkout when reconstruction starts/,
+  );
+  assert.doesNotMatch(visibleRefresh.stdout, /inactive/i);
 
   process.stdout.write("qmd: real integration ok\n");
 } finally {

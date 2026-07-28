@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isGitRepository } from "./git.js";
@@ -24,6 +24,12 @@ export type ToolRunner = (
   options?: ToolCommandOptions,
 ) => ToolCommandResult;
 
+export type AsyncToolRunner = (
+  command: string,
+  args: string[],
+  options?: ToolCommandOptions,
+) => Promise<ToolCommandResult>;
+
 export const runTool: ToolRunner = (command, args, options = {}) => {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -38,10 +44,44 @@ export const runTool: ToolRunner = (command, args, options = {}) => {
   };
 };
 
+export const runToolAsync: AsyncToolRunner = (command, args, options = {}) =>
+  new Promise((resolveResult) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: { ...process.env, ...options.env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        resolveResult({ status: null, stdout, stderr, error });
+      }
+    });
+    child.on("close", (status) => {
+      if (!settled) {
+        settled = true;
+        resolveResult({ status, stdout, stderr });
+      }
+    });
+  });
+
 export function runInstallPreflight(input: {
   target: string;
   profile: Profile;
   knowledge?: string;
+  initializeGit?: boolean;
   requireQmdSkill: boolean;
   runner?: ToolRunner;
 }): DoctorCheck[] {
@@ -52,10 +92,14 @@ export function runInstallPreflight(input: {
 
   checks.push({
     name: "git",
-    status: gitRepository ? "pass" : "fail",
+    status: gitRepository || input.initializeGit ? "pass" : "fail",
     message: gitRepository
       ? "Git repository detected"
-      : "Target must already be a Git worktree",
+      : input.initializeGit
+      ? "Git repository will be initialized before installation"
+      : input.profile === "knowledge"
+      ? "Target is not a Git repository; rerun with --init-git or initialize Git first"
+      : "Target must be an existing Git repository",
   });
   checks.push(qmdVersionCheck(runner));
 
@@ -157,6 +201,13 @@ export function updateGraphifyGraph(
   sourceRoot: string,
   runner: ToolRunner = runTool,
 ): ToolCommandResult {
+  return runner("graphify", ["update", "."], { cwd: resolve(sourceRoot) });
+}
+
+export function updateGraphifyGraphAsync(
+  sourceRoot: string,
+  runner: AsyncToolRunner = runToolAsync,
+): Promise<ToolCommandResult> {
   return runner("graphify", ["update", "."], { cwd: resolve(sourceRoot) });
 }
 

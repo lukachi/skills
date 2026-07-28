@@ -53,7 +53,7 @@ export async function runDoctor(
   checks.push({
     name: "git",
     status: gitRepository ? "pass" : "fail",
-    message: gitRepository ? "Git repository detected" : "Target is not a Git worktree",
+    message: gitRepository ? "Git repository detected" : "Target is not a Git repository",
   });
 
   if (config.profile === "leaf") {
@@ -221,15 +221,18 @@ export async function runDoctor(
           ? "fail"
           : connections.length === 0
           ? "warn"
-          : active === connections.length
-          ? "pass"
-          : "warn",
+          : "pass",
         message: registryIssues.length > 0
           ? registryIssues.join("; ")
           : connections.length === 0
           ? "No leaf repositories registered; baseline reconstruction cannot start yet"
           : `${connections.length} repository registration(s), ${checkouts} known worktree(s), `
-            + `${active} active reconstruction selection(s)`,
+            + `${active} default reconstruction checkout(s)`
+            + `${
+              active < connections.length
+                ? "; remaining selection is deferred until reconstruction starts"
+                : ""
+            }`,
       });
     } catch (error) {
       checks.push({
@@ -252,9 +255,7 @@ export async function runDoctor(
         name: "repository-connection",
         status: connection ? "pass" : "fail",
         message: connection
-          ? `Leaf is registered as ${connection.repository}; reconstruction selection: ${
-            checkout?.active ? "ACTIVE" : "inactive"
-          }`
+          ? repositoryConnectionMessage(connection.repository, checkout?.selection)
           : "Leaf checkout is unknown to the knowledge repository; run wfctl knowledge sources add",
       });
     } catch (error) {
@@ -303,6 +304,19 @@ export async function runDoctor(
   }
 
   return { target, profile: config.profile, checks };
+}
+
+function repositoryConnectionMessage(
+  repository: string,
+  selection: "selected" | "deferred" | "alternative" | undefined,
+): string {
+  if (selection === "selected") {
+    return `Leaf is registered as ${repository}; selected as its default reconstruction checkout`;
+  }
+  if (selection === "alternative") {
+    return `Leaf is registered as ${repository}; available as an alternative reconstruction checkout`;
+  }
+  return `Leaf is registered as ${repository}; reconstruction checkout selection is deferred until reconstruction starts`;
 }
 
 async function graphifyScopeCheck(path: string): Promise<DoctorCheck> {
@@ -438,13 +452,7 @@ function qmdHealthChecks(knowledgeRoot: string, runner: ToolRunner): DoctorCheck
     status: "pass",
     message: "QMD core diagnostics completed",
   });
-  checks.push(qmdDiagnosticLine(
-    output,
-    "qmd-models",
-    "model cache",
-    "Semantic models are ready",
-    "Semantic models are not ready; BM25 remains available",
-  ));
+  checks.push(qmdModelCacheCheck(output));
   checks.push(qmdDiagnosticLine(
     output,
     "qmd-embeddings",
@@ -455,6 +463,31 @@ function qmdHealthChecks(knowledgeRoot: string, runner: ToolRunner): DoctorCheck
   return checks;
 }
 
+export function qmdModelCacheCheck(output: string): DoctorCheck {
+  const line = diagnosticLine(output, "model cache");
+  if (!line) {
+    return {
+      name: "qmd-models",
+      status: "warn",
+      message:
+        "Semantic models are not ready; BM25 remains available; "
+        + "qmd doctor did not report model cache",
+    };
+  }
+  if (line.trimStart().startsWith("✓") || isEtagOnlyModelCacheWarning(line)) {
+    return {
+      name: "qmd-models",
+      status: "pass",
+      message: "Semantic models are ready",
+    };
+  }
+  return {
+    name: "qmd-models",
+    status: "warn",
+    message: `Semantic models are not ready; BM25 remains available: ${line.trim()}`,
+  };
+}
+
 function qmdDiagnosticLine(
   output: string,
   name: string,
@@ -462,9 +495,7 @@ function qmdDiagnosticLine(
   passMessage: string,
   warnMessage: string,
 ): DoctorCheck {
-  const line = output.split("\n").find((candidate) =>
-    candidate.toLowerCase().includes(`${label.toLowerCase()}:`)
-  );
+  const line = diagnosticLine(output, label);
   if (!line) {
     return {
       name,
@@ -478,6 +509,25 @@ function qmdDiagnosticLine(
     status: passed ? "pass" : "warn",
     message: passed ? passMessage : `${warnMessage}: ${line.trim()}`,
   };
+}
+
+function diagnosticLine(output: string, label: string): string | undefined {
+  return output.split("\n").find((candidate) =>
+    candidate.toLowerCase().includes(`${label.toLowerCase()}:`)
+  );
+}
+
+function isEtagOnlyModelCacheWarning(line: string): boolean {
+  if (/\bmissing\s+\d+\//i.test(line)) {
+    return false;
+  }
+  // QMD 2.5.3 writes GGUF ETag sidecars, then its doctor scans those metadata
+  // files as if they were models. With no missing model, the real GGUF was found.
+  const invalidPaths = [...line.matchAll(
+    /\(([^()]+\.gguf(?:\.etag)?):\s+not valid GGUF/gi,
+  )].map((match) => match[1]);
+  return invalidPaths.length > 0
+    && invalidPaths.every((path) => path?.toLowerCase().endsWith(".gguf.etag"));
 }
 
 async function graphifyGraphCheck(path: string): Promise<DoctorCheck> {

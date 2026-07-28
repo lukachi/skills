@@ -7,8 +7,10 @@ import {
   parseQmdVersion,
   qmdVersionCheck,
   resolveQmdSkillSource,
+  type AsyncToolRunner,
   type ToolRunner,
   updateGraphifyGraph,
+  updateGraphifyGraphAsync,
 } from "../src/dependencies.js";
 
 test("parses and compares supported QMD versions", () => {
@@ -59,6 +61,26 @@ test("refreshes Graphify from the leaf checkout root", () => {
   const sourceRoot = resolve("fixtures/leaf");
 
   assert.equal(updateGraphifyGraph(sourceRoot, runner).status, 0);
+  assert.deepEqual(calls, [{
+    command: "graphify",
+    args: ["update", "."],
+    cwd: sourceRoot,
+  }]);
+});
+
+test("refreshes Graphify asynchronously for visible CLI progress", async () => {
+  const calls: Array<{
+    command: string;
+    args: string[];
+    cwd?: string;
+  }> = [];
+  const runner: AsyncToolRunner = async (command, args, options) => {
+    calls.push({ command, args, ...(options?.cwd ? { cwd: options.cwd } : {}) });
+    return { status: 0, stdout: "", stderr: "" };
+  };
+  const sourceRoot = resolve("fixtures/leaf");
+
+  assert.equal((await updateGraphifyGraphAsync(sourceRoot, runner)).status, 0);
   assert.deepEqual(calls, [{
     command: "graphify",
     args: ["update", "."],
