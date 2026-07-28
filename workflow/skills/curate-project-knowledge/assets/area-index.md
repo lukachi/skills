@@ -15,6 +15,10 @@ with it.
 Summarize the current human-facing behavior and language. Link detailed
 concepts and rules instead of flattening them here.
 
+State which capabilities are accepted, which are absent or partial, and where
+observed implementation has unknown intent or known drift. Do not present
+implemented code as product intent by default.
+
 ## Capabilities
 
 - Link each file under `capabilities/` and state the outcome it provides. Each

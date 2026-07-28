@@ -2,12 +2,18 @@ import { randomUUID } from "node:crypto";
 import {
   copyFile,
   lstat,
+  mkdtemp,
   mkdir,
   readFile,
+  readlink,
   rename,
+  rm,
+  rmdir,
   symlink,
+  unlink,
   writeFile,
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { hashContent } from "./planner.js";
 import type { InstallPlan, PlanOperation, WorkflowState } from "./types.js";
@@ -34,43 +40,75 @@ export async function applyInstallPlan(plan: InstallPlan): Promise<ApplyResult> 
     ".workflow/backups",
     new Date().toISOString().replaceAll(":", "-"),
   );
-  for (const operation of plan.operations) {
-    if (operation.status === "unchanged") {
-      continue;
-    }
-    await assertExpectedState(plan.target, operation);
-    if (operation.backup) {
-      const backupPath = join(backupRoot, operation.path);
-      await mkdir(dirname(backupPath), { recursive: true });
-      await copyFile(join(plan.target, operation.path), backupPath);
-      backups.push(backupPath);
-    }
-    await applyOperation(plan.target, operation);
-    changed += 1;
-  }
-
-  const files: WorkflowState["files"] = {};
-  for (const operation of plan.operations) {
-    if (operation.track && operation.content !== undefined) {
-      files[operation.path] = { sha256: hashContent(operation.content) };
-    }
-  }
-  const state: WorkflowState = {
-    schemaVersion: STATE_SCHEMA_VERSION,
-    installedVersion: WORKFLOW_VERSION,
-    profile: plan.profile,
-    files,
-  };
+  const rollbackRoot = await mkdtemp(join(tmpdir(), "wfctl-apply-"));
+  const applied: RollbackSnapshot[] = [];
   const statePath = join(plan.target, ".workflow/state.json");
-  await writeAtomic(statePath, `${JSON.stringify(state, null, 2)}\n`);
+  const stateSnapshot = await snapshotPath(statePath, rollbackRoot, "state");
+  try {
+    for (const operation of plan.operations) {
+      if (operation.status === "unchanged") {
+        continue;
+      }
+      await assertExpectedState(plan.target, operation);
+      const snapshot = await snapshotPath(
+        join(plan.target, operation.path),
+        rollbackRoot,
+        `operation-${applied.length}`,
+      );
+      if (operation.backup) {
+        const backupPath = join(backupRoot, operation.path);
+        await mkdir(dirname(backupPath), { recursive: true });
+        await copyFile(join(plan.target, operation.path), backupPath);
+        backups.push(backupPath);
+      }
+      applied.push(snapshot);
+      await applyOperation(plan.target, operation);
+      changed += 1;
+    }
 
-  return { changed, statePath, backups };
+    const files: WorkflowState["files"] = {};
+    for (const operation of plan.operations) {
+      if (operation.track && operation.content !== undefined) {
+        files[operation.path] = { sha256: hashContent(operation.content) };
+      }
+    }
+    const state: WorkflowState = {
+      schemaVersion: STATE_SCHEMA_VERSION,
+      installedVersion: WORKFLOW_VERSION,
+      profile: plan.profile,
+      files,
+    };
+    await writeAtomic(statePath, `${JSON.stringify(state, null, 2)}\n`);
+    return { changed, statePath, backups };
+  } catch (error) {
+    let rollbackError: unknown;
+    try {
+      await restoreSnapshot(stateSnapshot);
+      for (const snapshot of applied.reverse()) {
+        await restoreSnapshot(snapshot);
+      }
+    } catch (caught) {
+      rollbackError = caught;
+    }
+    if (rollbackError) {
+      throw new Error(
+        `Installation failed and rollback was incomplete: ${String(error)}; rollback: ${String(rollbackError)}`,
+      );
+    }
+    throw error;
+  } finally {
+    await rm(rollbackRoot, { recursive: true, force: true });
+  }
 }
 
 async function applyOperation(target: string, operation: PlanOperation): Promise<void> {
   const absolute = join(target, operation.path);
   if (operation.kind === "directory") {
     await mkdir(absolute, { recursive: true });
+    return;
+  }
+  if (operation.kind === "delete") {
+    await unlink(absolute);
     return;
   }
   if (operation.kind === "symlink") {
@@ -119,4 +157,82 @@ async function writeAtomic(path: string, content: string): Promise<void> {
 function isMissing(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error
     && (error as { code?: string }).code === "ENOENT";
+}
+
+interface RollbackSnapshot {
+  path: string;
+  kind: "absent" | "file" | "symlink" | "directory";
+  backupPath?: string;
+  linkTarget?: string;
+}
+
+async function snapshotPath(
+  path: string,
+  root: string,
+  name: string,
+): Promise<RollbackSnapshot> {
+  try {
+    const stat = await lstat(path);
+    if (stat.isSymbolicLink()) {
+      return { path, kind: "symlink", linkTarget: await readlink(path) };
+    }
+    if (stat.isDirectory()) {
+      return { path, kind: "directory" };
+    }
+    if (!stat.isFile()) {
+      throw new Error(`Cannot transactionally snapshot unsupported path: ${path}`);
+    }
+    const backupPath = join(root, name);
+    await copyFile(path, backupPath);
+    return { path, kind: "file", backupPath };
+  } catch (error) {
+    if (isMissing(error)) {
+      return { path, kind: "absent" };
+    }
+    throw error;
+  }
+}
+
+async function restoreSnapshot(snapshot: RollbackSnapshot): Promise<void> {
+  if (snapshot.kind === "absent") {
+    await removeCurrent(snapshot.path);
+    return;
+  }
+  if (snapshot.kind === "directory") {
+    try {
+      const stat = await lstat(snapshot.path);
+      if (stat.isDirectory()) {
+        return;
+      }
+      await removeCurrent(snapshot.path);
+    } catch (error) {
+      if (!isMissing(error)) {
+        throw error;
+      }
+    }
+    await mkdir(snapshot.path, { recursive: true });
+    return;
+  }
+  await removeCurrent(snapshot.path);
+  await mkdir(dirname(snapshot.path), { recursive: true });
+  if (snapshot.kind === "symlink") {
+    await symlink(snapshot.linkTarget!, snapshot.path);
+  } else {
+    await copyFile(snapshot.backupPath!, snapshot.path);
+  }
+}
+
+async function removeCurrent(path: string): Promise<void> {
+  try {
+    const stat = await lstat(path);
+    if (stat.isDirectory() && !stat.isSymbolicLink()) {
+      await rmdir(path);
+    } else {
+      await unlink(path);
+    }
+  } catch (error) {
+    if (!isMissing(error)) {
+      throw error;
+    }
+  }
 }

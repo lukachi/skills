@@ -17,12 +17,15 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { applyInstallPlan } from "../src/applier.js";
 import { readRepositoryMetadata } from "../src/git.js";
+import { hashKnowledgeConcept } from "../src/knowledge.js";
 import { buildInstallPlan } from "../src/planner.js";
+import { addLeafRepository } from "../src/repository-registry.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 import {
   beginWork,
   closeWork,
   createHandoff,
+  rebindWork,
   verifyWork,
   workStatus,
 } from "../src/work.js";
@@ -79,7 +82,9 @@ test("runs the completed central work lifecycle", async () => {
   const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
   const leafRoot = await realpath(leaf);
   const knowledgeRoot = await realpath(knowledge);
-  assert.equal(document.metadata.workspace && typeof document.metadata.workspace, "object");
+  assert.equal(document.metadata.workspace, undefined);
+  assert.equal(document.metadata.scope, "leaf");
+  assert.doesNotMatch(await readFile(started.specPath, "utf8"), new RegExp(escapeRegExp(leafRoot)));
   assert.equal(started.codeRoot, leafRoot);
   assert.equal(started.knowledgeRoot, knowledgeRoot);
   assert.match(started.specPath, /changes\/active\/2026-07-28-world-loop\/change\.md$/);
@@ -165,6 +170,7 @@ The world loop follows the reviewed authority model.[^world-loop-decision]
 `,
     "utf8",
   );
+  await sealConcept(knowledge, "knowledge/decisions/world-loop.md");
 
   document.body += "\nEvidence: raw/legacy.md\n";
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
@@ -188,7 +194,7 @@ The world loop follows the reviewed authority model.[^world-loop-decision]
       outcome: "completed",
       now: new Date("2026-07-28T11:59:00.000Z"),
     }),
-    /bound source checkout is dirty/,
+    /bound source checkout must be clean/,
   );
   await unlink(dirtyPath);
 
@@ -201,7 +207,7 @@ The world loop follows the reviewed authority model.[^world-loop-decision]
       outcome: "completed",
       now: new Date("2026-07-28T11:59:30.000Z"),
     }),
-    /verification\.revision .* does not match current commit/,
+    /verification revision does not match current commit/,
   );
   (document.metadata.verification as Record<string, unknown>).revision = verifiedSource.commit;
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
@@ -216,8 +222,9 @@ The world loop follows the reviewed authority model.[^world-loop-decision]
   assert.match(archived, /outcome: completed/);
   assert.match(archived, /checkout: leaf-repo/);
   assert.match(archived, /worktree: false/);
-  assert.match(archived, /dirty: false/);
-  assert.match(archived, /source_at_close:/);
+  assert.match(archived, /commit_at_start: [0-9a-f]{40}/);
+  assert.doesNotMatch(archived, new RegExp(escapeRegExp(leafRoot)));
+  assert.match(archived, /sources_at_close:/);
   await assert.rejects(access(started.pointerPath));
 });
 
@@ -301,7 +308,7 @@ test("creates a lightweight handoff in the knowledge inbox", async () => {
   const content = await readFile(created.path, "utf8");
   assert.match(content, /status: inbox/);
   assert.match(content, /repository:/);
-  assert.match(content, /worktreeId: main/);
+  assert.match(content, /worktree_id: main/);
   await assert.rejects(
     access(join(leaf, ".workflow/current", `${created.id}.json`)),
   );
@@ -375,9 +382,209 @@ test("blocks work commands from a different checkout of the same repository", as
 
   await assert.rejects(
     verifyWork(other, started.id),
-    /current checkout is .*other, but work is bound to .*leaf/,
+    /outside the bound workspaces|not bound to the work/,
   );
 });
+
+test("runs project-only knowledge work without inventing a code checkout", async () => {
+  const knowledge = await mkdtemp(join(tmpdir(), "wfctl-project-work-"));
+  initializeGit(knowledge);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+
+  const started = await beginWork({
+    target: knowledge,
+    slug: "vision-review",
+    title: "Vision review",
+    mode: "full",
+    distributionRoot,
+    now: new Date("2026-07-28T10:00:00.000Z"),
+  });
+  assert.equal(started.scope, "project");
+  assert.deepEqual(started.codeRoots, []);
+  const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  assert.deepEqual(document.metadata.repositories, []);
+  completeWorkDocument(document, "project");
+  await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  assert.deepEqual((await verifyWork(knowledge, started.id)).issues, []);
+
+  const closed = await closeWork({
+    target: knowledge,
+    id: started.id,
+    outcome: "completed",
+    now: new Date("2026-07-28T12:00:00.000Z"),
+  });
+  const archived = await readFile(join(closed.archivePath, "change.md"), "utf8");
+  assert.doesNotMatch(archived, new RegExp(escapeRegExp(knowledge)));
+});
+
+test("coordinates one project change across every selected leaf", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-multi-work-"));
+  const knowledge = join(root, "knowledge");
+  const api = join(root, "api");
+  const client = join(root, "client");
+  await mkdir(knowledge);
+  await mkdir(api);
+  await mkdir(client);
+  initializeGit(knowledge);
+  initializeGit(api);
+  initializeGit(client);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  for (const leaf of [api, client]) {
+    await applyInstallPlan(await buildInstallPlan({
+      target: leaf,
+      profile: "leaf",
+      knowledge,
+      distributionRoot,
+    }));
+    commitAll(leaf, "initialize workflow");
+    await addLeafRepository(knowledge, leaf);
+  }
+
+  const started = await beginWork({
+    target: knowledge,
+    slug: "shared-contract",
+    title: "Shared contract",
+    mode: "full",
+    leaves: [api, client],
+    distributionRoot,
+    now: new Date("2026-07-28T10:00:00.000Z"),
+  });
+  assert.equal(started.scope, "multi-repo");
+  assert.equal(started.codeRoots.length, 2);
+  assert.equal(started.pointerPaths.length, 3);
+  const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  completeWorkDocument(document, "multi-repo");
+  const sources = [readRepositoryMetadata(api), readRepositoryMetadata(client)];
+  const verification = document.metadata.verification as Record<string, unknown>;
+  verification.repositories = sources.map((source) => ({
+    repository: source.repository,
+    revision: source.commit,
+    worktree_id: source.worktreeId,
+    checks: [{ command: `test ${source.repository}`, result: "passed" }],
+  }));
+  await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  assert.deepEqual((await verifyWork(knowledge, started.id)).issues, []);
+
+  const closed = await closeWork({
+    target: knowledge,
+    id: started.id,
+    outcome: "completed",
+    now: new Date("2026-07-28T12:00:00.000Z"),
+  });
+  const archived = await readFile(join(closed.archivePath, "change.md"), "utf8");
+  assert.doesNotMatch(archived, new RegExp(escapeRegExp(api)));
+  assert.doesNotMatch(archived, new RegExp(escapeRegExp(client)));
+});
+
+test("detects a branch switch until the work is explicitly rebound", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-rebind-"));
+  const knowledge = join(root, "knowledge");
+  const leaf = join(root, "leaf");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  initializeGit(knowledge);
+  initializeGit(leaf);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+  const started = await beginWork({
+    target: leaf,
+    slug: "branch-binding",
+    title: "Branch binding",
+    mode: "full",
+    distributionRoot,
+  });
+  execFileSync("git", ["-C", leaf, "switch", "-q", "-c", "feature/rebound"]);
+  const drifted = await workStatus(leaf, started.id);
+  assert.equal(drifted[0]?.valid, false);
+  assert.ok(drifted[0]?.issues.some((issue) => /run wfctl work rebind/.test(issue)));
+  await rebindWork(leaf, started.id);
+  assert.equal((await workStatus(leaf, started.id))[0]?.valid, true);
+});
+
+async function sealConcept(target: string, relativePath: string): Promise<void> {
+  const absolute = join(target, relativePath);
+  const document = parseWorkSpec(await readFile(absolute, "utf8"));
+  const verified = (
+    typeof document.metadata.verified === "object"
+    && document.metadata.verified !== null
+    && !Array.isArray(document.metadata.verified)
+  )
+    ? document.metadata.verified as Record<string, unknown>
+    : {};
+  document.metadata.verified = {
+    ...verified,
+    content_hash: "0".repeat(64),
+  };
+  await writeFile(absolute, serializeWorkSpec(document), "utf8");
+  const sealed = parseWorkSpec(await readFile(absolute, "utf8"));
+  (sealed.metadata.verified as Record<string, unknown>).content_hash =
+    (await hashKnowledgeConcept(target, relativePath)).contentHash;
+  await writeFile(absolute, serializeWorkSpec(sealed), "utf8");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function completeWorkDocument(
+  document: ReturnType<typeof parseWorkSpec>,
+  scope: "project" | "multi-repo",
+): void {
+  document.metadata.status = "completed";
+  document.metadata.knowledge_alignment = {
+    reviewed: ["knowledge/index.md"],
+    conflicts: [],
+  };
+  document.metadata.graph_evidence = {
+    queries: scope === "project" ? [] : ["Trace the shared contract"],
+  };
+  document.metadata.knowledge_promotion = {
+    status: "not-needed",
+    concepts: [],
+    reason: "The reviewed work changes no durable project meaning.",
+  };
+  document.metadata.maintainer_review = {
+    framing: {
+      status: "approved",
+      by: "human:test-maintainer",
+      at: "2026-07-28T10:05:00.000Z",
+      notes: [],
+    },
+    completion: {
+      status: "approved",
+      by: "human:test-maintainer",
+      at: "2026-07-28T11:55:00.000Z",
+      notes: [],
+    },
+  };
+  document.metadata.verification = {
+    result: "passed",
+    acceptance_reviewed: true,
+    implementation_reviewed: scope !== "project",
+    knowledge_reviewed: scope === "project",
+    checks: [{ command: "wfctl knowledge validate", result: "passed" }],
+    unresolved: [],
+    repositories: [],
+  };
+  document.body = document.body.replaceAll("- [ ]", "- [x]");
+}
 
 function initializeGit(root: string): void {
   execFileSync("git", ["-C", root, "init", "-q"]);

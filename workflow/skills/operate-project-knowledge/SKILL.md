@@ -9,6 +9,20 @@ Act as the project's librarian and investigator. Give humans a clear path
 through current truth, expose uncertainty honestly, and route mutations through
 the correct evidence and review gates.
 
+## Interaction contract
+
+Treat ordinary maintainer language as the complete user interface. Run every
+required `wfctl knowledge`, `wfctl work`, QMD, Graphify, Git-inspection, and
+record-maintenance operation yourself when tools permit. Do not ask the
+maintainer to choose subcommands, copy IDs, locate generated files, edit YAML,
+or reproduce a command shown in this skill.
+
+Ask only for product intent, authority, approval, missing repository paths, or
+a materially ambiguous choice. Present such a choice in project terms with
+evidence and a recommendation, then execute the internal operation after the
+answer. If tools or authority block execution, report the exact blocker and
+offer a manual command only as a recovery path.
+
 ## Establish the working surface
 
 1. Confirm `.workflow/config.json` declares the `knowledge` profile. If the
@@ -18,9 +32,10 @@ the correct evidence and review gates.
    cross-Area material.
 3. Inspect the current session skill catalog, require and invoke the official
    native `qmd` skill, then run `qmd status`. If the skill is absent, stop and
-   ask to run `wfctl upgrade` or reinstall the selected skills, then restart
-   the agent session. If QMD is unavailable or older than `2.5.3`, stop and
-   ask to install it with `bun install -g @tobilu/qmd@2.5.3`.
+   invoke `setup-workflow-environment` to repair or reinstall the selected
+   skills, then ask only for the unavoidable agent-session restart. If QMD is
+   unavailable or older than `2.5.3`, invoke the setup skill, request install
+   authority, and perform the installation yourself.
 4. Use `qmd search ... -c knowledge` for exact discovery or a structured
    `qmd query` with authored `intent:`, `lex:`, `vec:`, and optional `hyde:`
    fields for broader retrieval.
@@ -42,13 +57,14 @@ the correct evidence and review gates.
 | Find where a topic belongs or who owns it | Identify the primary Area, owning repositories, affected capabilities, and genuinely cross-Area links. Report ambiguity instead of inventing an owner. |
 | Trace what changed and why | Start from the stable current decision, follow `supersedes` links through every predecessor, then read the Area `Evolution` section and local `log.md`. Explain each transition, rationale, consequences, and unresolved questions. |
 | Compare intended behavior with implementation | Invoke `analyze-with-graphify` in each exact leaf checkout, then inspect source, tests, and runtime evidence. Do not edit leaf code from this repository. |
+| Build knowledge for an existing project or audit the whole baseline | Invoke `reconstruct-project-knowledge`. It owns registry inspection, source selection, case lifecycle, and promotion. Ask the maintainer only when repository identity or competing worktrees create a real choice; do not improvise a baseline from search snippets or raw notes. |
 | Audit knowledge health | Run `wfctl knowledge build`; inspect its broken-link, relation, lineage, and reachability failures, then check stale verification, weak provenance, conflicting current claims, duplicate concepts, missing Area maps, misplaced cross-Area material, and implementation claims that may have drifted. Return a prioritized repair list with evidence. |
 | Improve navigation or structure | Repair indexes, names, summaries, and links without changing semantic claims. If the repair changes current truth, invoke `curate-project-knowledge`. |
 | Reconcile contradictory claims | Build a compact adjudication packet: question, each candidate claim, supporting and conflicting authoritative observations, missing facts, recommendation, and the exact maintainer decision needed. Keep unresolved claims out of `knowledge/`. |
 | Review new or changed raw material | Invoke `process-raw-intake`. Never search raw as part of an ordinary current-truth answer and never cite raw from knowledge. |
 | Triage `changes/inbox/` or intake cases | Classify each item as promote, verify, defer, reject, or blocked. Name the owner and next evidence or decision needed; do not silently promote it. |
 | Promote a completed change or confirmed candidate | Invoke `curate-project-knowledge`, update the smallest coherent concepts and decision lineage, validate, and refresh QMD. |
-| Discuss a new product or architecture direction | Explore alternatives, but do not publish the discussion as stable knowledge. Continue significant work through the owning leaf workflow. If no owner exists, preserve it in raw or as unresolved until a project-level work mode exists. |
+| Discuss a new product or architecture direction | Invoke `manage-project-work` and start a project-only living spec here before extended discussion. It has no code root. Record every material turn, obtain review, and promote only the final approved direction. Bind leaves only if implementation work becomes part of the scope. |
 | Implement or fix source code | Identify the owning leaf repository and redirect the task there. Never write product code from the knowledge repository. |
 
 ## Answer current-knowledge questions
@@ -86,7 +102,8 @@ invoke `curate-project-knowledge`.
 
 - Treat `knowledge/` as curated current truth, not automatic truth. Evidence,
   lifecycle, and verification still govern every claim.
-- Treat `changes/` and `intake/` as operational records, not current truth.
+- Treat `changes/`, `intake/`, and `reconstruction/` as qualified operational
+  records, not the default current-truth surface.
 - Treat `raw/` as untrusted input, never evidence.
 - Treat QMD, the compiled knowledge graph, and Graphify as navigation tools,
   never independent authorities.

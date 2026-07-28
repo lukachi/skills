@@ -19,6 +19,14 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
 - Execute required `wfctl` commands yourself when tool access permits. Do not
   delegate routine CLI operation, spec editing, or record maintenance to the
   maintainer; ask them for decisions, approval, or missing authority.
+- Treat the maintainer's natural-language request as the user interface.
+  Outside bootstrap or explicit troubleshooting, never require them to know a
+  subcommand, record ID, generated path, QMD query, Graphify invocation, or
+  structured-file schema. Resolve those mechanics yourself.
+- When internal state offers one safe valid continuation, announce it and
+  continue. When several materially different choices remain, present their
+  human meaning, evidence, and recommendation; after the maintainer chooses,
+  execute the corresponding commands yourself.
 - For significant multi-turn work, create the shaping spec early, update it
   after every material maintainer turn, and resume from the full file rather
   than conversation memory.

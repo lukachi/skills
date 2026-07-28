@@ -25,7 +25,7 @@ for (const runtime of cases) {
     0,
     `${runtime.name} failed:\n${result.stderr || result.stdout}`,
   );
-  assert.match(result.stdout, /0\.1\.0/, `${runtime.name} did not print wfctl version`);
+  assert.match(result.stdout, /0\.2\.0/, `${runtime.name} did not print wfctl version`);
 
   const target = mkdtempSync(join(tmpdir(), `wfctl-${runtime.name}-`));
   spawnSync("git", ["-C", target, "init", "-q"]);

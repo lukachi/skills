@@ -22,9 +22,12 @@ relationship expansion, then read selected files directly. Before
 knowledge-dependent work, require the official native `qmd` skill in the
 current session and invoke it. An on-disk skill installed after session start
 does not count; stop and request installation or a session restart instead of
-inventing a partial QMD procedure. Legacy
-coverage comes from Git-frozen intake sources and explicit full-file review;
-curated trust comes from OKF metadata, authoritative provenance, and current
-verification. QMD rank, snippets, and its index are never authority.
+inventing a partial QMD procedure. Raw coverage comes from Git-frozen intake
+sources and explicit full-file review. Existing-project coverage comes from
+exact clean source revisions, Graphify traversal, direct source and test
+inspection, Git history review, repository dossiers, cross-repository
+reconciliation, and maintainer adjudication. Curated trust comes from OKF
+metadata, authoritative provenance, and current verification. QMD rank,
+snippets, and its index are never authority.
 
 Do not turn mocks, fixtures, fakes, placeholders, disabled checks, or partial wiring into production completion claims. Name missing evidence and unfinished work directly.

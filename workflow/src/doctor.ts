@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -21,7 +21,12 @@ import {
   type KnowledgeGraph,
 } from "./knowledge-graph.js";
 import { buildInstallPlan, skillsForProfile } from "./planner.js";
+import {
+  listRepositoryConnections,
+  repositoryRegistryIssues,
+} from "./repository-registry.js";
 import type { DoctorCheck, DoctorReport } from "./types.js";
+import { listInstalledSkills } from "./skill-installer.js";
 
 export interface DoctorOptions {
   runner?: ToolRunner;
@@ -61,6 +66,7 @@ export async function runDoctor(
         : `Graphify is not available: ${commandFailure(graphify)}`,
     });
     checks.push(await graphifyGraphCheck(join(target, "graphify-out/graph.json")));
+    checks.push(await graphifyScopeCheck(join(target, ".graphifyignore")));
     const ignored = runner(
       "git",
       ["check-ignore", "-q", "graphify-out/graph.json"],
@@ -97,10 +103,31 @@ export async function runDoctor(
       }
     }
   } else if (config.skills?.scope === "user") {
+    try {
+      const installed = listInstalledSkills(target, true);
+      for (const skill of skillsForProfile(config.profile)) {
+        const entry = installed.find((candidate) => candidate.name === skill);
+        checks.push({
+          name: `user-skill-${skill}`,
+          status: entry ? "pass" : "fail",
+          message: entry
+            ? `User-scope skill ${skill} is installed at ${entry.path}`
+            : `User-scope skill ${skill} is missing`,
+        });
+      }
+    } catch (error) {
+      checks.push({
+        name: "user-skills",
+        status: "fail",
+        message: errorMessage(error),
+      });
+    }
+  } else if (config.skills?.scope === "none") {
     checks.push({
-      name: "user-skills",
+      name: "workflow-skills",
       status: "warn",
-      message: "User-scope skills are managed by the skills CLI outside this repository",
+      message:
+        "Agent skills were explicitly disabled; CLI assets are usable, but the workflow cannot enforce agent behavior",
     });
   }
 
@@ -165,6 +192,8 @@ export async function runDoctor(
         "raw",
         "intake/cases/active",
         "intake/cases/archive",
+        "reconstruction/active",
+        "reconstruction/archive",
         "changes/active",
         "changes/archive",
         "changes/inbox",
@@ -178,6 +207,63 @@ export async function runDoctor(
         `${directory} is missing`,
       ));
     }
+    try {
+      const connections = await listRepositoryConnections(target);
+      const registryIssues = await repositoryRegistryIssues(target);
+      const active = connections.filter((entry) => Boolean(entry.activeRoot)).length;
+      const checkouts = connections.reduce(
+        (total, entry) => total + entry.checkouts.length,
+        0,
+      );
+      checks.push({
+        name: "repository-registry",
+        status: registryIssues.length > 0
+          ? "fail"
+          : connections.length === 0
+          ? "warn"
+          : active === connections.length
+          ? "pass"
+          : "warn",
+        message: registryIssues.length > 0
+          ? registryIssues.join("; ")
+          : connections.length === 0
+          ? "No leaf repositories registered; baseline reconstruction cannot start yet"
+          : `${connections.length} repository registration(s), ${checkouts} known worktree(s), `
+            + `${active} active reconstruction selection(s)`,
+      });
+    } catch (error) {
+      checks.push({
+        name: "repository-registry",
+        status: "fail",
+        message: errorMessage(error),
+      });
+    }
+  } else {
+    try {
+      const connections = await listRepositoryConnections(knowledgeRoot);
+      const currentRoot = await realpath(target);
+      const connection = connections.find((entry) =>
+        entry.checkouts.some((checkout) => resolve(checkout.root) === currentRoot)
+      );
+      const checkout = connection?.checkouts.find((entry) =>
+        resolve(entry.root) === currentRoot
+      );
+      checks.push({
+        name: "repository-connection",
+        status: connection ? "pass" : "fail",
+        message: connection
+          ? `Leaf is registered as ${connection.repository}; reconstruction selection: ${
+            checkout?.active ? "ACTIVE" : "inactive"
+          }`
+          : "Leaf checkout is unknown to the knowledge repository; run wfctl knowledge sources add",
+      });
+    } catch (error) {
+      checks.push({
+        name: "repository-connection",
+        status: "fail",
+        message: errorMessage(error),
+      });
+    }
   }
 
   try {
@@ -189,7 +275,9 @@ export async function runDoctor(
     });
     const conflicts = plan.operations.filter((operation) => operation.status === "conflict");
     const pending = plan.operations.filter((operation) =>
-      operation.status === "create" || operation.status === "update"
+      operation.status === "create"
+      || operation.status === "update"
+      || operation.status === "delete"
     );
     if (conflicts.length > 0) {
       checks.push({
@@ -215,6 +303,33 @@ export async function runDoctor(
   }
 
   return { target, profile: config.profile, checks };
+}
+
+async function graphifyScopeCheck(path: string): Promise<DoctorCheck> {
+  try {
+    const content = await readFile(path, "utf8");
+    const required = [
+      ".agents/",
+      ".claude/",
+      ".workflow/",
+      "graphify-out/",
+      "skills-lock.json",
+    ];
+    const missing = required.filter((entry) => !content.includes(entry));
+    return {
+      name: "graphify-scope",
+      status: missing.length === 0 ? "pass" : "fail",
+      message: missing.length === 0
+        ? "Workflow and agent files are excluded from the source graph"
+        : `Graphify scope includes workflow artifacts; run wfctl upgrade (missing: ${missing.join(", ")})`,
+    };
+  } catch (error) {
+    return {
+      name: "graphify-scope",
+      status: "fail",
+      message: `Cannot verify .graphifyignore: ${errorMessage(error)}`,
+    };
+  }
 }
 
 async function knowledgeGraphCheck(

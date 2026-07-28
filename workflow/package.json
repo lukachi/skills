@@ -1,7 +1,8 @@
 {
   "name": "wfctl",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
+  "private": false,
+  "license": "MIT",
   "description": "Deterministic project workflow bootstrap and lifecycle CLI",
   "type": "module",
   "bin": {
@@ -21,9 +22,10 @@
     "test:preflight": "bun tests/preflight-integration.mjs",
     "test:qmd": "bun tests/qmd-integration.mjs",
     "test:graphify": "bun tests/graphify-integration.mjs",
+    "test:reconstruction": "bun tests/reconstruction-integration.mjs",
     "test:runtime": "bun tests/runtime-smoke.mjs",
     "test:package": "bun tests/package-smoke.mjs",
-    "check": "bun run typecheck && bun run test && bun run build && bun run test:preflight && bun run test:qmd && bun run test:graphify && bun run test:runtime && bun run test:package"
+    "check": "bun run typecheck && bun run test && bun run build && bun run test:preflight && bun run test:qmd && bun run test:graphify && bun run test:reconstruction && bun run test:runtime && bun run test:package"
   },
   "packageManager": "bun@1.3.0",
   "engines": {
@@ -38,6 +40,6 @@
   },
   "dependencies": {
     "mdast-util-from-markdown": "2.0.3",
-    "skills": "1.5.9"
+    "skills": "1.5.20"
   }
 }

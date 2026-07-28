@@ -21,12 +21,17 @@
   default router for explanation, history, audit, navigation, contradiction,
   and triage requests.
 - Install `process-raw-intake` only for the knowledge profile.
+- Install `reconstruct-project-knowledge` only for the knowledge profile.
 - Install `curate-project-knowledge` for both profiles because a leaf agent
   must promote durable truth before closing significant work.
-- Install alignment, work management, and verification skills only for the leaf profile.
+- Install alignment, work management, and verification skills for both
+  profiles. Knowledge needs them for project-only and multi-repository living
+  specs; a project-only record has no implementation checkout.
 - Select Codex, Claude, or both explicitly.
-- In non-interactive mode, refuse replacement when a selected skill already
-  exists. Use the installer's interactive conflict handling instead.
+- Let the pinned installer update an already owned selected skill in
+  non-interactive mode. Remove only obsolete project-scope workflow skills
+  whose lock entry still identifies this package; never remove an unowned
+  skill by name.
 
 The workflow skill `analyze-with-graphify` is a routing and policy gate, not a
 copy of Graphify's native skill. Require the `graphify` CLI and the official
@@ -63,7 +68,7 @@ semantics while keeping the skill matched to the installed QMD version.
 - Keep QMD's database and model cache out of Git. The index is disposable and
   rebuildable from repository content.
 - Include only `knowledge` in unscoped searches. Require explicit collection
-  selection for `changes`, `intake`, and `raw`.
+  selection for `changes`, `intake`, `reconstruction`, and `raw`.
 - Run QMD from the knowledge root so it uses the project-local index.
 - Run `qmd update` during knowledge initialization and upgrade so lexical BM25
   retrieval is ready before success is reported.
@@ -100,3 +105,13 @@ semantics while keeping the skill matched to the installed QMD version.
 ## Ownership
 
 `.workflow/state.json` records the hash of every installed owned file. Update an owned file only when the on-disk hash still matches the prior installed hash. Equal content is safe to adopt. Any other pre-existing content is a conflict.
+When a later release removes an owned file, delete it only if its hash still
+matches the recorded installed hash. Back it up first. A locally modified
+obsolete file remains an explicit conflict.
+
+`.workflow/repositories.json` is a dynamic, Git-tracked project source
+registry, not a generated asset. It stores repository identity without local
+paths. `.workflow/current/repositories.json` is ignored and stores any number
+of known local worktrees per repository plus one explicit active selection
+used only by default reconstruction. Leaf initialization adds a known worktree
+but never changes an existing selection.

@@ -1,6 +1,6 @@
 ---
 name: manage-project-work
-description: Classify project work, bind implementation to one exact checkout or worktree, and maintain one central living specification and progress file for significant tasks or optional lightweight handoffs. Use when starting, planning, implementing, resuming, changing scope, recording progress, or handing off any feature, fix, refactor, investigation, migration, operational change, or cross-repository task.
+description: Classify project work, bind implementation to the exact selected checkout or worktrees, and maintain one central living specification and progress file for significant leaf, multi-repository, or project-only work plus optional lightweight handoffs. Use when starting, discussing, planning, implementing, resuming, changing scope, recording progress, making product or architecture decisions, or handing off any feature, fix, refactor, investigation, migration, operational change, or cross-repository task.
 ---
 
 # Manage Project Work
@@ -33,16 +33,23 @@ If uncertain, describe the possible impact and ask the maintainer whether to use
 ## Full workflow
 
 1. As soon as the task is classified as significant, create the canonical
-   shaping file with
-   `wfctl work start <slug> --title "<title>" --mode full|slice`. Do this before
+   shaping file with `wfctl work start <slug> --title "<title>"
+   --mode full|slice`. Start from a leaf for one-repository implementation.
+   Start from knowledge with no `--leaf` for product/architecture work that
+   has no implementation checkout, or repeat `--leaf` for multi-repository
+   implementation. Do this before
    extended solution discussion, Graphify analysis, or knowledge alignment so
    the discussion survives compaction.
-2. Run `wfctl work status <id>` and record its exact `Code root` and `Spec`.
-3. Treat `Code root` as the only checkout where implementation may be edited,
-   and `Spec` as the only living specification that may be updated.
+2. Run `wfctl work status <id>` and record its exact `Code roots`, `Knowledge
+   root`, and `Spec`.
+3. Treat every reported `Code root` as an explicit implementation workspace
+   and `Spec` as the only living specification. If the scope is `project` and
+   has no code roots, do not write product source anywhere.
 4. Immediately write the current user request, known constraints, open
    questions, and next action into `Spec`. Keep `status: shaping`.
-5. Invoke `analyze-with-graphify` from `Code root`.
+5. Invoke `analyze-with-graphify` once in every code root whose implementation
+   informs the task. Skip it only for genuinely project-only work with no code
+   claim.
 6. Invoke `align-project-knowledge` against `Knowledge root`.
 7. Resolve blocking uncertainty with the maintainer and update `Spec`.
 8. Present a framing review packet covering outcome, scope, exclusions,
@@ -60,22 +67,30 @@ If uncertain, describe the possible impact and ask the maintainer whether to use
     implementation.
 13. Re-scope explicitly when evidence changes the plan. Reopen framing review
    when the approved framing changes materially.
-14. Ensure the implementation is preserved in the bound Git commit
-    and the checkout is clean. Obtain normal maintainer authorization before
+14. Ensure each implementation is preserved in its bound Git commit and every
+    checkout is clean. Obtain normal maintainer authorization before
     committing; `wfctl` never commits automatically.
-15. Invoke `verify-project-work` against that exact clean commit. Record its
-    commit under `verification.revision` and the bound worktree under
-    `verification.worktree_id`.
+15. Invoke `verify-project-work` against every exact clean commit. A
+    single-leaf record may use `verification.revision` and
+    `verification.worktree_id`. A multi-repository record must add one
+    `verification.repositories` receipt per repository. Project-only work
+    records `verification.knowledge_reviewed: true` and knowledge checks
+    instead of inventing code receipts.
 16. Decide whether the verified change alters durable current knowledge. If it
     does, invoke `curate-project-knowledge`, list the updated concepts under
     `knowledge_promotion.concepts`, and run
     `wfctl knowledge validate --target <Knowledge root>` using the exact root
     returned by `wfctl work status`. If it does not, set
     `knowledge_promotion.status: not-needed` with a concrete reason.
-17. Present the completion review packet, including the knowledge delta or
-    no-update reason, and record the maintainer's explicit decision under
-    `maintainer_review.completion`.
-18. Run `wfctl work close <id> --outcome completed|partial|abandoned` with the
+17. Present the completion review packet, including the drafted knowledge
+    delta or no-update reason, and record the maintainer's explicit decision
+    under `maintainer_review.completion`. Set `status: completed` only when all
+    non-CLI gates are ready. Stable promoted concepts may now use this active
+    but completion-ready record as their receipt.
+18. For every promoted stable concept, compute and record its current
+    `content_hash`, then run knowledge validation and build.
+19. Run `wfctl work verify <id>`, followed by
+    `wfctl work close <id> --outcome completed|partial|abandoned` with the
     accurate outcome.
 
 Choose `slice` when a complete reviewable path should ship before the full destination. Choose `full` when the task can be completed safely as one unit. Do not force every task into a vertical slice.
@@ -100,8 +115,8 @@ later agent does not propose it as new.
 
 ## Resume after interruption or compaction
 
-1. Run `wfctl work status <id> --target <current-leaf>`.
-2. Confirm the reported `Code root`, `Knowledge root`, and `Spec`.
+1. Run `wfctl work status <id>` from knowledge or a currently bound leaf.
+2. Confirm every reported `Code root`, the `Knowledge root`, and `Spec`.
 3. Read the entire `Spec`, including current state, open questions, ledger,
    progress, verification, and handoff.
 4. Restate the current goal, last completed action, blocking question, and next
@@ -139,17 +154,19 @@ The knowledge repository is a record surface, not the implementation checkout.
 Before the first code edit, after any `cd`, after resuming, and before running
 verification or close:
 
-1. Run `wfctl work status <id> --target <current-leaf>`.
-2. Run `git -C <Code root> rev-parse --show-toplevel`.
-3. Require both paths to match exactly.
-4. Use `Code root` as the working directory for every code read, edit, build,
-   test, and Git command.
+1. Run `wfctl work status <id>` from the current knowledge or leaf checkout.
+2. For each repository you will touch, run
+   `git -C <Code root> rev-parse --show-toplevel`.
+3. Require every path to match its reported root exactly.
+4. Use only those code roots for code reads, edits, builds, tests, and Git
+   commands. Never use the knowledge checkout as a substitute.
 5. Update progress only at the exact `Spec` path returned by the status command.
 
-Do not infer the checkout from repository name, branch, remote, sibling
+Do not infer a checkout from repository name, branch, remote, sibling
 directories, Git common directory, or the location of the spec. A linked
-worktree is a distinct code root. If the pointer, worktree identity, or paths
-disagree, stop before editing and ask the maintainer to resolve the binding.
+worktree is a distinct code root. Branch or worktree changes invalidate the
+binding. Stop before editing and run `wfctl work rebind <id> --target
+<replacement-leaf>` only after the maintainer explicitly accepts that move.
 
 Follow the review protocol in `PROJECT_WORKFLOW.md`. Silence or continued
 conversation is not approval.

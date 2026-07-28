@@ -1,27 +1,13 @@
 ---
-workflow_version: 1
+workflow_version: 2
 id: "{{WORK_ID}}"
 title: "{{TITLE}}"
 mode: "{{MODE}}"
 status: shaping
+scope: leaf
 created_at: "{{CREATED_AT}}"
 updated_at: "{{CREATED_AT}}"
-source:
-  repository: "{{REPOSITORY_ID}}"
-  root: "{{CODE_ROOT}}"
-  checkout: "{{CHECKOUT_NAME}}"
-  branch: "{{BRANCH}}"
-  commit: "{{COMMIT}}"
-  remote: "{{REMOTE}}"
-  dirty: false
-  worktree: false
-  worktreeId: "{{WORKTREE_ID}}"
-workspace:
-  code_root: "{{CODE_ROOT}}"
-  knowledge_root: "{{KNOWLEDGE_ROOT}}"
-  spec_path: "{{SPEC_PATH}}"
-  pointer_path: "{{POINTER_PATH}}"
-  worktree_id: "{{WORKTREE_ID}}"
+repositories: []
 knowledge_alignment:
   reviewed: []
   conflicts: []
@@ -46,8 +32,10 @@ verification:
   result: pending
   revision: ""
   worktree_id: ""
+  repositories: []
   acceptance_reviewed: false
   implementation_reviewed: false
+  knowledge_reviewed: false
   checks: []
   unresolved: []
 ---

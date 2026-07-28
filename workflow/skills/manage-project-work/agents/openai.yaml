@@ -1,4 +1,4 @@
 interface:
   display_name: "Manage Project Work"
-  short_description: "Persist shaping and bind work to one spec"
-  default_prompt: "Use $manage-project-work to create the shaping record early, bind the exact code checkout, and persist material discussion and progress."
+  short_description: "Persist one project, leaf, or multi-repo spec"
+  default_prompt: "Use $manage-project-work to create the central shaping record early, bind every selected checkout without storing local paths in it, and persist material discussion and progress."

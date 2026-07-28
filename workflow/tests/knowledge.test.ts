@@ -7,6 +7,7 @@ import {
   readFile,
   writeFile,
 } from "node:fs/promises";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -19,9 +20,18 @@ import {
   inventoryRaw,
   markIntakeSource,
 } from "../src/intake.js";
-import { validateKnowledge } from "../src/knowledge.js";
+import {
+  hashKnowledgeConcept,
+  validateKnowledge,
+} from "../src/knowledge.js";
 import { writeKnowledgeGraph } from "../src/knowledge-graph.js";
 import { buildInstallPlan } from "../src/planner.js";
+import {
+  beginProjectReconstruction,
+  closeProjectReconstruction,
+  inspectProjectReconstruction,
+} from "../src/reconstruction.js";
+import { addLeafRepository } from "../src/repository-registry.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -87,6 +97,7 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
     claim: "The legacy notes describe a loop.",
     authority: "implementation",
     disposition: "unresolved",
+    reason: "Source verification is still required.",
   }];
   reviewed.metadata.promotion = {
     status: "not-needed",
@@ -118,8 +129,36 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
     id: "legacy-loop-claim",
     claim: "The legacy notes describe a loop.",
     authority: "implementation",
-    disposition: "rejected",
+    disposition: "confirmed",
+    evidence: [],
+    promoted_to: ["knowledge/architecture/legacy-loop.md"],
   }];
+  reviewed.metadata.promotion = {
+    status: "applied",
+    concepts: ["knowledge/architecture/legacy-loop.md"],
+    reason: "",
+    validation: "passed",
+  };
+  await writeFile(started.path, serializeWorkSpec(reviewed), "utf8");
+  assert.ok(
+    (await inspectIntakeCase(target, started.id)).issues.some(
+      (issue) => /confirmed implementation requires pinned source-code evidence/.test(issue),
+    ),
+  );
+
+  reviewed.metadata.candidate_claims = [{
+    id: "legacy-loop-claim",
+    claim: "The legacy notes describe a loop.",
+    authority: "implementation",
+    disposition: "rejected",
+    reason: "Pinned source inspection disproved the raw candidate.",
+  }];
+  reviewed.metadata.promotion = {
+    status: "not-needed",
+    concepts: [],
+    reason: "The candidate was rejected after source verification.",
+    validation: "not-needed",
+  };
   await writeFile(started.path, serializeWorkSpec(reviewed), "utf8");
   assert.deepEqual((await inspectIntakeCase(target, started.id)).issues, []);
 
@@ -139,6 +178,339 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
   );
 });
 
+test("reconstructs a source-first baseline without raw input or durable checkout paths", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-reconstruction-");
+  const leaf = await initializedLeafRepository(
+    "wfctl-reconstruction-leaf-",
+    target,
+  );
+  const started = await beginProjectReconstruction({
+    target,
+    slug: "existing-project",
+    title: "Existing project baseline",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-28T13:00:00.000Z"),
+  });
+  assert.equal(started.mode, "baseline");
+  assert.equal(started.repositories.length, 1);
+  const caseText = await readFile(started.path, "utf8");
+  assert.doesNotMatch(caseText, new RegExp(escapeRegExp(leaf)));
+  const bindingText = await readFile(
+    join(target, ".workflow/current/reconstruction", `${started.id}.json`),
+    "utf8",
+  );
+  assert.match(bindingText, new RegExp(escapeRegExp(leaf)));
+  const initial = await inspectProjectReconstruction(target, started.id);
+  assert.ok(initial.issues.some((issue) => /dossier status must be reviewed/.test(issue)));
+  assert.ok(initial.issues.some((issue) => /baseline reconstruction requires/.test(issue)));
+
+  const repository = started.repositories[0]!;
+  const caseDocument = parseWorkSpec(caseText);
+  caseDocument.metadata.supplemental_inputs = {
+    raw: {
+      status: "not-available",
+      candidate_ids: [],
+      notes: ["No raw material exists; source-first reconstruction remains complete."],
+    },
+    documentation: {
+      status: "not-available",
+      candidate_ids: [],
+      notes: ["No independent project documentation exists."],
+    },
+    change_records: {
+      status: "not-available",
+      candidate_ids: [],
+      notes: ["The project predates the workflow and has no change records."],
+    },
+  };
+  caseDocument.metadata.cross_repository_analysis = {
+    status: "not-relevant",
+    notes: ["Only one leaf repository is in scope."],
+  };
+  caseDocument.metadata.candidate_claims = [
+    {
+      id: "greeting-capability",
+      claim: "The project provides a greeting capability.",
+      claim_class: "product-meaning",
+      intent_state: "accepted",
+      delivery_state: "verified",
+      alignment: "aligned",
+      evidence: [{
+        kind: "source-code",
+        resource: `git:${repository.repository}@${repository.commit}#src/main.ts:greet`,
+      }],
+      disposition: "confirmed",
+      maintainer_decision: {
+        status: "approved",
+        by: "human:test-maintainer",
+        at: "2026-07-28T14:00:00Z",
+      },
+      promoted_to: ["knowledge/areas/core/capabilities/greeting.md"],
+    },
+    {
+      id: "farewell-capability",
+      claim: "The project accepts a farewell capability that is not implemented.",
+      claim_class: "product-intent",
+      intent_state: "accepted",
+      delivery_state: "absent",
+      alignment: "drifted",
+      evidence: [],
+      disposition: "confirmed",
+      maintainer_decision: {
+        status: "approved",
+        by: "human:test-maintainer",
+        at: "2026-07-28T14:00:00Z",
+      },
+      promoted_to: ["knowledge/areas/core/capabilities/farewell.md"],
+    },
+  ];
+  caseDocument.metadata.promotion = {
+    status: "applied",
+    concepts: [
+      "knowledge/areas/core/capabilities/greeting.md",
+      "knowledge/areas/core/capabilities/farewell.md",
+    ],
+    reason: "",
+    validation: "passed",
+  };
+  caseDocument.metadata.coverage_audit = {
+    result: "passed",
+    notes: ["Every dossier dimension and candidate was reconciled."],
+  };
+  caseDocument.metadata.reconciliation_audit = {
+    result: "passed",
+    notes: ["Observed delivery and accepted intent were reviewed independently."],
+  };
+  caseDocument.metadata.maintainer_review = {
+    status: "approved",
+    by: "human:test-maintainer",
+    at: "2026-07-28T14:00:00Z",
+    notes: ["Approved the reconstructed baseline."],
+  };
+  await writeFile(started.path, serializeWorkSpec(caseDocument), "utf8");
+
+  const dossierDocument = parseWorkSpec(await readFile(repository.dossier, "utf8"));
+  dossierDocument.metadata.status = "reviewed";
+  dossierDocument.metadata.graphify_queries = [
+    "Trace project entrypoints, capability flow, and tests.",
+  ];
+  dossierDocument.metadata.candidate_ids = [
+    "greeting-capability",
+    "farewell-capability",
+  ];
+  dossierDocument.metadata.coverage = {
+    purpose: "reviewed",
+    areas_capabilities: "reviewed",
+    entrypoints: "reviewed",
+    boundaries_contracts: "not-relevant",
+    data_state_control_flow: "reviewed",
+    invariants_failure_modes: "reviewed",
+    tests_runtime: "reviewed",
+    unknowns: "reviewed",
+  };
+  dossierDocument.metadata.history = {
+    status: "reviewed",
+    notes: ["Reviewed the complete local Git history."],
+  };
+  dossierDocument.body = `# Repository role
+
+The repository exports one greeting capability.
+
+# Evidence
+
+The capability is implemented and tested at the pinned revision.
+`;
+  await writeFile(repository.dossier, serializeWorkSpec(dossierDocument), "utf8");
+  dossierDocument.metadata.candidate_ids = ["greeting-capability"];
+  await writeFile(repository.dossier, serializeWorkSpec(dossierDocument), "utf8");
+  assert.ok(
+    (await inspectProjectReconstruction(target, started.id)).issues.some(
+      (issue) => /candidate farewell-capability is not linked/.test(issue),
+    ),
+  );
+  dossierDocument.metadata.candidate_ids = [
+    "greeting-capability",
+    "farewell-capability",
+  ];
+  await writeFile(repository.dossier, serializeWorkSpec(dossierDocument), "utf8");
+
+  const capabilityDirectory = join(target, "knowledge/areas/core/capabilities");
+  await mkdir(capabilityDirectory, { recursive: true });
+  await writeFile(
+    join(target, "knowledge/areas/index.md"),
+    "# Areas\n\n- [Core](core/)\n",
+    "utf8",
+  );
+  await writeFile(
+    join(target, "knowledge/areas/core/index.md"),
+    "# Core\n\n- [Capabilities](capabilities/)\n",
+    "utf8",
+  );
+  await writeFile(
+    join(capabilityDirectory, "index.md"),
+    "# Core capabilities\n\n- [Greeting](greeting.md)\n- [Farewell](farewell.md)\n",
+    "utf8",
+  );
+  await writeFile(
+    join(capabilityDirectory, "greeting.md"),
+    `---
+type: Capability
+title: Greeting
+description: Return a greeting for a supplied name.
+status: stable
+area: core
+authority: [product-meaning, implementation]
+generated: { by: workflow-agent/1, at: 2026-07-28T14:00:00Z }
+verified: { by: "human:test-maintainer", at: 2026-07-28T14:00:00Z }
+realization:
+  intent: accepted
+  delivery: verified
+  alignment: aligned
+  assessed_at: 2026-07-28T14:00:00Z
+x-wf:
+  relations: []
+sources:
+  - id: baseline-decision
+    kind: maintainer-decision
+    resource: project-reconstruction:${started.id}#greeting-capability
+    author: "human:test-maintainer"
+  - id: greeting-source
+    kind: source-code
+    resource: git:${repository.repository}@${repository.commit}#src/main.ts:greet
+---
+
+# Current meaning
+
+The project accepts and delivers a greeting capability.[^baseline-decision][^greeting-source]
+
+# Relationships
+
+- [Core Area](../index.md)
+
+[^baseline-decision]: Maintainer-approved reconstruction claim.
+[^greeting-source]: Pinned implementation.
+`,
+    "utf8",
+  );
+  await writeFile(
+    join(capabilityDirectory, "farewell.md"),
+    `---
+type: Capability
+title: Farewell
+description: Return a farewell for a supplied name.
+status: stable
+area: core
+authority: [intent, implementation]
+generated: { by: workflow-agent/1, at: 2026-07-28T14:00:00Z }
+verified: { by: "human:test-maintainer", at: 2026-07-28T14:00:00Z }
+realization:
+  intent: accepted
+  delivery: absent
+  alignment: drifted
+  assessed_at: 2026-07-28T14:00:00Z
+x-wf:
+  relations: []
+sources:
+  - id: farewell-decision
+    kind: maintainer-decision
+    resource: project-reconstruction:${started.id}#farewell-capability
+    author: "human:test-maintainer"
+  - id: farewell-coverage
+    kind: reconstruction-review
+    resource: project-reconstruction:${started.id}#farewell-capability
+---
+
+# Current meaning
+
+The project accepts a farewell capability, but the reviewed source baseline
+contains no implementation.[^farewell-decision][^farewell-coverage]
+
+# Relationships
+
+- [Core Area](../index.md)
+
+[^farewell-decision]: Maintainer-approved product intent.
+[^farewell-coverage]: Reviewed whole-scope reconstruction receipt.
+`,
+    "utf8",
+  );
+  await sealConcept(
+    target,
+    "knowledge/areas/core/capabilities/greeting.md",
+  );
+  await sealConcept(
+    target,
+    "knowledge/areas/core/capabilities/farewell.md",
+  );
+
+  const ready = await inspectProjectReconstruction(target, started.id);
+  assert.deepEqual(ready.issues, []);
+  const closed = await closeProjectReconstruction({
+    target,
+    id: started.id,
+    outcome: "completed",
+    now: new Date("2026-07-28T14:10:00.000Z"),
+  });
+  await access(join(closed.archivePath, "case.md"));
+  await assert.rejects(access(started.path));
+  await assert.rejects(
+    access(join(target, ".workflow/current/reconstruction", `${started.id}.json`)),
+  );
+  assert.equal((await validateKnowledge(target)).valid, true);
+  const capabilityPath = join(capabilityDirectory, "greeting.md");
+  await writeFile(
+    capabilityPath,
+    (await readFile(capabilityPath, "utf8")).replace(
+      "intent: accepted",
+      "intent: proposed",
+    ),
+    "utf8",
+  );
+  const proposedCurrentTruth = await validateKnowledge(target, [
+    "knowledge/areas/core/capabilities/greeting.md",
+  ]);
+  assert.ok(proposedCurrentTruth.errors.some((issue) =>
+    /realization.intent must be accepted, superseded/.test(issue.message)
+  ));
+});
+
+test("reconstruction detects bound leaf drift and local path leakage", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-reconstruction-drift-");
+  const leaf = await initializedLeafRepository(
+    "wfctl-reconstruction-drift-leaf-",
+    target,
+  );
+  const started = await beginProjectReconstruction({
+    target,
+    slug: "drift",
+    title: "Drift audit",
+    mode: "audit",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-28T15:00:00.000Z"),
+  });
+  await writeFile(
+    started.repositories[0]!.dossier,
+    `${await readFile(started.repositories[0]!.dossier, "utf8")}\nLocal path: ${leaf}\n`,
+    "utf8",
+  );
+  await writeFile(join(leaf, "src/main.ts"), "export const changed = true;\n", "utf8");
+  const result = await inspectProjectReconstruction(target, started.id);
+  assert.ok(result.issues.some((issue) => /uncommitted changes/.test(issue)));
+  assert.ok(result.issues.some((issue) => /absolute paths|checkout path/.test(issue)));
+
+  const closed = await closeProjectReconstruction({
+    target,
+    id: started.id,
+    outcome: "partial",
+    now: new Date("2026-07-28T15:10:00.000Z"),
+  });
+  await access(join(closed.archivePath, "case.md"));
+});
+
 test("validates the strict curated knowledge trust profile", async () => {
   const target = await initializedKnowledgeRepository("wfctl-knowledge-validation-");
   const conceptPath = join(target, "knowledge/decisions/current-loop.md");
@@ -148,28 +520,10 @@ test("validates the strict curated knowledge trust profile", async () => {
   );
   await writeFile(
     join(target, "changes/archive/2026-07-28-world-loop/change.md"),
-    `---
-id: 2026-07-28-world-loop
-status: completed
-outcome: completed
-maintainer_review:
-  framing:
-    status: approved
-    by: human:test-maintainer
-    at: 2026-07-28T11:00:00Z
-  completion:
-    status: approved
-    by: human:test-maintainer
-    at: 2026-07-28T12:00:00Z
-verification:
-  result: passed
----
-
-Reviewed project change.
-`,
+    completedProjectChange("2026-07-28-world-loop"),
     "utf8",
   );
-  const validContent = `---
+  let validContent = `---
 type: Architecture Decision
 title: Current loop authority
 status: stable
@@ -196,6 +550,8 @@ The world loop is server-authoritative.[^loop-decision]
 [^loop-decision]: Reviewed world-loop decision.
 `;
   await writeFile(conceptPath, validContent, "utf8");
+  await sealConcept(target, "knowledge/decisions/current-loop.md");
+  validContent = await readFile(conceptPath, "utf8");
   await writeFile(
     join(target, "knowledge/decisions/index.md"),
     "# Cross-area Decisions\n\n- [Current loop authority](current-loop.md)\n",
@@ -204,6 +560,17 @@ The world loop is server-authoritative.[^loop-decision]
 
   const valid = await validateKnowledge(target);
   assert.equal(valid.valid, true);
+  await writeFile(
+    conceptPath,
+    validContent.replace(
+      "The world loop is server-authoritative.",
+      "The world loop is client-authoritative.",
+    ),
+    "utf8",
+  );
+  const tampered = await validateKnowledge(target);
+  assert.ok(tampered.errors.some((issue) => /current content hash/.test(issue.message)));
+  await writeFile(conceptPath, validContent, "utf8");
   const built = await writeKnowledgeGraph(target);
   assert.equal(built.graph.stats.concepts, 1);
   assert.ok(built.graph.edges.some((edge) =>
@@ -223,9 +590,14 @@ The world loop is server-authoritative.[^loop-decision]
     "utf8",
   );
   const taintedChange = await validateKnowledge(target);
-  assert.ok(taintedChange.errors.some((issue) =>
-    /project change that cites raw or intake/.test(issue.message)
-  ));
+  assert.ok(
+    taintedChange.errors.some((issue) =>
+      /project change that cites raw or intake|completed, human-reviewed archived change/.test(
+        issue.message,
+      )
+    ),
+    JSON.stringify(taintedChange.errors),
+  );
   await writeFile(archivedPath, archivedContent, "utf8");
 
   await writeFile(
@@ -240,14 +612,12 @@ The world loop is server-authoritative.[^loop-decision]
   assert.equal(invalid.valid, false);
   assert.ok(invalid.errors.some((issue) => /must not reference raw\/ or intake/.test(issue.message)));
 
-  await writeFile(
-    conceptPath,
-    validContent.replace(
-      "generated: { by: workflow-agent/1, at: 2026-07-28T12:00:00Z }",
-      "generated: { by: workflow-agent/1, at: 2026-07-28T13:00:00Z }",
-    ),
-    "utf8",
-  );
+  const staleDocument = parseWorkSpec(validContent);
+  staleDocument.metadata.generated = {
+    by: "workflow-agent/1",
+    at: "2026-07-28T13:00:00Z",
+  };
+  await writeFile(conceptPath, serializeWorkSpec(staleDocument), "utf8");
   const stale = await validateKnowledge(target);
   assert.ok(stale.errors.some((issue) => /verification at or after generated/.test(issue.message)));
 
@@ -313,7 +683,7 @@ The reviewed change established the recorded history.[^archived-loop][^loop-comm
   );
   const partialHistory = await validateKnowledge(target);
   assert.ok(partialHistory.errors.some((issue) =>
-    /completed, human-reviewed archived change/.test(issue.message)
+    /completed, human-reviewed archived change|archived project change/.test(issue.message)
   ));
 });
 
@@ -361,24 +731,67 @@ test("runs a bounded legacy reconciliation case lifecycle", async () => {
   await assert.rejects(access(started.path));
 });
 
+test("does not authorize stable knowledge from an incomplete active change", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-incomplete-receipt-");
+  const changeId = "2026-07-28-incomplete";
+  const changeDirectory = join(target, "changes/active", changeId);
+  await mkdir(changeDirectory, { recursive: true });
+  const change = parseWorkSpec(completedProjectChange(changeId));
+  change.metadata.status = "shaping";
+  (change.metadata.verification as Record<string, unknown>).result = "pending";
+  await writeFile(
+    join(changeDirectory, "change.md"),
+    serializeWorkSpec(change),
+    "utf8",
+  );
+  const conceptPath = "knowledge/decisions/incomplete.md";
+  await writeFile(
+    join(target, conceptPath),
+    `---
+type: Decision
+title: Incomplete decision
+status: stable
+decision_id: incomplete-decision
+effective_at: 2026-07-28T11:00:00Z
+supersedes: []
+superseded_by: ""
+authority: [decision]
+generated: { by: workflow-agent/1, at: 2026-07-28T11:00:00Z }
+verified: { by: "human:test-maintainer", at: 2026-07-28T11:00:00Z }
+x-wf:
+  relations: []
+sources:
+  - id: incomplete-source
+    kind: maintainer-decision
+    resource: project-change:${changeId}#decision
+    author: "human:test-maintainer"
+---
+
+# Decision
+
+This decision must not become stable yet.[^incomplete-source]
+
+[^incomplete-source]: Incomplete active change.
+`,
+    "utf8",
+  );
+  await writeFile(
+    join(target, "knowledge/decisions/index.md"),
+    "# Cross-area Decisions\n\n- [Incomplete decision](incomplete.md)\n",
+    "utf8",
+  );
+  await sealConcept(target, conceptPath);
+  const validation = await validateKnowledge(target);
+  assert.ok(validation.errors.some((issue) => /missing project change/.test(issue.message)));
+});
+
 test("validates reciprocal acyclic decision evolution", async () => {
   const target = await initializedKnowledgeRepository("wfctl-decision-lineage-");
   const changeId = "2026-07-28-revival-rule";
   await mkdir(join(target, "changes/archive", changeId), { recursive: true });
   await writeFile(
     join(target, "changes/archive", changeId, "change.md"),
-    `---
-id: ${changeId}
-status: completed
-outcome: completed
-maintainer_review:
-  framing: { status: approved, by: "human:test-maintainer", at: 2026-07-28T10:00:00Z }
-  completion: { status: approved, by: "human:test-maintainer", at: 2026-07-28T11:00:00Z }
-verification: { result: passed }
----
-
-Reviewed revival rule.
-`,
+    completedProjectChange(changeId),
     "utf8",
   );
   const decisions = join(target, "knowledge/areas/combat/decisions");
@@ -449,6 +862,8 @@ ${supersededBy ? `- [Successor](${supersededBy})` : ""}
     decision("item-revival", "Item revival", "stable", [oldPath], ""),
     "utf8",
   );
+  await sealConcept(target, oldPath);
+  await sealConcept(target, currentPath);
   assert.equal((await validateKnowledge(target)).valid, true);
 
   await writeFile(
@@ -456,6 +871,7 @@ ${supersededBy ? `- [Successor](${supersededBy})` : ""}
     decision("item-revival", "Item revival", "stable", [], ""),
     "utf8",
   );
+  await sealConcept(target, currentPath);
   const nonReciprocal = await validateKnowledge(target);
   assert.ok(nonReciprocal.errors.some((issue) => /reciprocally list/.test(issue.message)));
 
@@ -469,6 +885,8 @@ ${supersededBy ? `- [Successor](${supersededBy})` : ""}
     decision("item-revival", "Item revival", "deprecated", [oldPath], oldPath),
     "utf8",
   );
+  await sealConcept(target, oldPath);
+  await sealConcept(target, currentPath);
   const cyclic = await validateKnowledge(target);
   assert.ok(cyclic.errors.some((issue) => /contains a cycle/.test(issue.message)));
 });
@@ -576,7 +994,122 @@ async function initializedKnowledgeRepository(prefix: string): Promise<string> {
   return target;
 }
 
+async function initializedLeafRepository(
+  prefix: string,
+  knowledge: string,
+): Promise<string> {
+  const target = await mkdtemp(join(tmpdir(), prefix));
+  execFileSync("git", ["-C", target, "init", "-q"]);
+  execFileSync("git", ["-C", target, "config", "user.name", "wfctl tests"]);
+  execFileSync("git", ["-C", target, "config", "user.email", "wfctl@example.invalid"]);
+  execFileSync("git", ["-C", target, "config", "commit.gpgsign", "false"]);
+  await mkdir(join(target, "src"), { recursive: true });
+  await writeFile(
+    join(target, "src/main.ts"),
+    "export function greet(name: string): string { return `Hello ${name}`; }\n",
+    "utf8",
+  );
+  await applyInstallPlan(await buildInstallPlan({
+    target,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+  commitAll(target, "initialize leaf");
+  await addLeafRepository(knowledge, target);
+  return target;
+}
+
+function graphifyFixtureRunner(
+  command: string,
+  args: string[],
+  options: { cwd?: string } = {},
+) {
+  if (command !== "graphify" || args.join(" ") !== "update ." || !options.cwd) {
+    return { status: 1, stdout: "", stderr: "unexpected fixture command" };
+  }
+  const graphDirectory = join(options.cwd, "graphify-out");
+  mkdirSync(graphDirectory, { recursive: true });
+  writeFileSync(
+    join(graphDirectory, "graph.json"),
+    '{"nodes":[{"id":"greet","label":"greet"}],"links":[]}\n',
+    "utf8",
+  );
+  return { status: 0, stdout: "updated", stderr: "" };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function commitAll(target: string, message: string): void {
   execFileSync("git", ["-C", target, "add", "."]);
   execFileSync("git", ["-C", target, "commit", "-q", "-m", message]);
+}
+
+async function sealConcept(target: string, relativePath: string): Promise<void> {
+  const absolute = join(target, relativePath);
+  const document = parseWorkSpec(await readFile(absolute, "utf8"));
+  const verified = (
+    typeof document.metadata.verified === "object"
+    && document.metadata.verified !== null
+    && !Array.isArray(document.metadata.verified)
+  )
+    ? document.metadata.verified as Record<string, unknown>
+    : {};
+  document.metadata.verified = {
+    ...verified,
+    content_hash: "0".repeat(64),
+  };
+  await writeFile(absolute, serializeWorkSpec(document), "utf8");
+  const sealed = parseWorkSpec(await readFile(absolute, "utf8"));
+  (sealed.metadata.verified as Record<string, unknown>).content_hash =
+    (await hashKnowledgeConcept(target, relativePath)).contentHash;
+  await writeFile(absolute, serializeWorkSpec(sealed), "utf8");
+}
+
+function completedProjectChange(id: string): string {
+  return `---
+workflow_version: 2
+id: ${id}
+scope: project
+status: completed
+outcome: completed
+knowledge_alignment:
+  reviewed: [knowledge/index.md]
+  conflicts: []
+graph_evidence:
+  queries: []
+knowledge_promotion:
+  status: not-needed
+  concepts: []
+  reason: The reviewed decision is already represented by the promoted concept.
+maintainer_review:
+  framing:
+    status: approved
+    by: human:test-maintainer
+    at: 2026-07-28T10:00:00Z
+  completion:
+    status: approved
+    by: human:test-maintainer
+    at: 2026-07-28T11:00:00Z
+verification:
+  result: passed
+  acceptance_reviewed: true
+  implementation_reviewed: false
+  knowledge_reviewed: true
+  checks:
+    - command: wfctl knowledge validate
+      result: passed
+  unresolved: []
+---
+
+# Intent
+
+Reviewed project decision.
+
+# Acceptance
+
+- [x] Maintainer review is recorded.
+`;
 }

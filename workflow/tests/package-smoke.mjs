@@ -34,6 +34,7 @@ try {
 
   const packaged = join(sandbox, "package");
   assert.equal(existsSync(join(packaged, "GETTING_STARTED.md")), true);
+  assert.equal(existsSync(join(packaged, "LICENSE")), true);
   assert.equal(existsSync(join(packaged, "skills/manage-project-work/SKILL.md")), true);
   assert.equal(
     existsSync(join(packaged, "skills/operate-project-knowledge/SKILL.md")),
@@ -41,6 +42,10 @@ try {
   );
   assert.equal(
     existsSync(join(packaged, "skills/process-raw-intake/SKILL.md")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "skills/reconstruct-project-knowledge/SKILL.md")),
     true,
   );
   assert.equal(existsSync(join(packaged, "rules/leaf/workflow-routing.md")), true);
@@ -54,12 +59,27 @@ try {
     { encoding: "utf8" },
   );
   assert.equal(mainHelp.status, 0, mainHelp.stderr || mainHelp.stdout);
+  assert.match(
+    stripAnsi(mainHelp.stdout),
+    /Maintainers normally use init; installed agents own the remaining commands/,
+  );
   assert.match(stripAnsi(mainHelp.stdout), /init\s+\[knowledge\|leaf\]/);
   assert.match(stripAnsi(mainHelp.stdout), /Maintenance:/);
   assert.match(stripAnsi(mainHelp.stdout), /Knowledge operations:/);
   assert.doesNotMatch(stripAnsi(mainHelp.stdout), /^\s+plan\s/m);
   assert.doesNotMatch(stripAnsi(mainHelp.stdout), /^\s+apply\s/m);
   assert.doesNotMatch(stripAnsi(mainHelp.stdout), /^\s+sync\s/m);
+
+  const sourcesHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "knowledge", "sources", "--help"],
+    { encoding: "utf8" },
+  );
+  assert.equal(sourcesHelp.status, 0, sourcesHelp.stderr || sourcesHelp.stdout);
+  assert.match(stripAnsi(sourcesHelp.stdout), /^\s+add\s/m);
+  assert.match(stripAnsi(sourcesHelp.stdout), /^\s+select\s/m);
+  assert.match(stripAnsi(sourcesHelp.stdout), /^\s+list\s/m);
+  assert.doesNotMatch(stripAnsi(sourcesHelp.stdout), /^\s+connect\s/m);
 
   const initHelp = spawnSync(
     "node",
@@ -139,6 +159,7 @@ try {
   assert.equal(existsSync(join(target, "changes/active")), true);
   assert.equal(existsSync(join(target, "changes/inbox")), true);
   assert.equal(existsSync(join(target, "intake/cases/active")), true);
+  assert.equal(existsSync(join(target, "reconstruction/active")), true);
   assert.equal(
     existsSync(join(target, ".workflow/current/knowledge-graph.json")),
     true,
@@ -151,6 +172,7 @@ try {
   );
   assert.equal(knowledgeHelp.status, 0, knowledgeHelp.stderr || knowledgeHelp.stdout);
   assert.match(stripAnsi(knowledgeHelp.stdout), /^\s+build\s/m);
+  assert.match(stripAnsi(knowledgeHelp.stdout), /^\s+reconstruct\s/m);
   assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+scan\s/m);
   assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+mark\s/m);
   assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+coverage\s/m);

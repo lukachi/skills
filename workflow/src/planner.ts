@@ -33,6 +33,8 @@ const KNOWLEDGE_DIRECTORIES = [
   "raw",
   "intake/cases/active",
   "intake/cases/archive",
+  "reconstruction/active",
+  "reconstruction/archive",
   "changes/active",
   "changes/archive",
   "changes/inbox",
@@ -45,9 +47,13 @@ const COMMON_SKILLS = [
 
 const PROFILE_SKILLS: Record<PlanOptions["profile"], string[]> = {
   knowledge: [
+    "align-project-knowledge",
     "curate-project-knowledge",
+    "manage-project-work",
     "operate-project-knowledge",
     "process-raw-intake",
+    "reconstruct-project-knowledge",
+    "verify-project-work",
   ],
   leaf: [
     "align-project-knowledge",
@@ -102,11 +108,27 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
         state,
       ),
     );
+    operations.push(await planRepositoryRegistry(target));
   }
 
   operations.push(await planConfig(target, config));
   if (options.profile === "leaf") {
     operations.push(await planLeafGitignore(target));
+    operations.push(await planManagedBlock(
+      target,
+      ".graphifyignore",
+      [
+        ".agents/",
+        ".claude/",
+        ".workflow/",
+        "graphify-out/",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "PROJECT_WORKFLOW.md",
+        "skills-lock.json",
+      ].join("\n"),
+      GITIGNORE_MARKERS,
+    ));
   }
 
   const instructions = await renderAgentInstructions(
@@ -155,6 +177,17 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
     });
   }
 
+  const desiredOwnedPaths = new Set(
+    operations
+      .filter((operation) => operation.track)
+      .map((operation) => operation.path),
+  );
+  for (const [path, installed] of Object.entries(state?.files ?? {})) {
+    if (!desiredOwnedPaths.has(path)) {
+      operations.push(await planObsoleteOwnedFile(target, path, installed.sha256));
+    }
+  }
+
   return {
     target,
     profile: options.profile,
@@ -165,7 +198,7 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
 
 export function summarizePlan(plan: InstallPlan): Record<string, unknown> {
   const counts = Object.fromEntries(
-    ["create", "update", "unchanged", "conflict"].map((status) => [
+    ["create", "update", "delete", "unchanged", "conflict"].map((status) => [
       status,
       plan.operations.filter((operation) => operation.status === status).length,
     ]),
@@ -242,6 +275,50 @@ async function planConfig(target: string, desired: WorkflowConfig): Promise<Plan
       status: "create",
       reason: "workflow configuration is absent",
       content,
+    };
+  }
+}
+
+async function planRepositoryRegistry(target: string): Promise<PlanOperation> {
+  const relativePath = ".workflow/repositories.json";
+  const absolute = join(target, relativePath);
+  const empty = `${JSON.stringify({ schemaVersion: 1, repositories: [] }, null, 2)}\n`;
+  try {
+    const existing = await readFile(absolute, "utf8");
+    const value = JSON.parse(existing) as {
+      schemaVersion?: unknown;
+      repositories?: unknown;
+    };
+    if (value.schemaVersion !== 1 || !Array.isArray(value.repositories)) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "conflict",
+        reason: "repository registry has an unsupported shape",
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath,
+      status: "unchanged",
+      reason: "dynamic repository registry is valid",
+      content: existing,
+    };
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "create",
+        reason: "repository registry is absent",
+        content: empty,
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath,
+      status: "conflict",
+      reason: `cannot inspect repository registry: ${errorMessage(error)}`,
     };
   }
 }
@@ -526,12 +603,73 @@ async function planOwnedFile(
   }
 }
 
+async function planObsoleteOwnedFile(
+  target: string,
+  relativePath: string,
+  installedHash: string,
+): Promise<PlanOperation> {
+  const absolute = join(target, relativePath);
+  try {
+    const stat = await lstat(absolute);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      return {
+        kind: "delete",
+        path: relativePath,
+        status: "conflict",
+        reason: "obsolete owned path is no longer a regular file",
+      };
+    }
+    const currentHash = hashContent(await readFile(absolute));
+    if (currentHash !== installedHash) {
+      return {
+        kind: "delete",
+        path: relativePath,
+        status: "conflict",
+        reason: "obsolete owned file was locally modified",
+        expectedHash: currentHash,
+        replaceable: true,
+        backup: true,
+      };
+    }
+    return {
+      kind: "delete",
+      path: relativePath,
+      status: "delete",
+      reason: "file was owned by the previous workflow version and is no longer distributed",
+      expectedHash: currentHash,
+      backup: true,
+    };
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return {
+        kind: "delete",
+        path: relativePath,
+        status: "unchanged",
+        reason: "obsolete owned file is already absent",
+      };
+    }
+    return {
+      kind: "delete",
+      path: relativePath,
+      status: "conflict",
+      reason: `cannot inspect obsolete owned file: ${errorMessage(error)}`,
+    };
+  }
+}
+
 export function skillsForProfile(profile: PlanOptions["profile"]): string[] {
   return [...workflowSkillsForProfile(profile), "qmd"].sort();
 }
 
 export function workflowSkillsForProfile(profile: PlanOptions["profile"]): string[] {
   return [...COMMON_SKILLS, ...PROFILE_SKILLS[profile]].sort();
+}
+
+export function allWorkflowSkills(): string[] {
+  return [...new Set([
+    ...COMMON_SKILLS,
+    ...Object.values(PROFILE_SKILLS).flat(),
+  ])].sort();
 }
 
 function renderQmdConfig(target: string): string {
@@ -550,7 +688,8 @@ function renderQmdConfig(target: string): string {
   return stringify({
     global_context:
       "Project knowledge retrieval. Curated knowledge is the only default truth surface. "
-      + "Changes are qualified records. Intake and raw are untrusted investigation inputs.",
+      + "Changes and reconstruction are qualified opt-in records. "
+      + "Intake and raw are untrusted investigation inputs.",
     collections: {
       knowledge: collection(
         "knowledge",
@@ -569,6 +708,12 @@ function renderQmdConfig(target: string): string {
         "**/*.md",
         false,
         "Operational raw-intake cases. Never treat these records as evidence.",
+      ),
+      reconstruction: collection(
+        "reconstruction",
+        "**/*.md",
+        false,
+        "Reviewed source-first project baselines and audits. Use only when tracing reconstruction evidence and adjudication.",
       ),
       raw: collection(
         "raw",
@@ -596,6 +741,7 @@ function sortOperations(operations: PlanOperation[]): PlanOperation[] {
     file: 1,
     "managed-block": 2,
     symlink: 3,
+    delete: 4,
   };
   return operations.sort((left, right) =>
     kindOrder[left.kind] - kindOrder[right.kind] || left.path.localeCompare(right.path)

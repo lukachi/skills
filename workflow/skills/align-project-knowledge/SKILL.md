@@ -12,9 +12,9 @@ Do not design from code and memory alone. Establish the project's current intent
 1. Read `.workflow/config.json` and resolve the configured knowledge repository.
 2. Inspect the current session skill catalog and require the official native
    `qmd` skill. Invoke it before retrieval. If it is absent, stop and ask to
-   run `wfctl upgrade` or reinstall the selected project/user skills, then
-   restart the agent session. An on-disk file alone does not prove the running
-   agent loaded it.
+   invoke `setup-workflow-environment` to repair or reinstall the selected
+   project/user skills, then ask only for the unavoidable agent-session
+   restart. An on-disk file alone does not prove the running agent loaded it.
 3. Run QMD from that knowledge root. Require `qmd status`; if QMD or the
    project-local `.qmd/index.yml` is missing, stop and report the broken
    workflow environment.
@@ -41,7 +41,10 @@ Do not design from code and memory alone. Establish the project's current intent
    - current and superseded decisions,
    - repository responsibilities,
    - recorded uncertainties.
-8. Inspect `status`, `generated`, `verified`, `stale_after`, and `sources` before treating a concept as authoritative.
+8. Inspect `status`, `generated`, `verified.content_hash`, `stale_after`, and
+   `sources` before treating a concept as authoritative. `wfctl knowledge
+   validate` must prove that at least one verification matches the current
+   material content.
 9. Follow links to predecessor decisions and supporting sources when the proposed work depends on them.
 10. Compare the proposed behavior with both code evidence and curated intent.
 11. Treat only `knowledge/` as the default current-knowledge surface. Do not
@@ -59,8 +62,9 @@ spec's repository as the implementation checkout.
 - `raw/` is neither evidence nor current truth. It is an untrusted clue source
   used only through `process-raw-intake`.
 - A later timestamp does not automatically make a source authoritative.
-- `status: stable` means ready for consumption, not human-reviewed.
-- A human verification predating a meaningful content update does not prove the
-  update was reviewed.
+- `status: stable` is valid only with a matching current content hash; normative
+  claims additionally require human verification.
+- A timestamp without a matching content hash does not prove the current text
+  was reviewed.
 - When sources or code disagree and the correct intent cannot be established, ask the maintainer.
 - Preserve unresolved uncertainty explicitly. Do not create a spec that silently selects one interpretation.

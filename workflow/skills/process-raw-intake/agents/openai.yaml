@@ -1,4 +1,4 @@
 interface:
   display_name: "Process Raw Intake"
   short_description: "Review Git-frozen raw input with QMD"
-  default_prompt: "Use $process-raw-intake to inventory and adjudicate continuous raw input without treating it as truth."
+  default_prompt: "Use $process-raw-intake to operate the intake tools yourself, propose human-readable batches, and adjudicate continuous raw input without treating it as truth."

@@ -26,6 +26,54 @@ new workflow, Graphify gate, and official QMD skill. Lexical knowledge search
 is ready after initialization; semantic search is optional setup that may
 download roughly 2 GB of local models.
 
+## The complete user-facing model
+
+Manual CLI use normally ends after initializing the knowledge repository and
+its leaf repositories. From then on, speak to the agent:
+
+- “Process the new raw material.”
+- “Reconstruct the project knowledge baseline.”
+- “Explain how this Area currently works.”
+- “Implement this change.”
+- “Check or upgrade the workflow environment.”
+
+The agent owns every supporting command, query, case, ID, spec path, registry
+operation, and validation step. It asks you only for meaningful choices,
+authority, approvals, missing paths, or external-state permission. A command
+is shown to you only for explicit automation, troubleshooting, or when the
+agent cannot execute it.
+
+### If the project already exists
+
+Do not ask the agent to infer the project from old notes. After leaf setup,
+open the agent in the knowledge repository and ask:
+
+> Reconstruct the project knowledge baseline from all linked source repositories.
+
+The agent binds one clean checkout per repository, analyzes each through
+Graphify and direct source, reviews available Git history, and treats existing
+docs, change records, and raw dumps as optional separate inputs. It then shows
+you:
+
+- accepted product intent;
+- observed implementation and delivery gaps;
+- alignment or drift between them;
+- reconstructed history with explicit confidence limits;
+- unknowns that require your decision;
+- the proposed human reading path through Areas and capabilities.
+
+You approve or correct that baseline before it becomes curated current
+knowledge. Source code does not automatically become product intent, and raw
+material never becomes evidence.
+
+Leaf initialization registers each repository and remembers that exact
+worktree. It does not make the worktree active for reconstruction. You do not
+need to manage that registry. When you ask for reconstruction, the agent uses
+an existing valid selection, selects the only available candidate after
+announcing it, or asks one focused question when several worktrees are valid.
+It then performs the selection itself. Adding another worktree later never
+switches an existing selection silently.
+
 ## Your normal working day
 
 Start by describing the desired outcome:
@@ -73,7 +121,8 @@ Open an agent in the knowledge repository when the job is about shared project
 understanding rather than implementing code in one leaf repository.
 The installed `operate-project-knowledge` skill is the default entry point: it
 recognizes the common request and routes raw intake, code verification, or
-semantic promotion to the stricter specialized skill when needed.
+source-first reconstruction, or semantic promotion to the stricter specialized
+skill when needed.
 It also keeps a disposable relationship graph current: QMD finds likely
 documents, the graph follows explicit reviewed links, and the agent reads the
 actual Markdown before answering. You do not maintain this graph manually.
@@ -83,6 +132,8 @@ actual Markdown before answering. You do not maintain this graph manually.
 | Understand current truth | “Explain the current account-recovery model.” | Reads curated knowledge, follows Areas and current decisions, and gives a human-facing summary. |
 | Explore decision history | “Show how the recovery policy changed and why.” | Follows the current decision lineage, predecessors, Area Evolution, and local log. |
 | Process new material | “Process the new raw material.” | Inventories new blobs, proposes bounded batches, extracts candidate claims, and verifies them. |
+| Build an existing-project baseline | “Reconstruct project knowledge from these leaf repositories.” | Binds exact clean worktrees, builds repository dossiers, reconciles intent with delivery, and asks you to adjudicate gaps. |
+| Discuss a product or architecture direction | “Let’s decide how account recovery should work.” | Starts a project-only living spec before extended discussion, keeps every material turn, and binds no code checkout until implementation is in scope. |
 | Resolve old contradictions | “Reconcile the conflicting notes about session ownership.” | Builds an evidence packet from raw candidates, code, history, and maintainer authority. |
 | Audit knowledge health | “Find stale, missing, duplicated, or contradictory knowledge.” | Reviews Areas, provenance, verification, links, decision lineages, and code-backed claims. |
 | Improve navigation | “Organize the economy Area so a newcomer can understand it.” | Repairs Area indexes and links without inventing new truth. |
@@ -95,16 +146,14 @@ knowledge repository. When the requested outcome requires code, move the task
 to the appropriate leaf repository and let its agent create the bound shaping
 record.
 
-### Current knowledge-only work limitation
+### Project-only and multi-repository work
 
-The current CLI cannot create a living significant-work record that is bound
-only to the knowledge repository. `wfctl work start` requires a leaf checkout.
-
-You may still explore ideas and compare alternatives with the knowledge agent,
-but a new authoritative product or architecture decision must continue through
-the most relevant leaf workflow before promotion. If no leaf owner exists,
-capture the discussion in `raw/` and keep it untrusted or unresolved until a
-project-level work mode exists. Do not publish it directly as stable knowledge.
+The knowledge agent automatically starts a project-only living record for
+significant product or architecture discussion. It has no code root and cannot
+be mistaken for an implementation task. When one outcome spans several
+repositories, the agent binds the relevant exact worktrees to the same spec.
+Each repository receives its own final verification receipt. You describe the
+scope; the agent owns the binding mechanics.
 
 ## Find your way through project knowledge
 
@@ -232,9 +281,10 @@ promotes only confirmed knowledge.
 | Product intent is unknown | Decide it or explicitly defer it. The agent must not guess. |
 | Code and knowledge disagree | Review the conflict packet and identify whether implementation or recorded intent is stale. |
 | The session was compacted or interrupted | Ask to resume. The agent restores the task from `wfctl work status` and the complete living record, not chat memory. |
-| You switched worktrees | Tell the agent. It rechecks the exact code-root/spec binding before editing. |
+| You switched worktrees or branches | Tell the agent. Work stops until you explicitly accept `wfctl work rebind` to the replacement checkout. |
 | Work cannot be completed | Accept an honest `partial` or `abandoned` outcome rather than a false completion claim. |
 | New raw files appeared | Ask the agent to process raw; do not choose files blindly unless you already know the desired batch. |
+| The workflow joined an existing project | Ask the knowledge agent for a source-first baseline; treat raw and old docs as optional clues. |
 | The workflow itself has an update | Ask the agent to preview and apply `wfctl upgrade`, resolving conflicts before replacement. |
 
 ## Your responsibilities
@@ -252,6 +302,7 @@ maintenance, verification, and knowledge promotion.
 
 ## Current boundary
 
-One active work record is currently bound to one leaf checkout. For a change
-spanning several repositories, tell the agent at the start so repository
-boundaries and coordination are recorded explicitly.
+One active work record may be project-only, single-leaf, or multi-repository.
+It always has one central spec. Absolute checkout paths remain local ignored
+bindings; durable records preserve repository, branch, worktree, and revision
+identity without leaking machine paths.

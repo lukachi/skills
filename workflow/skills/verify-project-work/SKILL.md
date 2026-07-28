@@ -1,6 +1,6 @@
 ---
 name: verify-project-work
-description: Verify significant project work against its central living specification and code from the bound checkout or worktree without hiding gaps. Use before claiming a feature, fix, refactor, migration, slice, or other significant task is complete; before closing a completed work record; or when auditing whether a prior implementation actually satisfies its spec.
+description: Verify significant project work against its central living specification and every bound checkout or worktree without hiding gaps. Use before claiming a feature, fix, refactor, migration, slice, multi-repository change, product decision, or other significant task is complete; before closing a completed work record; or when auditing whether implementation and knowledge actually satisfy its spec.
 ---
 
 # Verify Project Work
@@ -13,11 +13,12 @@ operate `wfctl` or edit verification fields.
 
 ## Bind the verification workspace
 
-Run `wfctl work status <id>` before reading implementation evidence. Use the
-returned `Code root` for every code inspection and executable check, and the
-returned `Spec` for specification reconciliation. Stop if status reports a
-checkout, worktree, pointer, or spec mismatch. Never verify code from the
-knowledge repository or a sibling checkout.
+Run `wfctl work status <id>` before reading implementation evidence. Use every
+returned `Code root` for that repository's code inspection and executable
+checks, and the returned `Spec` for reconciliation. Stop on a checkout,
+worktree, branch, binding, or spec mismatch. A project-only record has no code
+root; verify its decisions, curated knowledge, links, validation, and build
+without pretending that product source was checked.
 
 ## Verification passes
 
@@ -27,7 +28,7 @@ knowledge repository or a sibling checkout.
    - Treat unchecked, ambiguous, or silently dropped items as incomplete.
 2. **Implementation trace**
    - Invoke `analyze-with-graphify`.
-   - Run it against the exact `Code root`.
+   - Run it against each exact `Code root`.
    - Trace the changed behavior through callers, boundaries, state, errors, and consumers.
    - Open the actual source locations at the bound revision and confirm that
      the intended production path reaches the implementation. Graphify output
@@ -39,10 +40,10 @@ knowledge repository or a sibling checkout.
 4. **Fresh execution**
    - Run the relevant tests, build, lint, type checks, and focused runtime checks.
    - Record exact commands, results, and limitations.
-   - Require the completed implementation to exist in a clean recorded Git
-     commit. Run the final checks against that commit and record it under
-     `verification.revision` plus the worktree identity under
-     `verification.worktree_id`. `wfctl` compares both at close.
+   - Require every completed implementation to exist in a clean recorded Git
+     commit. For multi-repository work, record one repository, revision,
+     worktree ID, and check list under `verification.repositories`. `wfctl`
+     compares the complete set at close.
 5. **Honesty audit**
    - Separate verified facts from inference.
    - Record all remaining risks and unresolved work.
@@ -63,5 +64,6 @@ knowledge repository or a sibling checkout.
 
 Read [the completion gate](references/completion-gate.md) and update the
 change record's structured `verification` and `knowledge_promotion` fields.
-Run `wfctl work verify <id>` from the bound code root for structural
-consistency. Only then set `status: completed`.
+Set `status: completed` only after the record, receipts, promotion map, and
+completion approval are ready. Run `wfctl work verify <id>` from knowledge or
+a bound code root for structural consistency before close.

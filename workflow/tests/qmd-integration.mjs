@@ -73,7 +73,7 @@ try {
     target,
     { QMD_DOCTOR_DEVICE_PROBE: "0", NO_COLOR: "1" },
   );
-  assert.match(doctor.stdout, /index config: 4 collections configured/);
+  assert.match(doctor.stdout, /index config: 5 collections configured/);
 
   run("git", ["init", "-q", leaf]);
   writeFileSync(
@@ -89,8 +89,6 @@ try {
       leaf,
       "--knowledge",
       target,
-      "--skills",
-      "none",
       "--yes",
       "--json",
     ]).stdout,

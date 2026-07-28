@@ -15,6 +15,12 @@ scope, and conflict decisions, not routine command execution. Provide a manual
 command only when bootstrapping without `wfctl`, missing authority, or tool
 access prevents execution; state that blocker explicitly.
 
+Treat `wfctl init knowledge` and `wfctl init leaf` as the only normal
+maintainer-facing CLI entry points, and even those may be delegated to this
+skill. All later `check`, `upgrade`, `knowledge`, `work`, QMD, and Graphify
+operations belong to the agent unless the maintainer explicitly requests
+manual or automation-oriented instructions.
+
 ## Procedure
 
 1. Confirm that Bun and `wfctl` are available. If `wfctl` is missing, stop and
@@ -37,7 +43,10 @@ access prevents execution; state that blocker explicitly.
    before the command writes files. A successful leaf initialization must also
    run `graphify update .` from the exact target checkout; do not accept a
    checkout whose local graph was never built. Preserve the existing root
-   `.gitignore` while ensuring it excludes `graphify-out/`.
+   `.gitignore` while ensuring it excludes `graphify-out/`. Successful leaf
+   init must also register durable repository identity in knowledge and add
+   this exact worktree to ignored local state. It must not change that
+   repository's active reconstruction selection.
 8. Review the preview before confirming. For each conflict, preserve the
    existing content, accept the offered per-file backup and replacement, or
    stop. Never invent a blanket overwrite.
@@ -52,7 +61,9 @@ access prevents execution; state that blocker explicitly.
     not active in the current session automatically; tell the maintainer to
     restart the agent session before knowledge-dependent work.
 12. For a knowledge profile, confirm that `.qmd/index.yml` defines separate
-    `knowledge`, `changes`, `intake`, and `raw` collections. `wfctl init`
+    `knowledge`, `changes`, `intake`, `reconstruction`, and `raw` collections.
+    Confirm that `reconstruction/active` and `reconstruction/archive` exist and
+    `reconstruct-project-knowledge` is installed. `wfctl init`
     builds `.workflow/current/knowledge-graph.json` and runs `qmd update`, so
     explicit relationship navigation and BM25 retrieval must be ready
     immediately. Treat
@@ -62,7 +73,13 @@ access prevents execution; state that blocker explicitly.
 13. Run `wfctl check --target <path>` and report every failure and warning. For
     a leaf, confirm `graphify-graph` passes and refers to this checkout, not a
     sibling repository or another worktree, and confirm `graphify-ignore`
-    passes.
+    passes. Confirm `repository-connection` identifies this exact known
+    checkout and reports whether it is active or inactive for reconstruction.
+    For a knowledge repository, report registered repositories, known
+    worktrees, and explicit active reconstruction selections. A missing active
+    selection is a visible warning during setup. Do not select during
+    initialization; `reconstruct-project-knowledge` owns contextual selection
+    when reconstruction is actually requested.
 14. For a knowledge profile, run `wfctl knowledge validate` and
     `wfctl knowledge build`; do not create a raw intake case unless intake
     processing was requested.

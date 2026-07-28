@@ -6,6 +6,10 @@
   cannot support a knowledge claim.
 - `intake/`: Git-frozen operational coverage and reconciliation records. It
   may locate raw material but is not current truth or an OKF source.
+- `reconstruction/`: source-first baseline and audit records with repository
+  dossiers, candidate adjudication, coverage review, and exact repository
+  revisions. It is an opt-in evidence workflow, not the default reading
+  surface.
 - `changes/active/`: one proposed change and progress record per active
   significant task.
 - `changes/archive/`: immutable historical change records. Their outcome,
@@ -23,13 +27,15 @@ rebuildable cache and never a source.
 Project change records must not cite raw or intake paths. A completed record
 that does so cannot support a current knowledge concept.
 
-Both input lanes converge through the same promotion gate:
+All input lanes converge through the same promotion gate:
 
 1. raw intake yields candidate claims;
-2. active changes yield verified implementation and decision receipts;
-3. claims are checked against their proper authority;
-4. the maintainer adjudicates normative or ambiguous truth;
-5. strict OKF concepts are updated and validated.
+2. source-first reconstruction yields implementation observations, repository
+   boundaries, history evidence, and explicit unknowns;
+3. active changes yield verified implementation and decision receipts;
+4. claims are checked against their proper authority;
+5. the maintainer adjudicates normative or ambiguous truth;
+6. strict OKF concepts are updated and validated.
 
 ## Human information architecture
 
@@ -176,6 +182,7 @@ Supported source kinds:
 - `source-code`
 - `runtime-check`
 - `archived-change`
+- `reconstruction-review`
 - `version-control`
 - `external-primary`
 
@@ -193,10 +200,13 @@ Supported authority classes:
 - `external`
 
 Normative classes require a `maintainer-decision` source and human
-verification before becoming stable. `implementation` requires pinned
-source-code authority. `architecture-rationale` additionally requires pinned
-code checked for contradiction. `history` requires both an archived change and
-pinned Git or review history. `external` requires a primary external source.
+verification before becoming stable. Existing implementation requires pinned
+source-code authority. An absent-delivery claim may use a reviewed
+reconstruction receipt because no nonexistent path can be pinned.
+`architecture-rationale` additionally requires pinned code checked for
+contradiction. `history` requires pinned Git or review history plus either an
+archived change or a reviewed reconstruction receipt. `external` requires a
+primary external source.
 
 Pinned code resources use:
 
@@ -213,8 +223,46 @@ already exist in the archive with a completed outcome and human completion
 review. Maintainer-decision and runtime-check sources must resolve to matching
 approval and verification receipts.
 
+Approved reconstruction claims use:
+
+`project-reconstruction:<case-id>#<candidate-id>`
+
+The validator resolves that identifier under `reconstruction/active/` or
+`reconstruction/archive/`. The candidate must be confirmed and its maintainer
+decision must match the case-level human review. The reconstruction record is
+a review receipt; implementation and history claims still cite pinned source
+or version-control evidence directly. A `reconstruction-review` source may
+establish a whole-scope negative finding such as absent delivery; it never
+replaces pinned code for implementation that exists.
+
 Authority is claim-specific. A newer document, an agent-written summary, a
 Graphify edge, or repeated raw text does not become authoritative by consensus.
+
+## Product intent and realization
+
+Document lifecycle is not product delivery. Product-bearing concepts therefore
+declare:
+
+```yaml
+realization:
+  intent: accepted
+  delivery: verified
+  alignment: aligned
+  assessed_at: 2026-07-28T12:00:00Z
+```
+
+- `intent` is `accepted` or `superseded` in curated current knowledge.
+  Proposed and rejected ideas remain in reconstruction, raw intake, or change
+  records until adopted.
+- `delivery` is `absent`, `partial`, `implemented`, `verified`, `retired`,
+  `unknown`, or `not-applicable`.
+- `alignment` is `aligned`, `drifted`, `unknown`, or `not-applicable`.
+
+A concrete delivery state requires implementation authority. A concrete
+alignment claim requires both product and implementation authority. This lets
+knowledge say that an accepted capability is absent, a legacy behavior exists
+with unknown intent, or code has drifted without rewriting intent to match the
+implementation.
 
 ## Current truth and evolution
 

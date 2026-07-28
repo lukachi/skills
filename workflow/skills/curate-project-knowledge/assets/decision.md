@@ -67,3 +67,7 @@ links accurate, and include matching Markdown links to every predecessor and
 successor in this section.
 
 [^maintainer-decision-id]: Explicit maintainer approval recorded in the linked project change.
+
+Before changing `status` to `stable`, run
+`wfctl knowledge hash --concept knowledge/.../<decision>.md` and add a
+verification event with `by`, `at`, and the returned `content_hash`.

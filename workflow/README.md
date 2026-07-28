@@ -8,6 +8,12 @@ New to the workflow? Start with
 behavior, the daily work loop, and common situations without requiring CLI
 knowledge.
 
+For maintainers, the normal CLI surface is only `wfctl init knowledge` and
+`wfctl init leaf`; both may also be delegated to the setup skill. Installed
+agents own routine `check`, `upgrade`, `knowledge`, `work`, QMD, and Graphify
+operations. The detailed commands below are an agent, automation, recovery, and
+workflow-development reference—not a prerequisite for using the workflow.
+
 The package is the canonical distribution source. Consumer repositories receive
 versioned rules and templates, managed instruction blocks, and profile-specific
 skills installed through the pinned `skills` CLI.
@@ -82,7 +88,7 @@ Project installations remain profile-specific:
 | Profile | Installed skills |
 | --- | --- |
 | Both | `setup-workflow-environment`, `analyze-with-graphify`, official `qmd` |
-| Knowledge | `operate-project-knowledge`, `process-raw-intake`, `curate-project-knowledge` |
+| Knowledge | `operate-project-knowledge`, `reconstruct-project-knowledge`, `process-raw-intake`, `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge` |
 | Leaf | `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge` |
 
 ## Initialize
@@ -111,7 +117,11 @@ explicit per-file decision and a backup; structural conflicts stop installation.
 Knowledge initialization builds the deterministic relationship graph and runs
 `qmd update`, so structural navigation and lexical BM25 retrieval are part of
 installation success. Leaf initialization builds or incrementally refreshes
-the checkout-local Graphify graph. `wfctl check` detects a missing source graph
+the checkout-local Graphify graph, registers the repository with knowledge,
+and adds that exact worktree to the machine-local registry. It never silently
+changes the active reconstruction worktree. Tracked registry state contains no
+local paths; ignored runtime state stores known worktrees and the explicit
+active selection. `wfctl check` detects a missing source graph
 or a missing or stale knowledge graph and reports QMD version, status, indexed
 documents, core doctor health, model cache, and embedding freshness separately.
 Missing semantic models or embeddings are warnings: exact/lexical retrieval
@@ -122,11 +132,43 @@ Installed skills become visible only to a new agent session. Restart Codex or
 Claude after the first `init` or after a skill upgrade.
 
 Every profile receives a visible root `PROJECT_WORKFLOW.md`. It is the
-maintainer-facing guide: it explains the raw/intake/changes/knowledge boundary, work
-routing, review packets, and the exact decisions that require human approval.
+maintainer-facing guide: it explains the
+raw/intake/reconstruction/changes/knowledge boundary, work routing, review
+packets, and the exact decisions that require human approval.
 The agent-facing rules enforce the same gates.
 
-## Knowledge operations
+## Agent-operated knowledge reference
+
+For an existing project, build the baseline from source repositories first.
+The command requires initialized clean leaves that point to this knowledge
+root. It updates Graphify in each exact checkout, records only durable
+repository/worktree identity in the case, and keeps absolute paths in ignored
+runtime state:
+
+```sh
+wfctl knowledge reconstruct start project-baseline \
+  --title "Reconstruct the current project baseline" \
+  --mode baseline
+
+wfctl knowledge reconstruct check <case-id>
+wfctl knowledge reconstruct close <case-id> --outcome completed
+```
+
+Before the first default reconstruction, the agent inspects the source
+registry. It uses an available active worktree, announces and selects the sole
+available candidate when none is active, or asks the maintainer to choose in
+project terms when several candidates are valid. The agent executes the
+corresponding `sources` commands itself. Baseline reconstruction includes
+every registered repository and fails when any repository has no available
+active worktree. An explicit repeated `--leaf` scope may use known inactive
+worktrees without changing the saved selection. The agent completes one
+dossier per selected repository, then reconciles partial observations into whole-project
+capabilities, flows, and contracts. Repository names, roles, and count are
+never predefined. It reviews Git history, optional documentation, changes, and
+raw-intake candidates, and separates accepted intent from observed delivery
+and alignment. Completed
+baseline reconstruction requires validated promotion and explicit maintainer
+review. It never edits leaf source.
 
 `raw/` is a continuous append-only dump surface, not evidence. The knowledge
 agent inventories exact Git blobs, uses QMD to propose bounded thematic batches,
@@ -181,8 +223,9 @@ evolution. Decision changes create immutable successor records with reciprocal
 lineage links; they do not clone whole versioned Areas.
 
 The generated QMD collections preserve the trust boundary: `knowledge` is the
-only default collection, while `changes`, `intake`, and `raw` require explicit
-selection. The `.qmd/index.sqlite` cache is ignored and can always be rebuilt.
+only default collection, while `changes`, `intake`, `reconstruction`, and
+`raw` require explicit selection. The `.qmd/index.sqlite` cache is ignored and
+can always be rebuilt.
 
 ## Project work
 
@@ -211,11 +254,11 @@ repository, revision, checkout, and worktree metadata. It has no completion or
 authority status; the agent later triages it into a normal change, curated
 knowledge, or rejection.
 
-`start` binds the record to one exact leaf checkout or linked worktree. The
-central record lives under `changes/active/`, while `.workflow/current/` in the leaf
-stores the pointer and source identity. `status`, `verify`, and `close` refuse
-to operate from a different checkout, even when it belongs to the same Git
-repository.
+`start` supports three scopes: project-only from knowledge with no code root,
+one exact leaf checkout, or several explicitly selected leaf worktrees. The
+central record lives under `changes/active/`; ignored local bindings hold
+machine paths. `status`, `verify`, and `close` refuse a different checkout,
+worktree, or branch until `work rebind` is explicitly requested.
 
 The initial record is `shaping`. The agent updates its current state and
 append-only decision/discussion ledger after every material maintainer turn.
@@ -228,9 +271,11 @@ from conversation memory.
 implementation. Significant completion also requires explicit framing and
 completion decisions recorded under `maintainer_review`, plus either validated
 curated concept paths or an explicit no-update reason. Partial and abandoned
-work must be closed with their real outcome. A completed close requires a clean
-bound checkout so its commit contains the verified implementation; `wfctl`
-never commits automatically. The final verification revision and worktree ID
-must match that checkout. Closing never writes into `raw/`.
+work must be closed with their real outcome. A completed close requires every
+bound checkout to be clean so its commit contains the verified implementation;
+`wfctl` never commits automatically. Every repository needs a matching final
+revision, worktree ID, and checks receipt. Stable concept verification also
+binds to a deterministic current content hash. Closing never writes into
+`raw/`.
 
 See [SPEC.md](SPEC.md) for the complete model and safety contract.

@@ -1,9 +1,11 @@
 # Knowledge authority
 
-The repository has four separate surfaces:
+The repository has five separate surfaces:
 
 - `raw/`: continuous untrusted input; never evidence and never current truth.
 - `intake/`: Git-frozen reconciliation state; never cited from knowledge.
+- `reconstruction/`: bounded source-first baselines and audits with reviewed
+  repository dossiers; not a default truth surface.
 - `changes/`: active proposals and archived historical change records.
 - `knowledge/`: curated OKF v0.2 current project knowledge.
 
@@ -12,10 +14,18 @@ tracing, raw processing, contradiction reconciliation, knowledge audits,
 navigation maintenance, verified promotion, and inbox/case triage. Leaf source
 repositories may be inspected for evidence but never edited from here.
 
+Natural-language maintainer requests are the user interface. The agent owns
+routine `wfctl knowledge`, `wfctl work`, QMD, Graphify, case-file, and registry
+operations. Never require the maintainer to know command syntax, case IDs, or
+generated paths. Ask only for product authority, approval, or a genuinely
+ambiguous source/worktree choice, then execute the resulting operation.
+
 Use `operate-project-knowledge` as the default router for these common
 knowledge-repository requests. It must delegate raw intake to
 `process-raw-intake`, semantic promotion to `curate-project-knowledge`, and
-code-backed verification to `analyze-with-graphify` in the exact leaf.
+whole-project source baselines to `reconstruct-project-knowledge`.
+Code-backed verification always delegates to `analyze-with-graphify` in the
+exact leaf.
 
 Use `process-raw-intake` for raw intake and
 `curate-project-knowledge` for promotion. Never copy, link, footnote, or cite a
@@ -28,8 +38,28 @@ help the agent propose bounded thematic cases; do not require the maintainer to
 choose raw paths blindly.
 
 Use the project-local QMD index for retrieval. Unscoped queries may search only
-the `knowledge` collection; select `changes`, `intake`, or `raw` explicitly.
+the `knowledge` collection; select `changes`, `intake`, `reconstruction`, or
+`raw` explicitly.
 QMD output is navigation, not evidence or coverage.
+
+Use `reconstruct-project-knowledge` when the workflow joins an existing
+project, current knowledge is missing or stale, or several leaf repositories
+must be reconciled. Run `wfctl knowledge sources list` first. Leaf
+initialization registers durable repository identity and adds its exact
+worktree to ignored local state without activating it. Let
+`reconstruct-project-knowledge` resolve the active reconstruction worktree:
+use an available active selection, announce and select the sole available
+candidate when no prior selection exists, and ask the maintainer only when
+multiple valid candidates or replacement of a prior selection requires a real
+choice. The agent executes `wfctl knowledge sources select`; never ask the
+maintainer to do so. A
+baseline `wfctl knowledge reconstruct start` includes all registered
+repositories' active worktrees by default and fails if any selection is
+missing or unavailable. Keep local absolute checkout paths only in the ignored
+runtime binding. Source
+code proves observed implementation, not intended meaning or correctness.
+Record optional raw, documentation, and change inputs explicitly without
+assuming any of them exist.
 
 Use `wfctl knowledge build` to validate and compile explicit Markdown links,
 typed `x-wf.relations`, Area ownership, and decision lineage into
@@ -66,10 +96,13 @@ stable current record per lineage, and a meaningful Evolution summary in the
 Area index.
 
 Every concept must satisfy the strict workflow profile: explicit lifecycle and
-generation metadata, claim-level authoritative sources, current verification
-for stable content, human verification for normative claims, explicit
+generation metadata, claim-level authoritative sources, a verification event
+whose content hash matches stable content, human verification for normative claims, explicit
 `x-wf.relations`, valid human-visible links, explicit decision lineage, and no
 raw references.
+
+Product-bearing concepts also declare independent intent, delivery, and
+alignment state. Proposed ideas remain outside curated current knowledge.
 
 Run `wfctl knowledge validate` and `wfctl knowledge build` after promotion. A
 failed validation or build blocks a completed knowledge update.

@@ -1,4 +1,4 @@
-# Workflow Engine v1
+# Workflow Engine v2
 
 ## Destination
 
@@ -18,6 +18,14 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - `intake/` contains bounded raw cases whose source lists are frozen to an
   exact Git commit and blob IDs. It may locate raw input but is outside the
   trust boundary.
+- `reconstruction/` contains bounded source-first baselines and audits. Each
+  selected leaf is pinned to a clean commit and worktree identity, analyzed
+  through Graphify and direct source, and represented by a repository dossier.
+  Local absolute checkout paths live only in ignored runtime bindings.
+- `.workflow/repositories.json` durably registers the full project source set
+  without local paths. `.workflow/current/repositories.json` stores any number
+  of known local worktrees per repository plus one explicit active selection
+  used only by default reconstruction.
 - `changes/active/` contains the one canonical proposal/spec/progress file for
   each active significant task.
 - `changes/archive/` preserves closed change records, final source/worktree
@@ -34,11 +42,15 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   local evolution without flattening the project.
 - Decisions evolve through immutable records, reciprocal acyclic supersession
   links, and one stable current record per lineage.
-- Raw candidate claims and ongoing change receipts converge through the same
-  verification, maintainer adjudication, promotion, and validation gate.
+- Raw candidates, source-first reconstruction claims, and ongoing change
+  receipts converge through the same verification, maintainer adjudication,
+  promotion, and validation gate.
 - QMD is a rebuildable retrieval cache, not a source. Only curated `knowledge`
-  participates in unscoped queries; `changes`, `intake`, and `raw` are
-  explicitly selected collections.
+  participates in unscoped queries; `changes`, `intake`, `reconstruction`, and
+  `raw` are explicitly selected collections.
+- Product-bearing concepts keep document lifecycle separate from
+  `realization.intent`, `realization.delivery`, and `realization.alignment`.
+  Proposed ideas remain outside curated current knowledge.
 - Authored Markdown links, typed `x-wf.relations`, Area ownership, and decision
   lineage compile deterministically into an ignored navigation graph. The
   Markdown remains the source; the graph adds no inferred facts.
@@ -54,6 +66,11 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 
 ## CLI surface
 
+- The normal maintainer-facing CLI surface is `wfctl init knowledge` and
+  `wfctl init leaf`. Installed agents own every routine command below and
+  translate natural-language requests into CLI, QMD, Graphify, Git-inspection,
+  and record operations. Manual use remains supported for automation,
+  diagnostics, recovery, and workflow development.
 - `wfctl init [knowledge|leaf]`: preview the file plan and dependency
   preflight, resolve safe conflicts, install a workflow, and build the
   profile's required local index (`qmd` plus the authored knowledge graph for
@@ -72,12 +89,25 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   and candidate IDs.
 - `wfctl knowledge case check|close`: enforce Git identity, file accounting,
   candidate linkage, omission audit, and promotion state.
+- `wfctl knowledge sources add|select|list`: register arbitrary project
+  repositories, remember any number of machine-local worktrees, and explicitly
+  select one active reconstruction checkout per repository.
+- `wfctl knowledge reconstruct start`: bind every registered repository's
+  active clean worktree for a default baseline, or bind explicit known
+  worktrees for a reviewed baseline/audit scope, refresh Graphify, and create a
+  bounded case plus repository dossiers without durable absolute paths.
+- `wfctl knowledge reconstruct check|close`: enforce exact checkout bindings,
+  repository coverage, candidate classification, optional-input disposition,
+  cross-repository reconciliation, validated promotion, and maintainer review.
 - `wfctl knowledge validate`: enforce the strict curated-knowledge profile.
 - `wfctl knowledge build`: validate and compile the deterministic knowledge
   relationship graph into `.workflow/current/knowledge-graph.json`.
 - `wfctl work handoff`: create a non-authoritative lightweight inbox record
   with exact repository and worktree metadata.
-- `wfctl work start`: create an early shaping spec bound to one exact leaf checkout.
+- `wfctl work start`: create an early project-only, single-leaf, or
+  multi-repository shaping spec with one central record.
+- `wfctl work rebind`: explicitly move one repository binding to the current
+  branch/worktree and record the transition.
 - `wfctl work status`: show and validate the code-root/spec binding.
 - `wfctl work verify`: validate the structural completion gate without claiming semantic correctness.
 - `wfctl work close`: archive the change record with final repository and
@@ -96,7 +126,9 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   and install it through the same selected agent targets and scope.
 - Install skills as independent copies; never create cross-agent skill symlinks.
 - Default skills to project scope and allow explicit user or disabled scope.
-- Refuse non-interactive replacement of existing skills.
+- Let the pinned skills CLI update wfctl-owned selected skills
+  non-interactively; remove only obsolete project-scope skills whose lock
+  provenance still identifies this package.
 - Support non-interactive and JSON output for agents and CI.
 - Install one visible, profile-specific `PROJECT_WORKFLOW.md` through a managed
   block that preserves pre-existing maintainer content.
@@ -111,6 +143,14 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - Never implement a competing semantic Markdown index, embedding store, or
   ranking pipeline inside `wfctl`. The deterministic graph may compile only
   authored links and first-class workflow metadata.
+- Never infer product intent from implementation. Reconstruction records
+  observed source, accepted intent, delivery, alignment, and unknowns as
+  independent fields.
+- Never auto-discover sibling repositories or persist machine-local leaf
+  paths in Git. Leaf initialization explicitly registers repository identity
+  and adds its exact worktree to ignored local state without changing the
+  active reconstruction selection. Selection is a separate maintainer-visible
+  operation.
 
 ## Verification criteria
 
@@ -121,7 +161,8 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - [x] Work start produces one canonical central spec.
 - [x] Significant discussion is persisted from shaping onward and can resume
   after compaction without chat memory.
-- [x] Work commands bind to one exact checkout and reject another worktree.
+- [x] Work commands support project-only, one-checkout, and multi-repository
+  scopes and reject an unbound branch or worktree.
 - [x] Completed close requires recorded verification and emits Git/worktree metadata.
 - [x] Completed close rejects a dirty source checkout instead of pinning a
   revision that does not contain the verified implementation.
@@ -160,6 +201,18 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   explicit no-update reason.
 - [x] Lightweight findings can enter `changes/inbox/` without being mislabeled
   as completed project history.
+- [x] Existing projects can build a baseline without raw files or prior
+  documentation.
+- [x] Reconstruction binds exact worktrees and commits while keeping absolute
+  paths out of durable records.
+- [x] Any number of worktrees may be known for one repository; adding or
+  initializing one never silently changes that repository's explicit active
+  reconstruction selection.
+- [x] Completed reconstruction rejects incomplete repository coverage,
+  unresolved claims, unreviewed optional inputs, missing promotion, and absent
+  maintainer approval.
+- [x] Curated product concepts distinguish accepted intent, observed delivery,
+  and alignment without treating code as automatic product truth.
 
 ## Progress
 
@@ -173,8 +226,9 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - [x] Dry-run against the named DnD repositories.
 - [x] Define maintainer review boundaries without conflating OKF trust and
   lifecycle.
+- [x] Implement and verify source-first existing-project reconstruction.
 
-## Out of scope for v1
+## Out of scope for v2
 
 - Hosted registry or automatic GitHub self-update.
 - A full-screen Ink interface.

@@ -32,7 +32,12 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   const graph = recordValue(metadata.graph_evidence);
   const maintainerReview = recordValue(metadata.maintainer_review);
   const promotion = recordValue(metadata.knowledge_promotion);
+  const scope = stringValue(metadata.scope) || "leaf";
+  const projectOnly = scope === "project";
 
+  if (metadata.workflow_version !== 2) {
+    issues.push("workflow_version must be 2");
+  }
   if (requireCompleted && metadata.status !== "completed") {
     issues.push("status must be completed");
   }
@@ -45,8 +50,11 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   if (verification?.acceptance_reviewed !== true) {
     issues.push("verification.acceptance_reviewed must be true");
   }
-  if (verification?.implementation_reviewed !== true) {
+  if (!projectOnly && verification?.implementation_reviewed !== true) {
     issues.push("verification.implementation_reviewed must be true");
+  }
+  if (projectOnly && verification?.knowledge_reviewed !== true) {
+    issues.push("verification.knowledge_reviewed must be true for project-only work");
   }
   if (!nonEmptyArray(verification?.checks)) {
     issues.push("verification.checks must contain fresh evidence");
@@ -58,13 +66,16 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   if (!nonEmptyArray(alignment?.reviewed)) {
     issues.push("knowledge_alignment.reviewed must contain at least one concept");
   }
-  if (!nonEmptyArray(graph?.queries)) {
+  if (!projectOnly && !nonEmptyArray(graph?.queries)) {
     issues.push("graph_evidence.queries must contain at least one query");
   }
-  if (!/^[0-9a-f]{40}$/i.test(stringValue(verification?.revision))) {
+  if (
+    scope === "leaf"
+    && !/^[0-9a-f]{40}$/i.test(stringValue(verification?.revision))
+  ) {
     issues.push("verification.revision must pin the verified Git commit");
   }
-  if (!stringValue(verification?.worktree_id).trim()) {
+  if (scope === "leaf" && !stringValue(verification?.worktree_id).trim()) {
     issues.push("verification.worktree_id must identify the verified checkout");
   }
   if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {

@@ -16,7 +16,7 @@ import {
 } from "./dependencies.js";
 import { doctorPassed, runDoctor } from "./doctor.js";
 import { buildInstallPlan, summarizePlan } from "./planner.js";
-import { installSkills } from "./skill-installer.js";
+import { installSkillsTransactional } from "./skill-installer.js";
 import {
   beginIntakeCase,
   closeIntakeCase,
@@ -24,8 +24,19 @@ import {
   inventoryRaw,
   markIntakeSource,
 } from "./intake.js";
-import { validateKnowledge } from "./knowledge.js";
+import { hashKnowledgeConcept, validateKnowledge } from "./knowledge.js";
 import { writeKnowledgeGraph } from "./knowledge-graph.js";
+import {
+  addLeafRepository,
+  ensureRepositoryRegistry,
+  listRepositoryConnections,
+  selectLeafRepository,
+} from "./repository-registry.js";
+import {
+  beginProjectReconstruction,
+  closeProjectReconstruction,
+  inspectProjectReconstruction,
+} from "./reconstruction.js";
 import type {
   AgentTarget,
   InstallPlan,
@@ -39,6 +50,7 @@ import {
   beginWork,
   closeWork,
   createHandoff,
+  rebindWork,
   verifyWork,
   workStatus,
 } from "./work.js";
@@ -52,7 +64,8 @@ const main = new Command()
   .name("wfctl")
   .version(WORKFLOW_VERSION)
   .description(
-    "Install and operate a shared project workflow.\n\n"
+    "Install and operate a shared project workflow.\n"
+      + "Maintainers normally use init; installed agents own the remaining commands.\n\n"
       + "Setup:\n"
       + "  init       Install or repair a knowledge or leaf repository\n"
       + "  check      Validate the current workflow installation\n\n"
@@ -251,7 +264,7 @@ async function installWorkflow(input: {
     throw new Error("Installation stopped by user");
   }
 
-  installSkills({
+  const skillTransaction = installSkillsTransactional({
     target: input.target,
     distributionRoot,
     profile: input.profile,
@@ -259,7 +272,17 @@ async function installWorkflow(input: {
     agents: input.agents,
     yes: input.yes || input.json,
   });
-  const applied = await applyInstallPlan(resolved);
+  let applied: Awaited<ReturnType<typeof applyInstallPlan>>;
+  try {
+    applied = await applyInstallPlan(resolved);
+    skillTransaction.commit();
+  } catch (error) {
+    skillTransaction.rollback();
+    throw error;
+  }
+  const repositoryCheckout = input.profile === "knowledge"
+    ? (await ensureRepositoryRegistry(input.target), undefined)
+    : await addLeafRepository(input.knowledge!, input.target);
   const graphifyUpdate = input.profile === "leaf"
     ? updateGraphifyGraph(input.target)
     : undefined;
@@ -299,12 +322,24 @@ async function installWorkflow(input: {
       preflight,
       applied,
       check: report,
+      ...(repositoryCheckout ? { repositoryCheckout } : {}),
     });
   } else {
     process.stdout.write(
       `Installed ${applied.changed} workflow change(s) in ${resolved.target}\n`
         + `Guide: ${resolve(resolved.target, "PROJECT_WORKFLOW.md")}\n`,
     );
+    if (repositoryCheckout) {
+      process.stdout.write(
+        `Registered leaf checkout: ${repositoryCheckout.repository} `
+          + `(${repositoryCheckout.worktreeId}) -> ${repositoryCheckout.knowledgeRoot}\n`
+          + `${
+            repositoryCheckout.active
+              ? "This checkout remains active for reconstruction.\n"
+              : "It is not active for reconstruction; select it explicitly from knowledge.\n"
+          }`,
+      );
+    }
     for (const backup of applied.backups) {
       process.stdout.write(`Backup: ${backup}\n`);
     }
@@ -348,7 +383,7 @@ async function resolveConflicts(
     if (!replace) {
       throw new Error(`Installation stopped at conflict: ${operation.path}`);
     }
-    operation.status = "update";
+    operation.status = operation.kind === "delete" ? "delete" : "update";
     operation.reason = "explicit replacement with backup";
     operation.backup = true;
   }
@@ -412,6 +447,11 @@ function workCommand() {
         .option("-t, --target <path:string>", "Leaf checkout.", { default: "." })
         .option("--title <title:string>", "Human-readable work title.", { required: true })
         .option("--mode <mode:string>", "full or slice.", { default: "full" })
+        .option(
+          "--leaf <path:string>",
+          "Leaf checkout for project-wide or multi-repository work started from knowledge; repeat as needed.",
+          { collect: true },
+        )
         .option("--knowledge-ref <path:string>", "Already-reviewed curated concept, if known.")
         .option("--graph-query <query:string>", "Already-run Graphify query, if available.")
         .option("--json", "Print machine-readable JSON.")
@@ -421,6 +461,11 @@ function workCommand() {
             slug,
             title: options.title,
             mode: parseWorkMode(options.mode),
+            leaves: Array.isArray(options.leaf)
+              ? options.leaf
+              : options.leaf
+              ? [options.leaf]
+              : [],
             ...(options.knowledgeRef ? { knowledgeRef: options.knowledgeRef } : {}),
             ...(options.graphQuery ? { graphQuery: options.graphQuery } : {}),
           });
@@ -429,10 +474,13 @@ function workCommand() {
           } else {
             process.stdout.write(
               `Created ${result.id}\n`
-                + `Code root: ${result.codeRoot}\n`
+                + `Scope: ${result.scope}\n`
+                + `Code roots: ${
+                  result.codeRoots.length > 0 ? result.codeRoots.join(", ") : "none"
+                }\n`
                 + `Knowledge root: ${result.knowledgeRoot}\n`
                 + `Spec: ${result.specPath}\n`
-                + `Pointer: ${result.pointerPath}\n`,
+                + `Bindings: ${result.pointerPaths.join(", ")}\n`,
             );
           }
         }),
@@ -454,13 +502,19 @@ function workCommand() {
             for (const result of results) {
               process.stdout.write(
                 `${result.valid ? "VALID" : "INVALID"} ${result.id}\n`
-                  + `Code root: ${result.codeRoot}\n`
+                  + `Scope: ${result.scope}\n`
+                  + `Code roots: ${
+                    result.codeRoots.length > 0 ? result.codeRoots.join(", ") : "none"
+                  }\n`
                   + `Knowledge root: ${result.knowledgeRoot}\n`
-                  + `Spec: ${result.specPath}\n`
-                  + `Worktree: ${result.currentSource.worktreeId} (${result.currentSource.branch})\n`
-                  + `Revision: ${result.currentSource.commit} `
-                  + `(${result.currentSource.dirty ? "dirty" : "clean"})\n`,
+                  + `Spec: ${result.specPath}\n`,
               );
+              for (const source of result.currentSources) {
+                process.stdout.write(
+                  `- ${source.repository}: ${source.worktreeId} (${source.branch}) `
+                    + `${source.commit} (${source.dirty ? "dirty" : "clean"})\n`,
+                );
+              }
               for (const issue of result.issues) {
                 process.stdout.write(`- ${issue}\n`);
               }
@@ -468,6 +522,28 @@ function workCommand() {
           }
           if (results.some((result) => !result.valid)) {
             process.exitCode = 2;
+          }
+        }),
+    )
+    .command(
+      "rebind",
+      new Command()
+        .description(
+          "Explicitly move one repository binding to the current worktree or branch.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Replacement leaf checkout.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await rebindWork(options.target, id);
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Rebound ${result.repository} for ${result.id}\n`
+                + `From: ${result.previousRoot}\n`
+                + `To: ${result.currentRoot} (${result.worktreeId}, ${result.branch})\n`,
+            );
           }
         }),
     )
@@ -527,11 +603,31 @@ function knowledgeCommand() {
   return new Command()
     .description(
       "Operate the knowledge trust boundary.\n"
-        + "raw/ is continuous untrusted intake; cases freeze Git coverage; knowledge/ is curated truth.\n"
+        + "raw/ is untrusted intake; reconstruction maps pinned leaves; knowledge/ is curated truth.\n"
         + "wfctl validates and compiles explicit knowledge relations; QMD provides semantic retrieval.",
     )
     .command("raw", knowledgeRawCommand())
     .command("case", knowledgeCaseCommand())
+    .command("sources", knowledgeSourcesCommand())
+    .command("reconstruct", knowledgeReconstructCommand())
+    .command(
+      "hash",
+      new Command()
+        .description(
+          "Compute the content hash used to bind a verification event to one concept revision.",
+        )
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--concept <path:string>", "Curated concept path.", { required: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const result = await hashKnowledgeConcept(options.target, options.concept);
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(`${result.contentHash}  ${result.path}\n`);
+          }
+        }),
+    )
     .command(
       "validate",
       new Command()
@@ -608,6 +704,219 @@ function knowledgeCommand() {
             );
             for (const issue of result.warnings) {
               process.stdout.write(`WARN  ${issue.path}: ${issue.message}\n`);
+            }
+          }
+        }),
+    );
+}
+
+function knowledgeReconstructCommand() {
+  return new Command()
+    .description(
+      "Build or audit project knowledge from exact clean leaf revisions.\n"
+        + "Local worktree paths stay in ignored runtime bindings; durable records pin repository identity and commit.",
+    )
+    .command(
+      "start",
+      new Command()
+        .description(
+          "Bind clean leaf checkouts, refresh Graphify, and create repository dossiers.",
+        )
+        .arguments("<slug:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--title <title:string>", "Human-readable reconstruction question.", {
+          required: true,
+        })
+        .option("--mode <mode:string>", "baseline or audit.", { default: "baseline" })
+        .option(
+          "--leaf <path:string>",
+          "Override registered checkout selection; repeat per source repository. Baselines still require all registered repositories.",
+          { collect: true },
+        )
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, slug) => {
+          const leaves = Array.isArray(options.leaf)
+            ? options.leaf
+            : options.leaf
+            ? [options.leaf]
+            : [];
+          if (options.mode !== "baseline" && options.mode !== "audit") {
+            throw new Error(
+              `Invalid reconstruction mode "${options.mode}"; expected baseline or audit`,
+            );
+          }
+          const result = await beginProjectReconstruction({
+            target: options.target,
+            slug,
+            title: options.title,
+            mode: options.mode,
+            leaves,
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Created ${result.mode} reconstruction ${result.id}\n`
+                + `Case: ${result.path}\n`
+                + `Repositories: ${result.repositories.length}\n`,
+            );
+            for (const repository of result.repositories) {
+              process.stdout.write(
+                `- ${repository.repository}@${repository.commit} `
+                  + `(${repository.graphNodes} graph nodes)\n`
+                  + `  Dossier: ${repository.dossier}\n`,
+              );
+            }
+          }
+        }),
+    )
+    .command(
+      "check",
+      new Command()
+        .description(
+          "Verify checkout bindings, dossier coverage, claim disposition, promotion, and review.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await inspectProjectReconstruction(options.target, id);
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Reconstruction gate ${result.issues.length === 0 ? "passed" : "failed"}: `
+                + `${result.path}\n`
+                + `Repositories reviewed: ${result.reviewed}/${result.repositories}; `
+                + `candidates: ${result.candidates}\n`,
+            );
+            for (const issue of result.issues) {
+              process.stdout.write(`- ${issue}\n`);
+            }
+          }
+          if (result.issues.length > 0) {
+            process.exitCode = 2;
+          }
+        }),
+    )
+    .command(
+      "close",
+      new Command()
+        .description("Archive a reconstruction with its honest outcome.")
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--outcome <outcome:string>", "completed, partial, or abandoned.", {
+          required: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await closeProjectReconstruction({
+            target: options.target,
+            id,
+            outcome: parseOutcome(options.outcome),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Closed ${result.id} as ${result.outcome}\n`
+                + `Archive: ${result.archivePath}\n`,
+            );
+          }
+        }),
+    );
+}
+
+function knowledgeSourcesCommand() {
+  return new Command()
+    .description(
+      "Register all known leaf worktrees and explicitly select one active reconstruction checkout per repository.",
+    )
+    .command(
+      "add",
+      new Command()
+        .description(
+          "Add or refresh one known leaf checkout without changing the active reconstruction selection.",
+        )
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--leaf <path:string>", "Initialized leaf checkout.", { required: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const result = await addLeafRepository(options.target, options.leaf);
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Registered checkout for ${result.repository}\n`
+                + `Checkout: ${result.root}\n`
+                + `Worktree: ${result.worktreeId} (${result.branch})\n`
+                + `Revision: ${result.commit}\n`
+                + `${
+                  result.active
+                    ? "Selection: ACTIVE\n"
+                    : "Selection: inactive; use sources select to make it active\n"
+                }`,
+            );
+          }
+        }),
+    )
+    .command(
+      "select",
+      new Command()
+        .description(
+          "Explicitly select one previously added worktree as the active reconstruction checkout for its repository.",
+        )
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--leaf <path:string>", "Previously added leaf checkout.", { required: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const result = await selectLeafRepository(options.target, options.leaf);
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Selected active checkout for ${result.repository}\n`
+                + `Checkout: ${result.root}\n`
+                + `Worktree: ${result.worktreeId} (${result.branch})\n`
+                + `Revision at selection: ${result.commit}\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "list",
+      new Command()
+        .description("List every known worktree and show the active reconstruction selection.")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const result = await listRepositoryConnections(options.target);
+          if (options.json) {
+            printJson(result);
+          } else if (result.length === 0) {
+            process.stdout.write(
+              "No leaf repositories registered. Initialize leaves with --knowledge or use sources add.\n",
+            );
+          } else {
+            for (const entry of result) {
+              process.stdout.write(
+                `${entry.connected ? "REGISTERED" : "NO CHECKOUTS"} ${entry.repository}\n`,
+              );
+              for (const checkout of entry.checkouts) {
+                process.stdout.write(
+                  `  ${checkout.active ? "ACTIVE  " : "        "}`
+                    + `${checkout.available ? "READY   " : "MISSING "} `
+                    + `${checkout.root} (${checkout.worktreeId})`
+                    + `${
+                      checkout.branch
+                        ? ` ${checkout.branch}@${checkout.commit}`
+                        : ""
+                    }\n`,
+                );
+              }
+              if (entry.checkouts.length > 0 && !entry.activeRoot) {
+                process.stdout.write("  SELECT REQUIRED before default reconstruction\n");
+              }
             }
           }
         }),
@@ -924,9 +1233,10 @@ function printPlan(plan: InstallPlan): void {
     counts: Record<string, number>;
   };
   process.stdout.write(
-    `Workflow preview: ${plan.profile} -> ${plan.target}\n`
+      `Workflow preview: ${plan.profile} -> ${plan.target}\n`
       + `Create ${summary.counts.create ?? 0}, update ${summary.counts.update ?? 0}, `
-      + `unchanged ${summary.counts.unchanged ?? 0}, conflicts ${summary.counts.conflict ?? 0}\n`,
+      + `delete ${summary.counts.delete ?? 0}, unchanged ${summary.counts.unchanged ?? 0}, `
+      + `conflicts ${summary.counts.conflict ?? 0}\n`,
   );
   for (const operation of plan.operations) {
     if (operation.status === "unchanged") {
@@ -945,7 +1255,7 @@ function skillSummary(input: {
   return {
     scope: input.scope,
     agents: input.agents,
-    installer: input.scope === "none" ? "disabled" : "skills@1.5.9",
+    installer: input.scope === "none" ? "disabled" : "skills@1.5.20",
   };
 }
 

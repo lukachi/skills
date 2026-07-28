@@ -24,6 +24,16 @@ answer.
 Read [the intake model](references/intake-model.md) before the first intake
 pass.
 
+## Command and interaction ownership
+
+Accept “process raw,” a topic, or a newly added dump as sufficient user input.
+Run inventory, Git inspection, QMD retrieval, case creation and marking,
+verification, promotion, and close commands yourself. Maintain the case files
+yourself. Do not ask the maintainer for raw pathspecs, case IDs, commands, or
+YAML edits. Propose human-readable thematic batches and ask only for batch
+approval, authority, chronology, or product meaning that evidence cannot
+establish.
+
 ## Handle common intake cases
 
 - **Routine idea dump:** inventory only unseen or changed blobs, propose a
@@ -53,12 +63,12 @@ pass.
    verify that `.qmd/index.yml` exists.
 2. Inspect the current session skill catalog and require the official native
    `qmd` skill. Invoke it before retrieval. If the skill is absent, stop and
-   ask to run `wfctl upgrade` or reinstall the selected skills, then restart
-   the agent session.
+   invoke `setup-workflow-environment` to repair or reinstall the selected
+   skills, then ask only for the unavoidable agent-session restart.
 3. Run `qmd status`, or the QMD MCP `status` tool when it is exposed in the
-   current session. If QMD is unavailable or older than `2.5.3`, stop and ask
-   to install it with `bun install -g @tobilu/qmd@2.5.3`. Do not replace it
-   with a new indexer.
+   current session. If QMD is unavailable or older than `2.5.3`, invoke the
+   setup skill, request install authority, and perform the installation
+   yourself. Do not replace it with a new indexer.
 4. Run `wfctl knowledge raw inventory`. It compares committed `raw/` blobs with
    active and archived cases. It does not interpret Markdown.
 5. Report uncommitted paths and ask the maintainer for normal authorization to
@@ -107,7 +117,8 @@ pass.
    `needs-maintainer` or `unreadable` when honest completion is blocked.
 5. Add every candidate as a structured `candidate_claims` entry in the case.
    Preserve conditions, exceptions, negative results, alternatives, and
-   chronology rather than flattening them into one summary.
+   chronology rather than flattening them into one summary. Give rejected or
+   unresolved candidates a concrete `reason`.
 
 ## Claim adjudication
 
@@ -133,13 +144,17 @@ answer or keep the candidate unresolved outside `knowledge/`.
 
 ## Promotion
 
-1. Group only confirmed candidates into the smallest coherent concepts.
+1. Group only confirmed candidates into the smallest coherent concepts. Every
+   confirmed candidate must declare independent `evidence`, any required
+   `maintainer_decision`, and every destination in `promoted_to`.
 2. Invoke `curate-project-knowledge` to author or update those concepts.
 3. Require claim-level authoritative sources and explicit trust metadata.
-4. For applied promotion, run `wfctl knowledge validate` and record `passed`
-   under `promotion.validation`. For `not-needed`, record `not-needed`.
+4. Require the union of confirmed `promoted_to` paths to equal
+   `promotion.concepts`. `not-needed` is invalid while any confirmed candidate
+   exists. Compute stable concept content hashes, run
+   `wfctl knowledge validate`, and record `passed` only after it succeeds.
 5. Perform a second omission audit against every frozen source and candidate,
-   then record `omission_audit.result`.
+   then record `omission_audit.result` and non-empty `notes`.
 6. Run `wfctl knowledge case check <case-id>`.
 7. Close the honest result with
    `wfctl knowledge case close <case-id> --outcome completed|partial|abandoned`.

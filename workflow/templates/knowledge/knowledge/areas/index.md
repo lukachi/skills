@@ -13,3 +13,8 @@ index.
 The typed folders inside an Area are sibling collections. Capability and use
 case pages link their related rules, implementation, and decisions; those
 artifacts are not normally nested below the capability or use case.
+
+Product-bearing pages state intent, delivery, and alignment independently.
+This keeps accepted but unimplemented capabilities, partial delivery, legacy
+behavior with unknown intent, and known drift visible without flattening them
+into one misleading status.

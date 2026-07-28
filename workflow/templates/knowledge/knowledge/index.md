@@ -21,3 +21,6 @@ repository's untrusted raw intake.
 
 Read the relevant Area index before opening its capabilities, concepts, rules,
 use cases, implementation notes, decisions, or local evolution log.
+Product-facing concepts distinguish accepted intent, observed delivery, and
+their alignment; implemented code is not treated as intended product behavior
+unless the project has explicitly accepted it.

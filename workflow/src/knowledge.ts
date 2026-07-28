@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   lstat,
   readFile,
@@ -7,6 +8,8 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { parse } from "yaml";
 import { errorMessage, isMissingFileError, readConfig } from "./config.js";
 import { compileKnowledgeGraph } from "./knowledge-graph.js";
+import { inspectProjectReconstructionReceipt } from "./reconstruction.js";
+import { completionIssues, parseWorkSpec } from "./work-spec.js";
 
 export interface KnowledgeValidationIssue {
   path: string;
@@ -22,6 +25,16 @@ export interface KnowledgeValidationResult {
 }
 
 interface ProjectChangeIndex {
+  active: Map<string, Record<string, unknown>>;
+  archive: Map<string, Record<string, unknown>>;
+}
+
+export interface KnowledgeConceptHashResult {
+  path: string;
+  contentHash: string;
+}
+
+interface ProjectReconstructionIndex {
   active: Map<string, Record<string, unknown>>;
   archive: Map<string, Record<string, unknown>>;
 }
@@ -50,6 +63,7 @@ export async function validateKnowledge(
   const errors: KnowledgeValidationIssue[] = [];
   const warnings: KnowledgeValidationIssue[] = [];
   const changeIndex = await readProjectChangeIndex(target);
+  const reconstructionIndex = await readProjectReconstructionIndex(target);
   for (const path of inventory.symlinks) {
     errors.push({
       path: portable(join("knowledge", path)),
@@ -105,6 +119,7 @@ export async function validateKnowledge(
       parsed.metadata,
       parsed.body,
       changeIndex,
+      reconstructionIndex,
       errors,
       warnings,
     );
@@ -137,6 +152,7 @@ function validateConcept(
   metadata: Record<string, unknown>,
   body: string,
   changeIndex: ProjectChangeIndex,
+  reconstructionIndex: ProjectReconstructionIndex,
   errors: KnowledgeValidationIssue[],
   warnings: KnowledgeValidationIssue[],
 ): void {
@@ -147,6 +163,8 @@ function validateConcept(
   const sources = Array.isArray(metadata.sources) ? metadata.sources : [];
   const authority = stringArray(metadata.authority);
   const verifications = normalizeVerifications(metadata.verified);
+  const realization = recordValue(metadata.realization);
+  const expectedContentHash = conceptDocumentHash(metadata, body);
 
   if (!type) {
     errors.push({ path, message: "type is required by OKF v0.2" });
@@ -187,6 +205,7 @@ function validateConcept(
   const sourceIds = new Set<string>();
   let hasHumanAuthority = false;
   let hasPinnedCode = false;
+  let hasReconstructionReview = false;
   for (const [index, value] of sources.entries()) {
     const source = recordValue(value);
     const prefix = `sources[${index}]`;
@@ -205,14 +224,14 @@ function validateConcept(
     if (!resource) {
       errors.push({ path, message: `${prefix}.resource is required by OKF v0.2` });
     }
-    if (!["maintainer-decision", "source-code", "runtime-check", "archived-change", "version-control", "external-primary"].includes(kind)) {
+    if (!["maintainer-decision", "source-code", "runtime-check", "archived-change", "reconstruction-review", "version-control", "external-primary"].includes(kind)) {
       errors.push({
         path,
         message: `${prefix}.kind must identify the workflow authority class`,
       });
     }
     const referencedChange = isProjectChangeResource(resource)
-      ? projectChangeRecord(resource, changeIndex, false)
+      ? projectChangeRecordAny(resource, changeIndex, false)
       : undefined;
     if (referencedChange?.__untrustedIntakeReference === true) {
       errors.push({
@@ -225,18 +244,46 @@ function validateConcept(
       if (!stringValue(source?.author).startsWith("human:")) {
         errors.push({ path, message: `${prefix}.author must identify the approving human` });
       }
-      if (!isProjectChangeResource(resource)) {
-        errors.push({ path, message: `${prefix}.resource must point to a project-change decision` });
-      } else if (!projectChangeRecord(resource, changeIndex, false)) {
-        errors.push({ path, message: `${prefix}.resource points to a missing project change` });
-      } else if (
-        !hasApprovedHumanReview(
-          projectChangeRecord(resource, changeIndex, false)!,
-          undefined,
-          stringValue(source?.author),
-        )
-      ) {
-        errors.push({ path, message: `${prefix}.resource has no recorded human approval` });
+      if (isProjectChangeResource(resource)) {
+        const change = projectChangeRecord(resource, changeIndex, false);
+        if (!change) {
+          errors.push({ path, message: `${prefix}.resource points to a missing project change` });
+        } else if (
+          !hasApprovedHumanReview(
+            change,
+            undefined,
+            stringValue(source?.author),
+          )
+        ) {
+          errors.push({ path, message: `${prefix}.resource has no recorded human approval` });
+        }
+      } else if (isProjectReconstructionResource(resource)) {
+        const reconstruction = projectReconstructionDecision(
+          resource,
+          reconstructionIndex,
+        );
+        if (!reconstruction) {
+          errors.push({
+            path,
+            message: `${prefix}.resource points to a missing or unconfirmed reconstruction decision`,
+          });
+        } else if (
+          !hasApprovedReconstructionReview(
+            reconstruction.record,
+            reconstruction.candidate,
+            stringValue(source?.author),
+          )
+        ) {
+          errors.push({
+            path,
+            message: `${prefix}.resource has no matching reconstruction maintainer approval`,
+          });
+        }
+      } else {
+        errors.push({
+          path,
+          message: `${prefix}.resource must point to a project-change or project-reconstruction decision`,
+        });
       }
     }
     if (kind === "source-code") {
@@ -247,6 +294,25 @@ function validateConcept(
         });
       } else {
         hasPinnedCode = true;
+      }
+    }
+    if (kind === "reconstruction-review") {
+      const reconstruction = projectReconstructionDecision(
+        resource,
+        reconstructionIndex,
+      );
+      if (!reconstruction) {
+        errors.push({
+          path,
+          message: `${prefix}.resource points to a missing or unconfirmed reconstruction claim`,
+        });
+      } else if (!hasApprovedReconstructionCaseReview(reconstruction.record)) {
+        errors.push({
+          path,
+          message: `${prefix}.resource has no approved reconstruction review`,
+        });
+      } else {
+        hasReconstructionReview = true;
       }
     }
     if (
@@ -319,10 +385,18 @@ function validateConcept(
       message: "normative authority requires a maintainer-decision source",
     });
   }
-  if (authority.includes("implementation") && !hasPinnedCode) {
+  if (
+    authority.includes("implementation")
+    && !hasPinnedCode
+    && !(
+      stringValue(realization?.delivery) === "absent"
+      && hasReconstructionReview
+    )
+  ) {
     errors.push({
       path,
-      message: "implementation authority requires a pinned source-code source",
+      message:
+        "implementation authority requires pinned source code, or a reviewed reconstruction receipt for absent delivery",
     });
   }
   if (authority.includes("architecture-rationale") && !hasPinnedCode) {
@@ -333,9 +407,19 @@ function validateConcept(
   }
   if (
     authority.includes("history")
-    && !sources.some((value) => recordValue(value)?.kind === "archived-change")
+    && !sources.some((value) =>
+      recordValue(value)?.kind === "archived-change"
+      || recordValue(value)?.kind === "reconstruction-review"
+      || (
+        recordValue(value)?.kind === "maintainer-decision"
+        && isProjectReconstructionResource(stringValue(recordValue(value)?.resource))
+      )
+    )
   ) {
-    errors.push({ path, message: "history authority requires an archived-change source" });
+    errors.push({
+      path,
+      message: "history authority requires an archived change or reviewed reconstruction decision",
+    });
   }
   if (
     authority.includes("history")
@@ -350,6 +434,8 @@ function validateConcept(
     errors.push({ path, message: "external authority requires an external-primary source" });
   }
 
+  validateRealization(path, authority, realization, errors);
+
   if (status === "stable") {
     if (verifications.length === 0) {
       errors.push({ path, message: "stable concepts require a verification event" });
@@ -357,11 +443,13 @@ function validateConcept(
     const fresh = verifications.some((verification) =>
       isIsoDateTime(stringValue(verification.at))
       && Date.parse(stringValue(verification.at)) >= Date.parse(generatedAt)
+      && stringValue(verification.content_hash) === expectedContentHash
     );
     if (!fresh) {
       errors.push({
         path,
-        message: "stable concepts require verification at or after generated.at",
+        message:
+          "stable concepts require verification at or after generated.at for the current content hash",
       });
     }
     if (normativeAuthority && !verifications.some((verification) =>
@@ -380,6 +468,12 @@ function validateConcept(
     }
     if (!isIsoDateTime(stringValue(verification.at))) {
       errors.push({ path, message: `verified[${index}].at must be an ISO 8601 datetime` });
+    }
+    if (!/^[0-9a-f]{64}$/i.test(stringValue(verification.content_hash))) {
+      errors.push({
+        path,
+        message: `verified[${index}].content_hash must be a SHA-256 knowledge content hash`,
+      });
     }
   }
 
@@ -625,6 +719,56 @@ async function readProjectChangeIndex(target: string): Promise<ProjectChangeInde
   };
 }
 
+async function readProjectReconstructionIndex(
+  target: string,
+): Promise<ProjectReconstructionIndex> {
+  return {
+    active: await projectReconstructionRecords(target, "active"),
+    archive: await projectReconstructionRecords(target, "archive"),
+  };
+}
+
+async function projectReconstructionRecords(
+  target: string,
+  lifecycle: "active" | "archive",
+): Promise<Map<string, Record<string, unknown>>> {
+  const root = join(target, "reconstruction", lifecycle);
+  try {
+    const result = new Map<string, Record<string, unknown>>();
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      try {
+        const content = await readFile(join(root, entry.name, "case.md"), "utf8");
+        const parsed = parseFrontmatter(content, true);
+        if (parsed.metadata) {
+          const receipt = await inspectProjectReconstructionReceipt(
+            target,
+            entry.name,
+            lifecycle,
+            true,
+          );
+          result.set(entry.name, {
+            ...parsed.metadata,
+            __receiptReady: receipt.issues.length === 0,
+          });
+        }
+      } catch (error) {
+        if (!isMissingFileError(error)) {
+          throw error;
+        }
+      }
+    }
+    return result;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return new Map();
+    }
+    throw error;
+  }
+}
+
 async function projectChangeRecords(
   root: string,
 ): Promise<Map<string, Record<string, unknown>>> {
@@ -636,11 +780,17 @@ async function projectChangeRecords(
       }
       try {
         const content = await readFile(join(root, entry.name, "change.md"), "utf8");
-        const parsed = parseFrontmatter(content, true);
-        if (parsed.metadata) {
+        const document = parseWorkSpec(content);
+        if (document.metadata) {
           result.set(entry.name, {
-            ...parsed.metadata,
+            ...document.metadata,
             __untrustedIntakeReference: containsUntrustedIntakePath(content),
+            __receiptReady: completionIssues(document, true).length === 0
+              && document.metadata.status === "completed"
+              && (
+                !root.endsWith(`${sep}archive`)
+                || document.metadata.outcome === "completed"
+              ),
           });
         }
       } catch (error) {
@@ -749,7 +899,20 @@ function isProjectChangeResource(value: string): boolean {
   return /^project-change:[a-z0-9][a-z0-9-]{0,95}#[A-Za-z0-9_./-]+$/.test(value);
 }
 
+function isProjectReconstructionResource(value: string): boolean {
+  return /^project-reconstruction:[a-z0-9][a-z0-9-]{0,95}#[a-z0-9][a-z0-9-]{0,95}$/.test(value);
+}
+
 function projectChangeRecord(
+  resource: string,
+  index: ProjectChangeIndex,
+  archiveOnly: boolean,
+): Record<string, unknown> | undefined {
+  const record = projectChangeRecordAny(resource, index, archiveOnly);
+  return record?.__receiptReady === true ? record : undefined;
+}
+
+function projectChangeRecordAny(
   resource: string,
   index: ProjectChangeIndex,
   archiveOnly: boolean,
@@ -760,6 +923,38 @@ function projectChangeRecord(
   }
   const id = match[1]!;
   return index.archive.get(id) ?? (!archiveOnly ? index.active.get(id) : undefined);
+}
+
+function projectReconstructionDecision(
+  resource: string,
+  index: ProjectReconstructionIndex,
+): {
+  record: Record<string, unknown>;
+  candidate: Record<string, unknown>;
+} | undefined {
+  const match = /^project-reconstruction:([^#]+)#(.+)$/.exec(resource);
+  if (!match) {
+    return undefined;
+  }
+  const id = match[1]!;
+  const candidateId = match[2]!;
+  const archived = index.archive.get(id);
+  const active = index.active.get(id);
+  const record = archived?.outcome === "completed" ? archived : active;
+  if (
+    !record
+    || record.__receiptReady !== true
+    || !["active", "completed"].includes(stringValue(record.status))
+  ) {
+    return undefined;
+  }
+  const candidate = (Array.isArray(record.candidate_claims)
+    ? record.candidate_claims.filter(isRecord)
+    : []
+  ).find((entry) =>
+    entry.id === candidateId && entry.disposition === "confirmed"
+  );
+  return candidate ? { record, candidate } : undefined;
 }
 
 function hasApprovedHumanReview(
@@ -778,8 +973,156 @@ function hasApprovedHumanReview(
   });
 }
 
+function hasApprovedReconstructionReview(
+  record: Record<string, unknown>,
+  candidate: Record<string, unknown>,
+  actor: string,
+): boolean {
+  const review = recordValue(record.maintainer_review);
+  const decision = recordValue(candidate.maintainer_decision);
+  return review?.status === "approved"
+    && review.by === actor
+    && isIsoDateTime(stringValue(review.at))
+    && decision?.status === "approved"
+    && decision.by === actor
+    && isIsoDateTime(stringValue(decision.at));
+}
+
+function hasApprovedReconstructionCaseReview(
+  record: Record<string, unknown>,
+): boolean {
+  const review = recordValue(record.maintainer_review);
+  return review?.status === "approved"
+    && stringValue(review.by).startsWith("human:")
+    && isIsoDateTime(stringValue(review.at));
+}
+
+function validateRealization(
+  path: string,
+  authority: string[],
+  realization: Record<string, unknown> | undefined,
+  errors: KnowledgeValidationIssue[],
+): void {
+  const productBearing = authority.includes("intent")
+    || authority.includes("product-meaning");
+  if (productBearing && !realization) {
+    errors.push({
+      path,
+      message: "product intent or meaning requires explicit realization state",
+    });
+    return;
+  }
+  if (!realization) {
+    return;
+  }
+
+  const intent = stringValue(realization.intent);
+  const delivery = stringValue(realization.delivery);
+  const alignment = stringValue(realization.alignment);
+  if (!["accepted", "superseded", "not-applicable"].includes(intent)) {
+    errors.push({
+      path,
+      message: "realization.intent must be accepted, superseded, or not-applicable in curated knowledge",
+    });
+  }
+  if (
+    ![
+      "absent",
+      "partial",
+      "implemented",
+      "verified",
+      "retired",
+      "unknown",
+      "not-applicable",
+    ].includes(delivery)
+  ) {
+    errors.push({ path, message: "realization.delivery is invalid" });
+  }
+  if (!["aligned", "drifted", "unknown", "not-applicable"].includes(alignment)) {
+    errors.push({ path, message: "realization.alignment is invalid" });
+  }
+  if (!isIsoDateTime(stringValue(realization.assessed_at))) {
+    errors.push({ path, message: "realization.assessed_at must be an ISO 8601 datetime" });
+  }
+  if (productBearing && intent === "not-applicable") {
+    errors.push({
+      path,
+      message: "product intent or meaning cannot use realization.intent: not-applicable",
+    });
+  }
+  if (
+    !["unknown", "not-applicable"].includes(delivery)
+    && !authority.includes("implementation")
+  ) {
+    errors.push({
+      path,
+      message: "a concrete realization.delivery requires implementation authority",
+    });
+  }
+  if (
+    ["aligned", "drifted"].includes(alignment)
+    && (!productBearing || !authority.includes("implementation"))
+  ) {
+    errors.push({
+      path,
+      message: "a concrete realization.alignment requires both product and implementation authority",
+    });
+  }
+  if (delivery === "verified" && alignment === "unknown") {
+    errors.push({
+      path,
+      message: "verified delivery must state whether it aligns with accepted intent",
+    });
+  }
+}
+
 function isActor(value: string): boolean {
   return /^(?:human:[^\s:]+|process:[^\s:]+|[^/\s]+\/[^/\s]+)$/.test(value);
+}
+
+export async function hashKnowledgeConcept(
+  targetInput: string,
+  conceptPath: string,
+): Promise<KnowledgeConceptHashResult> {
+  const target = await requireKnowledgeRepository(targetInput);
+  const knowledgeRoot = join(target, "knowledge");
+  const absolute = resolveConceptPath(target, knowledgeRoot, conceptPath);
+  const content = decodeUtf8(await readFile(absolute));
+  const parsed = parseFrontmatter(content, true);
+  if (!parsed.metadata) {
+    throw new Error(parsed.error ?? "concept frontmatter is missing");
+  }
+  return {
+    path: portable(relative(target, absolute)),
+    contentHash: conceptDocumentHash(parsed.metadata, parsed.body),
+  };
+}
+
+function conceptDocumentHash(
+  metadata: Record<string, unknown>,
+  body: string,
+): string {
+  const material = { ...metadata };
+  delete material.verified;
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalValue(material)))
+    .update("\n")
+    .update(body.replace(/\r\n/g, "\n").trimEnd())
+    .digest("hex");
+}
+
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalValue);
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalValue(value[key])]),
+    );
+  }
+  return value;
 }
 
 function decodeUtf8(content: Buffer): string {

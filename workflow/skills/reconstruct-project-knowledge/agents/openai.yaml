@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reconstruct Project Knowledge"
+  short_description: "Build a verified project baseline from source"
+  default_prompt: "Use $reconstruct-project-knowledge to operate wfctl yourself, resolve registered source worktrees with minimal human decisions, and reconstruct current project knowledge from pinned repositories plus optional historical inputs."

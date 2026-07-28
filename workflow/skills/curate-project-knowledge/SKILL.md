@@ -1,6 +1,6 @@
 ---
 name: curate-project-knowledge
-description: Promote independently verified claims from reviewed change records, raw-intake cases, source code, primary external sources, and explicit maintainer decisions into the current OKF knowledge bundle. Use when a significant change alters durable project intent, product meaning, architecture, contracts, ownership, decisions, or operational knowledge; when confirmed raw candidates are ready for promotion; when superseding a decision; or when validating Area indexes and history. Never use raw files as evidence.
+description: Promote independently verified claims from reviewed change records, reconstruction cases, raw-intake candidates, source code, primary external sources, and explicit maintainer decisions into the current OKF knowledge bundle. Use when a significant change alters durable project intent, product meaning, architecture, contracts, ownership, decisions, or operational knowledge; when a source-first project baseline or confirmed raw candidates are ready for promotion; when superseding a decision; or when validating Area indexes and history. Never use raw files as evidence.
 ---
 
 # Curate Project Knowledge
@@ -18,6 +18,7 @@ A promotion may start from:
 
 - a completed, maintainer-reviewed record in `changes/archive/`;
 - confirmed candidate IDs in a raw intake case;
+- confirmed candidate IDs in a source-first reconstruction case;
 - directly inspected source and tests at an exact Git revision;
 - a primary external source;
 - an explicit current maintainer decision.
@@ -31,6 +32,9 @@ directly into a concept. For raw material, invoke `process-raw-intake` first.
   verified implementation and update only durable project truth.
 - **Confirmed raw candidates:** promote the candidate claims, not the raw
   wording, and attach their independent authoritative evidence.
+- **Source-first baseline:** promote confirmed reconstruction candidates into
+  the smallest human map. Keep observed implementation distinct from accepted
+  intent and record missing, partial, accidental, or drifted delivery honestly.
 - **Changed product rule or decision:** create a successor decision, deprecate
   predecessors reciprocally, and update the Area's current model and Evolution
   summary.
@@ -53,11 +57,13 @@ directly into a concept. For raw material, invoke `process-raw-intake` first.
 - Product intent and domain meaning require an explicit maintainer decision.
 - Implementation reality requires pinned source-code locations and direct
   inspection; runtime behavior also requires a fresh receipt when static code
-  cannot prove it.
+  cannot prove it. A claim that delivery is absent may instead use a completed,
+  reviewed reconstruction receipt because no nonexistent source path can be
+  pinned.
 - Architectural rationale, ownership, contracts, and policy require a
   maintainer-reviewed decision and must not contradict current code.
-- Historical implementation requires Git or review history and a reviewed
-  archived change.
+- Historical implementation requires pinned Git or review history plus either
+  a reviewed archived change or a reviewed reconstruction receipt.
 - External facts require primary sources.
 - Agent-written concepts and Graphify output have no independent authority.
 
@@ -104,10 +110,17 @@ matching `[^source-id]` footnote.
    meaningful `context` and repeat its target as a normal Markdown link.
 9. Give every source a stable `id`, `resource`, and workflow `kind`; attach
    material claims with matching footnotes.
+   Product-bearing concepts also declare `realization.intent`,
+   `realization.delivery`, `realization.alignment`, and `assessed_at`. Curated
+   intent may be `accepted` or `superseded`, never merely `proposed`.
 10. Set `generated.at` to the latest material edit. Old verification does not
-   survive that edit.
-11. Use `status: stable` only after a suitable verification at or after
-   `generated.at`. Normative claims require a human verification.
+    survive that edit.
+11. Finish the material content, then run `wfctl knowledge hash --concept
+    <path>`. Use `status: stable` only after adding a suitable verification at
+    or after `generated.at` whose `content_hash` exactly matches that output.
+    Normative claims require a human verification. The hash excludes the
+    `verified` field itself, so recording the event does not change the
+    measured content.
 12. Author decisions from [the decision template](assets/decision.md). Preserve
     each approved decision's substantive body; later changes may update only
     lifecycle and lineage metadata. When a decision changes:
@@ -123,13 +136,18 @@ matching `[^source-id]` footnote.
     Evolution summary must explain what changed, why, and what it affected,
     then link the full decisions. Append detail to that Area's `log.md`. Keep
     the root `knowledge/log.md` as a high-level recent aggregator only.
-14. Run `wfctl knowledge validate --target <knowledge-root>`, then
+14. A project-change source is authoritative only when its active record is
+    structurally completion-ready or its archive outcome is completed. A
+    reconstruction source is authoritative only when every non-concept
+    receipt gate passes. Do not use a merely active or partially filled record
+    to make a concept stable.
+15. Run `wfctl knowledge validate --target <knowledge-root>`, then
     `wfctl knowledge build --target <knowledge-root>`. The build must succeed
     so broken links, invalid typed relations, and stable orphan concepts cannot
     silently enter the maintained reading surface.
-15. Run `qmd update` so retrieval reflects the validated files. Re-run
+16. Run `qmd update` so retrieval reflects the validated files. Re-run
     `qmd embed -c knowledge` when semantic vectors are needed.
-16. Do not report promotion complete while validation or graph compilation
+17. Do not report promotion complete while validation or graph compilation
     fails.
 
 Unresolved candidates from raw intake stay in the intake case. Use

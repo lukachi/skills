@@ -6,6 +6,7 @@ import {
   readFile,
   readdir,
   rename,
+  rm,
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -16,6 +17,7 @@ import { readRepositoryMetadata } from "./git.js";
 import { validateKnowledge } from "./knowledge.js";
 import type { WorkOutcome } from "./types.js";
 
+const INTAKE_CASE_VERSION = 3;
 const SOURCE_STATUSES = new Set([
   "pending",
   "reviewed",
@@ -28,6 +30,19 @@ const CANDIDATE_STATUSES = new Set([
   "confirmed",
   "rejected",
   "unresolved",
+]);
+
+const CANDIDATE_AUTHORITIES = new Set([
+  "intent",
+  "product-meaning",
+  "implementation",
+  "architecture-rationale",
+  "ownership",
+  "contract",
+  "operational-policy",
+  "decision",
+  "history",
+  "external",
 ]);
 
 interface CaseDocument {
@@ -206,6 +221,7 @@ export async function beginIntakeCase(
   const createdAt = now.toISOString();
   document.metadata = {
     ...document.metadata,
+    intake_case_version: INTAKE_CASE_VERSION,
     id,
     title: options.title,
     status: "active",
@@ -229,8 +245,13 @@ export async function beginIntakeCase(
     })),
   };
 
-  await mkdir(directory, { recursive: false });
-  await writeFile(path, serializeCase(document), { encoding: "utf8", flag: "wx" });
+  try {
+    await mkdir(directory, { recursive: false });
+    await writeFile(path, serializeCase(document), { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
   return { id, path, baseline, files: sources.length };
 }
 
@@ -369,9 +390,14 @@ export async function closeIntakeCase(
   document.metadata.outcome = options.outcome;
   document.metadata.closed_at = now.toISOString();
   document.metadata.updated_at = now.toISOString();
-  await writeFile(path, serializeCase(document), "utf8");
   await mkdir(dirname(archivePath), { recursive: true });
   await rename(directory, archivePath);
+  try {
+    await writeFile(join(archivePath, "case.md"), serializeCase(document), "utf8");
+  } catch (error) {
+    await rename(archivePath, directory);
+    throw error;
+  }
   return { id: options.id, outcome: options.outcome, archivePath };
 }
 
@@ -383,6 +409,9 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
   const promotion = recordValue(metadata.promotion);
   const omissionAudit = recordValue(metadata.omission_audit);
 
+  if (metadata.intake_case_version !== INTAKE_CASE_VERSION) {
+    issues.push(`intake_case_version must be ${INTAKE_CASE_VERSION}`);
+  }
   if (metadata.status !== "active") {
     issues.push("status must remain active until wfctl archives the case");
   }
@@ -440,6 +469,7 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
   }
 
   const seenCandidates = new Set<string>();
+  const confirmedPromotions = new Set<string>();
   for (const [index, candidate] of candidates.entries()) {
     const prefix = `candidate_claims[${index}]`;
     const id = stringValue(candidate.id);
@@ -453,8 +483,9 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
     if (!stringValue(candidate.claim).trim()) {
       issues.push(`${prefix}.claim is required`);
     }
-    if (!stringValue(candidate.authority).trim()) {
-      issues.push(`${prefix}.authority is required`);
+    const authority = stringValue(candidate.authority);
+    if (!CANDIDATE_AUTHORITIES.has(authority)) {
+      issues.push(`${prefix}.authority is unknown: ${authority}`);
     }
     const disposition = stringValue(candidate.disposition);
     if (!CANDIDATE_STATUSES.has(disposition)) {
@@ -462,8 +493,95 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
     } else if (disposition === "unresolved") {
       issues.push(`${prefix}.disposition remains unresolved`);
     }
+    if (
+      (disposition === "rejected" || disposition === "unresolved")
+      && !stringValue(candidate.reason).trim()
+    ) {
+      issues.push(`${prefix}.reason must explain ${disposition || "the final disposition"}`);
+    }
+
+    const evidence = recordArray(candidate.evidence);
+    const evidenceKinds = new Set<string>();
+    for (const [evidenceIndex, item] of evidence.entries()) {
+      const itemPrefix = `${prefix}.evidence[${evidenceIndex}]`;
+      const kind = stringValue(item.kind);
+      const resource = stringValue(item.resource);
+      evidenceKinds.add(kind);
+      if (!["source-code", "runtime-check", "version-control", "external-primary"].includes(kind)) {
+        issues.push(`${itemPrefix}.kind is not an independent authority class`);
+      }
+      if (kind === "source-code" && !isPinnedCodeResource(resource)) {
+        issues.push(`${itemPrefix}.resource must pin repository, commit, and path`);
+      }
+      if (kind === "version-control" && !isVersionControlResource(resource)) {
+        issues.push(`${itemPrefix}.resource must pin Git history`);
+      }
+      if (kind === "external-primary" && !/^https?:\/\/\S+$/i.test(resource)) {
+        issues.push(`${itemPrefix}.resource must be an absolute primary-source URL`);
+      }
+      if (containsUntrustedResource(resource)) {
+        issues.push(`${itemPrefix}.resource must not cite raw or intake material`);
+      }
+    }
+    const normative = [
+      "intent",
+      "product-meaning",
+      "architecture-rationale",
+      "ownership",
+      "contract",
+      "operational-policy",
+      "decision",
+    ].includes(authority);
+    if (disposition === "confirmed" && normative) {
+      const decision = recordValue(candidate.maintainer_decision);
+      if (
+        decision?.status !== "approved"
+        || !stringValue(decision.by).startsWith("human:")
+        || !isIsoDateTime(stringValue(decision.at))
+      ) {
+        issues.push(`${prefix}.maintainer_decision must record explicit human approval`);
+      }
+    }
+    if (
+      disposition === "confirmed"
+      && authority === "implementation"
+      && !evidenceKinds.has("source-code")
+    ) {
+      issues.push(`${prefix}: confirmed implementation requires pinned source-code evidence`);
+    }
+    if (
+      disposition === "confirmed"
+      && authority === "history"
+      && !evidenceKinds.has("version-control")
+    ) {
+      issues.push(`${prefix}: confirmed history requires pinned version-control evidence`);
+    }
+    if (
+      disposition === "confirmed"
+      && authority === "external"
+      && !evidenceKinds.has("external-primary")
+    ) {
+      issues.push(`${prefix}: confirmed external claims require a primary source`);
+    }
+    if (disposition === "confirmed" && !normative && evidence.length === 0) {
+      issues.push(`${prefix}.evidence is required for a confirmed factual claim`);
+    }
+    if (disposition === "confirmed") {
+      const promotedTo = stringArray(candidate.promoted_to);
+      if (promotedTo.length === 0) {
+        issues.push(`${prefix}.promoted_to must identify every curated destination`);
+      }
+      for (const concept of promotedTo) {
+        if (!isConceptPath(concept)) {
+          issues.push(`${prefix}.promoted_to contains an invalid concept path: ${concept}`);
+        } else {
+          confirmedPromotions.add(concept);
+        }
+      }
+    }
   }
 
+  const promotedConcepts = new Set(stringArray(promotion?.concepts));
   if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
     issues.push("promotion.status must be applied or not-needed");
   } else if (
@@ -488,8 +606,29 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
   if (promotion?.status === "not-needed" && promotion.validation !== "not-needed") {
     issues.push("promotion.validation must be not-needed when no concept was promoted");
   }
+  if (
+    promotion?.status === "not-needed"
+    && candidates.some((candidate) => candidate.disposition === "confirmed")
+  ) {
+    issues.push("promotion cannot be not-needed while confirmed candidates exist");
+  }
+  if (promotion?.status === "applied") {
+    for (const concept of confirmedPromotions) {
+      if (!promotedConcepts.has(concept)) {
+        issues.push(`confirmed candidate destination is missing from promotion.concepts: ${concept}`);
+      }
+    }
+    for (const concept of promotedConcepts) {
+      if (!confirmedPromotions.has(concept)) {
+        issues.push(`promotion concept is not linked from a confirmed candidate: ${concept}`);
+      }
+    }
+  }
   if (omissionAudit?.result !== "passed") {
     issues.push("omission_audit.result must be passed");
+  }
+  if (!nonEmptyStringArray(omissionAudit?.notes)) {
+    issues.push("omission_audit.notes must record the explicit no-omission review");
   }
   return issues;
 }
@@ -572,14 +711,6 @@ function rawInventoryState(
   exact: IntakeSourceHistory[],
   samePath: IntakeSourceHistory[],
 ): RawInventoryState {
-  if (exact.some((source) =>
-    source.sourceStatus === "needs-maintainer" || source.sourceStatus === "unreadable"
-  )) {
-    return "blocked";
-  }
-  if (exact.some((source) => source.lifecycle === "active")) {
-    return "active";
-  }
   const completed = exact.filter((source) =>
     source.lifecycle === "archive" && source.outcome === "completed"
   );
@@ -588,6 +719,14 @@ function rawInventoryState(
   }
   if (completed.some((source) => source.sourceStatus === "no-relevant-claims")) {
     return "no-relevant-claims";
+  }
+  if (exact.some((source) => source.lifecycle === "active")) {
+    return "active";
+  }
+  if (exact.some((source) =>
+    source.sourceStatus === "needs-maintainer" || source.sourceStatus === "unreadable"
+  )) {
+    return "blocked";
   }
   if (exact.length > 0) {
     return "unresolved";
@@ -840,6 +979,30 @@ function stringArray(value: unknown): string[] {
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function nonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
+}
+
+function isConceptPath(value: string): boolean {
+  return /^knowledge\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(value)
+    && !/(?:^|\/)(?:index|log)\.md$/i.test(value);
+}
+
+function containsUntrustedResource(value: string): boolean {
+  return /(?:^|[/:])(?:raw|intake)(?:[/:]|$)/i.test(value);
+}
+
+function isPinnedCodeResource(value: string): boolean {
+  return /^git:.+@[0-9a-f]{40}#[^#\s]+$/i.test(value);
+}
+
+function isVersionControlResource(value: string): boolean {
+  return /^git:.+@[0-9a-f]{40}(?:#[^#\s]+)?$/i.test(value)
+    || /^https?:\/\/\S+\/(?:pull|merge_requests|commit|commits)\/\S+$/i.test(value);
 }
 
 function isIsoDateTime(value: string): boolean {

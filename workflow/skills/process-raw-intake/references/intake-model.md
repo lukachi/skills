@@ -60,6 +60,12 @@ never promoted into current knowledge. Keep the case active or close it as
 `partial` or `abandoned`; a case with unresolved candidates cannot close as
 `completed`.
 
+Every confirmed candidate carries its independent authority receipt and an
+explicit `promoted_to` list. The promotion concept list must equal the union of
+those destinations. This prevents a case from labelling a claim confirmed
+while silently dropping it, and prevents a concept from appearing in the
+promotion summary without a reviewed candidate.
+
 ## Two audits
 
 The first pass retrieves related material, then reads every frozen file and
@@ -79,11 +85,12 @@ semantic safeguards. The workflow must state this limitation honestly.
 
 ## QMD collection policy
 
-The project-local `.qmd/index.yml` defines four collections:
+The project-local `.qmd/index.yml` defines five collections:
 
 - `knowledge`: included in unscoped queries;
 - `changes`: excluded unless explicitly requested;
 - `intake`: excluded unless explicitly requested;
+- `reconstruction`: excluded unless explicitly requested;
 - `raw`: excluded unless explicitly requested.
 
 This prevents a normal project-knowledge query from blending current truth with

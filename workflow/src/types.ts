@@ -1,4 +1,4 @@
-export const WORKFLOW_VERSION = "0.1.0";
+export const WORKFLOW_VERSION = "0.2.0";
 export const CONFIG_SCHEMA_VERSION = 1;
 export const STATE_SCHEMA_VERSION = 1;
 
@@ -28,8 +28,8 @@ export interface WorkflowState {
   files: Record<string, { sha256: string }>;
 }
 
-export type OperationKind = "directory" | "file" | "managed-block" | "symlink";
-export type OperationStatus = "create" | "update" | "unchanged" | "conflict";
+export type OperationKind = "directory" | "file" | "managed-block" | "symlink" | "delete";
+export type OperationStatus = "create" | "update" | "delete" | "unchanged" | "conflict";
 
 export interface PlanOperation {
   kind: OperationKind;

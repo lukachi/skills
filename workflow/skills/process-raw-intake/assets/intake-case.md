@@ -1,5 +1,5 @@
 ---
-intake_case_version: 2
+intake_case_version: 3
 id: "<case-id>"
 title: "<bounded topic>"
 status: active
@@ -34,7 +34,17 @@ Add one frontmatter object per candidate:
 - id: stable-lowercase-id
   claim: Exact atomic claim
   authority: implementation
+  evidence:
+    - kind: source-code
+      resource: git:owner/repository@<full-commit>#<path>:<symbol>
   disposition: confirmed
+  reason: ""
+  maintainer_decision:
+    status: not-needed
+    by: ""
+    at: ""
+  promoted_to:
+    - knowledge/areas/<area>/implementation/<concept>.md
 ```
 
 Explain each candidate here: supporting and conflicting observations, missing

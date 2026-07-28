@@ -1,25 +1,26 @@
+import { constants } from "node:fs";
 import {
   access,
   mkdir,
-  readdir,
   readFile,
+  readdir,
   realpath,
   rename,
+  rm,
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { constants } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { findDistributionRoot } from "./assets.js";
 import {
   errorMessage,
   isMissingFileError,
-  portableRelative,
   readConfig,
   resolveKnowledgeRoot,
 } from "./config.js";
 import { readRepositoryMetadata } from "./git.js";
 import { validateKnowledge } from "./knowledge.js";
+import { resolveReconstructionLeaves } from "./repository-registry.js";
 import { completionIssues, parseWorkSpec, serializeWorkSpec } from "./work-spec.js";
 import type {
   RepositoryMetadata,
@@ -27,11 +28,39 @@ import type {
   WorkOutcome,
 } from "./types.js";
 
+type WorkScope = "project" | "leaf" | "multi-repo";
+
+interface DurableRepository {
+  repository: string;
+  checkout: string;
+  branch: string;
+  commit_at_start: string;
+  remote: string;
+  worktree: boolean;
+  worktree_id: string;
+}
+
+interface BoundRepository {
+  root: string;
+  source: RepositoryMetadata;
+}
+
+interface WorkBinding {
+  schemaVersion: 4;
+  id: string;
+  knowledgeRoot: string;
+  spec: string;
+  createdAt: string;
+  scope: WorkScope;
+  repositories: BoundRepository[];
+}
+
 export interface BeginWorkOptions {
   target: string;
   slug: string;
   title: string;
   mode: WorkMode;
+  leaves?: string[];
   knowledgeRef?: string;
   graphQuery?: string;
   distributionRoot?: string;
@@ -40,9 +69,12 @@ export interface BeginWorkOptions {
 
 export interface BeginWorkResult {
   id: string;
-  codeRoot: string;
+  scope: WorkScope;
+  codeRoots: string[];
+  codeRoot?: string;
   knowledgeRoot: string;
   specPath: string;
+  pointerPaths: string[];
   pointerPath: string;
 }
 
@@ -80,74 +112,118 @@ export interface CloseWorkResult {
   archivePath: string;
 }
 
-interface WorkPointer {
-  schemaVersion: 3;
-  id: string;
-  codeRoot: string;
-  knowledgeRoot: string;
-  spec: string;
-  createdAt: string;
-  source: RepositoryMetadata;
-}
-
 export interface WorkStatusResult {
   id: string;
   valid: boolean;
-  codeRoot: string;
+  scope: WorkScope;
+  codeRoots: string[];
+  codeRoot?: string;
   knowledgeRoot: string;
   specPath: string;
+  pointerPaths: string[];
   pointerPath: string;
-  source: RepositoryMetadata;
-  currentSource: RepositoryMetadata;
+  sources: RepositoryMetadata[];
+  currentSources: RepositoryMetadata[];
+  source?: RepositoryMetadata;
+  currentSource?: RepositoryMetadata;
   issues: string[];
 }
 
-export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkResult> {
-  const metadata = readRepositoryMetadata(resolve(options.target));
-  const target = metadata.root;
-  const config = await readConfig(target);
-  if (config.profile !== "leaf") {
-    throw new Error("Work records must be started from a leaf repository");
-  }
+export interface RebindWorkResult {
+  id: string;
+  repository: string;
+  previousRoot: string;
+  currentRoot: string;
+  branch: string;
+  worktreeId: string;
+}
 
-  const configuredKnowledgeRoot = resolveKnowledgeRoot(target, config);
-  await assertKnowledgeRoot(configuredKnowledgeRoot);
-  const knowledgeRoot = await realpath(configuredKnowledgeRoot);
+export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkResult> {
+  const target = await realpath(resolve(options.target));
+  const config = await readConfig(target);
+  let knowledgeRoot: string;
+  let codeRoots: string[];
+
+  if (config.profile === "leaf") {
+    if ((options.leaves ?? []).length > 0) {
+      throw new Error("--leaf may be used only when work starts from a knowledge repository");
+    }
+    knowledgeRoot = await realpath(resolveKnowledgeRoot(target, config));
+    codeRoots = [target];
+  } else {
+    knowledgeRoot = target;
+    codeRoots = (options.leaves ?? []).length > 0
+      ? await resolveReconstructionLeaves(knowledgeRoot, options.leaves ?? [], "audit")
+      : [];
+  }
+  await assertKnowledgeRoot(knowledgeRoot);
   if (options.knowledgeRef) {
     await assertKnowledgeReference(knowledgeRoot, options.knowledgeRef);
   }
 
+  const repositories = codeRoots.map((root) => {
+    const leafConfigPromise = readConfig(root);
+    return { root, leafConfigPromise };
+  });
+  const boundRepositories: BoundRepository[] = [];
+  const seen = new Set<string>();
+  for (const input of repositories) {
+    const leafConfig = await input.leafConfigPromise;
+    if (leafConfig.profile !== "leaf") {
+      throw new Error(`Work source is not an initialized leaf: ${input.root}`);
+    }
+    const configuredKnowledge = await realpath(resolveKnowledgeRoot(input.root, leafConfig));
+    if (configuredKnowledge !== knowledgeRoot) {
+      throw new Error(
+        `Leaf points to a different knowledge repository: ${input.root} -> ${configuredKnowledge}`,
+      );
+    }
+    const source = readRepositoryMetadata(input.root);
+    if (seen.has(source.repository)) {
+      throw new Error(`Work received multiple checkouts for ${source.repository}`);
+    }
+    seen.add(source.repository);
+    boundRepositories.push({ root: input.root, source });
+  }
+
+  const scope: WorkScope = boundRepositories.length === 0
+    ? "project"
+    : boundRepositories.length === 1
+    ? "leaf"
+    : "multi-repo";
   const now = options.now ?? new Date();
   const date = now.toISOString().slice(0, 10);
-  const slug = normalizeSlug(options.slug);
-  const id = await uniqueWorkId(join(knowledgeRoot, "changes/active"), `${date}-${slug}`);
-  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const templatePath = join(
-    distributionRoot,
-    "skills/manage-project-work/assets/work-spec.md",
+  const id = await uniqueWorkId(
+    join(knowledgeRoot, "changes/active"),
+    `${date}-${normalizeSlug(options.slug)}`,
   );
-  const template = parseWorkSpec(await readFile(templatePath, "utf8"));
+  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+  const template = parseWorkSpec(await readFile(
+    join(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
+    "utf8",
+  ));
   const createdAt = now.toISOString();
   const activeDirectory = join(knowledgeRoot, "changes/active", id);
   const specPath = join(activeDirectory, "change.md");
-  const pointerPath = join(target, ".workflow/current", `${id}.json`);
+  const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
+  const pointerPaths = boundRepositories.map((entry) =>
+    leafPointerPath(entry.root, id)
+  );
+  const durableRepositories = boundRepositories.map((entry) =>
+    durableRepository(entry.source)
+  );
 
   template.metadata = {
     ...template.metadata,
+    workflow_version: 2,
     id,
     title: options.title,
     mode: options.mode,
+    scope,
     status: "shaping",
     created_at: createdAt,
     updated_at: createdAt,
-    source: metadata,
-    workspace: {
-      code_root: target,
-      knowledge_root: knowledgeRoot,
-      spec_path: specPath,
-      pointer_path: pointerPath,
-      worktree_id: metadata.worktreeId,
-    },
+    repositories: durableRepositories,
     knowledge_alignment: {
       reviewed: options.knowledgeRef ? [options.knowledgeRef] : [],
       conflicts: [],
@@ -156,39 +232,61 @@ export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkRes
       queries: options.graphQuery ? [options.graphQuery] : [],
     },
   };
+  delete template.metadata.source;
+  delete template.metadata.workspace;
 
-  await mkdir(activeDirectory, { recursive: false });
-  await writeFile(specPath, serializeWorkSpec(template), { encoding: "utf8", flag: "wx" });
-  await mkdir(dirname(pointerPath), { recursive: true });
-  await writeFile(
-    pointerPath,
-    `${JSON.stringify({
-      schemaVersion: 3,
-      id,
-      codeRoot: target,
-      knowledgeRoot,
-      spec: portableRelative(target, specPath),
-      createdAt,
-      source: metadata,
-    }, null, 2)}\n`,
-    { encoding: "utf8", flag: "wx" },
-  );
+  const binding: WorkBinding = {
+    schemaVersion: 4,
+    id,
+    knowledgeRoot,
+    spec: relativeSpec(knowledgeRoot, specPath),
+    createdAt,
+    scope,
+    repositories: boundRepositories,
+  };
 
-  return { id, codeRoot: target, knowledgeRoot, specPath, pointerPath };
+  try {
+    await mkdir(activeDirectory, { recursive: false });
+    await writeFile(specPath, serializeWorkSpec(template), {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    await writeBinding(bindingPath, binding);
+    for (const pointerPath of pointerPaths) {
+      await writeBinding(pointerPath, binding);
+    }
+  } catch (error) {
+    await removePath(activeDirectory);
+    await removePath(bindingPath);
+    for (const pointerPath of pointerPaths) {
+      await removePath(pointerPath);
+    }
+    throw error;
+  }
+
+  return {
+    id,
+    scope,
+    codeRoots,
+    ...(codeRoots[0] ? { codeRoot: codeRoots[0] } : {}),
+    knowledgeRoot,
+    specPath,
+    pointerPaths: [bindingPath, ...pointerPaths],
+    pointerPath: pointerPaths[0] ?? bindingPath,
+  };
 }
 
 export async function createHandoff(
   options: CreateHandoffOptions,
 ): Promise<CreateHandoffResult> {
-  const metadata = readRepositoryMetadata(resolve(options.target));
-  const target = metadata.root;
+  const source = readRepositoryMetadata(resolve(options.target));
+  const target = source.root;
   const config = await readConfig(target);
   if (config.profile !== "leaf") {
     throw new Error("Handoffs must be created from a leaf repository");
   }
-  const configuredKnowledgeRoot = resolveKnowledgeRoot(target, config);
-  await assertKnowledgeRoot(configuredKnowledgeRoot);
-  const knowledgeRoot = await realpath(configuredKnowledgeRoot);
+  const knowledgeRoot = await realpath(resolveKnowledgeRoot(target, config));
+  await assertKnowledgeRoot(knowledgeRoot);
   const now = options.now ?? new Date();
   const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug(options.slug)}`;
   const inboxRoot = join(knowledgeRoot, "changes/inbox");
@@ -205,7 +303,7 @@ export async function createHandoff(
     title: options.title,
     status: "inbox",
     created_at: now.toISOString(),
-    source: metadata,
+    source: durableRepository(source),
   };
   await writeFile(path, serializeWorkSpec(template), {
     encoding: "utf8",
@@ -214,44 +312,40 @@ export async function createHandoff(
   return { id, codeRoot: target, knowledgeRoot, path };
 }
 
-export async function verifyWork(targetInput: string, id: string): Promise<VerifyWorkResult> {
+export async function verifyWork(
+  targetInput: string,
+  id: string,
+): Promise<VerifyWorkResult> {
   const context = await requireWorkContext(targetInput, id);
   const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
   const issues = completionIssues(document, false);
-  if (context.currentSource.dirty) {
-    issues.push("bound source checkout must be clean for final verification");
-  }
-  const verification = record(document.metadata.verification);
-  if (verification?.revision !== context.currentSource.commit) {
-    issues.push("verification.revision does not match the current bound commit");
-  }
-  if (verification?.worktree_id !== context.currentSource.worktreeId) {
-    issues.push("verification.worktree_id does not match the current bound worktree");
-  }
+  issues.push(...repositoryVerificationIssues(document, context.currentSources));
   return {
     id,
     specPath: context.specPath,
-    issues,
+    issues: [...new Set(issues)],
   };
 }
 
 export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkResult> {
   const context = await requireWorkContext(options.target, options.id);
-  const target = context.codeRoot;
-  const knowledgeRoot = context.knowledgeRoot;
   const activeDirectory = dirname(context.specPath);
   const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
-  const metadata = readRepositoryMetadata(target);
 
   if (options.outcome === "completed") {
-    const issues = completionIssues(document, true);
+    const issues = [
+      ...completionIssues(document, true),
+      ...repositoryVerificationIssues(document, context.currentSources),
+    ];
     if (issues.length > 0) {
-      throw new Error(`Completed close is blocked: ${issues.join("; ")}`);
+      throw new Error(`Completed close is blocked: ${[...new Set(issues)].join("; ")}`);
     }
     const promotion = record(document.metadata.knowledge_promotion);
     if (promotion?.status === "applied") {
-      const concepts = stringArray(promotion.concepts);
-      const validation = await validateKnowledge(knowledgeRoot, concepts);
+      const validation = await validateKnowledge(
+        context.knowledgeRoot,
+        stringArray(promotion.concepts),
+      );
       if (!validation.valid) {
         throw new Error(
           `Completed close is blocked by curated knowledge validation: ${
@@ -260,58 +354,315 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
         );
       }
     }
-    if (metadata.dirty) {
-      throw new Error(
-        "Completed close is blocked: the bound source checkout is dirty; commit or otherwise preserve the verified implementation, then verify again",
-      );
-    }
-    const verification = record(document.metadata.verification);
-    if (verification?.revision !== metadata.commit) {
-      throw new Error(
-        `Completed close is blocked: verification.revision ${String(verification?.revision ?? "")} does not match current commit ${metadata.commit}`,
-      );
-    }
-    if (verification?.worktree_id !== metadata.worktreeId) {
-      throw new Error(
-        `Completed close is blocked: verification.worktree_id ${String(verification?.worktree_id ?? "")} does not match current worktree ${metadata.worktreeId}`,
-      );
-    }
   }
 
-  const archivePath = join(knowledgeRoot, "changes/archive", options.id);
+  const archivePath = join(context.knowledgeRoot, "changes/archive", options.id);
   await assertAbsent(archivePath, "archive");
   const now = options.now ?? new Date();
   document.metadata.status = options.outcome;
   document.metadata.outcome = options.outcome;
   document.metadata.closed_at = now.toISOString();
   document.metadata.updated_at = now.toISOString();
-  document.metadata.source_at_close = metadata;
-  await writeFile(context.specPath, serializeWorkSpec(document), "utf8");
+  document.metadata.sources_at_close = context.currentSources.map(durableRepository);
   await mkdir(dirname(archivePath), { recursive: true });
   await rename(activeDirectory, archivePath);
-  await removePointer(join(target, ".workflow/current", `${options.id}.json`));
+  try {
+    await writeFile(
+      join(archivePath, "change.md"),
+      serializeWorkSpec(document),
+      "utf8",
+    );
+  } catch (error) {
+    await rename(archivePath, activeDirectory);
+    throw error;
+  }
+  for (const pointerPath of context.pointerPaths) {
+    await removePath(pointerPath);
+  }
 
   return { id: options.id, outcome: options.outcome, archivePath };
+}
+
+export async function rebindWork(
+  targetInput: string,
+  id: string,
+  now = new Date(),
+): Promise<RebindWorkResult> {
+  const target = await realpath(resolve(targetInput));
+  const config = await readConfig(target);
+  if (config.profile !== "leaf") {
+    throw new Error("Work rebind must target the replacement leaf checkout");
+  }
+  const knowledgeRoot = await realpath(resolveKnowledgeRoot(target, config));
+  const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
+  const binding = await readBinding(bindingPath);
+  const current = readRepositoryMetadata(target);
+  const index = binding.repositories.findIndex((entry) =>
+    entry.source.repository === current.repository
+  );
+  if (index < 0) {
+    throw new Error(
+      `Work ${id} is not scoped to repository ${current.repository}`,
+    );
+  }
+  const previous = binding.repositories[index]!;
+  binding.repositories[index] = { root: target, source: current };
+
+  const specPath = resolve(knowledgeRoot, binding.spec);
+  const document = parseWorkSpec(await readFile(specPath, "utf8"));
+  const repositories = recordArray(document.metadata.repositories);
+  const durableIndex = repositories.findIndex((entry) =>
+    entry.repository === current.repository
+  );
+  if (durableIndex < 0) {
+    throw new Error(`Work spec has no durable repository entry for ${current.repository}`);
+  }
+  repositories[durableIndex] = { ...durableRepository(current) };
+  document.metadata.repositories = repositories;
+  document.metadata.updated_at = now.toISOString();
+  document.metadata.rebindings = [
+    ...recordArray(document.metadata.rebindings),
+    {
+      repository: current.repository,
+      from_worktree_id: previous.source.worktreeId,
+      from_branch: previous.source.branch,
+      to_worktree_id: current.worktreeId,
+      to_branch: current.branch,
+      at: now.toISOString(),
+    },
+  ];
+
+  const previousPointer = leafPointerPath(previous.root, id);
+  const currentPointer = leafPointerPath(target, id);
+  await writeFile(specPath, serializeWorkSpec(document), "utf8");
+  await writeBinding(bindingPath, binding, true);
+  await writeBinding(currentPointer, binding, true);
+  if (previousPointer !== currentPointer) {
+    await removePath(previousPointer);
+  }
+
+  return {
+    id,
+    repository: current.repository,
+    previousRoot: previous.root,
+    currentRoot: target,
+    branch: current.branch,
+    worktreeId: current.worktreeId,
+  };
 }
 
 export async function workStatus(
   targetInput: string,
   id?: string,
 ): Promise<WorkStatusResult[]> {
-  const source = readRepositoryMetadata(resolve(targetInput));
-  const target = source.root;
-  const pointerRoot = join(target, ".workflow/current");
-  const ids = id
-    ? [id]
-    : (await readdir(pointerRoot, { withFileTypes: true }))
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .map((entry) => entry.name.slice(0, -5))
-      .sort();
+  const target = await realpath(resolve(targetInput));
+  const config = await readConfig(target);
+  const pointerRoot = config.profile === "knowledge"
+    ? join(target, ".workflow/current/work")
+    : join(target, ".workflow/current");
+  const ids = id ? [id] : await pointerIds(pointerRoot);
   const results: WorkStatusResult[] = [];
   for (const workId of ids) {
-    results.push(await inspectWorkContext(target, source, workId));
+    results.push(await inspectWorkContext(target, config.profile, workId));
   }
   return results;
+}
+
+async function requireWorkContext(
+  targetInput: string,
+  id: string,
+): Promise<WorkStatusResult> {
+  const results = await workStatus(targetInput, id);
+  const context = results[0];
+  if (!context) {
+    throw new Error(`Active work binding not found: ${id}`);
+  }
+  if (!context.valid) {
+    throw new Error(`Work context mismatch for ${id}: ${context.issues.join("; ")}`);
+  }
+  return context;
+}
+
+async function inspectWorkContext(
+  target: string,
+  profile: "knowledge" | "leaf",
+  id: string,
+): Promise<WorkStatusResult> {
+  const config = await readConfig(target);
+  const knowledgeRoot = profile === "knowledge"
+    ? target
+    : await realpath(resolveKnowledgeRoot(target, config));
+  const preferred = profile === "knowledge"
+    ? knowledgeBindingPath(knowledgeRoot, id)
+    : leafPointerPath(target, id);
+  let binding: WorkBinding;
+  let preferredExists = true;
+  try {
+    binding = await readBinding(preferred);
+  } catch (error) {
+    if (profile !== "leaf" || !isMissingFileError(error)) {
+      throw error;
+    }
+    preferredExists = false;
+    binding = await readBinding(knowledgeBindingPath(knowledgeRoot, id));
+  }
+  const issues: string[] = [];
+  if (binding.id !== id || binding.knowledgeRoot !== knowledgeRoot) {
+    issues.push("local work binding does not match this knowledge checkout");
+  }
+  if (profile === "leaf" && !preferredExists) {
+    issues.push("this checkout is not bound to the work; use wfctl work rebind explicitly");
+  }
+  if (
+    profile === "leaf"
+    && !binding.repositories.some((entry) => entry.root === target)
+  ) {
+    issues.push(`current checkout ${target} is outside the bound workspaces`);
+  }
+
+  const currentSources: RepositoryMetadata[] = [];
+  for (const entry of binding.repositories) {
+    try {
+      const current = readRepositoryMetadata(entry.root);
+      currentSources.push(current);
+      if (current.root !== entry.source.root) {
+        issues.push(`${entry.source.repository}: checkout root changed`);
+      }
+      if (current.repository !== entry.source.repository) {
+        issues.push(
+          `${entry.source.repository}: bound path now identifies ${current.repository}`,
+        );
+      }
+      if (current.worktreeId !== entry.source.worktreeId) {
+        issues.push(
+          `${entry.source.repository}: worktree changed from ${entry.source.worktreeId} to ${current.worktreeId}`,
+        );
+      }
+      if (current.branch !== entry.source.branch) {
+        issues.push(
+          `${entry.source.repository}: branch changed from ${entry.source.branch} to ${current.branch}; run wfctl work rebind`,
+        );
+      }
+    } catch (error) {
+      issues.push(`${entry.source.repository}: ${errorMessage(error)}`);
+    }
+  }
+
+  const specPath = resolve(knowledgeRoot, binding.spec);
+  const activeRoot = join(knowledgeRoot, "changes/active");
+  if (!inside(activeRoot, specPath)) {
+    issues.push(`spec path is outside the active work root: ${specPath}`);
+  }
+  try {
+    const document = parseWorkSpec(await readFile(specPath, "utf8"));
+    if (document.metadata.scope !== binding.scope) {
+      issues.push("spec scope does not match the local binding");
+    }
+    const durable = recordArray(document.metadata.repositories);
+    if (durable.length !== binding.repositories.length) {
+      issues.push("spec repository scope does not match the local binding");
+    }
+    for (const entry of binding.repositories) {
+      const stored = durable.find((candidate) =>
+        candidate.repository === entry.source.repository
+      );
+      if (
+        !stored
+        || stored.worktree_id !== entry.source.worktreeId
+        || stored.branch !== entry.source.branch
+      ) {
+        issues.push(`${entry.source.repository}: durable repository binding is inconsistent`);
+      }
+    }
+    const serialized = await readFile(specPath, "utf8");
+    for (const entry of binding.repositories) {
+      if (serialized.includes(entry.root)) {
+        issues.push("durable work record leaks a local checkout path");
+        break;
+      }
+    }
+  } catch (error) {
+    issues.push(`cannot read bound spec: ${errorMessage(error)}`);
+  }
+
+  const pointerPaths = [
+    knowledgeBindingPath(knowledgeRoot, id),
+    ...binding.repositories.map((entry) => leafPointerPath(entry.root, id)),
+  ];
+  const codeRoots = binding.repositories.map((entry) => entry.root);
+  const sources = binding.repositories.map((entry) => entry.source);
+  return {
+    id,
+    valid: issues.length === 0,
+    scope: binding.scope,
+    codeRoots,
+    ...(codeRoots[0] ? { codeRoot: codeRoots[0] } : {}),
+    knowledgeRoot,
+    specPath,
+    pointerPaths,
+    pointerPath: profile === "leaf"
+      ? preferred
+      : knowledgeBindingPath(knowledgeRoot, id),
+    sources,
+    currentSources,
+    ...(sources[0] ? { source: sources[0] } : {}),
+    ...(currentSources[0] ? { currentSource: currentSources[0] } : {}),
+    issues,
+  };
+}
+
+function repositoryVerificationIssues(
+  document: ReturnType<typeof parseWorkSpec>,
+  sources: RepositoryMetadata[],
+): string[] {
+  const issues: string[] = [];
+  if (document.metadata.scope === "project") {
+    return issues;
+  }
+  const verification = record(document.metadata.verification);
+  const receipts = recordArray(verification?.repositories);
+  for (const source of sources) {
+    if (source.dirty) {
+      issues.push(`${source.repository}: bound source checkout must be clean for final verification`);
+    }
+    const receipt = receipts.find((entry) => entry.repository === source.repository)
+      ?? (sources.length === 1 ? verification : undefined);
+    if (!receipt) {
+      issues.push(`${source.repository}: verification receipt is missing`);
+      continue;
+    }
+    if (receipt.revision !== source.commit) {
+      issues.push(
+        `${source.repository}: verification revision does not match current commit`,
+      );
+    }
+    if (receipt.worktree_id !== source.worktreeId) {
+      issues.push(
+        `${source.repository}: verification worktree_id does not match current worktree`,
+      );
+    }
+    if (receipts.length > 0 && !nonEmptyArray(receipt.checks)) {
+      issues.push(`${source.repository}: verification checks are missing`);
+    }
+  }
+  for (const receipt of receipts) {
+    if (!sources.some((source) => source.repository === receipt.repository)) {
+      issues.push(`verification receipt is outside work scope: ${String(receipt.repository)}`);
+    }
+  }
+  return issues;
+}
+
+function durableRepository(source: RepositoryMetadata): DurableRepository {
+  return {
+    repository: source.repository,
+    checkout: source.checkout,
+    branch: source.branch,
+    commit_at_start: source.commit,
+    remote: /^(?:https?:\/\/|ssh:\/\/|git@)/.test(source.remote) ? source.remote : "",
+    worktree: source.worktree,
+    worktree_id: source.worktreeId,
+  };
 }
 
 async function assertKnowledgeRoot(root: string): Promise<void> {
@@ -336,102 +687,88 @@ async function assertKnowledgeReference(root: string, reference: string): Promis
   }
 }
 
-async function requireWorkContext(
-  targetInput: string,
-  id: string,
-): Promise<WorkStatusResult> {
-  const results = await workStatus(targetInput, id);
-  const context = results[0];
-  if (!context) {
-    throw new Error(`Active work pointer not found: ${id}`);
-  }
-  if (!context.valid) {
-    throw new Error(
-      `Work context mismatch for ${id}: ${context.issues.join("; ")}`,
-    );
-  }
-  return context;
+function knowledgeBindingPath(knowledgeRoot: string, id: string): string {
+  assertId(id);
+  return join(knowledgeRoot, ".workflow/current/work", `${id}.json`);
 }
 
-async function inspectWorkContext(
-  target: string,
-  currentSource: RepositoryMetadata,
-  id: string,
-): Promise<WorkStatusResult> {
-  const pointerPath = join(target, ".workflow/current", `${id}.json`);
-  const raw = JSON.parse(await readFile(pointerPath, "utf8")) as Partial<WorkPointer>;
+function leafPointerPath(root: string, id: string): string {
+  assertId(id);
+  return join(root, ".workflow/current", `${id}.json`);
+}
+
+async function writeBinding(
+  path: string,
+  binding: WorkBinding,
+  replace = false,
+): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(binding, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: replace ? "w" : "wx",
+  });
+}
+
+async function readBinding(path: string): Promise<WorkBinding> {
+  const raw = JSON.parse(await readFile(path, "utf8")) as unknown;
   if (
-    raw.schemaVersion !== 3
-    || raw.id !== id
-    || !raw.codeRoot
-    || !raw.knowledgeRoot
-    || !raw.spec
-    || !raw.source
+    !isRecord(raw)
+    || raw.schemaVersion !== 4
+    || typeof raw.id !== "string"
+    || typeof raw.knowledgeRoot !== "string"
+    || typeof raw.spec !== "string"
+    || typeof raw.createdAt !== "string"
+    || !["project", "leaf", "multi-repo"].includes(String(raw.scope))
+    || !Array.isArray(raw.repositories)
+    || !raw.repositories.every((entry: unknown) =>
+      isRecord(entry)
+      && typeof entry.root === "string"
+      && isRepositoryMetadata(entry.source)
+    )
   ) {
-    throw new Error(`Unsupported or malformed active work pointer: ${pointerPath}`);
+    throw new Error(`Unsupported or malformed active work binding: ${path}`);
   }
-  const pointer = raw as WorkPointer;
-  const specPath = resolve(target, pointer.spec);
-  const issues: string[] = [];
+  return raw as unknown as WorkBinding;
+}
 
-  if (pointer.codeRoot !== currentSource.root) {
-    issues.push(
-      `current checkout is ${currentSource.root}, but work is bound to ${pointer.codeRoot}`,
-    );
-  }
-  if (pointer.source.repository !== currentSource.repository) {
-    issues.push(
-      `current repository is ${currentSource.repository}, but work is bound to ${pointer.source.repository}`,
-    );
-  }
-  if (pointer.source.worktreeId !== currentSource.worktreeId) {
-    issues.push(
-      `current worktree is ${currentSource.worktreeId}, but work is bound to ${pointer.source.worktreeId}`,
-    );
-  }
+function isRepositoryMetadata(value: unknown): value is RepositoryMetadata {
+  return isRecord(value)
+    && typeof value.repository === "string"
+    && typeof value.root === "string"
+    && typeof value.checkout === "string"
+    && typeof value.branch === "string"
+    && typeof value.commit === "string"
+    && typeof value.remote === "string"
+    && typeof value.dirty === "boolean"
+    && typeof value.worktree === "boolean"
+    && typeof value.worktreeId === "string";
+}
 
-  const config = await readConfig(target);
-  const configuredKnowledgeRoot = await realpath(resolveKnowledgeRoot(target, config));
-  if (pointer.knowledgeRoot !== configuredKnowledgeRoot) {
-    issues.push(
-      `configured knowledge root is ${configuredKnowledgeRoot}, but work is bound to ${pointer.knowledgeRoot}`,
-    );
-  }
-  const activeRoot = join(pointer.knowledgeRoot, "changes/active");
-  if (!inside(activeRoot, specPath)) {
-    issues.push(`spec path is outside the active work root: ${specPath}`);
-  }
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
+async function pointerIds(root: string): Promise<string[]> {
   try {
-    const document = parseWorkSpec(await readFile(specPath, "utf8"));
-    const workspace = record(document.metadata.workspace);
-    if (workspace?.code_root !== pointer.codeRoot) {
-      issues.push("spec workspace.code_root does not match the leaf pointer");
-    }
-    if (workspace?.knowledge_root !== pointer.knowledgeRoot) {
-      issues.push("spec workspace.knowledge_root does not match the leaf pointer");
-    }
-    if (workspace?.spec_path !== specPath) {
-      issues.push("spec workspace.spec_path does not match its actual path");
-    }
-    if (workspace?.worktree_id !== pointer.source.worktreeId) {
-      issues.push("spec workspace.worktree_id does not match the leaf pointer");
-    }
+    return (await readdir(root, { withFileTypes: true }))
+      .filter((entry) =>
+        entry.isFile()
+        && entry.name.endsWith(".json")
+        && entry.name !== "repositories.json"
+      )
+      .map((entry) => entry.name.slice(0, -5))
+      .sort();
   } catch (error) {
-    issues.push(`cannot read bound spec: ${errorMessage(error)}`);
+    if (isMissingFileError(error)) {
+      return [];
+    }
+    throw error;
   }
+}
 
-  return {
-    id,
-    valid: issues.length === 0,
-    codeRoot: pointer.codeRoot,
-    knowledgeRoot: pointer.knowledgeRoot,
-    specPath,
-    pointerPath,
-    source: pointer.source,
-    currentSource,
-    issues,
-  };
+function relativeSpec(knowledgeRoot: string, specPath: string): string {
+  const value = specPath.slice(`${knowledgeRoot}${sep}`.length);
+  return value.split(sep).join("/");
 }
 
 function inside(parent: string, child: string): boolean {
@@ -440,9 +777,13 @@ function inside(parent: string, child: string): boolean {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null
+  return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined;
+}
+
+function recordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((entry) => Boolean(record(entry))) as Record<string, unknown>[] : [];
 }
 
 function stringArray(value: unknown): string[] {
@@ -451,13 +792,20 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function nonEmptyArray(value: unknown): value is unknown[] {
+  return Array.isArray(value) && value.length > 0;
+}
+
 async function uniqueWorkId(activeRoot: string, base: string): Promise<string> {
   for (let index = 1; index < 1000; index += 1) {
     const candidate = index === 1 ? base : `${base}-${index}`;
     try {
       await access(join(activeRoot, candidate), constants.F_OK);
-    } catch {
-      return candidate;
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return candidate;
+      }
+      throw error;
     }
   }
   throw new Error(`Cannot allocate a unique work id for ${base}`);
@@ -468,8 +816,11 @@ async function uniqueFileId(root: string, base: string): Promise<string> {
     const candidate = index === 1 ? base : `${base}-${index}`;
     try {
       await access(join(root, `${candidate}.md`), constants.F_OK);
-    } catch {
-      return candidate;
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return candidate;
+      }
+      throw error;
     }
   }
   throw new Error(`Cannot allocate a unique handoff id for ${base}`);
@@ -487,9 +838,9 @@ async function assertAbsent(path: string, label: string): Promise<void> {
   }
 }
 
-async function removePointer(path: string): Promise<void> {
+async function removePath(path: string): Promise<void> {
   try {
-    await unlink(path);
+    await rm(path, { recursive: true, force: true });
   } catch (error) {
     if (!isMissingFileError(error)) {
       throw error;
@@ -507,4 +858,10 @@ function normalizeSlug(value: string): string {
     throw new Error("Work slug must contain ASCII letters or digits");
   }
   return slug.slice(0, 64);
+}
+
+function assertId(id: string): void {
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
+    throw new Error(`Invalid work id: ${id}`);
+  }
 }

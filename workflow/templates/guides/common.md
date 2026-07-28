@@ -12,14 +12,21 @@ commitments.
 
 ## What the maintainer operates
 
-Routine CLI use belongs to the agent. It runs `wfctl work ...` and
-`wfctl knowledge ...`, edits structured records, and reports failures. You
-review framing, missing authority, material decisions, completion, and current
-knowledge claims.
+Your normal interface is conversation. Describe the outcome in project
+language; the agent chooses and runs `wfctl`, QMD, Graphify, Git inspection,
+and record-maintenance operations. You do not need command syntax, record IDs,
+generated paths, or structured-file schemas.
 
-Manual commands remain available for bootstrap, automation, diagnostics, or
-recovery. `wfctl init` installs or repairs; `wfctl upgrade` previews and applies
-workflow releases; `wfctl check` diagnoses an installation.
+The only normal manual CLI entry points are `wfctl init knowledge` and `wfctl
+init leaf`, and the setup agent can run those too. Other commands remain
+available for automation, diagnostics, recovery, and contributors developing
+the workflow itself. You review framing, missing authority, material choices,
+completion, and current knowledge claims.
+
+After initialization, ask in ordinary language: “process raw,” “reconstruct
+the baseline,” “explain this Area,” “implement this change,” or “check the
+workflow.” The installed skills translate those requests into the complete
+internal procedure.
 
 ## Trust boundary
 
@@ -27,6 +34,7 @@ workflow releases; `wfctl check` diagnoses an installation.
 | --- | --- | --- |
 | `raw/` | Continuous append-only dumps and captures | Untrusted clue source; never evidence |
 | `intake/` | Git-frozen raw review cases | Operational audit trail; never cited by knowledge |
+| `reconstruction/` | Source-first project baselines and audits | Qualified review records; opt-in, not default truth |
 | `changes/active/` | One proposal/spec/progress record per significant task | Current execution agreement |
 | `changes/archive/` | Closed change records with reviews and receipts | Historical record qualified by outcome and reviews |
 | `changes/inbox/` | Lightweight handoffs awaiting triage | Non-authoritative input to the normal change or curation flow |
@@ -38,19 +46,23 @@ even when several raw files agree. A trusted derivative must cite the
 maintainer decision, pinned code, runtime receipt, reviewed archived change, or
 primary external source that independently established the claim.
 
-## Two inputs, one promotion gate
+## Multiple inputs, one promotion gate
 
-Raw dumps and ongoing work stay separate until verification:
+Raw dumps, source reconstruction, and ongoing work stay separate until
+verification:
 
 1. A bounded `raw/` scope is frozen to exact Git blobs in `intake/`.
    QMD helps locate relationships; the agent then reads every frozen file and
    extracts candidate claims.
-2. Significant ongoing work produces a living record under `changes/active/`
+2. A bounded reconstruction binds exact clean leaf revisions, uses Graphify
+   plus direct source, creates repository dossiers, and separates observed
+   implementation from accepted intent.
+3. Significant ongoing work produces a living record under `changes/active/`
    and fresh implementation receipts.
-3. Both lanes verify each claim against its proper authority.
-4. The maintainer adjudicates intent, normative decisions, and unresolved
+4. Every lane verifies each claim against its proper authority.
+5. The maintainer adjudicates intent, normative decisions, and unresolved
    conflicts.
-5. Only then does the agent update `knowledge/` and run the strict validator.
+6. Only then does the agent update `knowledge/` and run the strict validator.
 
 Unresolved raw candidates remain in intake. `knowledge/uncertainties/` is only
 for live questions supported by trusted current evidence.
@@ -85,7 +97,8 @@ code. In every case, the agent reads the selected source documents directly.
 Its collections are intentionally separated:
 
 - `knowledge` is the only default search surface;
-- `changes`, `intake`, and `raw` require explicit collection selection.
+- `changes`, `intake`, `reconstruction`, and `raw` require explicit collection
+  selection.
 
 The QMD index is disposable. Search rank and snippets help navigation but prove
 neither corpus coverage nor truth. The agent runs QMD from the knowledge root,
@@ -112,6 +125,7 @@ a stricter profile:
 - explicit `status`, `generated`, provenance, and current verification;
 - explicit authority classes so deterministic validation can distinguish
   normative, implementation, historical, and external claims;
+- explicit intent, delivery, and alignment state for product-bearing concepts;
 - claim-level source IDs joined to Markdown footnotes;
 - pinned repository revision and path for code sources;
 - human verification for intent and normative decisions;
@@ -120,7 +134,9 @@ a stricter profile:
 - no raw path, source, link, or footnote in current knowledge.
 
 `stable` is lifecycle, not automatic truth. A material edit updates
-`generated.at` and invalidates older verification.
+`generated.at` and changes the deterministic knowledge content hash. Older
+verification no longer matches; the agent records a fresh verification event
+only after computing `wfctl knowledge hash --concept <path>`.
 
 ## Choose the work route
 
@@ -171,10 +187,11 @@ Deferral is valid. The agent preserves uncertainty instead of guessing.
 
 1. Classify the task.
 2. Immediately create and bind a `shaping` record with `wfctl work start`.
-3. Use `wfctl work status` to distinguish the exact implementation `Code root`
-   from the central `Spec` path.
+3. Use `wfctl work status` to distinguish every exact implementation `Code
+   root` from the central `Spec` path. Project-only work has no code root.
 4. Record the current request, constraints, open questions, and next action.
-5. Analyze source code through Graphify and direct inspection.
+5. Analyze source code through Graphify and direct inspection in every bound
+   repository; skip this only when the record has no code scope.
 6. Align with current `knowledge/`.
 7. Resolve blocking authority questions and obtain framing approval.
 8. Set the record active. Implement only in the bound code root while updating
@@ -182,15 +199,17 @@ Deferral is valid. The agent preserves uncertainty instead of guessing.
 9. Reconcile every criterion against the actual implementation.
 10. With normal maintainer authorization, preserve the implementation
     in the bound Git commit; `wfctl` never commits automatically.
-11. Run final checks against that clean commit and record its revision and
-    worktree identity.
+11. Run final checks against every clean commit and record one revision and
+    worktree receipt per repository.
 12. Promote durable verified truth into `knowledge/`, or record why no current
     knowledge changed.
-13. Run `wfctl knowledge validate --target <Knowledge root>` for promoted
+13. Obtain completion approval, mark the record completion-ready, and compute
+    current content hashes for promoted stable concepts.
+14. Run `wfctl knowledge validate --target <Knowledge root>` for promoted
     concepts.
-14. Run `wfctl knowledge build --target <Knowledge root>` to prove links,
+15. Run `wfctl knowledge build --target <Knowledge root>` to prove links,
     authored relationships, and stable-concept reachability.
-15. Obtain completion approval, run `wfctl work verify`, and archive the honest
+16. Run `wfctl work verify`, and archive the honest
     outcome with `wfctl work close`.
 
 A material turn changes a requirement, constraint, alternative, decision,
@@ -207,10 +226,7 @@ workflow never commits automatically.
 
 ## Routine health
 
-```sh
-wfctl check --target .
-wfctl upgrade --target . --dry-run
-```
-
-Generated assets with local edits become explicit conflicts and are never
-silently overwritten.
+Ask the agent to “check the workflow environment” or “upgrade the workflow.”
+It runs diagnostics or previews the upgrade, explains conflicts in human
+terms, and requests only the decisions needed. Generated assets with local
+edits become explicit conflicts and are never silently overwritten.
