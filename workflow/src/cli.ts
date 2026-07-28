@@ -8,6 +8,12 @@ import {
   readConfig,
   resolveKnowledgeRoot,
 } from "./config.js";
+import {
+  commandFailure,
+  runInstallPreflight,
+  updateGraphifyGraph,
+  updateQmdIndex,
+} from "./dependencies.js";
 import { doctorPassed, runDoctor } from "./doctor.js";
 import { buildInstallPlan, summarizePlan } from "./planner.js";
 import { installSkills } from "./skill-installer.js";
@@ -19,6 +25,7 @@ import {
   markIntakeSource,
 } from "./intake.js";
 import { validateKnowledge } from "./knowledge.js";
+import { writeKnowledgeGraph } from "./knowledge-graph.js";
 import type {
   AgentTarget,
   InstallPlan,
@@ -52,7 +59,7 @@ const main = new Command()
       + "Maintenance:\n"
       + "  upgrade    Upgrade installed rules, skills, templates, and guides\n\n"
       + "Knowledge operations:\n"
-      + "  knowledge  Inventory raw input, run bounded cases, and validate knowledge\n\n"
+      + "  knowledge  Process raw input, validate knowledge, and build its graph\n\n"
       + "Project work:\n"
       + "  work       Create handoffs or start, verify, and close change records",
   )
@@ -74,7 +81,8 @@ function initCommand() {
   return new Command()
     .description(
       "Install or repair a workflow environment.\n"
-        + "Repository kind: knowledge (central knowledge base) or leaf (source checkout).",
+        + "Repository kind: knowledge (central knowledge base) or leaf (source checkout).\n"
+        + "Previews files and dependencies; failed preflight writes nothing.",
     )
     .arguments("[knowledge|leaf:string]")
     .option("-t, --target <path:string>", "Target repository.", { default: "." })
@@ -85,7 +93,7 @@ function initCommand() {
       "--print-instructions <artifact:string>",
       "Print agents or guide content for manual integration, then exit.",
     )
-    .option("--dry-run", "Preview all wfctl changes without applying them.")
+    .option("--dry-run", "Preview files and dependency checks without applying them.")
     .option("-y, --yes", "Accept defaults and safe changes without prompting.")
     .option("--json", "Print machine-readable output; use with --dry-run or --yes.")
     .action(async (options, profileValue) => {
@@ -138,11 +146,11 @@ function initCommand() {
 
 function upgradeCommand() {
   return new Command()
-    .description("Upgrade an existing workflow installation.")
+    .description("Preview dependencies and upgrade an existing workflow installation.")
     .option("-t, --target <path:string>", "Target repository.", { default: "." })
     .option("-s, --skills <scope:string>", "Change skill scope: project, user, or none.")
     .option("-a, --agents <agents:string>", "Change skill targets: codex, claude, or both.")
-    .option("--dry-run", "Preview all wfctl changes without applying them.")
+    .option("--dry-run", "Preview files and dependency checks without applying them.")
     .option("-y, --yes", "Accept safe changes without prompting.")
     .option("--json", "Print machine-readable output; use with --dry-run or --yes.")
     .action(async (options) => {
@@ -191,19 +199,31 @@ async function installWorkflow(input: {
     distributionRoot,
     skills: { scope: input.scope, agents: input.agents },
   });
+  const preflight = runInstallPreflight({
+    target: input.target,
+    profile: input.profile,
+    ...(input.knowledge ? { knowledge: input.knowledge } : {}),
+    requireQmdSkill: input.scope !== "none",
+  });
+  const preflightPassed = preflight.every((check) => check.status !== "fail");
 
   if (input.dryRun) {
     if (input.json) {
       printJson({
         ...summarizePlan(plan),
         skills: skillSummary(input),
+        preflight,
         applied: false,
       });
     } else {
       printPlan(plan);
       printSkillSummary(input);
+      printDependencyChecks(preflight);
     }
-    if (plan.operations.some((operation) => operation.status === "conflict")) {
+    if (
+      !preflightPassed
+      || plan.operations.some((operation) => operation.status === "conflict")
+    ) {
       process.exitCode = 2;
     }
     return;
@@ -212,6 +232,19 @@ async function installWorkflow(input: {
   if (!input.json) {
     printPlan(plan);
     printSkillSummary(input);
+    printDependencyChecks(preflight);
+  }
+  if (!preflightPassed) {
+    if (input.json) {
+      printJson({
+        ...summarizePlan(plan),
+        skills: skillSummary(input),
+        preflight,
+        applied: false,
+      });
+    }
+    process.exitCode = 2;
+    return;
   }
   const resolved = await resolveConflicts(plan, input.yes || input.json);
   if (!input.yes && !input.json && !await confirm("Continue with installation?")) {
@@ -227,12 +260,43 @@ async function installWorkflow(input: {
     yes: input.yes || input.json,
   });
   const applied = await applyInstallPlan(resolved);
+  const graphifyUpdate = input.profile === "leaf"
+    ? updateGraphifyGraph(input.target)
+    : undefined;
+  if (input.profile === "knowledge") {
+    const validation = await validateKnowledge(input.target);
+    if (validation.valid) {
+      await writeKnowledgeGraph(input.target);
+    }
+  }
+  const qmdUpdate = input.profile === "knowledge"
+    ? updateQmdIndex(input.target)
+    : undefined;
   const report = await runDoctor(input.target);
+  if (graphifyUpdate) {
+    report.checks.push({
+      name: "graphify-update",
+      status: graphifyUpdate.status === 0 ? "pass" : "fail",
+      message: graphifyUpdate.status === 0
+        ? "Checkout-local Graphify graph refreshed"
+        : `Graphify graph refresh failed: ${commandFailure(graphifyUpdate)}`,
+    });
+  }
+  if (qmdUpdate) {
+    report.checks.push({
+      name: "qmd-update",
+      status: qmdUpdate.status === 0 ? "pass" : "fail",
+      message: qmdUpdate.status === 0
+        ? "Project-local QMD lexical index refreshed"
+        : `QMD index refresh failed: ${commandFailure(qmdUpdate)}`,
+    });
+  }
 
   if (input.json) {
     printJson({
       ...summarizePlan(resolved),
       skills: skillSummary(input),
+      preflight,
       applied,
       check: report,
     });
@@ -464,7 +528,7 @@ function knowledgeCommand() {
     .description(
       "Operate the knowledge trust boundary.\n"
         + "raw/ is continuous untrusted intake; cases freeze Git coverage; knowledge/ is curated truth.\n"
-        + "QMD provides retrieval directly and is not wrapped by wfctl.",
+        + "wfctl validates and compiles explicit knowledge relations; QMD provides semantic retrieval.",
     )
     .command("raw", knowledgeRawCommand())
     .command("case", knowledgeCaseCommand())
@@ -497,6 +561,54 @@ function knowledgeCommand() {
           }
           if (!result.valid) {
             process.exitCode = 2;
+          }
+        }),
+    )
+    .command(
+      "build",
+      new Command()
+        .description(
+          "Validate curated knowledge and compile its deterministic navigation graph.",
+        )
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const validation = await validateKnowledge(options.target);
+          if (!validation.valid) {
+            if (options.json) {
+              printJson({ built: false, validation });
+            } else {
+              process.stdout.write(
+                `Knowledge graph not built: ${validation.errors.length} validation error(s)\n`,
+              );
+              for (const issue of validation.errors) {
+                process.stdout.write(`ERROR ${issue.path}: ${issue.message}\n`);
+              }
+              for (const issue of validation.warnings) {
+                process.stdout.write(`WARN  ${issue.path}: ${issue.message}\n`);
+              }
+            }
+            process.exitCode = 2;
+            return;
+          }
+          const result = await writeKnowledgeGraph(options.target);
+          if (options.json) {
+            printJson({
+              built: true,
+              path: result.path,
+              contentHash: result.graph.contentHash,
+              stats: result.graph.stats,
+              warnings: result.warnings,
+            });
+          } else {
+            process.stdout.write(
+              `Knowledge graph built: ${result.path}\n`
+                + `Nodes: ${result.graph.stats.nodes}; edges: ${result.graph.stats.edges}; `
+                + `concepts: ${result.graph.stats.concepts}\n`,
+            );
+            for (const issue of result.warnings) {
+              process.stdout.write(`WARN  ${issue.path}: ${issue.message}\n`);
+            }
           }
         }),
     );
@@ -848,6 +960,15 @@ function printSkillSummary(input: {
   process.stdout.write(
     `Skills: ${input.scope} scope for ${input.agents.join(", ")} via skills CLI\n`,
   );
+}
+
+function printDependencyChecks(checks: Awaited<ReturnType<typeof runDoctor>>["checks"]): void {
+  process.stdout.write("Dependency preflight:\n");
+  for (const check of checks) {
+    process.stdout.write(
+      `${check.status.toUpperCase().padEnd(4)} ${check.name}: ${check.message}\n`,
+    );
+  }
 }
 
 function printCheck(report: Awaited<ReturnType<typeof runDoctor>>): void {

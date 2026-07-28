@@ -20,6 +20,7 @@ import {
   markIntakeSource,
 } from "../src/intake.js";
 import { validateKnowledge } from "../src/knowledge.js";
+import { writeKnowledgeGraph } from "../src/knowledge-graph.js";
 import { buildInstallPlan } from "../src/planner.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 
@@ -179,6 +180,8 @@ superseded_by: ""
 authority: [decision]
 generated: { by: workflow-agent/1, at: 2026-07-28T12:00:00Z }
 verified: { by: human:test-maintainer, at: 2026-07-28T12:05:00Z }
+x-wf:
+  relations: []
 sources:
   - id: loop-decision
     kind: maintainer-decision
@@ -193,9 +196,22 @@ The world loop is server-authoritative.[^loop-decision]
 [^loop-decision]: Reviewed world-loop decision.
 `;
   await writeFile(conceptPath, validContent, "utf8");
+  await writeFile(
+    join(target, "knowledge/decisions/index.md"),
+    "# Cross-area Decisions\n\n- [Current loop authority](current-loop.md)\n",
+    "utf8",
+  );
 
   const valid = await validateKnowledge(target);
   assert.equal(valid.valid, true);
+  const built = await writeKnowledgeGraph(target);
+  assert.equal(built.graph.stats.concepts, 1);
+  assert.ok(built.graph.edges.some((edge) =>
+    edge.source === "knowledge/decisions/index"
+    && edge.target === "knowledge/decisions/current-loop"
+    && edge.origin === "markdown"
+  ));
+  await access(built.path);
   const archivedPath = join(
     target,
     "changes/archive/2026-07-28-world-loop/change.md",
@@ -367,6 +383,21 @@ Reviewed revival rule.
   );
   const decisions = join(target, "knowledge/areas/combat/decisions");
   await mkdir(decisions, { recursive: true });
+  await writeFile(
+    join(target, "knowledge/areas/index.md"),
+    "# Areas\n\n- [Combat](combat/)\n",
+    "utf8",
+  );
+  await writeFile(
+    join(target, "knowledge/areas/combat/index.md"),
+    "# Combat\n\n- [Decisions](decisions/)\n",
+    "utf8",
+  );
+  await writeFile(
+    join(decisions, "index.md"),
+    "# Combat decisions\n\n- [No revival](no-revival.md)\n- [Item revival](item-revival.md)\n",
+    "utf8",
+  );
   const oldPath = "knowledge/areas/combat/decisions/no-revival.md";
   const currentPath = "knowledge/areas/combat/decisions/item-revival.md";
   const decision = (
@@ -381,11 +412,14 @@ title: ${title}
 status: ${status}
 decision_id: ${id}
 effective_at: 2026-07-28T11:00:00Z
+area: combat
 supersedes: ${JSON.stringify(supersedes)}
 superseded_by: ${JSON.stringify(supersededBy)}
 authority: [decision]
 generated: { by: workflow-agent/1, at: 2026-07-28T11:00:00Z }
 verified: { by: "human:test-maintainer", at: 2026-07-28T11:00:00Z }
+x-wf:
+  relations: []
 sources:
   - id: revival-decision
     kind: maintainer-decision
@@ -396,6 +430,12 @@ sources:
 # Decision
 
 ${title}.[^revival-decision]
+
+# Relationships
+
+- [Combat Area](../index.md)
+${supersedes.map((path) => `- [Predecessor](${path})`).join("\n")}
+${supersededBy ? `- [Successor](${supersededBy})` : ""}
 
 [^revival-decision]: Reviewed maintainer decision.
 `;
@@ -431,6 +471,94 @@ ${title}.[^revival-decision]
   );
   const cyclic = await validateKnowledge(target);
   assert.ok(cyclic.errors.some((issue) => /contains a cycle/.test(issue.message)));
+});
+
+test("compiles explicit knowledge relations without inferring semantic edges", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-knowledge-graph-");
+  const references = join(target, "knowledge/references");
+  const concept = (
+    title: string,
+    relation: string,
+    bodyLink: string,
+  ) => `---
+type: External Reference
+title: ${title}
+description: A test reference.
+status: draft
+authority: [external]
+generated: { by: workflow-agent/1, at: 2026-07-28T12:00:00Z }
+x-wf:
+  relations: ${relation}
+sources:
+  - id: primary
+    kind: external-primary
+    resource: https://example.com/${title.toLowerCase().replaceAll(" ", "-")}
+---
+
+# ${title}
+
+This concept records a primary external fact.[^primary]
+
+${bodyLink}
+
+[^primary]: Primary test source.
+`;
+  await writeFile(
+    join(references, "index.md"),
+    "# References\n\n- [Alpha](alpha.md)\n- [Beta](beta.md)\n",
+    "utf8",
+  );
+  await writeFile(
+    join(references, "alpha.md"),
+    concept(
+      "Alpha",
+      `\n    - kind: related-to\n      target: knowledge/references/beta.md\n      context: >-\n        Alpha and Beta describe adjacent externally sourced concepts whose\n        relationship is useful for navigation but does not establish truth.`,
+      "[Related Beta](beta.md)",
+    ),
+    "utf8",
+  );
+  await writeFile(
+    join(references, "beta.md"),
+    concept("Beta", "[]", ""),
+    "utf8",
+  );
+
+  assert.equal((await validateKnowledge(target)).valid, true);
+  const built = await writeKnowledgeGraph(target);
+  const firstArtifact = await readFile(built.path, "utf8");
+  await writeKnowledgeGraph(target);
+  assert.equal(await readFile(built.path, "utf8"), firstArtifact);
+  assert.ok(built.graph.edges.some((edge) =>
+    edge.source === "knowledge/references/alpha"
+    && edge.target === "knowledge/references/beta"
+    && edge.kind === "related-to"
+    && edge.origin === "x-wf"
+  ));
+  assert.ok(!built.graph.edges.some((edge) => edge.kind === "semantically-similar"));
+
+  await writeFile(
+    join(references, "alpha.md"),
+    concept(
+      "Alpha",
+      `\n    - kind: related-to\n      target: knowledge/references/beta.md\n      context: The relation remains authored but is hidden from human navigation.`,
+      "",
+    ),
+    "utf8",
+  );
+  const hidden = await validateKnowledge(target);
+  assert.ok(hidden.errors.some((issue) =>
+    /must also appear as a Markdown link/.test(issue.message)
+  ));
+
+  await writeFile(
+    join(references, "alpha.md"),
+    concept("Alpha", "[]", "[Missing](missing.md)"),
+    "utf8",
+  );
+  const broken = await validateKnowledge(target);
+  assert.ok(broken.errors.some((issue) =>
+    /internal Markdown link does not resolve/.test(issue.message)
+  ));
 });
 
 async function initializedKnowledgeRepository(prefix: string): Promise<string> {

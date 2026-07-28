@@ -51,20 +51,26 @@ pass.
 
 1. Work from the knowledge repository root. Read `.workflow/config.json` and
    verify that `.qmd/index.yml` exists.
-2. Run `qmd status`, or the QMD MCP `status` tool when it is exposed in the
-   current session. If QMD is unavailable, stop and ask to install it with
-   `bun install -g @tobilu/qmd`. Do not replace it with a new indexer.
-3. Run `wfctl knowledge raw inventory`. It compares committed `raw/` blobs with
+2. Inspect the current session skill catalog and require the official native
+   `qmd` skill. Invoke it before retrieval. If the skill is absent, stop and
+   ask to run `wfctl upgrade` or reinstall the selected skills, then restart
+   the agent session.
+3. Run `qmd status`, or the QMD MCP `status` tool when it is exposed in the
+   current session. If QMD is unavailable or older than `2.5.3`, stop and ask
+   to install it with `bun install -g @tobilu/qmd@2.5.3`. Do not replace it
+   with a new indexer.
+4. Run `wfctl knowledge raw inventory`. It compares committed `raw/` blobs with
    active and archived cases. It does not interpret Markdown.
-4. Report uncommitted paths and ask the maintainer for normal authorization to
+5. Report uncommitted paths and ask the maintainer for normal authorization to
    preserve them in Git. Intake cannot freeze untracked or dirty files.
-5. Run `qmd update` and, when semantic retrieval is needed, `qmd embed -c raw`.
+6. Run `qmd update` and, when semantic retrieval is needed, ask for model
+   download/compute authority before `qmd pull` or `qmd embed -c raw`.
    Use QMD to build a thematic map of `unseen` and `changed` blobs.
-6. Propose small review batches with topic, file count, why the files belong
+7. Propose small review batches with topic, file count, why the files belong
    together, and known uncertainty. The maintainer should not have to know raw
    paths in advance. Do not freeze all of `raw/` merely because the user asked
    to "process raw".
-7. After the maintainer accepts a batch, freeze its exact paths:
+8. After the maintainer accepts a batch, freeze its exact paths:
 
    ```sh
    wfctl knowledge case start <slug> \
@@ -79,8 +85,9 @@ pass.
 
 ## Retrieve and read
 
-1. Search raw explicitly with `qmd search ... -c raw` for exact terms and
-   `qmd query ... -c raw --json` for hybrid discovery. Raw is excluded from
+1. Search raw explicitly with `qmd search ... -c raw` for exact terms and a
+   structured `qmd query` with authored `intent:`, `lex:`, `vec:`, and
+   optional `hyde:` fields for hybrid discovery. Raw is excluded from
    default queries intentionally. With QMD MCP, pass `collections: ["raw"]`;
    do not rely on an unscoped query.
 2. Use returned QMD document IDs or URIs with `qmd get` to inspect relevant

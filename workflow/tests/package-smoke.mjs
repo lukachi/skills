@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-  chmodSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -16,14 +13,6 @@ import { fileURLToPath } from "node:url";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sandbox = mkdtempSync(join(tmpdir(), "wfctl-package-"));
 const stripAnsi = (value) => value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
-const bin = join(sandbox, "bin");
-mkdirSync(bin);
-writeFileSync(join(bin, "qmd"), "#!/bin/sh\nexit 0\n");
-chmodSync(join(bin, "qmd"), 0o755);
-const testEnv = {
-  ...process.env,
-  PATH: `${bin}:${process.env.PATH ?? ""}`,
-};
 
 try {
   const packed = spawnSync(
@@ -39,7 +28,7 @@ try {
   const extracted = spawnSync(
     "tar",
     ["-xzf", join(sandbox, archive), "-C", sandbox],
-    { encoding: "utf8", env: testEnv },
+    { encoding: "utf8" },
   );
   assert.equal(extracted.status, 0, extracted.stderr || extracted.stdout);
 
@@ -62,7 +51,7 @@ try {
   const mainHelp = spawnSync(
     "node",
     [join(packaged, "dist/cli.js"), "--help"],
-    { encoding: "utf8", env: testEnv },
+    { encoding: "utf8" },
   );
   assert.equal(mainHelp.status, 0, mainHelp.stderr || mainHelp.stdout);
   assert.match(stripAnsi(mainHelp.stdout), /init\s+\[knowledge\|leaf\]/);
@@ -75,7 +64,7 @@ try {
   const initHelp = spawnSync(
     "node",
     [join(packaged, "dist/cli.js"), "init", "--help"],
-    { encoding: "utf8", env: testEnv },
+    { encoding: "utf8" },
   );
   assert.equal(initHelp.status, 0, initHelp.stderr || initHelp.stdout);
   assert.match(
@@ -86,11 +75,13 @@ try {
   const missingProfile = spawnSync(
     "node",
     [join(packaged, "dist/cli.js"), "init"],
-    { encoding: "utf8", env: testEnv },
+    { encoding: "utf8" },
   );
   assert.equal(missingProfile.status, 1, missingProfile.stderr || missingProfile.stdout);
   assert.match(missingProfile.stderr, /Repository kind is required/);
 
+  const git = spawnSync("git", ["init", "-q", target], { encoding: "utf8" });
+  assert.equal(git.status, 0, git.stderr || git.stdout);
   const plan = spawnSync(
     "node",
     [
@@ -104,7 +95,7 @@ try {
       "--dry-run",
       "--json",
     ],
-    { encoding: "utf8", env: testEnv },
+    { encoding: "utf8" },
   );
   assert.equal(plan.status, 0, plan.stderr || plan.stdout);
   const summary = JSON.parse(plan.stdout);
@@ -122,13 +113,11 @@ try {
       "--print-instructions",
       "guide",
     ],
-    { encoding: "utf8", env: testEnv },
+    { encoding: "utf8" },
   );
   assert.equal(renderedGuide.status, 0, renderedGuide.stderr || renderedGuide.stdout);
   assert.match(renderedGuide.stdout, /## Review gates/);
 
-  const git = spawnSync("git", ["init", "-q", target], { encoding: "utf8" });
-  assert.equal(git.status, 0, git.stderr || git.stdout);
   const initialized = spawnSync(
     "node",
     [
@@ -142,7 +131,7 @@ try {
       "--yes",
       "--json",
     ],
-    { encoding: "utf8", env: testEnv },
+    { encoding: "utf8" },
   );
   assert.equal(initialized.status, 0, initialized.stderr || initialized.stdout);
   assert.equal(existsSync(join(target, "PROJECT_WORKFLOW.md")), true);
@@ -150,16 +139,40 @@ try {
   assert.equal(existsSync(join(target, "changes/active")), true);
   assert.equal(existsSync(join(target, "changes/inbox")), true);
   assert.equal(existsSync(join(target, "intake/cases/active")), true);
+  assert.equal(
+    existsSync(join(target, ".workflow/current/knowledge-graph.json")),
+    true,
+  );
 
   const knowledgeHelp = spawnSync(
     "node",
     [join(packaged, "dist/cli.js"), "knowledge", "--help"],
-    { encoding: "utf8", env: testEnv },
+    { encoding: "utf8" },
   );
   assert.equal(knowledgeHelp.status, 0, knowledgeHelp.stderr || knowledgeHelp.stdout);
+  assert.match(stripAnsi(knowledgeHelp.stdout), /^\s+build\s/m);
   assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+scan\s/m);
   assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+mark\s/m);
   assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+coverage\s/m);
+
+  const graphBuild = spawnSync(
+    "node",
+    [
+      join(packaged, "dist/cli.js"),
+      "knowledge",
+      "build",
+      "--target",
+      target,
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(graphBuild.status, 0, graphBuild.stderr || graphBuild.stdout);
+  assert.equal(JSON.parse(graphBuild.stdout).built, true);
+  assert.equal(
+    existsSync(join(target, ".workflow/current/knowledge-graph.json")),
+    true,
+  );
 
   process.stdout.write("package: ok\n");
 } finally {

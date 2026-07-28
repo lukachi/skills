@@ -24,6 +24,8 @@ test("delegates project skill placement to the pinned skills CLI", async () => {
 
   await access(join(target, ".agents/skills/manage-project-work/SKILL.md"));
   await access(join(target, ".claude/skills/manage-project-work/SKILL.md"));
+  await access(join(target, ".agents/skills/qmd/SKILL.md"));
+  await access(join(target, ".claude/skills/qmd/SKILL.md"));
   assert.equal(
     (await lstat(join(target, ".agents/skills/manage-project-work"))).isSymbolicLink(),
     false,

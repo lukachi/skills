@@ -17,7 +17,12 @@ reviewing, or verifying source code:
    record. Graphify output is navigation, not authority.
 
 Do not use Graphify as the primary analyzer for raw or curated Markdown.
-Use QMD for Markdown retrieval, then read selected files directly. Legacy
+Use QMD for Markdown retrieval and the generated knowledge graph for explicit
+relationship expansion, then read selected files directly. Before
+knowledge-dependent work, require the official native `qmd` skill in the
+current session and invoke it. An on-disk skill installed after session start
+does not count; stop and request installation or a session restart instead of
+inventing a partial QMD procedure. Legacy
 coverage comes from Git-frozen intake sources and explicit full-file review;
 curated trust comes from OKF metadata, authoritative provenance, and current
 verification. QMD rank, snippets, and its index are never authority.

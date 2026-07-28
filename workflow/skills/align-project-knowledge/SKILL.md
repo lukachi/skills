@@ -10,29 +10,44 @@ Do not design from code and memory alone. Establish the project's current intent
 ## Procedure
 
 1. Read `.workflow/config.json` and resolve the configured knowledge repository.
-2. Run QMD from that knowledge root. Require `qmd status`; if QMD or the
+2. Inspect the current session skill catalog and require the official native
+   `qmd` skill. Invoke it before retrieval. If it is absent, stop and ask to
+   run `wfctl upgrade` or reinstall the selected project/user skills, then
+   restart the agent session. An on-disk file alone does not prove the running
+   agent loaded it.
+3. Run QMD from that knowledge root. Require `qmd status`; if QMD or the
    project-local `.qmd/index.yml` is missing, stop and report the broken
    workflow environment.
-3. Start at `knowledge/index.md`, then use `qmd search ... -c knowledge` for
-   exact terms or `qmd query ... -c knowledge --json` for hybrid retrieval.
+4. Run `wfctl knowledge build --target <knowledge-root>`. Stop alignment if
+   validation or graph compilation fails; do not silently reason over broken
+   navigation. The generated
+   `.workflow/current/knowledge-graph.json` is disposable navigation, never
+   authority and never an edit target.
+5. Start at `knowledge/index.md`, then use `qmd search ... -c knowledge` for
+   exact terms or a structured `qmd query` with authored `intent:`, `lex:`,
+   `vec:`, and when useful `hyde:` fields for hybrid retrieval.
    If QMD MCP is available, use `query` with
    `collections: ["knowledge"]`. Open the returned concepts directly and use
    directory indexes for progressive disclosure. Retrieval ranking is not
    authority.
-4. Open only concepts relevant to the work, including:
+6. Expand the QMD candidates through explicit incoming and outgoing edges in
+   the compiled graph. Follow material typed relationships, Area ownership,
+   decision lineage, and human-authored links so lexical similarity does not
+   define the task boundary.
+7. Open only concepts relevant to the work, including:
    - vision and non-goals,
    - the relevant Area index, capabilities, concepts, rules, and flows,
    - architectural boundaries,
    - current and superseded decisions,
    - repository responsibilities,
    - recorded uncertainties.
-5. Inspect `status`, `generated`, `verified`, `stale_after`, and `sources` before treating a concept as authoritative.
-6. Follow links to predecessor decisions and supporting sources when the proposed work depends on them.
-7. Compare the proposed behavior with both code evidence and curated intent.
-8. Treat only `knowledge/` as the default current-knowledge surface. Do not
+8. Inspect `status`, `generated`, `verified`, `stale_after`, and `sources` before treating a concept as authoritative.
+9. Follow links to predecessor decisions and supporting sources when the proposed work depends on them.
+10. Compare the proposed behavior with both code evidence and curated intent.
+11. Treat only `knowledge/` as the default current-knowledge surface. Do not
    consult `raw/` or `intake/` to fill a gap.
-9. Record QMD queries, directly reviewed concept paths, constraints, and any
-   conflict in the living spec.
+12. Record QMD queries, graph-expanded concept paths, directly reviewed
+    concept paths, constraints, and any conflict in the living spec.
 
 When a living spec already exists, run `wfctl work status <id>` first. Read
 curated knowledge from its `Knowledge root`, update only its exact `Spec` path,

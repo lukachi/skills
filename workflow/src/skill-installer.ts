@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { resolveQmdSkillSource } from "./dependencies.js";
 import type { AgentTarget, Profile, SkillScope } from "./types.js";
-import { skillsForProfile } from "./planner.js";
+import { skillsForProfile, workflowSkillsForProfile } from "./planner.js";
 
 export interface InstallSkillsOptions {
   target: string;
@@ -23,11 +24,27 @@ export function installSkills(options: InstallSkillsOptions): void {
   }
 
   const cli = resolveSkillsCli();
+  const qmdSkillSource = resolveQmdSkillSource();
+  installSkillSource(
+    cli,
+    resolve(options.distributionRoot),
+    workflowSkillsForProfile(options.profile),
+    options,
+  );
+  installSkillSource(cli, qmdSkillSource, ["qmd"], options);
+}
+
+function installSkillSource(
+  cli: string,
+  source: string,
+  skills: string[],
+  options: InstallSkillsOptions,
+): void {
   const args = [
     cli,
     "add",
-    resolve(options.distributionRoot),
-    ...skillsForProfile(options.profile).flatMap((skill) => ["--skill", skill]),
+    source,
+    ...skills.flatMap((skill) => ["--skill", skill]),
     ...options.agents.flatMap((agent) => [
       "--agent",
       agent === "claude" ? "claude-code" : "codex",
@@ -49,7 +66,7 @@ export function installSkills(options: InstallSkillsOptions): void {
     const detail = options.yes
       ? result.stderr.trim() || result.stdout.trim()
       : "skills installer exited without completing";
-    throw new Error(`Skill installation failed: ${detail}`);
+    throw new Error(`Skill installation failed from ${source}: ${detail}`);
   }
 }
 

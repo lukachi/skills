@@ -148,6 +148,8 @@ superseded_by: ""
 authority: [decision]
 generated: { by: workflow-agent/1, at: 2026-07-28T11:30:00Z }
 verified: { by: human:test-maintainer, at: 2026-07-28T11:55:00Z }
+x-wf:
+  relations: []
 sources:
   - id: world-loop-decision
     kind: maintainer-decision

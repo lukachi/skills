@@ -31,6 +31,13 @@ Use the project-local QMD index for retrieval. Unscoped queries may search only
 the `knowledge` collection; select `changes`, `intake`, or `raw` explicitly.
 QMD output is navigation, not evidence or coverage.
 
+Use `wfctl knowledge build` to validate and compile explicit Markdown links,
+typed `x-wf.relations`, Area ownership, and decision lineage into
+`.workflow/current/knowledge-graph.json`. The graph is disposable navigation,
+not evidence. Never edit it. Every typed target must also be a human-visible
+Markdown link, and every stable concept must remain reachable from
+`knowledge/index.md`.
+
 For code claims, invoke `analyze-with-graphify` in the exact source checkout,
 then inspect the actual source and checks. Graphify output is navigation, not
 authority.
@@ -61,7 +68,8 @@ Area index.
 Every concept must satisfy the strict workflow profile: explicit lifecycle and
 generation metadata, claim-level authoritative sources, current verification
 for stable content, human verification for normative claims, explicit
-decision lineage, and no raw references.
+`x-wf.relations`, valid human-visible links, explicit decision lineage, and no
+raw references.
 
-Run `wfctl knowledge validate` after promotion. A failed validation blocks a
-completed knowledge update.
+Run `wfctl knowledge validate` and `wfctl knowledge build` after promotion. A
+failed validation or build blocks a completed knowledge update.

@@ -15,6 +15,8 @@ generated:
 verified: []
 supersedes: []
 superseded_by: ""
+x-wf:
+  relations: []
 sources:
   - id: "<maintainer-decision-id>"
     kind: maintainer-decision
@@ -46,6 +48,8 @@ State benefits, costs, risks, constraints, and accepted tradeoffs.
 # Affected Areas and capabilities
 
 Link every materially affected Area, capability, use case, rule, or contract.
+Record non-lineage semantic edges in `x-wf.relations` with the same target and
+a meaningful `context`.
 
 # Transition and migration
 
@@ -59,6 +63,7 @@ List remaining questions, or state `None`.
 
 Explain what this changes relative to each predecessor. Use project-relative
 `knowledge/...` paths in `supersedes` and `superseded_by`; keep reciprocal
-links accurate.
+links accurate, and include matching Markdown links to every predecessor and
+successor in this section.
 
 [^maintainer-decision-id]: Explicit maintainer approval recorded in the linked project change.

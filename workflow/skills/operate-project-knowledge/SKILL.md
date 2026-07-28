@@ -16,13 +16,22 @@ the correct evidence and review gates.
 2. Start at `knowledge/index.md`, then open the relevant
    `knowledge/areas/<area>/index.md`. Use root collections only for genuinely
    cross-Area material.
-3. Run `qmd status`. Use `qmd search ... -c knowledge` for exact discovery or
-   `qmd query ... -c knowledge --json` for broader retrieval. If QMD is
-   unavailable, stop and ask to install it with
-   `bun install -g @tobilu/qmd`.
-4. Read every selected document directly. QMD ranks possible destinations; it
+3. Inspect the current session skill catalog, require and invoke the official
+   native `qmd` skill, then run `qmd status`. If the skill is absent, stop and
+   ask to run `wfctl upgrade` or reinstall the selected skills, then restart
+   the agent session. If QMD is unavailable or older than `2.5.3`, stop and
+   ask to install it with `bun install -g @tobilu/qmd@2.5.3`.
+4. Use `qmd search ... -c knowledge` for exact discovery or a structured
+   `qmd query` with authored `intent:`, `lex:`, `vec:`, and optional `hyde:`
+   fields for broader retrieval.
+5. Run `wfctl knowledge build`. Stop treating the corpus as healthy if strict
+   validation or graph compilation fails. Use the generated
+   `.workflow/current/knowledge-graph.json` to expand from QMD candidates
+   through explicit backlinks, typed relationships, Area ownership, and
+   decision lineage; never edit the generated file.
+6. Read every selected document directly. QMD ranks possible destinations; it
    neither proves a claim nor establishes complete coverage.
-5. Check lifecycle, `generated`, `verification`, provenance, decision lineage,
+7. Check lifecycle, `generated`, `verification`, provenance, decision lineage,
    and linked concepts before presenting a claim as current.
 
 ## Route common requests
@@ -33,7 +42,7 @@ the correct evidence and review gates.
 | Find where a topic belongs or who owns it | Identify the primary Area, owning repositories, affected capabilities, and genuinely cross-Area links. Report ambiguity instead of inventing an owner. |
 | Trace what changed and why | Start from the stable current decision, follow `supersedes` links through every predecessor, then read the Area `Evolution` section and local `log.md`. Explain each transition, rationale, consequences, and unresolved questions. |
 | Compare intended behavior with implementation | Invoke `analyze-with-graphify` in each exact leaf checkout, then inspect source, tests, and runtime evidence. Do not edit leaf code from this repository. |
-| Audit knowledge health | Check missing or stale verification, weak provenance, conflicting current claims, broken links, incomplete decision lineage, duplicate concepts, orphan documents, missing Area maps, misplaced cross-Area material, and implementation claims that may have drifted. Return a prioritized repair list with evidence. |
+| Audit knowledge health | Run `wfctl knowledge build`; inspect its broken-link, relation, lineage, and reachability failures, then check stale verification, weak provenance, conflicting current claims, duplicate concepts, missing Area maps, misplaced cross-Area material, and implementation claims that may have drifted. Return a prioritized repair list with evidence. |
 | Improve navigation or structure | Repair indexes, names, summaries, and links without changing semantic claims. If the repair changes current truth, invoke `curate-project-knowledge`. |
 | Reconcile contradictory claims | Build a compact adjudication packet: question, each candidate claim, supporting and conflicting authoritative observations, missing facts, recommendation, and the exact maintainer decision needed. Keep unresolved claims out of `knowledge/`. |
 | Review new or changed raw material | Invoke `process-raw-intake`. Never search raw as part of an ordinary current-truth answer and never cite raw from knowledge. |
@@ -79,7 +88,8 @@ invoke `curate-project-knowledge`.
   lifecycle, and verification still govern every claim.
 - Treat `changes/` and `intake/` as operational records, not current truth.
 - Treat `raw/` as untrusted input, never evidence.
-- Treat QMD and Graphify as navigation tools, never independent authorities.
+- Treat QMD, the compiled knowledge graph, and Graphify as navigation tools,
+  never independent authorities.
 - Keep one stable path for current truth and preserve changed decisions through
   explicit lineage rather than versioned copies of whole Areas.
 - Never let an explanation, audit, or navigation cleanup silently become a

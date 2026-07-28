@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-  chmodSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,20 +13,9 @@ const cases = [
   { name: "bun", command: "bun", args: ["dist/cli.js", "--version"] },
   { name: "deno", command: "deno", args: ["run", "-A", "dist/cli.js", "--version"] },
 ];
-const toolRoot = mkdtempSync(join(tmpdir(), "wfctl-tools-"));
-const bin = join(toolRoot, "bin");
-mkdirSync(bin);
-writeFileSync(join(bin, "qmd"), "#!/bin/sh\nexit 0\n");
-chmodSync(join(bin, "qmd"), 0o755);
-const testEnv = {
-  ...process.env,
-  PATH: `${bin}:${process.env.PATH ?? ""}`,
-};
-
 for (const runtime of cases) {
   const result = spawnSync(runtime.command, runtime.args, {
     encoding: "utf8",
-    env: testEnv,
   });
   if (result.error?.code === "ENOENT") {
     throw new Error(`${runtime.name} is required for the wfctl runtime matrix`);
@@ -70,7 +56,6 @@ for (const runtime of cases) {
     ];
   const plan = spawnSync(runtime.command, planArgs, {
     encoding: "utf8",
-    env: testEnv,
   });
   assert.equal(plan.status, 0, `${runtime.name} preview failed:\n${plan.stderr || plan.stdout}`);
   const parsed = JSON.parse(plan.stdout);
@@ -104,7 +89,6 @@ for (const runtime of cases) {
     ];
   const applied = spawnSync(runtime.command, applyArgs, {
     encoding: "utf8",
-    env: testEnv,
   });
   assert.equal(
     applied.status,
@@ -117,7 +101,6 @@ for (const runtime of cases) {
 
   const converged = spawnSync(runtime.command, planArgs, {
     encoding: "utf8",
-    env: testEnv,
   });
   assert.equal(
     converged.status,

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readlink } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import { stringify } from "yaml";
 import {
   collectFiles,
   findDistributionRoot,
@@ -8,7 +9,11 @@ import {
   renderMaintainerGuide,
 } from "./assets.js";
 import { createConfig, errorMessage, isMissingFileError, readState } from "./config.js";
-import { upsertManagedBlock } from "./managed-block.js";
+import {
+  GITIGNORE_MARKERS,
+  type ManagedBlockMarkers,
+  upsertManagedBlock,
+} from "./managed-block.js";
 import type {
   InstallPlan,
   PlanOperation,
@@ -100,6 +105,9 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
   }
 
   operations.push(await planConfig(target, config));
+  if (options.profile === "leaf") {
+    operations.push(await planLeafGitignore(target));
+  }
 
   const instructions = await renderAgentInstructions(
     distributionRoot,
@@ -277,6 +285,7 @@ async function planManagedBlock(
   target: string,
   relativePath: string,
   body: string,
+  markers?: ManagedBlockMarkers,
 ): Promise<PlanOperation> {
   const absolute = join(target, relativePath);
   try {
@@ -298,7 +307,7 @@ async function planManagedBlock(
       };
     }
     const existing = await readFile(absolute, "utf8");
-    const merged = upsertManagedBlock(existing, body);
+    const merged = upsertManagedBlock(existing, body, markers);
     if (!merged.content) {
       return {
         kind: "managed-block",
@@ -325,7 +334,7 @@ async function planManagedBlock(
         reason: `cannot inspect instruction file: ${errorMessage(error)}`,
       };
     }
-    const merged = upsertManagedBlock("", body);
+    const merged = upsertManagedBlock("", body, markers);
     return {
       kind: "managed-block",
       path: relativePath,
@@ -334,6 +343,51 @@ async function planManagedBlock(
       content: merged.content ?? "",
     };
   }
+}
+
+async function planLeafGitignore(target: string): Promise<PlanOperation> {
+  const relativePath = ".gitignore";
+  const absolute = join(target, relativePath);
+  try {
+    const stat = await lstat(absolute);
+    if (stat.isFile() && !stat.isSymbolicLink()) {
+      const existing = await readFile(absolute, "utf8");
+      if (
+        !existing.includes(GITIGNORE_MARKERS.start)
+        && ignoresGraphifyOutput(existing)
+      ) {
+        return {
+          kind: "managed-block",
+          path: relativePath,
+          status: "unchanged",
+          reason: "Graphify output is already ignored",
+          content: existing,
+          expectedHash: hashContent(existing),
+        };
+      }
+    }
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      return {
+        kind: "managed-block",
+        path: relativePath,
+        status: "conflict",
+        reason: `cannot inspect .gitignore: ${errorMessage(error)}`,
+      };
+    }
+  }
+  return planManagedBlock(
+    target,
+    relativePath,
+    "graphify-out/",
+    GITIGNORE_MARKERS,
+  );
+}
+
+function ignoresGraphifyOutput(content: string): boolean {
+  return content.split(/\r?\n/).some((line) =>
+    /^(?:\/)?graphify-out\/?$/.test(line.trim())
+  );
 }
 
 async function planClaudeInstructions(
@@ -473,6 +527,10 @@ async function planOwnedFile(
 }
 
 export function skillsForProfile(profile: PlanOptions["profile"]): string[] {
+  return [...workflowSkillsForProfile(profile), "qmd"].sort();
+}
+
+export function workflowSkillsForProfile(profile: PlanOptions["profile"]): string[] {
   return [...COMMON_SKILLS, ...PROFILE_SKILLS[profile]].sort();
 }
 
@@ -482,45 +540,49 @@ function renderQmdConfig(target: string): string {
     pattern: string,
     includeByDefault: boolean,
     context: string,
-  ) =>
-    `    path: ${JSON.stringify(join(target, path))}\n`
-    + `    pattern: ${JSON.stringify(pattern)}\n`
-    + `    includeByDefault: ${includeByDefault}\n`
-    + "    context:\n"
-    + `      \"/\": ${JSON.stringify(context)}\n`;
+  ) => ({
+    path: join(target, path),
+    pattern,
+    includeByDefault,
+    context: { "/": context },
+  });
 
-  return "global_context: >-\n"
-    + "  Project knowledge retrieval. Curated knowledge is the only default truth surface.\n"
-    + "  Changes are qualified records. Intake and raw are untrusted investigation inputs.\n"
-    + "collections:\n"
-    + "  knowledge:\n"
-    + collection(
-      "knowledge",
-      "**/*.md",
-      true,
-      "Curated OKF current project knowledge. Use this collection by default.",
-    )
-    + "  changes:\n"
-    + collection(
-      "changes",
-      "**/*.md",
-      false,
-      "Active and archived project change records. Outcomes and reviews qualify every claim.",
-    )
-    + "  intake:\n"
-    + collection(
-      "intake",
-      "**/*.md",
-      false,
-      "Operational raw-intake cases. Never treat these records as evidence.",
-    )
-    + "  raw:\n"
-    + collection(
-      "raw",
-      "**/*.{md,markdown,mdown,txt,json,jsonl,yaml,yml,toml,js,mjs,cjs,ts,tsx,jsx}",
-      false,
-      "Continuous untrusted input used only to discover candidate claims and contradictions.",
-    );
+  return stringify({
+    global_context:
+      "Project knowledge retrieval. Curated knowledge is the only default truth surface. "
+      + "Changes are qualified records. Intake and raw are untrusted investigation inputs.",
+    collections: {
+      knowledge: collection(
+        "knowledge",
+        "**/*.md",
+        true,
+        "Curated OKF current project knowledge. Use this collection by default.",
+      ),
+      changes: collection(
+        "changes",
+        "**/*.md",
+        false,
+        "Active and archived project change records. Outcomes and reviews qualify every claim.",
+      ),
+      intake: collection(
+        "intake",
+        "**/*.md",
+        false,
+        "Operational raw-intake cases. Never treat these records as evidence.",
+      ),
+      raw: collection(
+        "raw",
+        "**/*.{md,markdown,mdown,txt,json,jsonl,yaml,yml,toml,js,mjs,cjs,ts,tsx,jsx}",
+        false,
+        "Continuous untrusted input used only to discover candidate claims and contradictions.",
+      ),
+    },
+    models: {
+      embed: "hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf",
+      generate: "hf:tobil/qmd-query-expansion-1.7B-gguf/qmd-query-expansion-1.7B-q4_k_m.gguf",
+      rerank: "hf:ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/qwen3-reranker-0.6b-q8_0.gguf",
+    },
+  }, { lineWidth: 0 });
 }
 
 function normalizeRelative(path: string): string {

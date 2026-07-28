@@ -67,6 +67,18 @@ Graphify is not the analyzer for Markdown, raw intake, or OKF concepts. QMD
 provides BM25, semantic, and hybrid retrieval for those surfaces; direct file
 reading, Git coverage, provenance, and validation remain authoritative.
 
+## Compiled knowledge graph
+
+`wfctl knowledge build` validates `knowledge/` and compiles only authored
+Markdown links, typed `x-wf.relations`, Area ownership, and decision lineage
+into `.workflow/current/knowledge-graph.json`. The ignored file is a
+rebuildable navigation artifact: it adds no inferred truth and is never edited
+or cited as authority.
+
+QMD discovers candidate documents by meaning. The compiled graph expands those
+candidates through explicit reviewed relationships. Graphify handles source
+code. In every case, the agent reads the selected source documents directly.
+
 ## QMD retrieval boundary
 
 `wfctl` installs a project-local `.qmd/index.yml` in the knowledge repository.
@@ -78,6 +90,17 @@ Its collections are intentionally separated:
 The QMD index is disposable. Search rank and snippets help navigation but prove
 neither corpus coverage nor truth. The agent runs QMD from the knowledge root,
 updates the index after content changes, and reads selected files directly.
+The official native `qmd` skill must be active in the current agent session;
+installation on disk requires a session restart before it counts.
+
+`wfctl check` distinguishes two readiness levels:
+
+- BM25 lexical readiness is required and depends on a healthy project-local
+  index refreshed by `qmd update`;
+- semantic/hybrid readiness depends on local models and current embeddings.
+
+Missing models or embeddings are warnings while BM25 remains healthy. Model
+download and embedding work happen only when semantic retrieval is needed.
 
 ## OKF and the stricter workflow profile
 
@@ -165,7 +188,9 @@ Deferral is valid. The agent preserves uncertainty instead of guessing.
     knowledge changed.
 13. Run `wfctl knowledge validate --target <Knowledge root>` for promoted
     concepts.
-14. Obtain completion approval, run `wfctl work verify`, and archive the honest
+14. Run `wfctl knowledge build --target <Knowledge root>` to prove links,
+    authored relationships, and stable-concept reachability.
+15. Obtain completion approval, run `wfctl work verify`, and archive the honest
     outcome with `wfctl work close`.
 
 A material turn changes a requirement, constraint, alternative, decision,

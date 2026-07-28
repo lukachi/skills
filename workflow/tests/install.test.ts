@@ -14,7 +14,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { applyInstallPlan } from "../src/applier.js";
+import type { ToolRunner } from "../src/dependencies.js";
 import { doctorPassed, runDoctor } from "../src/doctor.js";
+import { writeKnowledgeGraph } from "../src/knowledge-graph.js";
 import { buildInstallPlan } from "../src/planner.js";
 import { installSkills } from "../src/skill-installer.js";
 
@@ -49,6 +51,7 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
       path: string;
       includeByDefault: boolean;
     }>;
+    models: Record<string, string>;
   };
   assert.deepEqual(Object.keys(qmdConfig.collections), [
     "knowledge",
@@ -59,6 +62,7 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   assert.equal(qmdConfig.collections.knowledge?.path, join(target, "knowledge"));
   assert.equal(qmdConfig.collections.knowledge?.includeByDefault, true);
   assert.equal(qmdConfig.collections.raw?.includeByDefault, false);
+  assert.match(qmdConfig.models.embed ?? "", /embeddinggemma-300M/);
   assert.match(
     await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
     /OKF and the stricter workflow profile/,
@@ -92,6 +96,7 @@ test("renders a profile-specific leaf guide with the configured knowledge path",
   const leaf = join(root, "leaf");
   await mkdir(knowledge);
   await mkdir(leaf);
+  await writeFile(join(leaf, ".gitignore"), "node_modules/\n", "utf8");
   await applyInstallPlan(await buildInstallPlan({
     target: knowledge,
     profile: "knowledge",
@@ -111,6 +116,10 @@ test("renders a profile-specific leaf guide with the configured knowledge path",
   assert.match(guide, /Two inputs, one promotion gate/);
   assert.match(guide, /Graphify boundary/);
   assert.match(guide, /changes\/active/);
+  assert.equal(
+    await readFile(join(leaf, ".gitignore"), "utf8"),
+    "node_modules/\n\n# wfctl:begin\ngraphify-out/\n# wfctl:end\n",
+  );
 });
 
 test("preserves existing instructions and leaves skill directories to the skills CLI", async () => {
@@ -208,8 +217,13 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
     knowledge,
     distributionRoot,
   }));
+  await writeKnowledgeGraph(knowledge);
   await mkdir(join(leaf, "graphify-out"));
-  await writeFile(join(leaf, "graphify-out/graph.json"), "{}\n", "utf8");
+  await writeFile(
+    join(leaf, "graphify-out/graph.json"),
+    '{"nodes":[{"id":"root"}],"links":[]}\n',
+    "utf8",
+  );
 
   installSkills({
     target: knowledge,
@@ -230,6 +244,8 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
 
   await access(join(knowledge, ".agents/skills/operate-project-knowledge/SKILL.md"));
   await access(join(knowledge, ".claude/skills/operate-project-knowledge/SKILL.md"));
+  await access(join(knowledge, ".agents/skills/qmd/SKILL.md"));
+  await access(join(knowledge, ".claude/skills/qmd/SKILL.md"));
   await access(join(knowledge, ".agents/skills/process-raw-intake/SKILL.md"));
   await access(join(leaf, ".agents/skills/setup-workflow-environment/SKILL.md"));
   await access(join(leaf, ".agents/skills/analyze-with-graphify/SKILL.md"));
@@ -240,20 +256,28 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
   await assert.rejects(access(join(leaf, ".agents/skills/operate-project-knowledge/SKILL.md")));
   await assert.rejects(access(join(leaf, ".agents/skills/process-raw-intake/SKILL.md")));
 
+  const knowledgeReport = await runDoctor(knowledge, { runner: healthyToolRunner });
+  assert.equal(doctorPassed(knowledgeReport), true);
+  assert.ok(knowledgeReport.checks.some((check) =>
+    check.name === "knowledge-graph" && check.status === "pass"
+  ));
   assert.equal(
-    doctorPassed(await runDoctor(knowledge, {
-      graphifyAvailable: true,
-      qmdAvailable: true,
-    })),
+    doctorPassed(await runDoctor(leaf, { runner: healthyToolRunner })),
     true,
   );
-  assert.equal(
-    doctorPassed(await runDoctor(leaf, {
-      graphifyAvailable: true,
-      qmdAvailable: true,
-    })),
-    true,
+
+  const rootIndex = join(knowledge, "knowledge/index.md");
+  await writeFile(
+    rootIndex,
+    `${await readFile(rootIndex, "utf8")}\n<!-- knowledge changed -->\n`,
+    "utf8",
   );
+  const staleGraph = await runDoctor(knowledge, { runner: healthyToolRunner });
+  assert.ok(staleGraph.checks.some((check) =>
+    check.name === "knowledge-graph"
+    && check.status === "fail"
+    && /wfctl knowledge build/.test(check.message)
+  ));
 });
 
 test("doctor fails clearly when QMD is unavailable", async () => {
@@ -265,14 +289,79 @@ test("doctor fails clearly when QMD is unavailable", async () => {
     distributionRoot,
   }));
 
-  const report = await runDoctor(target, { qmdAvailable: false });
+  const report = await runDoctor(target, {
+    runner: (command) => ({
+      status: command === "qmd" ? 1 : 0,
+      stdout: "",
+      stderr: command === "qmd" ? "command not found" : "",
+    }),
+  });
   assert.equal(doctorPassed(report), false);
   assert.ok(report.checks.some((check) =>
-    check.name === "qmd-cli"
+    check.name === "qmd-version"
     && check.status === "fail"
-    && /bun install -g @tobilu\/qmd/.test(check.message)
+    && /bun install -g @tobilu\/qmd@2\.5\.3/.test(check.message)
   ));
 });
+
+test("doctor rejects a leaf without a local Graphify graph", async () => {
+  const root = await temporaryDirectory("wfctl-leaf-graph-");
+  const knowledge = join(root, "knowledge");
+  const leaf = join(root, "leaf");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  execFileSync("git", ["-C", knowledge, "init", "-q"]);
+  execFileSync("git", ["-C", leaf, "init", "-q"]);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+  await writeKnowledgeGraph(knowledge);
+
+  const report = await runDoctor(leaf, { runner: healthyToolRunner });
+  assert.equal(doctorPassed(report), false);
+  assert.ok(report.checks.some((check) =>
+    check.name === "graphify-graph"
+    && check.status === "fail"
+    && /graphify update \./.test(check.message)
+  ));
+});
+
+const healthyToolRunner: ToolRunner = (command, args) => {
+  if (command === "git" && args[0] === "check-ignore") {
+    return { status: 0, stdout: "", stderr: "" };
+  }
+  if (command === "graphify") {
+    return { status: 0, stdout: "graphify 0.9.26\n", stderr: "" };
+  }
+  if (command === "qmd" && args[0] === "--version") {
+    return { status: 0, stdout: "qmd 2.5.3\n", stderr: "" };
+  }
+  if (command === "qmd" && args[0] === "status") {
+    return {
+      status: 0,
+      stdout: "QMD Status\nDocuments\n  Total: 11 files indexed\n",
+      stderr: "",
+    };
+  }
+  if (command === "qmd" && args[0] === "doctor") {
+    return {
+      status: 0,
+      stdout:
+        "QMD Doctor\n✓ model cache: 3 active models are downloaded and valid GGUF\n"
+        + "✓ embedding freshness: all active documents match current fingerprint\n",
+      stderr: "",
+    };
+  }
+  return { status: 1, stdout: "", stderr: `unexpected command: ${command}` };
+};
 
 async function temporaryDirectory(prefix: string): Promise<string> {
   return await mkdtemp(join(tmpdir(), prefix));

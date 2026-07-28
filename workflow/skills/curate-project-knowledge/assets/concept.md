@@ -11,6 +11,8 @@ generated:
   by: "<producer>/<version>"
   at: "<ISO-8601>"
 verified: []
+x-wf:
+  relations: []
 sources:
   - id: "<stable-source-id>"
     kind: "<maintainer-decision|source-code|runtime-check|archived-change|version-control|external-primary>"
@@ -31,7 +33,19 @@ decisions. Attribute each material claim.
 # Relationships
 
 Link the parent Area, related capabilities, rules, use cases, and cross-area
-concepts.
+concepts. Add every material semantic edge to `x-wf.relations` and keep a
+matching Markdown link here. Use a short paragraph in `context` when one line
+would lose an important condition:
+
+```yaml
+x-wf:
+  relations:
+    - kind: governed-by
+      target: knowledge/areas/<area>/rules/<rule>.md
+      context: >-
+        Explain why this relationship matters, including any boundary or
+        condition needed to interpret it correctly.
+```
 
 # Technical realization
 

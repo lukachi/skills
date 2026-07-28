@@ -6,6 +6,7 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { parse } from "yaml";
 import { errorMessage, isMissingFileError, readConfig } from "./config.js";
+import { compileKnowledgeGraph } from "./knowledge-graph.js";
 
 export interface KnowledgeValidationIssue {
   path: string;
@@ -110,6 +111,17 @@ export async function validateKnowledge(
   }
   const decisions = await readDecisionNodes(target, knowledgeRoot, inventory.markdown);
   validateDecisionLineage(decisions, errors);
+  const graph = await compileKnowledgeGraph(
+    target,
+    conceptPaths
+      ? {
+        issueSources: new Set(selected.map((path) => portable(relative(target, path)))),
+        checkReachability: false,
+      }
+      : {},
+  );
+  errors.push(...graph.errors);
+  warnings.push(...graph.warnings);
 
   return {
     target,

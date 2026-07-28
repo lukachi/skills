@@ -15,7 +15,8 @@
   cross-agent symlinks between `.agents/skills` and `.claude/skills`.
 - Default to project scope; use user scope or no installation only when the
   maintainer chooses it.
-- Install `setup-workflow-environment` and `analyze-with-graphify` for both profiles.
+- Install `setup-workflow-environment`, `analyze-with-graphify`, and the
+  version-matched official `qmd` skill for both profiles.
 - Install `operate-project-knowledge` only for the knowledge profile as the
   default router for explanation, history, audit, navigation, contradiction,
   and triage requests.
@@ -37,11 +38,26 @@ Install it with
 Do not require Graphify for Markdown intake or OKF curation that does not inspect
 source code.
 
+Run `graphify update .` from the exact leaf checkout after applying an
+initialization or upgrade. This graph is worktree-local evidence infrastructure:
+do not reuse a sibling checkout's `graphify-out`, and do not report setup
+success when the update command fails or the resulting graph has no nodes.
+Maintain a `# wfctl:begin` / `# wfctl:end` block in the root `.gitignore` when
+no existing exact `graphify-out/` rule already covers the artifact. Preserve
+every pre-existing ignore rule.
+
+The QMD skill is not maintained as a workflow copy. Resolve its source with
+`qmd skills path qmd`, then let the same pinned `skills` CLI copy it to the
+selected Codex and Claude targets. This preserves agent-target and scope
+semantics while keeping the skill matched to the installed QMD version.
+
 ## Knowledge retrieval
 
-- Require the external QMD CLI for both profiles because leaf alignment reads
-  the linked knowledge repository.
-- Install QMD through Bun when authorized: `bun install -g @tobilu/qmd`.
+- Require QMD `>=2.5.3` for both profiles because leaf alignment reads the
+  linked knowledge repository and skill discovery depends on
+  `qmd skills path qmd`.
+- Install the supported baseline through Bun when authorized:
+  `bun install -g @tobilu/qmd@2.5.3`.
 - For a knowledge profile, let `wfctl` own `.qmd/index.yml` and
   `.qmd/.gitignore`.
 - Keep QMD's database and model cache out of Git. The index is disposable and
@@ -49,6 +65,22 @@ source code.
 - Include only `knowledge` in unscoped searches. Require explicit collection
   selection for `changes`, `intake`, and `raw`.
 - Run QMD from the knowledge root so it uses the project-local index.
+- Run `qmd update` during knowledge initialization and upgrade so lexical BM25
+  retrieval is ready before success is reported.
+- Diagnose `qmd status` and `qmd doctor` separately. A working lexical index is
+  required. Missing models or stale embeddings are warnings until semantic or
+  hybrid retrieval is needed.
+
+## Knowledge relationship graph
+
+- Compile authored Markdown links and workflow relation metadata with
+  `wfctl knowledge build`; do not infer semantic relationships.
+- Store the generated artifact at
+  `.workflow/current/knowledge-graph.json`, which is already ignored.
+- Build it during a valid knowledge initialization or upgrade.
+- Make `wfctl check` fail when the artifact is missing, invalid, or stale.
+- Keep QMD responsible for retrieval and Graphify responsible for source-code
+  structure; the compiled graph only represents reviewed knowledge links.
 
 ## Rules
 

@@ -66,17 +66,21 @@ matching `[^source-id]` footnote.
 
 ## Promotion procedure
 
-1. Work from the knowledge root. Start at `knowledge/index.md`, then use
-   `qmd search ... -c knowledge` or `qmd query ... -c knowledge --json` to
-   discover relevant concepts. QMD MCP `query` is equivalent when called with
+1. Work from the knowledge root. Inspect the current session skill catalog,
+   require and invoke the official native `qmd` skill, and stop for skill
+   installation plus session restart if it is absent.
+2. Start at `knowledge/index.md`, then use
+   `qmd search ... -c knowledge` or a structured `qmd query` with authored
+   `intent:`, `lex:`, `vec:`, and optional `hyde:` fields to discover relevant
+   concepts. QMD MCP `query` is equivalent when called with
    `collections: ["knowledge"]`. Read selected files directly; QMD rank is not
    evidence.
-2. Inspect lifecycle, freshness, provenance, verification, and supersession
+3. Inspect lifecycle, freshness, provenance, verification, and supersession
    before relying on an existing concept.
-3. If implementation reality matters, invoke `analyze-with-graphify` in the
+4. If implementation reality matters, invoke `analyze-with-graphify` in the
    exact source checkout. Use it for navigation, then inspect actual source,
    tests, and runtime evidence at the recorded revision.
-4. Identify the primary Area before choosing a file. Place capabilities,
+5. Identify the primary Area before choosing a file. Place capabilities,
    use cases, concepts, rules, implementation, and decisions in their sibling
    typed collections under that Area. Link relationships; do not physically
    nest implementation or decisions below a capability or flow. Use
@@ -84,25 +88,27 @@ matching `[^source-id]` footnote.
    single Area is the honest primary owner. A flow may link several Areas. Use
    a bounded context only when technical analysis proves a coherent model and
    language boundary; do not use it as a synonym for Area.
-5. Compare the proposed claim with current concepts and accepted change
+6. Compare the proposed claim with current concepts and accepted change
    records. Separate current human-facing truth, technical realization,
    history, and unresolved questions.
-6. Ask the maintainer only for missing intent, authority, or a material
+7. Ask the maintainer only for missing intent, authority, or a material
    decision. Present the decision, evidence, conflicts, recommendation, and
    requested response.
-7. Create or update the smallest coherent concepts using
+8. Create or update the smallest coherent concepts using
    [the concept template](assets/concept.md). For a new Area, create its
    human-facing `index.md` from [the Area template](assets/area-index.md) and
    add only the needed `capabilities/`, `concepts/`, `rules/`, `use-cases/`,
    `implementation/`, `decisions/`, and `log.md`. Make capability and use-case
-   documents link their related rules, implementation, and decisions.
-8. Give every source a stable `id`, `resource`, and workflow `kind`; attach
+   documents link their related rules, implementation, and decisions. Declare
+   only material semantic edges in `x-wf.relations`; give each edge a
+   meaningful `context` and repeat its target as a normal Markdown link.
+9. Give every source a stable `id`, `resource`, and workflow `kind`; attach
    material claims with matching footnotes.
-9. Set `generated.at` to the latest material edit. Old verification does not
+10. Set `generated.at` to the latest material edit. Old verification does not
    survive that edit.
-10. Use `status: stable` only after a suitable verification at or after
+11. Use `status: stable` only after a suitable verification at or after
    `generated.at`. Normative claims require a human verification.
-11. Author decisions from [the decision template](assets/decision.md). Preserve
+12. Author decisions from [the decision template](assets/decision.md). Preserve
     each approved decision's substantive body; later changes may update only
     lifecycle and lineage metadata. When a decision changes:
     - create a new record with a stable `decision_id`, `effective_at`, and
@@ -113,14 +119,18 @@ matching `[^source-id]` footnote.
     - explain context, exact decision, rationale, alternatives, consequences,
       affected Areas/capabilities, transition, and unresolved questions;
     - never create `v1/`, `v2/`, or date-versioned copies of the whole Area.
-12. Update the Area index's `Current model` and `Evolution` sections. The
+13. Update the Area index's `Current model` and `Evolution` sections. The
     Evolution summary must explain what changed, why, and what it affected,
     then link the full decisions. Append detail to that Area's `log.md`. Keep
     the root `knowledge/log.md` as a high-level recent aggregator only.
-13. Run `wfctl knowledge validate --target <knowledge-root>`, then `qmd update`
-    so retrieval reflects the validated files. Re-run `qmd embed -c knowledge`
-    when semantic vectors are needed.
-14. Do not report promotion complete while validation fails.
+14. Run `wfctl knowledge validate --target <knowledge-root>`, then
+    `wfctl knowledge build --target <knowledge-root>`. The build must succeed
+    so broken links, invalid typed relations, and stable orphan concepts cannot
+    silently enter the maintained reading surface.
+15. Run `qmd update` so retrieval reflects the validated files. Re-run
+    `qmd embed -c knowledge` when semantic vectors are needed.
+16. Do not report promotion complete while validation or graph compilation
+    fails.
 
 Unresolved candidates from raw intake stay in the intake case. Use
 `knowledge/uncertainties/` only for a live project question established by

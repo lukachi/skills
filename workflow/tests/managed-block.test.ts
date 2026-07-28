@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   containsManagedBlock,
+  GITIGNORE_MARKERS,
   renderManagedBlock,
   upsertManagedBlock,
 } from "../src/managed-block.js";
@@ -42,4 +43,20 @@ test("updates only the existing managed block", () => {
 test("rejects malformed markers", () => {
   const result = upsertManagedBlock("<!-- wfctl:begin -->\nmissing end", "New");
   assert.match(result.error ?? "", /malformed/);
+});
+
+test("supports comment markers for non-Markdown managed files", () => {
+  const result = upsertManagedBlock(
+    "node_modules/\n",
+    "graphify-out/",
+    GITIGNORE_MARKERS,
+  );
+  assert.equal(
+    result.content,
+    "node_modules/\n\n# wfctl:begin\ngraphify-out/\n# wfctl:end\n",
+  );
+  assert.equal(
+    containsManagedBlock(result.content ?? "", GITIGNORE_MARKERS),
+    true,
+  );
 });

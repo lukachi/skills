@@ -39,6 +39,9 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - QMD is a rebuildable retrieval cache, not a source. Only curated `knowledge`
   participates in unscoped queries; `changes`, `intake`, and `raw` are
   explicitly selected collections.
+- Authored Markdown links, typed `x-wf.relations`, Area ownership, and decision
+  lineage compile deterministically into an ignored navigation graph. The
+  Markdown remains the source; the graph adds no inferred facts.
 
 ## Work routing
 
@@ -51,10 +54,15 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 
 ## CLI surface
 
-- `wfctl init [knowledge|leaf]`: preview, resolve safe conflicts, and install a workflow.
+- `wfctl init [knowledge|leaf]`: preview the file plan and dependency
+  preflight, resolve safe conflicts, install a workflow, and build the
+  profile's required local index (`qmd` plus the authored knowledge graph for
+  knowledge; Graphify for a leaf).
 - `wfctl upgrade`: update an existing installation using its recorded configuration.
-- `wfctl check`: diagnose installation, Git, knowledge linkage, and Graphify
-  requirements for leaf repositories.
+- `wfctl check`: diagnose installation, Git, knowledge linkage, Graphify
+  requirements for leaf repositories, QMD version/core health, lexical-index
+  readiness, deterministic knowledge-graph freshness, and optional semantic
+  readiness.
 - `wfctl knowledge raw inventory`: compare committed raw `path + blob ID`
   identities with active and archived intake coverage without semantic
   indexing.
@@ -65,6 +73,8 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - `wfctl knowledge case check|close`: enforce Git identity, file accounting,
   candidate linkage, omission audit, and promotion state.
 - `wfctl knowledge validate`: enforce the strict curated-knowledge profile.
+- `wfctl knowledge build`: validate and compile the deterministic knowledge
+  relationship graph into `.workflow/current/knowledge-graph.json`.
 - `wfctl work handoff`: create a non-authoritative lightweight inbox record
   with exact repository and worktree metadata.
 - `wfctl work start`: create an early shaping spec bound to one exact leaf checkout.
@@ -76,11 +86,14 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 ## Safety contract
 
 - Preview before mutation and require confirmation in interactive use.
+- Fail dependency preflight before any workflow or skill write.
 - Never overwrite an unowned file without a per-file decision and backup.
 - Never replace an existing file or directory with a symlink.
 - Stop on structural, symlink, marker, or path-type conflicts.
 - Update an owned file only when its current hash matches the last installed hash.
 - Delegate profile-specific skill placement to the pinned `skills` CLI.
+- Resolve QMD's version-matched official skill from the installed QMD package
+  and install it through the same selected agent targets and scope.
 - Install skills as independent copies; never create cross-agent skill symlinks.
 - Default skills to project scope and allow explicit user or disabled scope.
 - Refuse non-interactive replacement of existing skills.
@@ -89,8 +102,15 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   block that preserves pre-existing maintainer content.
 - Install a project-local QMD configuration in the knowledge repository and
   ignore its generated database.
-- Never implement a competing Markdown index, embedding store, or ranking
-  pipeline inside `wfctl`.
+- Require QMD 2.5.3 or newer and refresh the lexical index during knowledge
+  initialization and upgrade.
+- Compile the deterministic knowledge graph during a valid knowledge
+  initialization or upgrade, and fail diagnostics when it is missing or stale.
+- Treat missing semantic models or embeddings as explicit warnings while a
+  healthy BM25 index remains usable.
+- Never implement a competing semantic Markdown index, embedding store, or
+  ranking pipeline inside `wfctl`. The deterministic graph may compile only
+  authored links and first-class workflow metadata.
 
 ## Verification criteria
 
@@ -122,10 +142,20 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   blocked reviews, and incomplete candidate linkage.
 - [x] QMD collections keep curated knowledge default and untrusted surfaces
   opt-in.
+- [x] QMD's official native skill is installed for the selected Codex and
+  Claude targets instead of being copied into the workflow source.
+- [x] Missing or old dependencies stop initialization before filesystem writes.
+- [x] Real QMD integration proves configuration convergence, lexical indexing,
+  raw collection isolation, status, and doctor behavior.
+- [x] Real Graphify integration produces and validates a non-empty code graph.
+- [x] Leaf setup refreshes a checkout-local Graphify graph and keeps its
+  generated output out of Git without replacing existing ignore rules.
 - [x] Curated knowledge rejects raw references, stale verification, unpinned
   code sources, and incomplete claim attribution.
 - [x] Decision validation rejects missing, non-reciprocal, cyclic, or
   multi-current supersession lineages.
+- [x] Knowledge graph compilation rejects broken internal links, invalid or
+  invisible typed relations, Area mismatches, and unreachable stable concepts.
 - [x] Completed significant work records an applied knowledge delta or an
   explicit no-update reason.
 - [x] Lightweight findings can enter `changes/inbox/` without being mislabeled
@@ -139,7 +169,7 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - [x] Implement the filesystem planner and safe applier.
 - [x] Implement CLI commands.
 - [x] Complete and validate rules, skills, and templates.
-- [x] Add automated tests and runtime smoke checks.
+- [x] Add automated tests, real QMD/Graphify integrations, and runtime smoke checks.
 - [x] Dry-run against the named DnD repositories.
 - [x] Define maintainer review boundaries without conflating OKF trust and
   lifecycle.

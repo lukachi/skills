@@ -21,7 +21,10 @@ repository to it. Manual setup commands are documented in
 agent.
 
 After setup, each repository has a `PROJECT_WORKFLOW.md` describing its
-installed contract.
+installed contract. Restart the agent session once so Codex or Claude loads the
+new workflow, Graphify gate, and official QMD skill. Lexical knowledge search
+is ready after initialization; semantic search is optional setup that may
+download roughly 2 GB of local models.
 
 ## Your normal working day
 
@@ -71,6 +74,9 @@ understanding rather than implementing code in one leaf repository.
 The installed `operate-project-knowledge` skill is the default entry point: it
 recognizes the common request and routes raw intake, code verification, or
 semantic promotion to the stricter specialized skill when needed.
+It also keeps a disposable relationship graph current: QMD finds likely
+documents, the graph follows explicit reviewed links, and the agent reads the
+actual Markdown before answering. You do not maintain this graph manually.
 
 | What you want | What to ask | What the knowledge agent does |
 | --- | --- | --- |

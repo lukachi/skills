@@ -13,15 +13,25 @@ versioned rules and templates, managed instruction blocks, and profile-specific
 skills installed through the pinned `skills` CLI.
 
 Project skills are copied independently into each selected agent's native skill
-directory. `wfctl` does not create cross-agent skill symlinks.
+directory. `wfctl` does not create cross-agent skill symlinks. It also resolves
+QMD's version-matched official skill through `qmd skills path qmd` and installs
+that skill through the same pinned installer.
 
 Graphify remains an external prerequisite. Its `graphify` CLI and official
 native `graphify` skill must both be available; the workflow-provided
-`analyze-with-graphify` skill only enforces routing and session checks.
+`analyze-with-graphify` skill only enforces routing and session checks. Leaf
+initialization runs an incremental `graphify update .` from that exact checkout
+before reporting success and safely adds `graphify-out/` to the repository
+`.gitignore`.
 
 [QMD](https://github.com/tobi/qmd) is the external knowledge retrieval engine.
 `wfctl` installs its project-local collection configuration but does not
 reimplement indexing, embeddings, retrieval, or reranking.
+
+`wfctl` does compile a separate deterministic relationship graph from authored
+Markdown links and workflow metadata. This is not semantic search: it makes
+human-visible relationships, decision lineage, Area ownership, broken links,
+and orphaned stable concepts mechanically checkable.
 
 ## Development
 
@@ -29,8 +39,10 @@ Requirements:
 
 - Node.js 20 or newer for `wfctl`; Node.js 22 or newer when using current QMD
 - Bun 1.3 or newer
-- Deno for the full runtime compatibility check
-- QMD for installed workflow operation: `bun install -g @tobilu/qmd`
+- Deno for the CLI-core runtime smoke test (`--skills none`)
+- QMD 2.5.3 or newer for installed workflow operation:
+  `bun install -g @tobilu/qmd@2.5.3`
+- Graphify for leaf initialization and its real integration test
 
 ```sh
 bun install
@@ -69,13 +81,16 @@ Project installations remain profile-specific:
 
 | Profile | Installed skills |
 | --- | --- |
-| Both | `setup-workflow-environment`, `analyze-with-graphify` |
+| Both | `setup-workflow-environment`, `analyze-with-graphify`, official `qmd` |
 | Knowledge | `operate-project-knowledge`, `process-raw-intake`, `curate-project-knowledge` |
 | Leaf | `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge` |
 
 ## Initialize
 
-`init` always previews its changes before applying them. Skill scope defaults
+`init` always previews its changes and dependency preflight before applying
+them. A missing/old QMD, missing QMD native skill source, non-Git target, invalid
+knowledge link, or missing Graphify in a leaf stops before any workflow file is
+written. Skill scope defaults
 to the project and can be changed interactively or with `--skills user|none`.
 The setup agent should execute initialization, upgrades, and diagnostics when
 it has terminal access; manual commands remain available for bootstrap and
@@ -93,6 +108,19 @@ an existing installation, and `wfctl check` for diagnostics. Existing text
 outside managed blocks is preserved. Replaceable file conflicts require an
 explicit per-file decision and a backup; structural conflicts stop installation.
 
+Knowledge initialization builds the deterministic relationship graph and runs
+`qmd update`, so structural navigation and lexical BM25 retrieval are part of
+installation success. Leaf initialization builds or incrementally refreshes
+the checkout-local Graphify graph. `wfctl check` detects a missing source graph
+or a missing or stale knowledge graph and reports QMD version, status, indexed
+documents, core doctor health, model cache, and embedding freshness separately.
+Missing semantic models or embeddings are warnings: exact/lexical retrieval
+still works. Run `qmd pull` and `qmd embed` only when semantic/hybrid retrieval
+is needed; the default model set is roughly 2 GB.
+
+Installed skills become visible only to a new agent session. Restart Codex or
+Claude after the first `init` or after a skill upgrade.
+
 Every profile receives a visible root `PROJECT_WORKFLOW.md`. It is the
 maintainer-facing guide: it explains the raw/intake/changes/knowledge boundary, work
 routing, review packets, and the exact decisions that require human approval.
@@ -109,6 +137,8 @@ decisions, then promotes only independently verified truth:
 ```sh
 cd /path/to/project-knowledge
 qmd update
+# Optional after model-download approval:
+qmd pull
 qmd embed -c raw
 
 wfctl knowledge raw inventory
@@ -119,7 +149,7 @@ wfctl knowledge case start world-loop-notes \
   --baseline HEAD \
   --target /path/to/project-knowledge
 
-qmd query "world loop chronology" -c raw --json
+qmd query -c raw --format json $'intent: Reconstruct the world-loop chronology without treating newer notes as automatically authoritative.\nlex: world loop chronology timeline superseded\nvec: history of how the world loop design changed'
 
 wfctl knowledge case mark <case-id> raw/world-loop/history.md \
   --status reviewed \
@@ -129,6 +159,7 @@ wfctl knowledge case mark <case-id> raw/world-loop/history.md \
 
 wfctl knowledge case check <case-id> --target /path/to/project-knowledge
 wfctl knowledge validate --target /path/to/project-knowledge
+wfctl knowledge build --target /path/to/project-knowledge
 ```
 
 The case stores the exact baseline commit and Git blob identity for every
@@ -136,6 +167,11 @@ selected file. That proves corpus identity and file accounting, not semantic
 understanding. QMD provides BM25, vector, hybrid, and reranked retrieval; the
 agent still performs full-file review and a second omission audit.
 `knowledge/` must never link to or cite `raw/` or `intake/`.
+
+The build writes `.workflow/current/knowledge-graph.json`, an ignored and fully
+rebuildable artifact. Markdown remains authoritative. QMD finds candidate
+documents, the compiled graph expands through explicit relationships, and the
+agent reads the selected files before drawing conclusions.
 
 `knowledge/index.md` is the human entry point.
 `knowledge/areas/<area>/index.md` is the primary map for each durable product

@@ -88,6 +88,68 @@ justify it.
 Do not mirror file trees, function lists, or implementation detail that
 Graphify and direct source inspection can answer reliably.
 
+## Authored relations and the compiled graph
+
+The Markdown corpus is the source of truth. The generated
+`.workflow/current/knowledge-graph.json` is a disposable navigation and
+validation artifact. Rebuild it with `wfctl knowledge build`; never edit it or
+cite it as authority.
+
+Every concept declares:
+
+```yaml
+x-wf:
+  relations: []
+```
+
+Add a relation only when it materially helps a reader traverse meaning:
+
+```yaml
+x-wf:
+  relations:
+    - kind: governed-by
+      target: knowledge/areas/combat/rules/revival-eligibility.md
+      context: >-
+        Revival behavior is constrained by this rule; the rule defines the
+        item and state conditions that the capability summary omits.
+```
+
+The target must also appear as a normal Markdown link in the body. This keeps
+the human document, plain GitHub rendering, OKF-compatible tooling, and the
+compiled graph consistent. `context` may be a short paragraph; preserve
+conditions and boundaries that a one-line label would lose.
+
+Supported authored relation kinds are:
+
+- `supports`
+- `governed-by`
+- `implemented-by`
+- `depends-on`
+- `affects`
+- `conflicts-with`
+- `related-to`
+
+Do not duplicate relationships that already have a first-class owner:
+
+- `area` plus the document path compile to `belongs-to`;
+- decision `supersedes` and `superseded_by` compile to lineage edges;
+- ordinary Markdown links compile to `references`.
+
+Decision-lineage targets and an Area document's parent Area must also be linked
+from the body. Stable concepts must be reachable by following links from
+`knowledge/index.md`; otherwise they are not part of the maintained human
+reading surface.
+
+Use the three indexes for different jobs:
+
+- QMD finds candidate documents by lexical or semantic meaning.
+- The compiled graph expands from those candidates through explicit,
+  reviewable knowledge relationships and checks reachability.
+- Graphify navigates implementation structure in source repositories.
+
+None of these indexes is evidence. Read the selected Markdown and source files
+directly before making a claim.
+
 ## Strict workflow profile over OKF v0.2
 
 OKF itself requires only `type`; this workflow intentionally requires more:
@@ -98,6 +160,8 @@ OKF itself requires only `type`; this workflow intentionally requires more:
 - non-empty `sources`;
 - `sources[].id`, `sources[].resource`, and workflow `sources[].kind`;
 - claim footnotes joined to source IDs;
+- explicit `x-wf.relations`, with typed targets mirrored by Markdown links;
+- valid internal Markdown links and root reachability for stable concepts;
 - current verification for every stable concept;
 - human verification for maintainer-decision authority;
 - explicit deprecation destination or reason;
