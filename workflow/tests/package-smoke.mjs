@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -12,6 +15,15 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sandbox = mkdtempSync(join(tmpdir(), "wfctl-package-"));
+const stripAnsi = (value) => value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+const bin = join(sandbox, "bin");
+mkdirSync(bin);
+writeFileSync(join(bin, "qmd"), "#!/bin/sh\nexit 0\n");
+chmodSync(join(bin, "qmd"), 0o755);
+const testEnv = {
+  ...process.env,
+  PATH: `${bin}:${process.env.PATH ?? ""}`,
+};
 
 try {
   const packed = spawnSync(
@@ -27,28 +39,72 @@ try {
   const extracted = spawnSync(
     "tar",
     ["-xzf", join(sandbox, archive), "-C", sandbox],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: testEnv },
   );
   assert.equal(extracted.status, 0, extracted.stderr || extracted.stdout);
 
   const packaged = join(sandbox, "package");
+  assert.equal(existsSync(join(packaged, "GETTING_STARTED.md")), true);
   assert.equal(existsSync(join(packaged, "skills/manage-project-work/SKILL.md")), true);
+  assert.equal(
+    existsSync(join(packaged, "skills/operate-project-knowledge/SKILL.md")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "skills/process-raw-intake/SKILL.md")),
+    true,
+  );
   assert.equal(existsSync(join(packaged, "rules/leaf/workflow-routing.md")), true);
   assert.equal(existsSync(join(packaged, "templates/knowledge/knowledge/index.md")), true);
   assert.equal(existsSync(join(packaged, "templates/guides/common.md")), true);
 
   const target = join(sandbox, "consumer");
+  const mainHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "--help"],
+    { encoding: "utf8", env: testEnv },
+  );
+  assert.equal(mainHelp.status, 0, mainHelp.stderr || mainHelp.stdout);
+  assert.match(stripAnsi(mainHelp.stdout), /init\s+\[knowledge\|leaf\]/);
+  assert.match(stripAnsi(mainHelp.stdout), /Maintenance:/);
+  assert.match(stripAnsi(mainHelp.stdout), /Knowledge operations:/);
+  assert.doesNotMatch(stripAnsi(mainHelp.stdout), /^\s+plan\s/m);
+  assert.doesNotMatch(stripAnsi(mainHelp.stdout), /^\s+apply\s/m);
+  assert.doesNotMatch(stripAnsi(mainHelp.stdout), /^\s+sync\s/m);
+
+  const initHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "init", "--help"],
+    { encoding: "utf8", env: testEnv },
+  );
+  assert.equal(initHelp.status, 0, initHelp.stderr || initHelp.stdout);
+  assert.match(
+    stripAnsi(initHelp.stdout),
+    /Repository kind: knowledge \(central knowledge base\) or leaf/,
+  );
+
+  const missingProfile = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "init"],
+    { encoding: "utf8", env: testEnv },
+  );
+  assert.equal(missingProfile.status, 1, missingProfile.stderr || missingProfile.stdout);
+  assert.match(missingProfile.stderr, /Repository kind is required/);
+
   const plan = spawnSync(
     "node",
     [
       join(packaged, "dist/cli.js"),
-      "plan",
+      "init",
       "knowledge",
       "--target",
       target,
+      "--skills",
+      "none",
+      "--dry-run",
       "--json",
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: testEnv },
   );
   assert.equal(plan.status, 0, plan.stderr || plan.stdout);
   const summary = JSON.parse(plan.stdout);
@@ -59,49 +115,51 @@ try {
     "node",
     [
       join(packaged, "dist/cli.js"),
-      "render",
-      "guide",
-      "--profile",
+      "init",
       "knowledge",
       "--target",
       target,
+      "--print-instructions",
+      "guide",
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: testEnv },
   );
   assert.equal(renderedGuide.status, 0, renderedGuide.stderr || renderedGuide.stdout);
-  assert.match(renderedGuide.stdout, /Maintainer review gates/);
+  assert.match(renderedGuide.stdout, /## Review gates/);
 
-  const bootstrap = spawnSync(
+  const git = spawnSync("git", ["init", "-q", target], { encoding: "utf8" });
+  assert.equal(git.status, 0, git.stderr || git.stdout);
+  const initialized = spawnSync(
     "node",
     [
       join(packaged, "dist/cli.js"),
-      "bootstrap",
-      "install",
-      "--agent",
-      "both",
-      "--codex-skills-root",
-      join(sandbox, "user/.agents/skills"),
-      "--claude-skills-root",
-      join(sandbox, "user/.claude/skills"),
+      "init",
+      "knowledge",
+      "--target",
+      target,
+      "--skills",
+      "none",
+      "--yes",
       "--json",
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8", env: testEnv },
   );
-  assert.equal(bootstrap.status, 0, bootstrap.stderr || bootstrap.stdout);
-  assert.equal(
-    existsSync(join(
-      sandbox,
-      "user/.agents/skills/setup-workflow-environment/SKILL.md",
-    )),
-    true,
+  assert.equal(initialized.status, 0, initialized.stderr || initialized.stdout);
+  assert.equal(existsSync(join(target, "PROJECT_WORKFLOW.md")), true);
+  assert.equal(existsSync(join(target, ".qmd/index.yml")), true);
+  assert.equal(existsSync(join(target, "changes/active")), true);
+  assert.equal(existsSync(join(target, "changes/inbox")), true);
+  assert.equal(existsSync(join(target, "intake/cases/active")), true);
+
+  const knowledgeHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "knowledge", "--help"],
+    { encoding: "utf8", env: testEnv },
   );
-  assert.equal(
-    existsSync(join(
-      sandbox,
-      "user/.claude/skills/setup-workflow-environment/SKILL.md",
-    )),
-    true,
-  );
+  assert.equal(knowledgeHelp.status, 0, knowledgeHelp.stderr || knowledgeHelp.stdout);
+  assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+scan\s/m);
+  assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+mark\s/m);
+  assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+coverage\s/m);
 
   process.stdout.write("package: ok\n");
 } finally {

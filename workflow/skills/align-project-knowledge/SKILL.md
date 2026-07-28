@@ -1,6 +1,6 @@
 ---
 name: align-project-knowledge
-description: Compare proposed significant work with the current project vision, product concepts, architecture, decisions, repository responsibilities, and known uncertainties. Use before creating a significant-work spec, choosing a design, changing a contract or flow, or making assumptions about why the project behaves as it does.
+description: Align a significant task's shaping spec with current project purpose, Areas, capabilities, flows, architecture, decisions, repository responsibilities, and known uncertainties. Use after the shaping record exists and before choosing a design, approving framing, changing a contract or flow, or making assumptions about why the project behaves as it does.
 ---
 
 # Align Project Knowledge
@@ -10,22 +10,39 @@ Do not design from code and memory alone. Establish the project's current intent
 ## Procedure
 
 1. Read `.workflow/config.json` and resolve the configured knowledge repository.
-2. Start at `knowledge/index.md`; use directory indexes for progressive disclosure.
-3. Open only concepts relevant to the work, including:
+2. Run QMD from that knowledge root. Require `qmd status`; if QMD or the
+   project-local `.qmd/index.yml` is missing, stop and report the broken
+   workflow environment.
+3. Start at `knowledge/index.md`, then use `qmd search ... -c knowledge` for
+   exact terms or `qmd query ... -c knowledge --json` for hybrid retrieval.
+   If QMD MCP is available, use `query` with
+   `collections: ["knowledge"]`. Open the returned concepts directly and use
+   directory indexes for progressive disclosure. Retrieval ranking is not
+   authority.
+4. Open only concepts relevant to the work, including:
    - vision and non-goals,
-   - product or domain concepts,
+   - the relevant Area index, capabilities, concepts, rules, and flows,
    - architectural boundaries,
    - current and superseded decisions,
    - repository responsibilities,
    - recorded uncertainties.
-4. Inspect `status`, `generated`, `verified`, `stale_after`, and `sources` before treating a concept as authoritative.
-5. Follow links to predecessor decisions and supporting sources when the proposed work depends on them.
-6. Compare the proposed behavior with both code evidence and curated intent.
-7. Record reviewed concept paths, constraints, and any conflict in the living spec.
+5. Inspect `status`, `generated`, `verified`, `stale_after`, and `sources` before treating a concept as authoritative.
+6. Follow links to predecessor decisions and supporting sources when the proposed work depends on them.
+7. Compare the proposed behavior with both code evidence and curated intent.
+8. Treat only `knowledge/` as the default current-knowledge surface. Do not
+   consult `raw/` or `intake/` to fill a gap.
+9. Record QMD queries, directly reviewed concept paths, constraints, and any
+   conflict in the living spec.
+
+When a living spec already exists, run `wfctl work status <id>` first. Read
+curated knowledge from its `Knowledge root`, update only its exact `Spec` path,
+and inspect implementation only from its exact `Code root`. Do not treat the
+spec's repository as the implementation checkout.
 
 ## Conflicts
 
-- `raw/` is evidence, not current truth.
+- `raw/` is neither evidence nor current truth. It is an untrusted clue source
+  used only through `process-raw-intake`.
 - A later timestamp does not automatically make a source authoritative.
 - `status: stable` means ready for consumption, not human-reviewed.
 - A human verification predating a meaningful content update does not prove the

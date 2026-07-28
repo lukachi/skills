@@ -1,24 +1,39 @@
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import type { RepositoryMetadata } from "./types.js";
 
 export function readRepositoryMetadata(root: string): RepositoryMetadata {
-  const topLevel = git(root, ["rev-parse", "--show-toplevel"], true);
+  const topLevel = realpathSync(git(root, ["rev-parse", "--show-toplevel"], true));
   const gitDirRaw = git(root, ["rev-parse", "--git-dir"], true);
   const commonDirRaw = git(root, ["rev-parse", "--git-common-dir"], true);
   const branch = git(root, ["symbolic-ref", "--short", "-q", "HEAD"]) || "DETACHED";
   const commit = git(root, ["rev-parse", "HEAD"]) || "unknown";
   const remote = git(root, ["config", "--get", "remote.origin.url"]);
+  const dirty = git(root, [
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=normal",
+    "--",
+    ".",
+    ":(exclude)graphify-out",
+    ":(exclude)graphify-out/**",
+    ":(exclude).workflow/current",
+    ":(exclude).workflow/current/**",
+  ], true) !== "";
   const gitDir = resolve(topLevel, gitDirRaw);
   const commonDir = resolve(topLevel, commonDirRaw);
 
   return {
     repository: repositoryId(remote, commonDir),
+    root: topLevel,
     checkout: basename(topLevel),
     branch,
     commit,
     remote,
+    dirty,
     worktree: gitDir !== commonDir,
+    worktreeId: gitDir === commonDir ? "main" : basename(gitDir),
   };
 }
 

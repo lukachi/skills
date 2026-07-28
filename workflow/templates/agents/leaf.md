@@ -1,4 +1,21 @@
 
 This is a leaf repository. Its project knowledge is located at `{{KNOWLEDGE_PATH}}`.
 
-Classify work with the installed `manage-project-work` skill before changing project state. For significant work, invoke the installed `align-project-knowledge` skill before creating the living spec. Keep one canonical spec/progress file in the knowledge repository, verify with `verify-project-work`, then flush an evidence-rich work record when the work closes.
+Classify work with the installed `manage-project-work` skill before changing
+implementation state. For significant work, create the `shaping` record first,
+then invoke `analyze-with-graphify` and `align-project-knowledge` before
+implementation.
+
+Run QMD from the configured knowledge repository for knowledge retrieval. Do
+not query `raw/` or `intake/` to fill gaps in current project truth.
+
+After `wfctl work start`, run `wfctl work status <id>` before any code edit,
+after changing directories, after resuming, and before verification or close.
+Use the reported `Code root` for all code operations and the reported `Spec`
+only for spec/progress updates. A worktree is a distinct code root; never infer
+another checkout from the repository name, branch, or the spec location.
+
+Keep one canonical change/spec/progress file in the knowledge repository,
+update it after every material maintainer turn,
+verify with `verify-project-work`, promote durable truth to curated knowledge,
+then archive the exact change record.

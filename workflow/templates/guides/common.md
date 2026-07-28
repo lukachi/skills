@@ -1,183 +1,191 @@
 # Project Workflow
 
-This is the maintainer-facing operating guide for the workflow installed by
-`wfctl`.
+This is the maintainer-facing operating guide installed by `wfctl`.
 
 - Profile: `{{PROFILE}}`
 - Project knowledge: `{{KNOWLEDGE_PATH}}`
 
-The workflow is a collaboration protocol. The agent gathers evidence, keeps the
-records current, and presents bounded decisions. The maintainer supplies product
-intent, resolves authority conflicts, and approves material commitments.
+The workflow is a collaboration protocol. The agent inventories and verifies
+evidence, maintains records, and presents bounded decisions. The maintainer
+supplies product intent, resolves authority conflicts, and approves material
+commitments.
 
-## What OKF does and does not do
+## What the maintainer operates
 
-The curated `knowledge/` directory follows
-[Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
-OKF defines portable Markdown concepts, provenance, trust signals, lifecycle,
-indexes, and logs. It does not prescribe an approval workflow.
+Routine CLI use belongs to the agent. It runs `wfctl work ...` and
+`wfctl knowledge ...`, edits structured records, and reports failures. You
+review framing, missing authority, material decisions, completion, and current
+knowledge claims.
 
-This project adds that approval workflow:
+Manual commands remain available for bootstrap, automation, diagnostics, or
+recovery. `wfctl init` installs or repairs; `wfctl upgrade` previews and applies
+workflow releases; `wfctl check` diagnoses an installation.
 
-- `generated` says who last produced meaningful content.
-- `verified` says who checked that content against its sources or resource.
-- no `verified` field means `unverified`;
-- non-human verification means `machine-confirmed`;
-- a `human:<id>` verification means `human-reviewed`;
-- `status: draft|stable|deprecated` is lifecycle, not trust.
-- an omitted `status` means `stable`, so write `status: draft` explicitly for
-  unresolved or not-yet-reviewed material.
+## Trust boundary
 
-Do not treat `stable` as shorthand for human approval. Do not add a
-`human:<id>` verification unless that person explicitly reviewed the current
-material claim. If meaningful content changed after the latest human review,
-surface that fact and request review again before describing the new content as
-human-approved.
-
-## Repository surfaces
-
-| Surface | Purpose | Authority |
+| Surface | Purpose | Trust |
 | --- | --- | --- |
-| `raw/` | Immutable evidence and work history | Never current truth by itself |
-| `changes/active/` | One living spec/progress record per active significant task | Current execution agreement |
-| `changes/archive/` | Closed work records | Historical execution evidence |
-| `knowledge/` | Curated OKF concepts | Current knowledge, qualified by provenance, trust, lifecycle, and freshness |
+| `raw/` | Continuous append-only dumps and captures | Untrusted clue source; never evidence |
+| `intake/` | Git-frozen raw review cases | Operational audit trail; never cited by knowledge |
+| `changes/active/` | One proposal/spec/progress record per significant task | Current execution agreement |
+| `changes/archive/` | Closed change records with reviews and receipts | Historical record qualified by outcome and reviews |
+| `changes/inbox/` | Lightweight handoffs awaiting triage | Non-authoritative input to the normal change or curation flow |
+| `knowledge/` | Curated OKF concepts | Default current project knowledge |
+| source repositories | Executable implementation | Implementation authority at an exact revision |
 
-Flushing a work record to `raw/` does not update current knowledge
-automatically. Material facts and decisions must be reconciled into
-`knowledge/` separately.
+Raw text can tell the agent what to investigate. It cannot support a claim,
+even when several raw files agree. A trusted derivative must cite the
+maintainer decision, pinned code, runtime receipt, reviewed archived change, or
+primary external source that independently established the claim.
 
-## Choose the workflow
+## Two inputs, one promotion gate
+
+Raw dumps and ongoing work stay separate until verification:
+
+1. A bounded `raw/` scope is frozen to exact Git blobs in `intake/`.
+   QMD helps locate relationships; the agent then reads every frozen file and
+   extracts candidate claims.
+2. Significant ongoing work produces a living record under `changes/active/`
+   and fresh implementation receipts.
+3. Both lanes verify each claim against its proper authority.
+4. The maintainer adjudicates intent, normative decisions, and unresolved
+   conflicts.
+5. Only then does the agent update `knowledge/` and run the strict validator.
+
+Unresolved raw candidates remain in intake. `knowledge/uncertainties/` is only
+for live questions supported by trusted current evidence.
+
+## Graphify boundary
+
+Graphify is mandatory for source-code navigation and relationship analysis.
+The routing skill checks that the official native `graphify` skill is active,
+invokes any more specific Graphify skills, and stops code work if they are
+missing. The agent then directly inspects the actual source and checks at the
+bound Git revision; Graphify output itself is not authority.
+
+Graphify is not the analyzer for Markdown, raw intake, or OKF concepts. QMD
+provides BM25, semantic, and hybrid retrieval for those surfaces; direct file
+reading, Git coverage, provenance, and validation remain authoritative.
+
+## QMD retrieval boundary
+
+`wfctl` installs a project-local `.qmd/index.yml` in the knowledge repository.
+Its collections are intentionally separated:
+
+- `knowledge` is the only default search surface;
+- `changes`, `intake`, and `raw` require explicit collection selection.
+
+The QMD index is disposable. Search rank and snippets help navigation but prove
+neither corpus coverage nor truth. The agent runs QMD from the knowledge root,
+updates the index after content changes, and reads selected files directly.
+
+## OKF and the stricter workflow profile
+
+`knowledge/` follows
+[Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+OKF is a portable Markdown format, not an approval workflow. This project adds
+a stricter profile:
+
+- explicit `status`, `generated`, provenance, and current verification;
+- explicit authority classes so deterministic validation can distinguish
+  normative, implementation, historical, and external claims;
+- claim-level source IDs joined to Markdown footnotes;
+- pinned repository revision and path for code sources;
+- human verification for intent and normative decisions;
+- explicit supersession or deprecation reason;
+- reciprocal acyclic decision lineages with one stable current record;
+- no raw path, source, link, or footnote in current knowledge.
+
+`stable` is lifecycle, not automatic truth. A material edit updates
+`generated.at` and invalidates older verification.
+
+## Choose the work route
 
 Use the full workflow when work may change observable behavior, domain meaning,
 interfaces, schemas, protocols, data or control flow, persistent state,
 security, reliability, operations, architecture, ownership, or coordination
 across components or repositories.
 
-Use the lightweight path only when the change clearly preserves behavior and
-contracts. Task size is not the classifier.
+Use the lightweight path only when behavior and contracts clearly remain
+unchanged. Size is not the classifier. When ambiguous, the agent explains the
+impact, recommends a route, and asks you. A compact handoff change record may
+preserve useful lightweight findings without imposing the full gate.
 
-When classification is ambiguous, the agent must explain the likely impact,
-recommend a route, and ask the maintainer. If the maintainer chooses the
-lightweight path, the agent may proceed and should offer a compact handoff
-record before closing.
+Accepted lightweight handoffs go to `changes/inbox/` through
+`wfctl work handoff`. They retain exact source/worktree metadata but remain
+non-authoritative until triaged.
 
-## Maintainer review gates
+## Review gates
 
-### 1. Workflow routing
+1. **Routing** — only when significance is ambiguous.
+2. **Framing** — outcome, scope, exclusions, acceptance criteria, and new
+   decisions before significant implementation. Clear existing instructions
+   can satisfy this; material re-scoping reopens it.
+3. **Authority** — whenever evidence cannot establish current intent,
+   chronology, or which source governs.
+4. **Knowledge** — material claims about vision, product meaning, architecture,
+   ownership, contracts, policy, decisions, supersession, or accepted risk.
+5. **Completion** — acceptance results, directly inspected implementation,
+   fresh checks, deviations, risks, and the knowledge delta or no-update reason.
 
-Review only when the work cannot be classified confidently. Accept the full
-workflow or explicitly allow the lightweight path.
-
-### 2. Significant-work framing
-
-Before implementation, review the proposed outcome, scope, exclusions,
-acceptance criteria, and any new product or technical decision. Existing
-explicit instructions can satisfy this gate; the agent must not ask you to
-repeat an already clear decision.
-
-The agent records the decision under `maintainer_review.framing` in the living
-spec. An approval applies only to the framing that was presented. Material
-re-scoping requires another review.
-
-### 3. Unresolved truth or authority
-
-Review whenever evidence cannot establish chronology, original intent, current
-intent, or which conflicting source is authoritative. Choose one of:
-
-- confirm the current truth and provide the reason;
-- reject the proposed interpretation;
-- keep the issue unresolved.
-
-Deferral is valid. The agent must preserve it as an uncertainty rather than
-guess.
-
-### 4. Completion
-
-After verification, review a compact completion packet: acceptance results,
-implementation evidence, checks run, deviations, and remaining risks. Approve,
-request changes, or accept an explicitly partial outcome.
-
-For full or slice work, a completed flush is blocked until the agent records
-explicit maintainer approval under `maintainer_review.completion`.
-
-### 5. Curated knowledge
-
-Human review is required before the workflow records human verification for
-material claims about:
-
-- project vision, principles, constraints, or non-goals;
-- user behavior, domain meaning, or product flows;
-- architecture, ownership, contracts, or operational policy;
-- decisions, supersession, accepted risk, or resolved contradictions.
-
-The agent may maintain raw records, indexes, logs, and source-backed draft or
-machine-confirmed concepts without asking for approval. It must keep their trust
-state honest.
+An approval is explicit. Silence and continued conversation are not approval.
+The agent records a stable `human:<reviewer-id>` and timestamp; you do not edit
+YAML manually.
 
 ## Review packet
 
-The agent should not ask you to rediscover context by reading the entire
-repository. Each review request should contain:
+Each request should contain:
 
-1. **Decision** — the exact claim, scope, or outcome being proposed.
-2. **Evidence** — relevant code locations, knowledge concepts, sources, and
-   verification results.
-3. **Conflicts** — contrary evidence, uncertainty, deviations, or risk.
+1. **Decision** — the exact claim, framing, or outcome.
+2. **Evidence** — pinned sources and fresh verification.
+3. **Conflicts** — contrary evidence, gaps, deviations, or risk.
 4. **Recommendation** — the agent's preferred answer and reasoning.
 5. **Requested response** — approve, correct, or defer.
 
-An approval must be explicit. Silence, continued conversation, or an agent's
-own confidence is not approval.
-
-The maintainer does not need to edit YAML by hand. Respond with the decision
-and a stable reviewer ID; the agent records:
-
-```yaml
-maintainer_review:
-  framing:
-    status: approved
-    by: human:<reviewer-id>
-    at: <ISO-8601 datetime>
-    notes: []
-  completion:
-    status: approved
-    by: human:<reviewer-id>
-    at: <ISO-8601 datetime>
-    notes: []
-```
-
-Use `status: pending` until approval. Put corrections or deferred decisions in
-`notes`; do not represent them as approved.
+Deferral is valid. The agent preserves uncertainty instead of guessing.
 
 ## Significant-work loop
 
-1. Classify the work.
-2. Analyze the current implementation through Graphify.
-3. Read relevant curated knowledge and its provenance.
-4. Resolve blocking contradictions with the maintainer.
-5. Create one living spec with `wfctl work begin`.
-6. Obtain framing approval and record it in that spec.
-7. Implement while keeping the same spec current.
-8. Verify every acceptance criterion against code and fresh checks.
-9. Obtain completion approval.
-10. Run `wfctl work verify`, then flush the honest outcome with
-    `wfctl work flush`.
-11. Curate durable new truth from `raw/` into `knowledge/` when needed.
+1. Classify the task.
+2. Immediately create and bind a `shaping` record with `wfctl work start`.
+3. Use `wfctl work status` to distinguish the exact implementation `Code root`
+   from the central `Spec` path.
+4. Record the current request, constraints, open questions, and next action.
+5. Analyze source code through Graphify and direct inspection.
+6. Align with current `knowledge/`.
+7. Resolve blocking authority questions and obtain framing approval.
+8. Set the record active. Implement only in the bound code root while updating
+   the same change file after every material maintainer turn.
+9. Reconcile every criterion against the actual implementation.
+10. With normal maintainer authorization, preserve the implementation
+    in the bound Git commit; `wfctl` never commits automatically.
+11. Run final checks against that clean commit and record its revision and
+    worktree identity.
+12. Promote durable verified truth into `knowledge/`, or record why no current
+    knowledge changed.
+13. Run `wfctl knowledge validate --target <Knowledge root>` for promoted
+    concepts.
+14. Obtain completion approval, run `wfctl work verify`, and archive the honest
+    outcome with `wfctl work close`.
 
-Use `full` for a safely completable unit, `slice` for a complete reviewable path
-toward a larger destination, and `handoff` for useful lightweight or
-interrupted context. A partial or abandoned outcome is preferable to a false
-completion claim.
+A material turn changes a requirement, constraint, alternative, decision,
+scope, evidence, risk, question, or next action. The agent updates mutable
+current sections and appends a proposed/approved/rejected/deferred/superseded
+ledger entry before continuing. After interruption or compaction, it runs
+`wfctl work status`, reads the entire spec, and resumes from its recorded state
+instead of chat memory.
 
-## Routine health check
+Partial or abandoned outcomes are valid historical records. They must never be
+relabeled as completed. A completed close also requires a clean bound checkout,
+so the archived revision actually contains the verified implementation; the
+workflow never commits automatically.
 
-Run:
+## Routine health
 
 ```sh
-wfctl doctor --target .
+wfctl check --target .
+wfctl upgrade --target . --dry-run
 ```
 
-Use `wfctl sync --target . --plan` to inspect workflow updates before applying
-them. Locally modified generated assets are conflicts and are never silently
-overwritten.
+Generated assets with local edits become explicit conflicts and are never
+silently overwritten.

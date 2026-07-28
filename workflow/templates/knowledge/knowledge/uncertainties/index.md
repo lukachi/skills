@@ -1,3 +1,5 @@
 # Uncertainties
 
-Contradictions, missing chronology, and unresolved questions that must not be presented as current truth.
+Live contradictions and unresolved questions established by trusted current
+evidence. Unverified legacy candidates stay in the separate reconciliation
+surface outside this bundle.

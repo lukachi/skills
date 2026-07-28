@@ -1,4 +1,4 @@
 interface:
-  display_name: "Analyze with Graphify"
-  short_description: "Navigate code and knowledge through Graphify"
-  default_prompt: "Use $analyze-with-graphify to investigate this project corpus through Graphify before text search."
+  display_name: "Require Graphify First"
+  short_description: "Mandatory Graphify gate for source code"
+  default_prompt: "Use $analyze-with-graphify before any source-code-dependent analysis or change, confirm the native Graphify skills are active, invoke them first, and verify results in the actual source."

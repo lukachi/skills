@@ -1,4 +1,4 @@
 interface:
   display_name: "Align Project Knowledge"
-  short_description: "Check project intent before decisions"
-  default_prompt: "Use $align-project-knowledge to compare this work with current project knowledge before making decisions."
+  short_description: "Align shaping with Areas and current truth"
+  default_prompt: "Use $align-project-knowledge to align this shaping record with relevant Areas, decisions, architecture, and current curated truth."

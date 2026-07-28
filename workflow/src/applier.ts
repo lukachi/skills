@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  readFile,
+  rename,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { hashContent } from "./planner.js";
 import type { InstallPlan, PlanOperation, WorkflowState } from "./types.js";
@@ -8,6 +16,7 @@ import { STATE_SCHEMA_VERSION, WORKFLOW_VERSION } from "./types.js";
 export interface ApplyResult {
   changed: number;
   statePath: string;
+  backups: string[];
 }
 
 export async function applyInstallPlan(plan: InstallPlan): Promise<ApplyResult> {
@@ -19,11 +28,23 @@ export async function applyInstallPlan(plan: InstallPlan): Promise<ApplyResult> 
   }
 
   let changed = 0;
+  const backups: string[] = [];
+  const backupRoot = join(
+    plan.target,
+    ".workflow/backups",
+    new Date().toISOString().replaceAll(":", "-"),
+  );
   for (const operation of plan.operations) {
     if (operation.status === "unchanged") {
       continue;
     }
     await assertExpectedState(plan.target, operation);
+    if (operation.backup) {
+      const backupPath = join(backupRoot, operation.path);
+      await mkdir(dirname(backupPath), { recursive: true });
+      await copyFile(join(plan.target, operation.path), backupPath);
+      backups.push(backupPath);
+    }
     await applyOperation(plan.target, operation);
     changed += 1;
   }
@@ -43,7 +64,7 @@ export async function applyInstallPlan(plan: InstallPlan): Promise<ApplyResult> 
   const statePath = join(plan.target, ".workflow/state.json");
   await writeAtomic(statePath, `${JSON.stringify(state, null, 2)}\n`);
 
-  return { changed, statePath };
+  return { changed, statePath, backups };
 }
 
 async function applyOperation(target: string, operation: PlanOperation): Promise<void> {

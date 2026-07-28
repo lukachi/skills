@@ -1,0 +1,27 @@
+{
+  "name": "lukachi-skills",
+  "owner": {
+    "name": "lukachi"
+  },
+  "description": "Workflow and knowledge-base skills for maintaining software projects with Codex and Claude Code.",
+  "plugins": [
+    {
+      "name": "wfctl-setup",
+      "displayName": "wfctl Setup",
+      "source": "./",
+      "description": "Install, upgrade, repair, or explain the shared project workflow environment.",
+      "repository": "https://github.com/lukachi/skills",
+      "category": "development",
+      "tags": [
+        "workflow",
+        "knowledge",
+        "codex",
+        "claude-code"
+      ],
+      "skills": [
+        "./workflow/skills/setup-workflow-environment"
+      ],
+      "strict": false
+    }
+  ]
+}

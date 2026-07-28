@@ -12,8 +12,9 @@ Require an explicit maintainer decision before:
 - accepting material re-scoping, unresolved risk, or a completion claim;
 - recording `verified` by a `human:<id>` actor.
 
-Do not request review for immutable raw capture, deterministic index or log
-maintenance, or source-backed drafts that keep their trust state honest.
+Do not request review for freezing a clean Git raw scope, file accounting, QMD
+refresh, index or log maintenance, or source-backed drafts that keep their
+trust state honest. Raw intake itself never counts as evidence.
 
 Present a compact review packet containing the exact decision, evidence,
 conflicts, recommendation, and requested response. Record approve, correct, or
@@ -23,3 +24,8 @@ For significant work, record framing and completion decisions in the living
 spec under `maintainer_review`. Existing explicit maintainer instructions may
 satisfy the framing gate; do not ask for the same decision twice. Reopen the
 gate when the approved framing changes materially.
+
+After every material maintainer turn, update the spec's mutable current state
+and append the decision/discussion ledger before continuing. Preserve proposed,
+approved, rejected, deferred, and superseded outcomes without copying the
+conversation transcript.

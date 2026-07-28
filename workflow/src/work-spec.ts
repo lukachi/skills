@@ -27,11 +27,11 @@ export function serializeWorkSpec(document: WorkSpecDocument): string {
 export function completionIssues(document: WorkSpecDocument, requireCompleted: boolean): string[] {
   const issues: string[] = [];
   const metadata = document.metadata;
-  const mode = stringValue(metadata.mode);
   const verification = recordValue(metadata.verification);
   const alignment = recordValue(metadata.knowledge_alignment);
   const graph = recordValue(metadata.graph_evidence);
   const maintainerReview = recordValue(metadata.maintainer_review);
+  const promotion = recordValue(metadata.knowledge_promotion);
 
   if (requireCompleted && metadata.status !== "completed") {
     issues.push("status must be completed");
@@ -55,18 +55,46 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
     issues.push("verification.unresolved must be an empty list");
   }
 
-  if (mode !== "handoff") {
-    if (!nonEmptyArray(alignment?.reviewed)) {
-      issues.push("knowledge_alignment.reviewed must contain at least one concept");
-    }
-    if (!nonEmptyArray(graph?.queries)) {
-      issues.push("graph_evidence.queries must contain at least one query");
-    }
-    if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
-      issues.push("knowledge_alignment.conflicts must be resolved");
-    }
-    reviewIssues("framing", maintainerReview, issues);
-    reviewIssues("completion", maintainerReview, issues);
+  if (!nonEmptyArray(alignment?.reviewed)) {
+    issues.push("knowledge_alignment.reviewed must contain at least one concept");
+  }
+  if (!nonEmptyArray(graph?.queries)) {
+    issues.push("graph_evidence.queries must contain at least one query");
+  }
+  if (!/^[0-9a-f]{40}$/i.test(stringValue(verification?.revision))) {
+    issues.push("verification.revision must pin the verified Git commit");
+  }
+  if (!stringValue(verification?.worktree_id).trim()) {
+    issues.push("verification.worktree_id must identify the verified checkout");
+  }
+  if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
+    issues.push("knowledge_alignment.conflicts must be resolved");
+  }
+  reviewIssues("framing", maintainerReview, issues);
+  reviewIssues("completion", maintainerReview, issues);
+  if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
+    issues.push("knowledge_promotion.status must be applied or not-needed");
+  } else if (
+    promotion.status === "applied"
+    && !nonEmptyStringArray(promotion.concepts)
+  ) {
+    issues.push("knowledge_promotion.concepts must list every updated concept");
+  } else if (
+    promotion.status === "applied"
+    && (promotion.concepts as string[]).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))
+  ) {
+    issues.push("knowledge_promotion.concepts must list concept files, not index.md or log.md");
+  } else if (
+    promotion.status === "not-needed"
+    && !stringValue(promotion.reason).trim()
+  ) {
+    issues.push("knowledge_promotion.reason must explain why no current knowledge changed");
+  }
+  if (
+    containsUntrustedIntakePath(document.body)
+    || containsUntrustedIntakePath(JSON.stringify(document.metadata))
+  ) {
+    issues.push("project change records must not cite raw/ or intake/ paths");
   }
 
   return issues;
@@ -84,8 +112,18 @@ function nonEmptyArray(value: unknown): value is unknown[] {
   return Array.isArray(value) && value.length > 0;
 }
 
+function nonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
+}
+
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function containsUntrustedIntakePath(content: string): boolean {
+  return /(?:^|[\s("'`:=])(?:(?:\.\.\/|\.\/|\/)*(?:raw|intake)\/|(?:raw|intake):)[^\s)"'`]*/im.test(content);
 }
 
 function reviewIssues(

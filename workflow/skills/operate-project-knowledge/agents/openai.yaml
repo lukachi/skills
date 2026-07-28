@@ -1,0 +1,4 @@
+interface:
+  display_name: "Operate Project Knowledge"
+  short_description: "Explain, audit, and triage project knowledge"
+  default_prompt: "Use $operate-project-knowledge to navigate, explain, audit, organize, or triage this knowledge repository and route specialized work safely."

@@ -1,4 +1,4 @@
 interface:
   display_name: "Curate Project Knowledge"
-  short_description: "Turn raw history into current knowledge"
-  default_prompt: "Use $curate-project-knowledge to reconcile raw records into trustworthy current project knowledge."
+  short_description: "Maintain Areas and decision evolution"
+  default_prompt: "Use $curate-project-knowledge to promote verified claims into Area-based current knowledge and preserve decision evolution without citing raw input."

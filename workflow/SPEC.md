@@ -13,70 +13,129 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 
 ## Knowledge model
 
-- `raw/` is immutable evidence and may contain contradictory or incomplete records. It is not current truth.
-- `changes/active/` contains the one canonical spec/progress file for each active significant task.
-- `changes/archive/` preserves closed specs.
+- `raw/` is continuous, append-only, untrusted input. It is neither evidence
+  nor current truth and must never be cited by trusted derivatives.
+- `intake/` contains bounded raw cases whose source lists are frozen to an
+  exact Git commit and blob IDs. It may locate raw input but is outside the
+  trust boundary.
+- `changes/active/` contains the one canonical proposal/spec/progress file for
+  each active significant task.
+- `changes/archive/` preserves closed change records, final source/worktree
+  metadata, reviews, and receipts.
+- `changes/inbox/` receives lightweight handoffs before they are triaged into
+  a normal change, knowledge update, or rejection.
 - `knowledge/` is the curated OKF v0.2 bundle and the current project knowledge surface.
-- Unknown chronology or truth must remain explicit until a maintainer resolves it.
-- Decisions evolve through explicit supersession links; history is not silently rewritten.
+- Source repositories are implementation authority at exact revisions;
+  Graphify navigates them but is not itself evidence.
+- Unknown chronology or truth must remain outside current knowledge until
+  authoritative evidence or a maintainer decision resolves it.
+- `knowledge/index.md` and Area indexes are the primary human road. Areas own
+  capabilities, concepts, rules, use cases, implementation, decisions, and
+  local evolution without flattening the project.
+- Decisions evolve through immutable records, reciprocal acyclic supersession
+  links, and one stable current record per lineage.
+- Raw candidate claims and ongoing change receipts converge through the same
+  verification, maintainer adjudication, promotion, and validation gate.
+- QMD is a rebuildable retrieval cache, not a source. Only curated `knowledge`
+  participates in unscoped queries; `changes`, `intake`, and `raw` are
+  explicitly selected collections.
 
 ## Work routing
 
-- Significant work uses the full gate: Graphify analysis, knowledge alignment, living spec, implementation, evidence-based verification, then flush.
+- Significant work creates a shaping spec first, then uses Graphify analysis,
+  knowledge alignment, framing approval, implementation, evidence-based
+  verification, and close.
 - Clearly lightweight work may bypass the full gate.
 - Ambiguous work requires a maintainer decision.
 - Bypassed work should be offered a compact handoff record so useful information is not lost.
 
 ## CLI surface
 
-- `wfctl plan <profile>`: inspect the exact filesystem operations without mutation.
-- `wfctl apply <profile>`: apply a conflict-free plan.
-- `wfctl init <profile>`: one-command alias for apply.
-- `wfctl sync`: update owned assets using the installed profile.
-- `wfctl bootstrap plan|install`: safely install the user-level setup skill for Codex, Claude, or both.
-- `wfctl render agents`: print the managed instruction block for manual insertion.
-- `wfctl render guide`: print the profile-specific maintainer operating guide
-  for manual merge or alternate placement.
-- `wfctl doctor`: diagnose installation, Graphify, Git, and knowledge linkage.
-- `wfctl work begin`: create a central living spec and a leaf pointer.
+- `wfctl init [knowledge|leaf]`: preview, resolve safe conflicts, and install a workflow.
+- `wfctl upgrade`: update an existing installation using its recorded configuration.
+- `wfctl check`: diagnose installation, Git, knowledge linkage, and Graphify
+  requirements for leaf repositories.
+- `wfctl knowledge raw inventory`: compare committed raw `path + blob ID`
+  identities with active and archived intake coverage without semantic
+  indexing.
+- `wfctl knowledge case start`: freeze explicit raw pathspecs at a full Git
+  commit and record every matching tree entry.
+- `wfctl knowledge case mark`: record one frozen file's complete review result
+  and candidate IDs.
+- `wfctl knowledge case check|close`: enforce Git identity, file accounting,
+  candidate linkage, omission audit, and promotion state.
+- `wfctl knowledge validate`: enforce the strict curated-knowledge profile.
+- `wfctl work handoff`: create a non-authoritative lightweight inbox record
+  with exact repository and worktree metadata.
+- `wfctl work start`: create an early shaping spec bound to one exact leaf checkout.
+- `wfctl work status`: show and validate the code-root/spec binding.
 - `wfctl work verify`: validate the structural completion gate without claiming semantic correctness.
-- `wfctl work flush`: archive the spec and write a provenance-rich raw record.
+- `wfctl work close`: archive the change record with final repository and
+  worktree metadata; never write a completed record into raw.
 
 ## Safety contract
 
-- Never overwrite an unowned file.
+- Preview before mutation and require confirmation in interactive use.
+- Never overwrite an unowned file without a per-file decision and backup.
 - Never replace an existing file or directory with a symlink.
-- Abort apply when any conflict exists.
+- Stop on structural, symlink, marker, or path-type conflicts.
 - Update an owned file only when its current hash matches the last installed hash.
-- Install only profile-relevant project skills; keep the setup and Graphify skills common.
-- Never overwrite a different user-level bootstrap skill.
-- Keep deterministic data on stdout; diagnostics and interactive UI belong on stderr.
+- Delegate profile-specific skill placement to the pinned `skills` CLI.
+- Install skills as independent copies; never create cross-agent skill symlinks.
+- Default skills to project scope and allow explicit user or disabled scope.
+- Refuse non-interactive replacement of existing skills.
 - Support non-interactive and JSON output for agents and CI.
 - Install one visible, profile-specific `PROJECT_WORKFLOW.md` through a managed
   block that preserves pre-existing maintainer content.
+- Install a project-local QMD configuration in the knowledge repository and
+  ignore its generated database.
+- Never implement a competing Markdown index, embedding store, or ranking
+  pipeline inside `wfctl`.
 
 ## Verification criteria
 
-- [x] A clean knowledge target plans, applies, and passes doctor.
-- [x] A clean leaf target links to knowledge, plans, applies, and passes doctor.
-- [x] Existing `AGENTS.md` and `CLAUDE.md` content survives apply and sync.
-- [x] Existing `.claude/skills` directories survive and receive only namespaced links.
+- [x] A clean knowledge target previews, initializes, and passes check.
+- [x] A clean leaf target links to knowledge, initializes, and passes check.
+- [x] Existing `AGENTS.md` and `CLAUDE.md` content survives init and upgrade.
 - [x] Locally modified owned files cause conflicts instead of being overwritten.
-- [x] Work begin produces one canonical central spec.
-- [x] Completed flush requires recorded verification and emits Git/worktree metadata.
-- [x] Partial or abandoned work can flush without a false completion claim.
+- [x] Work start produces one canonical central spec.
+- [x] Significant discussion is persisted from shaping onward and can resume
+  after compaction without chat memory.
+- [x] Work commands bind to one exact checkout and reject another worktree.
+- [x] Completed close requires recorded verification and emits Git/worktree metadata.
+- [x] Completed close rejects a dirty source checkout instead of pinning a
+  revision that does not contain the verified implementation.
+- [x] Completed close matches the recorded verification revision and worktree
+  identity against the exact bound checkout.
+- [x] Partial or abandoned work can close without a false completion claim.
 - [x] Built CLI runs under Node, Bun, and Deno.
 - [x] Knowledge and leaf profiles receive only their relevant skills.
-- [x] The user-level setup skill installs safely for Codex and Claude.
+- [x] The setup skill can be installed independently for Codex and Claude.
 - [x] Both profiles receive a maintainer-facing operating guide.
 - [x] Significant completed work requires explicit framing and completion review
   records from a human actor.
+- [x] Raw intake cases freeze exact Git commit, pathspecs, tree entries, and
+  blob IDs.
+- [x] Raw inventory detects unseen and changed blobs without implementing a
+  competing Markdown indexer.
+- [x] Intake completion fails closed on Git drift, missing files, pending or
+  blocked reviews, and incomplete candidate linkage.
+- [x] QMD collections keep curated knowledge default and untrusted surfaces
+  opt-in.
+- [x] Curated knowledge rejects raw references, stale verification, unpinned
+  code sources, and incomplete claim attribution.
+- [x] Decision validation rejects missing, non-reciprocal, cyclic, or
+  multi-current supersession lineages.
+- [x] Completed significant work records an applied knowledge delta or an
+  explicit no-update reason.
+- [x] Lightweight findings can enter `changes/inbox/` without being mislabeled
+  as completed project history.
 
 ## Progress
 
 - [x] Research OKF v0.2, living-spec workflows, and cross-runtime CLI frameworks.
 - [x] Select Cliffy with bundled npm distribution.
-- [x] Define the raw / changes / curated knowledge boundary.
+- [x] Define the raw / intake / changes / curated knowledge boundary.
 - [x] Implement the filesystem planner and safe applier.
 - [x] Implement CLI commands.
 - [x] Complete and validate rules, skills, and templates.
@@ -89,5 +148,8 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 
 - Hosted registry or automatic GitHub self-update.
 - A full-screen Ink interface.
-- Automatic semantic reconciliation of contradictory legacy raw material.
+- Automatic semantic reconciliation of contradictory raw material.
 - Automatic proof that implementation behavior is correct; agents and maintainers provide semantic evidence, while the CLI enforces structural gates.
+- A search or embedding engine. QMD owns retrieval; Git file accounting,
+  complete reading, omission audits, and agent/maintainer adjudication own the
+  workflow guarantees.

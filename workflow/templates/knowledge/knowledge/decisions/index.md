@@ -1,5 +1,9 @@
-# Decisions
+# Cross-area Decisions
 
-Cornerstone decisions and their evolution.
+Only decisions whose scope genuinely crosses Areas or has no single primary
+Area belong here. Area-specific decisions live under
+`knowledge/areas/<area>/decisions/`.
 
-Each changed decision should link to the decision it supersedes. Superseded decisions remain present with `status: deprecated` and a link to the current successor.
+Each lineage has one stable current decision. Earlier records remain immutable,
+become `deprecated`, and link reciprocally through `supersedes` and
+`superseded_by`.

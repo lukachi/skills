@@ -18,16 +18,19 @@ import type {
 } from "./types.js";
 
 const REQUIRED_DIRECTORIES = [
-  ".agents/skills",
   ".claude/rules",
   ".workflow/rules",
   ".workflow/current",
 ];
 
 const KNOWLEDGE_DIRECTORIES = [
+  ".qmd",
   "raw",
+  "intake/cases/active",
+  "intake/cases/archive",
   "changes/active",
   "changes/archive",
+  "changes/inbox",
 ];
 
 const COMMON_SKILLS = [
@@ -36,9 +39,14 @@ const COMMON_SKILLS = [
 ];
 
 const PROFILE_SKILLS: Record<PlanOptions["profile"], string[]> = {
-  knowledge: ["curate-project-knowledge"],
+  knowledge: [
+    "curate-project-knowledge",
+    "operate-project-knowledge",
+    "process-raw-intake",
+  ],
   leaf: [
     "align-project-knowledge",
+    "curate-project-knowledge",
     "manage-project-work",
     "verify-project-work",
   ],
@@ -48,7 +56,12 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
   const target = resolve(options.target);
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
   const state = await readState(target);
-  const config = createConfig(options.profile, target, options.knowledge);
+  const config = createConfig(
+    options.profile,
+    target,
+    options.knowledge,
+    options.skills,
+  );
   const operations: PlanOperation[] = [];
 
   for (const directory of REQUIRED_DIRECTORIES) {
@@ -58,6 +71,32 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
     for (const directory of KNOWLEDGE_DIRECTORIES) {
       operations.push(await planDirectory(target, directory));
     }
+  }
+  operations.push(
+    await planOwnedFile(
+      target,
+      ".workflow/.gitignore",
+      "backups/\ncurrent/\n",
+      state,
+    ),
+  );
+  if (options.profile === "knowledge") {
+    operations.push(
+      await planOwnedFile(
+        target,
+        ".qmd/.gitignore",
+        "*\n!.gitignore\n",
+        state,
+      ),
+    );
+    operations.push(
+      await planOwnedFile(
+        target,
+        ".qmd/index.yml",
+        renderQmdConfig(target),
+        state,
+      ),
+    );
   }
 
   operations.push(await planConfig(target, config));
@@ -76,22 +115,6 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
     config.knowledge?.path,
   );
   operations.push(await planManagedBlock(target, "PROJECT_WORKFLOW.md", guide));
-
-  const skillNames = skillsForProfile(options.profile);
-  for (const skillName of skillNames) {
-    const sourceRoot = join(distributionRoot, "skills", skillName);
-    const files = await collectFiles(sourceRoot);
-    if (files.length === 0) {
-      throw new Error(`Workflow skill is missing from distribution: ${sourceRoot}`);
-    }
-    await planOwnedTree({
-      sourceRoot,
-      destinationRoot: join(".agents/skills", skillName),
-      target,
-      state,
-      operations,
-    });
-  }
 
   const ruleRoots = [
     join(distributionRoot, "rules/common"),
@@ -123,8 +146,6 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
       operations,
     });
   }
-
-  await planClaudeSkills(target, skillNames, operations);
 
   return {
     target,
@@ -165,11 +186,12 @@ async function planConfig(target: string, desired: WorkflowConfig): Promise<Plan
     const parsed = JSON.parse(existing) as Partial<WorkflowConfig>;
     const sameKnowledge = desired.profile !== "leaf"
       || parsed.knowledge?.path === desired.knowledge?.path;
-    if (
-      parsed.schemaVersion === desired.schemaVersion
+    const sameIdentity = parsed.schemaVersion === desired.schemaVersion
       && parsed.profile === desired.profile
-      && sameKnowledge
-    ) {
+      && sameKnowledge;
+    const sameSkills = parsed.skills?.scope === desired.skills?.scope
+      && JSON.stringify(parsed.skills?.agents) === JSON.stringify(desired.skills?.agents);
+    if (sameIdentity && sameSkills) {
       return {
         kind: "file",
         path: relativePath,
@@ -178,11 +200,24 @@ async function planConfig(target: string, desired: WorkflowConfig): Promise<Plan
         content: existing,
       };
     }
+    if (sameIdentity && !parsed.skills) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "update",
+        reason: "record skill installation settings",
+        content,
+        expectedHash: hashContent(existing),
+      };
+    }
     return {
       kind: "file",
       path: relativePath,
       status: "conflict",
       reason: "existing workflow configuration differs; update it explicitly",
+      content,
+      expectedHash: hashContent(existing),
+      replaceable: true,
     };
   } catch (error) {
     if (!isMissingFileError(error)) {
@@ -412,6 +447,10 @@ async function planOwnedFile(
       reason: installedHash
         ? "owned file was locally modified"
         : "destination exists without wfctl ownership",
+      content,
+      expectedHash: currentHash,
+      track: true,
+      replaceable: true,
     };
   } catch (error) {
     if (isMissingFileError(error)) {
@@ -433,121 +472,55 @@ async function planOwnedFile(
   }
 }
 
-async function planClaudeSkills(
-  target: string,
-  skillNames: string[],
-  operations: PlanOperation[],
-): Promise<void> {
-  const path = ".claude/skills";
-  const absolute = join(target, path);
-  try {
-    const stat = await lstat(absolute);
-    if (stat.isSymbolicLink()) {
-      const current = await readlink(absolute);
-      operations.push(
-        current === "../.agents/skills"
-          ? {
-            kind: "symlink",
-            path,
-            status: "unchanged",
-            reason: "Claude skills link is current",
-            linkTarget: current,
-          }
-          : {
-            kind: "symlink",
-            path,
-            status: "conflict",
-            reason: `Claude skills links to ${current}`,
-          },
-      );
-      return;
-    }
-    if (!stat.isDirectory()) {
-      operations.push({
-        kind: "symlink",
-        path,
-        status: "conflict",
-        reason: "Claude skills path exists and is not a directory",
-      });
-      return;
-    }
-
-    for (const skillName of skillNames) {
-      const childPath = normalizeRelative(join(path, skillName));
-      const linkTarget = normalizeRelative(join("../../.agents/skills", skillName));
-      operations.push(await planSymlink(target, childPath, linkTarget));
-    }
-  } catch (error) {
-    if (isMissingFileError(error)) {
-      operations.push({
-        kind: "symlink",
-        path,
-        status: "create",
-        reason: "Claude skills path is absent",
-        linkTarget: "../.agents/skills",
-      });
-      return;
-    }
-    operations.push({
-      kind: "symlink",
-      path,
-      status: "conflict",
-      reason: `cannot inspect Claude skills: ${errorMessage(error)}`,
-    });
-  }
-}
-
-async function planSymlink(
-  target: string,
-  relativePath: string,
-  linkTarget: string,
-): Promise<PlanOperation> {
-  try {
-    const stat = await lstat(join(target, relativePath));
-    if (!stat.isSymbolicLink()) {
-      return {
-        kind: "symlink",
-        path: relativePath,
-        status: "conflict",
-        reason: "path exists and is not a symlink",
-      };
-    }
-    const current = await readlink(join(target, relativePath));
-    return current === linkTarget
-      ? {
-        kind: "symlink",
-        path: relativePath,
-        status: "unchanged",
-        reason: "symlink is current",
-        linkTarget,
-      }
-      : {
-        kind: "symlink",
-        path: relativePath,
-        status: "conflict",
-        reason: `symlink points to ${current}`,
-      };
-  } catch (error) {
-    if (isMissingFileError(error)) {
-      return {
-        kind: "symlink",
-        path: relativePath,
-        status: "create",
-        reason: "symlink is absent",
-        linkTarget,
-      };
-    }
-    return {
-      kind: "symlink",
-      path: relativePath,
-      status: "conflict",
-      reason: `cannot inspect symlink: ${errorMessage(error)}`,
-    };
-  }
-}
-
 export function skillsForProfile(profile: PlanOptions["profile"]): string[] {
   return [...COMMON_SKILLS, ...PROFILE_SKILLS[profile]].sort();
+}
+
+function renderQmdConfig(target: string): string {
+  const collection = (
+    path: string,
+    pattern: string,
+    includeByDefault: boolean,
+    context: string,
+  ) =>
+    `    path: ${JSON.stringify(join(target, path))}\n`
+    + `    pattern: ${JSON.stringify(pattern)}\n`
+    + `    includeByDefault: ${includeByDefault}\n`
+    + "    context:\n"
+    + `      \"/\": ${JSON.stringify(context)}\n`;
+
+  return "global_context: >-\n"
+    + "  Project knowledge retrieval. Curated knowledge is the only default truth surface.\n"
+    + "  Changes are qualified records. Intake and raw are untrusted investigation inputs.\n"
+    + "collections:\n"
+    + "  knowledge:\n"
+    + collection(
+      "knowledge",
+      "**/*.md",
+      true,
+      "Curated OKF current project knowledge. Use this collection by default.",
+    )
+    + "  changes:\n"
+    + collection(
+      "changes",
+      "**/*.md",
+      false,
+      "Active and archived project change records. Outcomes and reviews qualify every claim.",
+    )
+    + "  intake:\n"
+    + collection(
+      "intake",
+      "**/*.md",
+      false,
+      "Operational raw-intake cases. Never treat these records as evidence.",
+    )
+    + "  raw:\n"
+    + collection(
+      "raw",
+      "**/*.{md,markdown,mdown,txt,json,jsonl,yaml,yml,toml,js,mjs,cjs,ts,tsx,jsx}",
+      false,
+      "Continuous untrusted input used only to discover candidate claims and contradictions.",
+    );
 }
 
 function normalizeRelative(path: string): string {

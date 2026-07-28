@@ -10,12 +10,45 @@
 
 ## Skills
 
-- Install canonical skills under `.agents/skills`.
+- Delegate skill placement to the pinned `skills` CLI.
+- Use the installer's copy mode for every selected agent. Do not create
+  cross-agent symlinks between `.agents/skills` and `.claude/skills`.
+- Default to project scope; use user scope or no installation only when the
+  maintainer chooses it.
 - Install `setup-workflow-environment` and `analyze-with-graphify` for both profiles.
-- Install `curate-project-knowledge` only for the knowledge profile.
+- Install `operate-project-knowledge` only for the knowledge profile as the
+  default router for explanation, history, audit, navigation, contradiction,
+  and triage requests.
+- Install `process-raw-intake` only for the knowledge profile.
+- Install `curate-project-knowledge` for both profiles because a leaf agent
+  must promote durable truth before closing significant work.
 - Install alignment, work management, and verification skills only for the leaf profile.
-- Link `.claude/skills` to `../.agents/skills` when the Claude directory is absent.
-- When `.claude/skills` already exists as a directory, add only missing per-skill links.
+- Select Codex, Claude, or both explicitly.
+- In non-interactive mode, refuse replacement when a selected skill already
+  exists. Use the installer's interactive conflict handling instead.
+
+The workflow skill `analyze-with-graphify` is a routing and policy gate, not a
+copy of Graphify's native skill. Require the `graphify` CLI and the official
+native `graphify` skill supplied by that tool whenever source code must be
+analyzed. Verify native-skill availability against the current session
+catalog; an on-disk file alone does not prove the running agent loaded it.
+Install it with
+`graphify install --platform <codex|claude>` and restart the session when absent.
+Do not require Graphify for Markdown intake or OKF curation that does not inspect
+source code.
+
+## Knowledge retrieval
+
+- Require the external QMD CLI for both profiles because leaf alignment reads
+  the linked knowledge repository.
+- Install QMD through Bun when authorized: `bun install -g @tobilu/qmd`.
+- For a knowledge profile, let `wfctl` own `.qmd/index.yml` and
+  `.qmd/.gitignore`.
+- Keep QMD's database and model cache out of Git. The index is disposable and
+  rebuildable from repository content.
+- Include only `knowledge` in unscoped searches. Require explicit collection
+  selection for `changes`, `intake`, and `raw`.
+- Run QMD from the knowledge root so it uses the project-local index.
 
 ## Rules
 
@@ -29,8 +62,8 @@
   profiles, using a managed block that preserves text outside the markers.
 - Render profile-specific content and the configured knowledge path.
 - Treat malformed or duplicated managed markers as a conflict.
-- Use `wfctl render guide` for a maintainer-controlled merge or alternate
-  destination.
+- Stop for maintainer-controlled repair when markers cannot be updated safely.
+  Obtain the exact block with `wfctl init <kind> --print-instructions guide`.
 
 ## Ownership
 

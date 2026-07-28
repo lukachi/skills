@@ -8,6 +8,7 @@
     "wfctl": "dist/cli.js"
   },
   "files": [
+    "GETTING_STARTED.md",
     "dist",
     "rules",
     "skills",
@@ -31,5 +32,8 @@
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
     "yaml": "^2.9.0"
+  },
+  "dependencies": {
+    "skills": "1.5.9"
   }
 }

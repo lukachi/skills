@@ -1,4 +1,4 @@
 interface:
   display_name: "Verify Project Work"
-  short_description: "Prove completion against the living spec"
-  default_prompt: "Use $verify-project-work to verify every completion claim against code and recorded evidence."
+  short_description: "Verify the bound checkout against its spec"
+  default_prompt: "Use $verify-project-work to verify the bound checkout against its central spec and recorded evidence."

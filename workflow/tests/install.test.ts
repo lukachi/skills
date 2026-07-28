@@ -12,9 +12,11 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 import { applyInstallPlan } from "../src/applier.js";
 import { doctorPassed, runDoctor } from "../src/doctor.js";
 import { buildInstallPlan } from "../src/planner.js";
+import { installSkills } from "../src/skill-installer.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -28,22 +30,51 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   assert.equal(first.operations.some((operation) => operation.status === "conflict"), false);
   await applyInstallPlan(first);
 
-  assert.match(await readFile(join(target, "AGENTS.md"), "utf8"), /wfctl:begin/);
+  const agents = await readFile(join(target, "AGENTS.md"), "utf8");
+  assert.match(agents, /wfctl:begin/);
+  assert.match(agents, /before inspecting, searching, planning/);
+  assert.match(agents, /official native `graphify` skill/);
+  assert.match(agents, /Invoke `operate-project-knowledge` as the default entry point/);
   assert.equal(await readlink(join(target, "CLAUDE.md")), "AGENTS.md");
   assert.match(await readFile(join(target, "knowledge/index.md"), "utf8"), /okf_version/);
+  assert.match(await readFile(join(target, "knowledge/areas/index.md"), "utf8"), /primary durable decomposition/);
+  assert.match(
+    await readFile(join(target, "knowledge/product/flows/index.md"), "utf8"),
+    /genuinely cross several Areas/,
+  );
+  await assert.rejects(access(join(target, "knowledge/domains/index.md")));
+  const qmd = await readFile(join(target, ".qmd/index.yml"), "utf8");
+  const qmdConfig = parse(qmd) as {
+    collections: Record<string, {
+      path: string;
+      includeByDefault: boolean;
+    }>;
+  };
+  assert.deepEqual(Object.keys(qmdConfig.collections), [
+    "knowledge",
+    "changes",
+    "intake",
+    "raw",
+  ]);
+  assert.equal(qmdConfig.collections.knowledge?.path, join(target, "knowledge"));
+  assert.equal(qmdConfig.collections.knowledge?.includeByDefault, true);
+  assert.equal(qmdConfig.collections.raw?.includeByDefault, false);
   assert.match(
     await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
-    /OKF defines portable Markdown concepts/,
+    /OKF and the stricter workflow profile/,
   );
   assert.match(
     await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
     /Knowledge repository practice/,
   );
-  await access(join(target, ".agents/skills/setup-workflow-environment/SKILL.md"));
-  await access(join(target, ".agents/skills/analyze-with-graphify/SKILL.md"));
-  await access(join(target, ".agents/skills/curate-project-knowledge/SKILL.md"));
-  await assert.rejects(access(join(target, ".agents/skills/manage-project-work/SKILL.md")));
-
+  assert.match(
+    await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
+    /knowledge\/areas\/<area>\/index\.md/,
+  );
+  assert.match(
+    await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
+    /What to ask the knowledge agent/,
+  );
   const second = await buildInstallPlan({
     target,
     profile: "knowledge",
@@ -76,10 +107,13 @@ test("renders a profile-specific leaf guide with the configured knowledge path",
   const guide = await readFile(join(leaf, "PROJECT_WORKFLOW.md"), "utf8");
   assert.match(guide, /Leaf repository practice/);
   assert.match(guide, /Project knowledge: `\.\.\/knowledge`/);
-  assert.match(guide, /maintainer_review\.completion/);
+  assert.match(guide, /Routine CLI use belongs to the agent/);
+  assert.match(guide, /Two inputs, one promotion gate/);
+  assert.match(guide, /Graphify boundary/);
+  assert.match(guide, /changes\/active/);
 });
 
-test("preserves existing instruction files and existing Claude skills directory", async () => {
+test("preserves existing instructions and leaves skill directories to the skills CLI", async () => {
   const target = await temporaryDirectory("wfctl-preserve-");
   await writeFile(join(target, "AGENTS.md"), "# Existing agents\n", "utf8");
   await writeFile(join(target, "CLAUDE.md"), "# Existing Claude\n", "utf8");
@@ -96,15 +130,9 @@ test("preserves existing instruction files and existing Claude skills directory"
 
   assert.match(await readFile(join(target, "AGENTS.md"), "utf8"), /^# Existing agents/m);
   assert.match(await readFile(join(target, "CLAUDE.md"), "utf8"), /^# Existing Claude/m);
-  assert.equal(
-    await readlink(join(target, ".claude/skills/analyze-with-graphify")),
-    "../../.agents/skills/analyze-with-graphify",
-  );
-  assert.match(
-    await readFile(join(target, ".agents/skills/curate-project-knowledge/SKILL.md"), "utf8"),
-    /Curate current truth/,
-  );
-  await assert.rejects(access(join(target, ".agents/skills/manage-project-work/SKILL.md")));
+  await access(join(target, ".claude/skills/custom-skill"));
+  await assert.rejects(access(join(target, ".claude/skills/analyze-with-graphify")));
+  await assert.rejects(access(join(target, ".agents/skills")));
 
   const syncPlan = await buildInstallPlan({
     target,
@@ -114,10 +142,7 @@ test("preserves existing instruction files and existing Claude skills directory"
   await applyInstallPlan(syncPlan);
   assert.match(await readFile(join(target, "AGENTS.md"), "utf8"), /^# Existing agents/m);
   assert.match(await readFile(join(target, "CLAUDE.md"), "utf8"), /^# Existing Claude/m);
-  assert.equal(
-    await readlink(join(target, ".claude/skills/analyze-with-graphify")),
-    "../../.agents/skills/analyze-with-graphify",
-  );
+  await access(join(target, ".claude/skills/custom-skill"));
 });
 
 test("reports a conflict when an owned file was locally modified", async () => {
@@ -160,7 +185,7 @@ test("preserves a pre-existing maintainer guide outside the managed block", asyn
   const guide = await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8");
   assert.match(guide, /^# Existing workflow/m);
   assert.match(guide, /<!-- wfctl:begin -->/);
-  assert.match(guide, /Maintainer review gates/);
+  assert.match(guide, /## Review gates/);
 });
 
 test("doctor accepts initialized knowledge and leaf repositories", async () => {
@@ -186,21 +211,67 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
   await mkdir(join(leaf, "graphify-out"));
   await writeFile(join(leaf, "graphify-out/graph.json"), "{}\n", "utf8");
 
+  installSkills({
+    target: knowledge,
+    distributionRoot,
+    profile: "knowledge",
+    scope: "project",
+    agents: ["codex", "claude"],
+    yes: true,
+  });
+  installSkills({
+    target: leaf,
+    distributionRoot,
+    profile: "leaf",
+    scope: "project",
+    agents: ["codex", "claude"],
+    yes: true,
+  });
+
+  await access(join(knowledge, ".agents/skills/operate-project-knowledge/SKILL.md"));
+  await access(join(knowledge, ".claude/skills/operate-project-knowledge/SKILL.md"));
+  await access(join(knowledge, ".agents/skills/process-raw-intake/SKILL.md"));
   await access(join(leaf, ".agents/skills/setup-workflow-environment/SKILL.md"));
   await access(join(leaf, ".agents/skills/analyze-with-graphify/SKILL.md"));
   await access(join(leaf, ".agents/skills/align-project-knowledge/SKILL.md"));
   await access(join(leaf, ".agents/skills/manage-project-work/SKILL.md"));
   await access(join(leaf, ".agents/skills/verify-project-work/SKILL.md"));
-  await assert.rejects(access(join(leaf, ".agents/skills/curate-project-knowledge/SKILL.md")));
+  await access(join(leaf, ".agents/skills/curate-project-knowledge/SKILL.md"));
+  await assert.rejects(access(join(leaf, ".agents/skills/operate-project-knowledge/SKILL.md")));
+  await assert.rejects(access(join(leaf, ".agents/skills/process-raw-intake/SKILL.md")));
 
   assert.equal(
-    doctorPassed(await runDoctor(knowledge, { graphifyAvailable: true })),
+    doctorPassed(await runDoctor(knowledge, {
+      graphifyAvailable: true,
+      qmdAvailable: true,
+    })),
     true,
   );
   assert.equal(
-    doctorPassed(await runDoctor(leaf, { graphifyAvailable: true })),
+    doctorPassed(await runDoctor(leaf, {
+      graphifyAvailable: true,
+      qmdAvailable: true,
+    })),
     true,
   );
+});
+
+test("doctor fails clearly when QMD is unavailable", async () => {
+  const target = await temporaryDirectory("wfctl-qmd-doctor-");
+  execFileSync("git", ["-C", target, "init", "-q"]);
+  await applyInstallPlan(await buildInstallPlan({
+    target,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+
+  const report = await runDoctor(target, { qmdAvailable: false });
+  assert.equal(doctorPassed(report), false);
+  assert.ok(report.checks.some((check) =>
+    check.name === "qmd-cli"
+    && check.status === "fail"
+    && /bun install -g @tobilu\/qmd/.test(check.message)
+  ));
 });
 
 async function temporaryDirectory(prefix: string): Promise<string> {

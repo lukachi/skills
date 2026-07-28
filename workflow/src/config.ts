@@ -1,13 +1,30 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import type { Profile, WorkflowConfig, WorkflowState } from "./types.js";
+import type {
+  AgentTarget,
+  Profile,
+  SkillScope,
+  WorkflowConfig,
+  WorkflowState,
+} from "./types.js";
 import { CONFIG_SCHEMA_VERSION, STATE_SCHEMA_VERSION, WORKFLOW_VERSION } from "./types.js";
 
-export function createConfig(profile: Profile, target: string, knowledge?: string): WorkflowConfig {
+export interface SkillInstallConfig {
+  scope: SkillScope;
+  agents: AgentTarget[];
+}
+
+export function createConfig(
+  profile: Profile,
+  target: string,
+  knowledge?: string,
+  skills: SkillInstallConfig = { scope: "project", agents: ["codex", "claude"] },
+): WorkflowConfig {
   const config: WorkflowConfig = {
     schemaVersion: CONFIG_SCHEMA_VERSION,
     profile,
     installedVersion: WORKFLOW_VERSION,
+    skills,
   };
 
   if (profile === "leaf") {
@@ -31,6 +48,17 @@ export async function readConfig(target: string): Promise<WorkflowConfig> {
   }
   if (raw.profile === "leaf" && !raw.knowledge?.path) {
     throw new Error(`Leaf workflow config has no knowledge path in ${path}`);
+  }
+  if (raw.skills) {
+    if (
+      !["project", "user", "none"].includes(raw.skills.scope)
+      || !Array.isArray(raw.skills.agents)
+      || raw.skills.agents.some((agent) => agent !== "codex" && agent !== "claude")
+    ) {
+      throw new Error(`Invalid skill installation settings in ${path}`);
+    }
+  } else {
+    raw.skills = { scope: "project", agents: ["codex", "claude"] };
   }
   return raw as WorkflowConfig;
 }

@@ -65,6 +65,10 @@ project-work rules, consumer skills, and knowledge/leaf bootstrap templates.
 It installs versioned assets without replacing existing agent instructions and
 keeps active work specifications in a configured central knowledge repository.
 
+Start with
+[`workflow/GETTING_STARTED.md`](workflow/GETTING_STARTED.md) for the
+maintainer's daily workflow and common situations.
+
 The implementation contract and current progress live in
 [`workflow/SPEC.md`](workflow/SPEC.md). Development and command usage are in
 [`workflow/README.md`](workflow/README.md).

@@ -3190,14 +3190,14 @@ var SecretType = class extends StringType {
 // node_modules/@cliffy/command/upgrade/_check_version.js
 async function checkVersion(cmd) {
   const mainCommand = cmd.getMainCommand();
-  const upgradeCommand = mainCommand.getCommand("upgrade");
-  if (!isUpgradeCommand(upgradeCommand)) {
+  const upgradeCommand2 = mainCommand.getCommand("upgrade");
+  if (!isUpgradeCommand(upgradeCommand2)) {
     return;
   }
-  if (!await upgradeCommand.hasRequiredPermissions()) {
+  if (!await upgradeCommand2.hasRequiredPermissions()) {
     return;
   }
-  const latestVersion = await upgradeCommand.getLatestVersion();
+  const latestVersion = await upgradeCommand2.getLatestVersion();
   const currentVersion = mainCommand.getVersion();
   if (!currentVersion || currentVersion === latestVersion) {
     return;
@@ -4947,11 +4947,20 @@ function findFlag(flags) {
 }
 
 // src/cli.ts
-import { resolve as resolve8 } from "node:path";
+import { createInterface } from "node:readline/promises";
+import { resolve as resolve10 } from "node:path";
 
 // src/applier.ts
 import { randomUUID } from "node:crypto";
-import { lstat as lstat2, mkdir, readFile as readFile4, rename, symlink, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  lstat as lstat2,
+  mkdir,
+  readFile as readFile4,
+  rename,
+  symlink,
+  writeFile
+} from "node:fs/promises";
 import { dirname as dirname2, join as join3 } from "node:path";
 
 // src/planner.ts
@@ -4993,10 +5002,10 @@ async function collectFiles(root) {
   const result = [];
   await visit3(root, "");
   return result.sort();
-  async function visit3(current, relative2) {
+  async function visit3(current, relative3) {
     const entries = await readdir(current, { withFileTypes: true });
     for (const entry of entries) {
-      const childRelative = relative2 ? join(relative2, entry.name) : entry.name;
+      const childRelative = relative3 ? join(relative3, entry.name) : entry.name;
       const child = join(current, entry.name);
       if (entry.isDirectory()) {
         await visit3(child, childRelative);
@@ -5025,11 +5034,12 @@ var CONFIG_SCHEMA_VERSION = 1;
 var STATE_SCHEMA_VERSION = 1;
 
 // src/config.ts
-function createConfig(profile, target, knowledge) {
+function createConfig(profile, target, knowledge, skills = { scope: "project", agents: ["codex", "claude"] }) {
   const config = {
     schemaVersion: CONFIG_SCHEMA_VERSION,
     profile,
-    installedVersion: WORKFLOW_VERSION
+    installedVersion: WORKFLOW_VERSION,
+    skills
   };
   if (profile === "leaf") {
     if (!knowledge) {
@@ -5050,6 +5060,13 @@ async function readConfig(target) {
   }
   if (raw.profile === "leaf" && !raw.knowledge?.path) {
     throw new Error(`Leaf workflow config has no knowledge path in ${path}`);
+  }
+  if (raw.skills) {
+    if (!["project", "user", "none"].includes(raw.skills.scope) || !Array.isArray(raw.skills.agents) || raw.skills.agents.some((agent) => agent !== "codex" && agent !== "claude")) {
+      throw new Error(`Invalid skill installation settings in ${path}`);
+    }
+  } else {
+    raw.skills = { scope: "project", agents: ["codex", "claude"] };
   }
   return raw;
 }
@@ -5129,24 +5146,32 @@ function count(value, needle) {
 
 // src/planner.ts
 var REQUIRED_DIRECTORIES = [
-  ".agents/skills",
   ".claude/rules",
   ".workflow/rules",
   ".workflow/current"
 ];
 var KNOWLEDGE_DIRECTORIES = [
+  ".qmd",
   "raw",
+  "intake/cases/active",
+  "intake/cases/archive",
   "changes/active",
-  "changes/archive"
+  "changes/archive",
+  "changes/inbox"
 ];
 var COMMON_SKILLS = [
   "analyze-with-graphify",
   "setup-workflow-environment"
 ];
 var PROFILE_SKILLS = {
-  knowledge: ["curate-project-knowledge"],
+  knowledge: [
+    "curate-project-knowledge",
+    "operate-project-knowledge",
+    "process-raw-intake"
+  ],
   leaf: [
     "align-project-knowledge",
+    "curate-project-knowledge",
     "manage-project-work",
     "verify-project-work"
   ]
@@ -5155,7 +5180,12 @@ async function buildInstallPlan(options) {
   const target = resolve3(options.target);
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
   const state = await readState(target);
-  const config = createConfig(options.profile, target, options.knowledge);
+  const config = createConfig(
+    options.profile,
+    target,
+    options.knowledge,
+    options.skills
+  );
   const operations = [];
   for (const directory of REQUIRED_DIRECTORIES) {
     operations.push(await planDirectory(target, directory));
@@ -5164,6 +5194,32 @@ async function buildInstallPlan(options) {
     for (const directory of KNOWLEDGE_DIRECTORIES) {
       operations.push(await planDirectory(target, directory));
     }
+  }
+  operations.push(
+    await planOwnedFile(
+      target,
+      ".workflow/.gitignore",
+      "backups/\ncurrent/\n",
+      state
+    )
+  );
+  if (options.profile === "knowledge") {
+    operations.push(
+      await planOwnedFile(
+        target,
+        ".qmd/.gitignore",
+        "*\n!.gitignore\n",
+        state
+      )
+    );
+    operations.push(
+      await planOwnedFile(
+        target,
+        ".qmd/index.yml",
+        renderQmdConfig(target),
+        state
+      )
+    );
   }
   operations.push(await planConfig(target, config));
   const instructions = await renderAgentInstructions(
@@ -5179,21 +5235,6 @@ async function buildInstallPlan(options) {
     config.knowledge?.path
   );
   operations.push(await planManagedBlock(target, "PROJECT_WORKFLOW.md", guide));
-  const skillNames = skillsForProfile(options.profile);
-  for (const skillName of skillNames) {
-    const sourceRoot = join2(distributionRoot, "skills", skillName);
-    const files = await collectFiles(sourceRoot);
-    if (files.length === 0) {
-      throw new Error(`Workflow skill is missing from distribution: ${sourceRoot}`);
-    }
-    await planOwnedTree({
-      sourceRoot,
-      destinationRoot: join2(".agents/skills", skillName),
-      target,
-      state,
-      operations
-    });
-  }
   const ruleRoots = [
     join2(distributionRoot, "rules/common"),
     join2(distributionRoot, `rules/${options.profile}`)
@@ -5223,7 +5264,6 @@ async function buildInstallPlan(options) {
       operations
     });
   }
-  await planClaudeSkills(target, skillNames, operations);
   return {
     target,
     profile: options.profile,
@@ -5260,7 +5300,9 @@ async function planConfig(target, desired) {
     const existing = await readFile3(absolute, "utf8");
     const parsed = JSON.parse(existing);
     const sameKnowledge = desired.profile !== "leaf" || parsed.knowledge?.path === desired.knowledge?.path;
-    if (parsed.schemaVersion === desired.schemaVersion && parsed.profile === desired.profile && sameKnowledge) {
+    const sameIdentity = parsed.schemaVersion === desired.schemaVersion && parsed.profile === desired.profile && sameKnowledge;
+    const sameSkills = parsed.skills?.scope === desired.skills?.scope && JSON.stringify(parsed.skills?.agents) === JSON.stringify(desired.skills?.agents);
+    if (sameIdentity && sameSkills) {
       return {
         kind: "file",
         path: relativePath,
@@ -5269,11 +5311,24 @@ async function planConfig(target, desired) {
         content: existing
       };
     }
+    if (sameIdentity && !parsed.skills) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "update",
+        reason: "record skill installation settings",
+        content,
+        expectedHash: hashContent(existing)
+      };
+    }
     return {
       kind: "file",
       path: relativePath,
       status: "conflict",
-      reason: "existing workflow configuration differs; update it explicitly"
+      reason: "existing workflow configuration differs; update it explicitly",
+      content,
+      expectedHash: hashContent(existing),
+      replaceable: true
     };
   } catch (error) {
     if (!isMissingFileError(error)) {
@@ -5475,7 +5530,11 @@ async function planOwnedFile(target, relativePath, content, state) {
       kind: "file",
       path: relativePath,
       status: "conflict",
-      reason: installedHash ? "owned file was locally modified" : "destination exists without wfctl ownership"
+      reason: installedHash ? "owned file was locally modified" : "destination exists without wfctl ownership",
+      content,
+      expectedHash: currentHash,
+      track: true,
+      replaceable: true
     };
   } catch (error) {
     if (isMissingFileError(error)) {
@@ -5496,106 +5555,37 @@ async function planOwnedFile(target, relativePath, content, state) {
     };
   }
 }
-async function planClaudeSkills(target, skillNames, operations) {
-  const path = ".claude/skills";
-  const absolute = join2(target, path);
-  try {
-    const stat = await lstat(absolute);
-    if (stat.isSymbolicLink()) {
-      const current = await readlink(absolute);
-      operations.push(
-        current === "../.agents/skills" ? {
-          kind: "symlink",
-          path,
-          status: "unchanged",
-          reason: "Claude skills link is current",
-          linkTarget: current
-        } : {
-          kind: "symlink",
-          path,
-          status: "conflict",
-          reason: `Claude skills links to ${current}`
-        }
-      );
-      return;
-    }
-    if (!stat.isDirectory()) {
-      operations.push({
-        kind: "symlink",
-        path,
-        status: "conflict",
-        reason: "Claude skills path exists and is not a directory"
-      });
-      return;
-    }
-    for (const skillName of skillNames) {
-      const childPath = normalizeRelative(join2(path, skillName));
-      const linkTarget = normalizeRelative(join2("../../.agents/skills", skillName));
-      operations.push(await planSymlink(target, childPath, linkTarget));
-    }
-  } catch (error) {
-    if (isMissingFileError(error)) {
-      operations.push({
-        kind: "symlink",
-        path,
-        status: "create",
-        reason: "Claude skills path is absent",
-        linkTarget: "../.agents/skills"
-      });
-      return;
-    }
-    operations.push({
-      kind: "symlink",
-      path,
-      status: "conflict",
-      reason: `cannot inspect Claude skills: ${errorMessage(error)}`
-    });
-  }
-}
-async function planSymlink(target, relativePath, linkTarget) {
-  try {
-    const stat = await lstat(join2(target, relativePath));
-    if (!stat.isSymbolicLink()) {
-      return {
-        kind: "symlink",
-        path: relativePath,
-        status: "conflict",
-        reason: "path exists and is not a symlink"
-      };
-    }
-    const current = await readlink(join2(target, relativePath));
-    return current === linkTarget ? {
-      kind: "symlink",
-      path: relativePath,
-      status: "unchanged",
-      reason: "symlink is current",
-      linkTarget
-    } : {
-      kind: "symlink",
-      path: relativePath,
-      status: "conflict",
-      reason: `symlink points to ${current}`
-    };
-  } catch (error) {
-    if (isMissingFileError(error)) {
-      return {
-        kind: "symlink",
-        path: relativePath,
-        status: "create",
-        reason: "symlink is absent",
-        linkTarget
-      };
-    }
-    return {
-      kind: "symlink",
-      path: relativePath,
-      status: "conflict",
-      reason: `cannot inspect symlink: ${errorMessage(error)}`
-    };
-  }
-}
 function skillsForProfile(profile) {
   return [...COMMON_SKILLS, ...PROFILE_SKILLS[profile]].sort();
+}
+function renderQmdConfig(target) {
+  const collection = (path, pattern, includeByDefault, context) => `    path: ${JSON.stringify(join2(target, path))}
+    pattern: ${JSON.stringify(pattern)}
+    includeByDefault: ${includeByDefault}
+    context:
+      "/": ${JSON.stringify(context)}
+`;
+  return "global_context: >-\n  Project knowledge retrieval. Curated knowledge is the only default truth surface.\n  Changes are qualified records. Intake and raw are untrusted investigation inputs.\ncollections:\n  knowledge:\n" + collection(
+    "knowledge",
+    "**/*.md",
+    true,
+    "Curated OKF current project knowledge. Use this collection by default."
+  ) + "  changes:\n" + collection(
+    "changes",
+    "**/*.md",
+    false,
+    "Active and archived project change records. Outcomes and reviews qualify every claim."
+  ) + "  intake:\n" + collection(
+    "intake",
+    "**/*.md",
+    false,
+    "Operational raw-intake cases. Never treat these records as evidence."
+  ) + "  raw:\n" + collection(
+    "raw",
+    "**/*.{md,markdown,mdown,txt,json,jsonl,yaml,yml,toml,js,mjs,cjs,ts,tsx,jsx}",
+    false,
+    "Continuous untrusted input used only to discover candidate claims and contradictions."
+  );
 }
 function normalizeRelative(path) {
   const normalized = path.split(sep2).join("/");
@@ -5622,11 +5612,23 @@ async function applyInstallPlan(plan) {
     );
   }
   let changed = 0;
+  const backups = [];
+  const backupRoot = join3(
+    plan.target,
+    ".workflow/backups",
+    (/* @__PURE__ */ new Date()).toISOString().replaceAll(":", "-")
+  );
   for (const operation of plan.operations) {
     if (operation.status === "unchanged") {
       continue;
     }
     await assertExpectedState(plan.target, operation);
+    if (operation.backup) {
+      const backupPath = join3(backupRoot, operation.path);
+      await mkdir(dirname2(backupPath), { recursive: true });
+      await copyFile(join3(plan.target, operation.path), backupPath);
+      backups.push(backupPath);
+    }
     await applyOperation(plan.target, operation);
     changed += 1;
   }
@@ -5645,7 +5647,7 @@ async function applyInstallPlan(plan) {
   const statePath = join3(plan.target, ".workflow/state.json");
   await writeAtomic(statePath, `${JSON.stringify(state, null, 2)}
 `);
-  return { changed, statePath };
+  return { changed, statePath, backups };
 }
 async function applyOperation(target, operation) {
   const absolute = join3(target, operation.path);
@@ -5696,217 +5698,6 @@ function isMissing(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
-// src/bootstrap.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
-import {
-  lstat as lstat3,
-  mkdir as mkdir2,
-  readFile as readFile5,
-  rename as rename2,
-  writeFile as writeFile2
-} from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname as dirname3, join as join4, resolve as resolve4 } from "node:path";
-var SETUP_SKILL = "setup-workflow-environment";
-async function buildBootstrapPlan(options) {
-  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const sourceRoot = join4(distributionRoot, "skills", SETUP_SKILL);
-  const sourceFiles = await collectFiles(sourceRoot);
-  if (sourceFiles.length === 0) {
-    throw new Error(`Bootstrap skill is missing from distribution: ${sourceRoot}`);
-  }
-  const targets = bootstrapTargets(options);
-  const operations = [];
-  for (const target of targets) {
-    const state = await readBootstrapState(target.statePath);
-    for (const relativePath of sourceFiles) {
-      const content = await readFile5(join4(sourceRoot, relativePath), "utf8");
-      operations.push(await planBootstrapFile(target, relativePath, content, state));
-    }
-  }
-  return {
-    agent: options.agent,
-    targets,
-    operations: operations.sort(
-      (left, right) => left.agent.localeCompare(right.agent) || left.path.localeCompare(right.path)
-    )
-  };
-}
-async function applyBootstrapPlan(plan) {
-  const conflicts = plan.operations.filter((operation) => operation.status === "conflict");
-  if (conflicts.length > 0) {
-    throw new Error(
-      `Refusing to apply ${conflicts.length} bootstrap conflict(s): ${conflicts.map((operation) => operation.path).join(", ")}`
-    );
-  }
-  let changed = 0;
-  for (const operation of plan.operations) {
-    if (operation.status === "unchanged") {
-      continue;
-    }
-    await assertExpectedState2(operation);
-    await writeAtomic2(operation.path, operation.content ?? "");
-    changed += 1;
-  }
-  const statePaths = [];
-  for (const target of plan.targets) {
-    const files = {};
-    for (const operation of plan.operations) {
-      if (operation.agent === target.agent && operation.content !== void 0) {
-        files[operation.relativePath] = { sha256: hashContent(operation.content) };
-      }
-    }
-    const state = {
-      schemaVersion: 1,
-      installedVersion: WORKFLOW_VERSION,
-      files
-    };
-    await writeAtomic2(target.statePath, `${JSON.stringify(state, null, 2)}
-`);
-    statePaths.push(target.statePath);
-  }
-  return { changed, statePaths };
-}
-function summarizeBootstrapPlan(plan) {
-  const counts = Object.fromEntries(
-    ["create", "update", "unchanged", "conflict"].map((status) => [
-      status,
-      plan.operations.filter((operation) => operation.status === status).length
-    ])
-  );
-  return {
-    agent: plan.agent,
-    targets: plan.targets.map(({ agent, skillsRoot, skillRoot }) => ({
-      agent,
-      skillsRoot,
-      skillRoot
-    })),
-    counts,
-    operations: plan.operations.map(
-      ({ content: _content, expectedHash: _expectedHash, ...operation }) => operation
-    )
-  };
-}
-function bootstrapTargets(options) {
-  const requested = options.agent === "both" ? ["codex", "claude"] : [options.agent];
-  return requested.map((agent) => {
-    const configured = agent === "codex" ? options.codexSkillsRoot : options.claudeSkillsRoot;
-    const defaultRoot = agent === "codex" ? join4(homedir(), ".agents/skills") : join4(homedir(), ".claude/skills");
-    const skillsRoot = resolve4(configured ?? defaultRoot);
-    const skillRoot = join4(skillsRoot, SETUP_SKILL);
-    return {
-      agent,
-      skillsRoot,
-      skillRoot,
-      statePath: join4(skillRoot, ".wfctl-state.json")
-    };
-  });
-}
-async function planBootstrapFile(target, relativePath, content, state) {
-  const path = join4(target.skillRoot, relativePath);
-  const desiredHash = hashContent(content);
-  try {
-    const stat = await lstat3(path);
-    if (!stat.isFile() || stat.isSymbolicLink()) {
-      return {
-        agent: target.agent,
-        path,
-        relativePath,
-        status: "conflict",
-        reason: "destination exists and is not a regular file"
-      };
-    }
-    const currentHash = hashContent(await readFile5(path));
-    if (currentHash === desiredHash) {
-      return {
-        agent: target.agent,
-        path,
-        relativePath,
-        status: "unchanged",
-        reason: "bootstrap skill file is current",
-        content,
-        expectedHash: currentHash
-      };
-    }
-    const installedHash = state?.files[relativePath]?.sha256;
-    if (installedHash && installedHash === currentHash) {
-      return {
-        agent: target.agent,
-        path,
-        relativePath,
-        status: "update",
-        reason: "managed bootstrap skill file matches the installed version",
-        content,
-        expectedHash: currentHash
-      };
-    }
-    return {
-      agent: target.agent,
-      path,
-      relativePath,
-      status: "conflict",
-      reason: installedHash ? "managed bootstrap skill file was locally modified" : "destination exists without wfctl ownership"
-    };
-  } catch (error) {
-    if (isMissingFileError(error)) {
-      return {
-        agent: target.agent,
-        path,
-        relativePath,
-        status: "create",
-        reason: "bootstrap skill file is absent",
-        content
-      };
-    }
-    return {
-      agent: target.agent,
-      path,
-      relativePath,
-      status: "conflict",
-      reason: `cannot inspect bootstrap skill file: ${errorMessage(error)}`
-    };
-  }
-}
-async function readBootstrapState(path) {
-  try {
-    const parsed = JSON.parse(await readFile5(path, "utf8"));
-    if (parsed.schemaVersion !== 1 || !parsed.files) {
-      throw new Error("invalid state shape");
-    }
-    return parsed;
-  } catch (error) {
-    if (isMissingFileError(error)) {
-      return void 0;
-    }
-    throw new Error(`Cannot read bootstrap state ${path}: ${errorMessage(error)}`);
-  }
-}
-async function assertExpectedState2(operation) {
-  if (operation.status === "create") {
-    try {
-      await lstat3(operation.path);
-      throw new Error(`${operation.path} appeared after planning`);
-    } catch (error) {
-      if (isMissingFileError(error)) {
-        return;
-      }
-      throw error;
-    }
-  }
-  if (operation.expectedHash) {
-    const currentHash = hashContent(await readFile5(operation.path));
-    if (currentHash !== operation.expectedHash) {
-      throw new Error(`${operation.path} changed after planning`);
-    }
-  }
-}
-async function writeAtomic2(path, content) {
-  await mkdir2(dirname3(path), { recursive: true });
-  const temporary = join4(dirname3(path), `.wfctl-${randomUUID2()}.tmp`);
-  await writeFile2(temporary, content, "utf8");
-  await rename2(temporary, path);
-}
-
 // src/doctor.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { access as access2 } from "node:fs/promises";
@@ -5915,23 +5706,38 @@ import { join as join5, resolve as resolve6 } from "node:path";
 
 // src/git.ts
 import { spawnSync } from "node:child_process";
-import { basename, resolve as resolve5 } from "node:path";
+import { realpathSync } from "node:fs";
+import { basename, resolve as resolve4 } from "node:path";
 function readRepositoryMetadata(root) {
-  const topLevel = git(root, ["rev-parse", "--show-toplevel"], true);
+  const topLevel = realpathSync(git(root, ["rev-parse", "--show-toplevel"], true));
   const gitDirRaw = git(root, ["rev-parse", "--git-dir"], true);
   const commonDirRaw = git(root, ["rev-parse", "--git-common-dir"], true);
   const branch = git(root, ["symbolic-ref", "--short", "-q", "HEAD"]) || "DETACHED";
   const commit = git(root, ["rev-parse", "HEAD"]) || "unknown";
   const remote = git(root, ["config", "--get", "remote.origin.url"]);
-  const gitDir = resolve5(topLevel, gitDirRaw);
-  const commonDir = resolve5(topLevel, commonDirRaw);
+  const dirty = git(root, [
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=normal",
+    "--",
+    ".",
+    ":(exclude)graphify-out",
+    ":(exclude)graphify-out/**",
+    ":(exclude).workflow/current",
+    ":(exclude).workflow/current/**"
+  ], true) !== "";
+  const gitDir = resolve4(topLevel, gitDirRaw);
+  const commonDir = resolve4(topLevel, commonDirRaw);
   return {
     repository: repositoryId(remote, commonDir),
+    root: topLevel,
     checkout: basename(topLevel),
     branch,
     commit,
     remote,
-    worktree: gitDir !== commonDir
+    dirty,
+    worktree: gitDir !== commonDir,
+    worktreeId: gitDir === commonDir ? "main" : basename(gitDir)
   };
 }
 function isGitRepository(root) {
@@ -5967,113 +5773,13 @@ function repositoryId(remote, commonDir) {
   return basename(parent);
 }
 
-// src/doctor.ts
-async function runDoctor(targetInput, options = {}) {
-  const target = resolve6(targetInput);
-  const checks = [];
-  let config;
-  try {
-    config = await readConfig(target);
-    checks.push({ name: "config", status: "pass", message: `${config.profile} profile` });
-  } catch (error) {
-    checks.push({ name: "config", status: "fail", message: errorMessage(error) });
-    return { target, checks };
-  }
-  const gitRepository = isGitRepository(target);
-  checks.push({
-    name: "git",
-    status: gitRepository ? "pass" : "fail",
-    message: gitRepository ? "Git repository detected" : "Target is not a Git worktree"
-  });
-  const graphifyAvailable = options.graphifyAvailable ?? spawnSync2("graphify", ["--version"], { stdio: "ignore" }).status === 0;
-  checks.push({
-    name: "graphify-cli",
-    status: graphifyAvailable ? "pass" : "fail",
-    message: graphifyAvailable ? "Graphify is available" : "Graphify is not available"
-  });
-  checks.push(await pathCheck(
-    "graphify-graph",
-    join5(target, "graphify-out/graph.json"),
-    "warn",
-    "Graphify graph is ready",
-    "Graphify graph has not been built"
-  ));
-  const knowledgeRoot = resolveKnowledgeRoot(target, config);
-  checks.push(await pathCheck(
-    "knowledge",
-    join5(knowledgeRoot, "knowledge/index.md"),
-    "fail",
-    `Knowledge bundle found at ${knowledgeRoot}`,
-    `Knowledge bundle is missing at ${knowledgeRoot}`
-  ));
-  checks.push(await pathCheck(
-    "maintainer-guide",
-    join5(target, "PROJECT_WORKFLOW.md"),
-    "fail",
-    "Maintainer guide is present",
-    "PROJECT_WORKFLOW.md is missing"
-  ));
-  if (config.profile === "knowledge") {
-    for (const directory of ["raw", "changes/active", "changes/archive"]) {
-      checks.push(await pathCheck(
-        `knowledge-${directory}`,
-        join5(target, directory),
-        "fail",
-        `${directory} exists`,
-        `${directory} is missing`
-      ));
-    }
-  }
-  try {
-    const plan = await buildInstallPlan({
-      target,
-      profile: config.profile,
-      ...config.profile === "leaf" ? { knowledge: knowledgeRoot } : {}
-    });
-    const conflicts = plan.operations.filter((operation) => operation.status === "conflict");
-    const pending = plan.operations.filter(
-      (operation) => operation.status === "create" || operation.status === "update"
-    );
-    if (conflicts.length > 0) {
-      checks.push({
-        name: "installation",
-        status: "fail",
-        message: `${conflicts.length} workflow conflict(s)`
-      });
-    } else if (pending.length > 0) {
-      checks.push({
-        name: "installation",
-        status: "warn",
-        message: `${pending.length} workflow update(s) pending`
-      });
-    } else {
-      checks.push({
-        name: "installation",
-        status: "pass",
-        message: "Workflow assets are current"
-      });
-    }
-  } catch (error) {
-    checks.push({ name: "installation", status: "fail", message: errorMessage(error) });
-  }
-  return { target, profile: config.profile, checks };
-}
-function doctorPassed(report) {
-  return report.checks.every((check) => check.status !== "fail");
-}
-async function pathCheck(name, path, missingStatus, presentMessage, missingMessage) {
-  try {
-    await access2(path, constants2.F_OK);
-    return { name, status: "pass", message: presentMessage };
-  } catch {
-    return { name, status: missingStatus, message: missingMessage };
-  }
-}
-
-// src/work.ts
-import { access as access3, mkdir as mkdir3, readFile as readFile6, rename as rename3, unlink, writeFile as writeFile3 } from "node:fs/promises";
-import { constants as constants3 } from "node:fs";
-import { dirname as dirname4, join as join6, resolve as resolve7, sep as sep3 } from "node:path";
+// src/knowledge.ts
+import {
+  lstat as lstat3,
+  readFile as readFile5,
+  readdir as readdir2
+} from "node:fs/promises";
+import { basename as basename2, dirname as dirname3, join as join4, relative as relative2, resolve as resolve5, sep as sep3 } from "node:path";
 
 // node_modules/yaml/browser/dist/nodes/identity.js
 var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
@@ -9507,10 +9213,10 @@ function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeE
   let offset = bm.offset;
   let commentEnd = null;
   for (const collItem of bm.items) {
-    const { start, key, sep: sep4, value } = collItem;
+    const { start, key, sep: sep5, value } = collItem;
     const keyProps = resolveProps(start, {
       indicator: "explicit-key-ind",
-      next: key ?? sep4?.[0],
+      next: key ?? sep5?.[0],
       offset,
       onError,
       parentIndent: bm.indent,
@@ -9524,7 +9230,7 @@ function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeE
         else if ("indent" in key && key.indent !== bm.indent)
           onError(offset, "BAD_INDENT", startColMsg);
       }
-      if (!keyProps.anchor && !keyProps.tag && !sep4) {
+      if (!keyProps.anchor && !keyProps.tag && !sep5) {
         commentEnd = keyProps.end;
         if (keyProps.comment) {
           if (map2.comment)
@@ -9548,7 +9254,7 @@ function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeE
     ctx.atKey = false;
     if (mapIncludes(ctx, map2.items, keyNode))
       onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-    const valueProps = resolveProps(sep4 ?? [], {
+    const valueProps = resolveProps(sep5 ?? [], {
       indicator: "map-value-ind",
       next: value,
       offset: keyNode.range[2],
@@ -9564,7 +9270,7 @@ function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeE
         if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
           onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
       }
-      const valueNode = value ? composeNode2(ctx, value, valueProps, onError) : composeEmptyNode2(ctx, offset, sep4, null, valueProps, onError);
+      const valueNode = value ? composeNode2(ctx, value, valueProps, onError) : composeEmptyNode2(ctx, offset, sep5, null, valueProps, onError);
       if (ctx.schema.compat)
         flowIndentCheck(bm.indent, value, onError);
       offset = valueNode.range[2];
@@ -9640,7 +9346,7 @@ function resolveEnd(end, offset, reqSpace, onError) {
   let comment = "";
   if (end) {
     let hasSpace = false;
-    let sep4 = "";
+    let sep5 = "";
     for (const token of end) {
       const { source, type } = token;
       switch (type) {
@@ -9654,13 +9360,13 @@ function resolveEnd(end, offset, reqSpace, onError) {
           if (!comment)
             comment = cb;
           else
-            comment += sep4 + cb;
-          sep4 = "";
+            comment += sep5 + cb;
+          sep5 = "";
           break;
         }
         case "newline":
           if (comment)
-            sep4 += source;
+            sep5 += source;
           hasSpace = true;
           break;
         default:
@@ -9689,18 +9395,18 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
   let offset = fc.offset + fc.start.source.length;
   for (let i = 0; i < fc.items.length; ++i) {
     const collItem = fc.items[i];
-    const { start, key, sep: sep4, value } = collItem;
+    const { start, key, sep: sep5, value } = collItem;
     const props = resolveProps(start, {
       flow: fcName,
       indicator: "explicit-key-ind",
-      next: key ?? sep4?.[0],
+      next: key ?? sep5?.[0],
       offset,
       onError,
       parentIndent: fc.indent,
       startOnNewline: false
     });
     if (!props.found) {
-      if (!props.anchor && !props.tag && !sep4 && !value) {
+      if (!props.anchor && !props.tag && !sep5 && !value) {
         if (i === 0 && props.comma)
           onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
         else if (i < fc.items.length - 1)
@@ -9754,8 +9460,8 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
         }
       }
     }
-    if (!isMap2 && !sep4 && !props.found) {
-      const valueNode = value ? composeNode2(ctx, value, props, onError) : composeEmptyNode2(ctx, props.end, sep4, null, props, onError);
+    if (!isMap2 && !sep5 && !props.found) {
+      const valueNode = value ? composeNode2(ctx, value, props, onError) : composeEmptyNode2(ctx, props.end, sep5, null, props, onError);
       coll.items.push(valueNode);
       offset = valueNode.range[2];
       if (isBlock(value))
@@ -9767,7 +9473,7 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
       if (isBlock(key))
         onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
       ctx.atKey = false;
-      const valueProps = resolveProps(sep4 ?? [], {
+      const valueProps = resolveProps(sep5 ?? [], {
         flow: fcName,
         indicator: "map-value-ind",
         next: value,
@@ -9778,8 +9484,8 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
       });
       if (valueProps.found) {
         if (!isMap2 && !props.found && ctx.options.strict) {
-          if (sep4)
-            for (const st of sep4) {
+          if (sep5)
+            for (const st of sep5) {
               if (st === valueProps.found)
                 break;
               if (st.type === "newline") {
@@ -9796,7 +9502,7 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
         else
           onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
       }
-      const valueNode = value ? composeNode2(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode2(ctx, valueProps.end, sep4, null, valueProps, onError) : null;
+      const valueNode = value ? composeNode2(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode2(ctx, valueProps.end, sep5, null, valueProps, onError) : null;
       if (valueNode) {
         if (isBlock(value))
           onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -9956,7 +9662,7 @@ function resolveBlockScalar(ctx, scalar, onError) {
       chompStart = i + 1;
   }
   let value = "";
-  let sep4 = "";
+  let sep5 = "";
   let prevMoreIndented = false;
   for (let i = 0; i < contentStart; ++i)
     value += lines[i][0].slice(trimIndent) + "\n";
@@ -9973,24 +9679,24 @@ function resolveBlockScalar(ctx, scalar, onError) {
       indent = "";
     }
     if (type === Scalar.BLOCK_LITERAL) {
-      value += sep4 + indent.slice(trimIndent) + content;
-      sep4 = "\n";
+      value += sep5 + indent.slice(trimIndent) + content;
+      sep5 = "\n";
     } else if (indent.length > trimIndent || content[0] === "	") {
-      if (sep4 === " ")
-        sep4 = "\n";
-      else if (!prevMoreIndented && sep4 === "\n")
-        sep4 = "\n\n";
-      value += sep4 + indent.slice(trimIndent) + content;
-      sep4 = "\n";
+      if (sep5 === " ")
+        sep5 = "\n";
+      else if (!prevMoreIndented && sep5 === "\n")
+        sep5 = "\n\n";
+      value += sep5 + indent.slice(trimIndent) + content;
+      sep5 = "\n";
       prevMoreIndented = true;
     } else if (content === "") {
-      if (sep4 === "\n")
+      if (sep5 === "\n")
         value += "\n";
       else
-        sep4 = "\n";
+        sep5 = "\n";
     } else {
-      value += sep4 + content;
-      sep4 = " ";
+      value += sep5 + content;
+      sep5 = " ";
       prevMoreIndented = false;
     }
   }
@@ -10164,25 +9870,25 @@ function foldLines(source) {
   if (!match)
     return source;
   let res = match[1];
-  let sep4 = " ";
+  let sep5 = " ";
   let pos = first.lastIndex;
   line.lastIndex = pos;
   while (match = line.exec(source)) {
     if (match[1] === "") {
-      if (sep4 === "\n")
-        res += sep4;
+      if (sep5 === "\n")
+        res += sep5;
       else
-        sep4 = "\n";
+        sep5 = "\n";
     } else {
-      res += sep4 + match[1];
-      sep4 = " ";
+      res += sep5 + match[1];
+      sep5 = " ";
     }
     pos = line.lastIndex;
   }
   const last = /[ \t]*(.*)/sy;
   last.lastIndex = pos;
   match = last.exec(source);
-  return res + sep4 + (match?.[1] ?? "");
+  return res + sep5 + (match?.[1] ?? "");
 }
 function doubleQuotedValue(source, onError) {
   let res = "";
@@ -11799,18 +11505,18 @@ var Parser = class {
     if (this.type === "map-value-ind") {
       const prev = getPrevProps(this.peek(2));
       const start = getFirstKeyStartProps(prev);
-      let sep4;
+      let sep5;
       if (scalar.end) {
-        sep4 = scalar.end;
-        sep4.push(this.sourceToken);
+        sep5 = scalar.end;
+        sep5.push(this.sourceToken);
         delete scalar.end;
       } else
-        sep4 = [this.sourceToken];
+        sep5 = [this.sourceToken];
       const map2 = {
         type: "block-map",
         offset: scalar.offset,
         indent: scalar.indent,
-        items: [{ start, key: scalar, sep: sep4 }]
+        items: [{ start, key: scalar, sep: sep5 }]
       };
       this.onKeyLine = true;
       this.stack[this.stack.length - 1] = map2;
@@ -11963,15 +11669,15 @@ var Parser = class {
             } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
               const start2 = getFirstKeyStartProps(it.start);
               const key = it.key;
-              const sep4 = it.sep;
-              sep4.push(this.sourceToken);
+              const sep5 = it.sep;
+              sep5.push(this.sourceToken);
               delete it.key;
               delete it.sep;
               this.stack.push({
                 type: "block-map",
                 offset: this.offset,
                 indent: this.indent,
-                items: [{ start: start2, key, sep: sep4 }]
+                items: [{ start: start2, key, sep: sep5 }]
               });
             } else if (start.length > 0) {
               it.sep = it.sep.concat(start, this.sourceToken);
@@ -12165,13 +11871,13 @@ var Parser = class {
         const prev = getPrevProps(parent);
         const start = getFirstKeyStartProps(prev);
         fixFlowSeqItems(fc);
-        const sep4 = fc.end.splice(1, fc.end.length);
-        sep4.push(this.sourceToken);
+        const sep5 = fc.end.splice(1, fc.end.length);
+        sep5.push(this.sourceToken);
         const map2 = {
           type: "block-map",
           offset: fc.offset,
           indent: fc.indent,
-          items: [{ start, key: fc, sep: sep4 }]
+          items: [{ start, key: fc, sep: sep5 }]
         };
         this.onKeyLine = true;
         this.stack[this.stack.length - 1] = map2;
@@ -12364,6 +12070,1526 @@ function stringify3(value, replacer, options) {
   return new Document(value, _replacer, options).toString(options);
 }
 
+// src/knowledge.ts
+async function validateKnowledge(targetInput, conceptPaths) {
+  const target = await requireKnowledgeRepository(targetInput);
+  const knowledgeRoot = join4(target, "knowledge");
+  const inventory = await collectKnowledgeTree(knowledgeRoot);
+  const selected = conceptPaths ? conceptPaths.map((path) => resolveConceptPath(target, knowledgeRoot, path)) : inventory.markdown.map((path) => join4(knowledgeRoot, path));
+  const errors = [];
+  const warnings = [];
+  const changeIndex = await readProjectChangeIndex(target);
+  for (const path of inventory.symlinks) {
+    errors.push({
+      path: portable(join4("knowledge", path)),
+      message: "curated knowledge tree must not contain symlinks"
+    });
+  }
+  for (const absolute of selected.sort()) {
+    const displayPath = portable(relative2(target, absolute));
+    try {
+      const stat = await lstat3(absolute);
+      if (stat.isSymbolicLink()) {
+        errors.push({ path: displayPath, message: "curated knowledge concepts must not be symlinks" });
+        continue;
+      }
+    } catch (error) {
+      errors.push({ path: displayPath, message: `cannot inspect concept: ${errorMessage(error)}` });
+      continue;
+    }
+    let content;
+    try {
+      content = decodeUtf8(await readFile5(absolute));
+    } catch (error) {
+      errors.push({ path: displayPath, message: `cannot read UTF-8 Markdown: ${errorMessage(error)}` });
+      continue;
+    }
+    if (containsUntrustedIntakePath(content)) {
+      errors.push({
+        path: displayPath,
+        message: "trusted knowledge must not reference raw/ or intake/ paths"
+      });
+    }
+    const reserved = basename2(absolute) === "index.md" || basename2(absolute) === "log.md";
+    if (reserved) {
+      if (basename2(absolute) === "index.md" && dirname3(absolute) === knowledgeRoot) {
+        const parsed2 = parseFrontmatter(content, false);
+        if (!parsed2.metadata || parsed2.metadata.okf_version !== "0.2") {
+          errors.push({ path: displayPath, message: 'root index.md must declare okf_version: "0.2"' });
+        }
+      }
+      continue;
+    }
+    const parsed = parseFrontmatter(content, true);
+    if (!parsed.metadata) {
+      errors.push({ path: displayPath, message: parsed.error ?? "concept frontmatter is missing" });
+      continue;
+    }
+    validateConcept(
+      displayPath,
+      parsed.metadata,
+      parsed.body,
+      changeIndex,
+      errors,
+      warnings
+    );
+  }
+  const decisions = await readDecisionNodes(target, knowledgeRoot, inventory.markdown);
+  validateDecisionLineage(decisions, errors);
+  return {
+    target,
+    files: selected.length,
+    valid: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+function validateConcept(path, metadata, body, changeIndex, errors, warnings) {
+  const type = stringValue(metadata.type);
+  const status = stringValue(metadata.status);
+  const generated = recordValue(metadata.generated);
+  const generatedAt = stringValue(generated?.at);
+  const sources = Array.isArray(metadata.sources) ? metadata.sources : [];
+  const authority = stringArray(metadata.authority);
+  const verifications = normalizeVerifications(metadata.verified);
+  if (!type) {
+    errors.push({ path, message: "type is required by OKF v0.2" });
+  }
+  if (!["draft", "stable", "deprecated"].includes(status)) {
+    errors.push({ path, message: "status must be explicit: draft, stable, or deprecated" });
+  }
+  if (!isActor(stringValue(generated?.by))) {
+    errors.push({ path, message: "generated.by must follow the OKF actor convention" });
+  }
+  if (!isIsoDateTime(generatedAt)) {
+    errors.push({ path, message: "generated.at must be an ISO 8601 datetime" });
+  }
+  if (sources.length === 0) {
+    errors.push({ path, message: "sources must contain claim-level authoritative provenance" });
+  }
+  const allowedAuthority = /* @__PURE__ */ new Set([
+    "intent",
+    "product-meaning",
+    "implementation",
+    "architecture-rationale",
+    "ownership",
+    "contract",
+    "operational-policy",
+    "decision",
+    "history",
+    "external"
+  ]);
+  if (authority.length === 0) {
+    errors.push({ path, message: "authority must classify the concept's material claims" });
+  }
+  for (const value of authority) {
+    if (!allowedAuthority.has(value)) {
+      errors.push({ path, message: `unknown authority class: ${value}` });
+    }
+  }
+  const sourceIds = /* @__PURE__ */ new Set();
+  let hasHumanAuthority = false;
+  let hasPinnedCode = false;
+  for (const [index, value] of sources.entries()) {
+    const source = recordValue(value);
+    const prefix = `sources[${index}]`;
+    const id = stringValue(source?.id);
+    const resource = stringValue(source?.resource);
+    const kind = stringValue(source?.kind);
+    if (!id) {
+      errors.push({ path, message: `${prefix}.id is required for claim-level attribution` });
+    } else if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+      errors.push({ path, message: `${prefix}.id must be a valid Markdown footnote label` });
+    } else if (sourceIds.has(id)) {
+      errors.push({ path, message: `${prefix}.id must be unique` });
+    } else {
+      sourceIds.add(id);
+    }
+    if (!resource) {
+      errors.push({ path, message: `${prefix}.resource is required by OKF v0.2` });
+    }
+    if (!["maintainer-decision", "source-code", "runtime-check", "archived-change", "version-control", "external-primary"].includes(kind)) {
+      errors.push({
+        path,
+        message: `${prefix}.kind must identify the workflow authority class`
+      });
+    }
+    const referencedChange = isProjectChangeResource(resource) ? projectChangeRecord(resource, changeIndex, false) : void 0;
+    if (referencedChange?.__untrustedIntakeReference === true) {
+      errors.push({
+        path,
+        message: `${prefix}.resource points to a project change that cites raw or intake material`
+      });
+    }
+    if (kind === "maintainer-decision") {
+      hasHumanAuthority = true;
+      if (!stringValue(source?.author).startsWith("human:")) {
+        errors.push({ path, message: `${prefix}.author must identify the approving human` });
+      }
+      if (!isProjectChangeResource(resource)) {
+        errors.push({ path, message: `${prefix}.resource must point to a project-change decision` });
+      } else if (!projectChangeRecord(resource, changeIndex, false)) {
+        errors.push({ path, message: `${prefix}.resource points to a missing project change` });
+      } else if (!hasApprovedHumanReview(
+        projectChangeRecord(resource, changeIndex, false),
+        void 0,
+        stringValue(source?.author)
+      )) {
+        errors.push({ path, message: `${prefix}.resource has no recorded human approval` });
+      }
+    }
+    if (kind === "source-code") {
+      if (!isPinnedCodeResource(resource)) {
+        errors.push({
+          path,
+          message: `${prefix}.resource must pin repository, full commit, path, and optional symbol`
+        });
+      } else {
+        hasPinnedCode = true;
+      }
+    }
+    if ((kind === "runtime-check" || kind === "archived-change") && !isProjectChangeResource(resource)) {
+      errors.push({ path, message: `${prefix}.resource must point to a project-change receipt` });
+    } else if (kind === "runtime-check" && !projectChangeRecord(resource, changeIndex, false)) {
+      errors.push({ path, message: `${prefix}.resource points to a missing project change` });
+    } else if (kind === "runtime-check" && recordValue(projectChangeRecord(resource, changeIndex, false)?.verification)?.result !== "passed") {
+      errors.push({ path, message: `${prefix}.resource has no passed verification receipt` });
+    } else if (kind === "archived-change" && !projectChangeRecord(resource, changeIndex, true)) {
+      errors.push({ path, message: `${prefix}.resource must point to an archived project change` });
+    } else if (kind === "archived-change") {
+      const archived = projectChangeRecord(resource, changeIndex, true);
+      if (archived.outcome !== "completed" || !hasApprovedHumanReview(archived, "completion")) {
+        errors.push({
+          path,
+          message: `${prefix}.resource must point to a completed, human-reviewed archived change`
+        });
+      }
+    }
+    if (kind === "external-primary" && !/^https?:\/\/\S+$/i.test(resource)) {
+      errors.push({ path, message: `${prefix}.resource must be an absolute primary-source URL` });
+    }
+    if (kind === "version-control" && !isVersionControlResource(resource)) {
+      errors.push({ path, message: `${prefix}.resource must pin a commit or review artifact` });
+    }
+  }
+  const footnotes = footnoteData(body);
+  for (const id of sourceIds) {
+    if (!footnotes.references.has(id)) {
+      errors.push({ path, message: `source "${id}" is not attributed by a [^${id}] claim footnote` });
+    }
+    if (!footnotes.definitions.has(id)) {
+      errors.push({ path, message: `source "${id}" requires a [^${id}]: footnote definition` });
+    }
+  }
+  for (const id of footnotes.references) {
+    if (!sourceIds.has(id)) {
+      errors.push({ path, message: `claim footnote [^${id}] has no matching sources[].id` });
+    }
+  }
+  const normativeAuthority = authority.some(
+    (value) => [
+      "intent",
+      "product-meaning",
+      "architecture-rationale",
+      "ownership",
+      "contract",
+      "operational-policy",
+      "decision"
+    ].includes(value)
+  );
+  if (normativeAuthority && !hasHumanAuthority) {
+    errors.push({
+      path,
+      message: "normative authority requires a maintainer-decision source"
+    });
+  }
+  if (authority.includes("implementation") && !hasPinnedCode) {
+    errors.push({
+      path,
+      message: "implementation authority requires a pinned source-code source"
+    });
+  }
+  if (authority.includes("architecture-rationale") && !hasPinnedCode) {
+    errors.push({
+      path,
+      message: "architecture-rationale authority requires pinned code that was checked for contradiction"
+    });
+  }
+  if (authority.includes("history") && !sources.some((value) => recordValue(value)?.kind === "archived-change")) {
+    errors.push({ path, message: "history authority requires an archived-change source" });
+  }
+  if (authority.includes("history") && !sources.some((value) => recordValue(value)?.kind === "version-control")) {
+    errors.push({ path, message: "history authority requires pinned version-control history" });
+  }
+  if (authority.includes("external") && !sources.some((value) => recordValue(value)?.kind === "external-primary")) {
+    errors.push({ path, message: "external authority requires an external-primary source" });
+  }
+  if (status === "stable") {
+    if (verifications.length === 0) {
+      errors.push({ path, message: "stable concepts require a verification event" });
+    }
+    const fresh = verifications.some(
+      (verification) => isIsoDateTime(stringValue(verification.at)) && Date.parse(stringValue(verification.at)) >= Date.parse(generatedAt)
+    );
+    if (!fresh) {
+      errors.push({
+        path,
+        message: "stable concepts require verification at or after generated.at"
+      });
+    }
+    if (normativeAuthority && !verifications.some(
+      (verification) => stringValue(verification.by).startsWith("human:")
+    )) {
+      errors.push({
+        path,
+        message: "maintainer-decision sources require human verification"
+      });
+    }
+  }
+  for (const [index, verification] of verifications.entries()) {
+    if (!isActor(stringValue(verification.by))) {
+      errors.push({ path, message: `verified[${index}].by must follow the OKF actor convention` });
+    }
+    if (!isIsoDateTime(stringValue(verification.at))) {
+      errors.push({ path, message: `verified[${index}].at must be an ISO 8601 datetime` });
+    }
+  }
+  if (status === "deprecated") {
+    if (!stringValue(metadata.superseded_by) && !stringValue(metadata.deprecation_reason)) {
+      errors.push({
+        path,
+        message: "deprecated concepts require superseded_by or deprecation_reason"
+      });
+    }
+  }
+  if (!hasPinnedCode && sources.some((value) => recordValue(value)?.kind === "runtime-check")) {
+    warnings.push({
+      path,
+      message: "runtime evidence is present without a pinned source-code reference"
+    });
+  }
+}
+async function readDecisionNodes(target, knowledgeRoot, markdown) {
+  const decisions = [];
+  for (const relativePath of markdown) {
+    if (/(?:^|\/)(?:index|log)\.md$/i.test(relativePath)) {
+      continue;
+    }
+    const absolute = join4(knowledgeRoot, relativePath);
+    try {
+      const parsed = parseFrontmatter(decodeUtf8(await readFile5(absolute)), true);
+      if (!parsed.metadata || !stringArray(parsed.metadata.authority).includes("decision")) {
+        continue;
+      }
+      decisions.push({
+        path: portable(relative2(target, absolute)),
+        id: stringValue(parsed.metadata.decision_id),
+        effectiveAt: stringValue(parsed.metadata.effective_at),
+        status: stringValue(parsed.metadata.status),
+        supersedes: stringArray(parsed.metadata.supersedes),
+        supersededBy: stringValue(parsed.metadata.superseded_by),
+        hasSupersedes: Array.isArray(parsed.metadata.supersedes),
+        hasSupersededBy: Object.hasOwn(parsed.metadata, "superseded_by") && typeof parsed.metadata.superseded_by === "string"
+      });
+    } catch {
+    }
+  }
+  return decisions;
+}
+function validateDecisionLineage(decisions, errors) {
+  const byPath = new Map(decisions.map((decision) => [decision.path, decision]));
+  const ids = /* @__PURE__ */ new Map();
+  for (const decision of decisions) {
+    if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(decision.id)) {
+      errors.push({
+        path: decision.path,
+        message: "decision authority requires a stable lowercase decision_id"
+      });
+    } else if (ids.has(decision.id)) {
+      errors.push({
+        path: decision.path,
+        message: `decision_id is duplicated by ${ids.get(decision.id)}`
+      });
+    } else {
+      ids.set(decision.id, decision.path);
+    }
+    if (!isIsoDateTime(decision.effectiveAt)) {
+      errors.push({
+        path: decision.path,
+        message: "decision authority requires effective_at as an ISO 8601 datetime"
+      });
+    }
+    if (!decision.hasSupersedes) {
+      errors.push({
+        path: decision.path,
+        message: "decision authority requires supersedes as a list"
+      });
+    }
+    if (!decision.hasSupersededBy) {
+      errors.push({
+        path: decision.path,
+        message: "decision authority requires superseded_by as a string"
+      });
+    }
+    if (decision.status === "stable" && decision.supersededBy) {
+      errors.push({
+        path: decision.path,
+        message: "a decision with superseded_by must be deprecated, not stable"
+      });
+    }
+    if (decision.status === "deprecated" && !decision.supersededBy) {
+      errors.push({
+        path: decision.path,
+        message: "a deprecated decision requires superseded_by"
+      });
+    }
+    for (const reference of [...decision.supersedes, decision.supersededBy].filter(Boolean)) {
+      if (!isKnowledgeConceptReference(reference)) {
+        errors.push({
+          path: decision.path,
+          message: `decision lineage reference must be project-relative under knowledge/: ${reference}`
+        });
+      } else if (!byPath.has(reference)) {
+        errors.push({
+          path: decision.path,
+          message: `decision lineage target does not exist or is not a decision: ${reference}`
+        });
+      }
+    }
+  }
+  for (const decision of decisions) {
+    for (const predecessorPath of decision.supersedes) {
+      const predecessor = byPath.get(predecessorPath);
+      if (predecessor && predecessor.supersededBy !== decision.path) {
+        errors.push({
+          path: decision.path,
+          message: `${predecessorPath} must reciprocally set superseded_by: ${decision.path}`
+        });
+      }
+    }
+    if (decision.supersededBy) {
+      const successor = byPath.get(decision.supersededBy);
+      if (successor && !successor.supersedes.includes(decision.path)) {
+        errors.push({
+          path: decision.path,
+          message: `${decision.supersededBy} must reciprocally list ${decision.path} in supersedes`
+        });
+      }
+    }
+  }
+  const visiting = /* @__PURE__ */ new Set();
+  const visited = /* @__PURE__ */ new Set();
+  const visit3 = (decision) => {
+    if (visiting.has(decision.path)) {
+      errors.push({
+        path: decision.path,
+        message: "decision supersession lineage contains a cycle"
+      });
+      return;
+    }
+    if (visited.has(decision.path)) {
+      return;
+    }
+    visiting.add(decision.path);
+    const successor = byPath.get(decision.supersededBy);
+    if (successor) {
+      visit3(successor);
+    }
+    visiting.delete(decision.path);
+    visited.add(decision.path);
+  };
+  for (const decision of decisions) {
+    visit3(decision);
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const decision of decisions) {
+    if (seen.has(decision.path)) {
+      continue;
+    }
+    const component = [];
+    const pending = [decision];
+    while (pending.length > 0) {
+      const current2 = pending.pop();
+      if (seen.has(current2.path)) {
+        continue;
+      }
+      seen.add(current2.path);
+      component.push(current2);
+      const linked = [
+        ...current2.supersedes,
+        current2.supersededBy,
+        ...decisions.filter(
+          (candidate) => candidate.supersedes.includes(current2.path) || candidate.supersededBy === current2.path
+        ).map((candidate) => candidate.path)
+      ].filter(Boolean);
+      for (const path of linked) {
+        const related = byPath.get(path);
+        if (related && !seen.has(path)) {
+          pending.push(related);
+        }
+      }
+    }
+    const current = component.filter((node) => node.status === "stable");
+    if (current.length > 1) {
+      errors.push({
+        path: current[0].path,
+        message: `decision lineage has multiple stable current records: ${current.map((node) => node.path).join(", ")}`
+      });
+    }
+  }
+}
+function isKnowledgeConceptReference(value) {
+  return /^knowledge\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/.test(value);
+}
+async function collectKnowledgeTree(root) {
+  const markdown = [];
+  const symlinks = [];
+  async function walk(directory) {
+    for (const entry of await readdir2(directory, { withFileTypes: true })) {
+      const absolute = join4(directory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(absolute);
+      } else if (entry.isSymbolicLink()) {
+        symlinks.push(portable(relative2(root, absolute)));
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+        markdown.push(portable(relative2(root, absolute)));
+      }
+    }
+  }
+  await walk(root);
+  return {
+    markdown: markdown.sort(),
+    symlinks: symlinks.sort()
+  };
+}
+async function readProjectChangeIndex(target) {
+  return {
+    active: await projectChangeRecords(join4(target, "changes/active")),
+    archive: await projectChangeRecords(join4(target, "changes/archive"))
+  };
+}
+async function projectChangeRecords(root) {
+  try {
+    const result = /* @__PURE__ */ new Map();
+    for (const entry of await readdir2(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      try {
+        const content = await readFile5(join4(root, entry.name, "change.md"), "utf8");
+        const parsed = parseFrontmatter(content, true);
+        if (parsed.metadata) {
+          result.set(entry.name, {
+            ...parsed.metadata,
+            __untrustedIntakeReference: containsUntrustedIntakePath(content)
+          });
+        }
+      } catch (error) {
+        if (!isMissingFileError(error)) {
+          throw error;
+        }
+      }
+    }
+    return result;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return /* @__PURE__ */ new Map();
+    }
+    throw error;
+  }
+}
+function resolveConceptPath(target, knowledgeRoot, input) {
+  const normalized = input.replace(/^\/+/, "");
+  const absolute = resolve5(target, normalized.startsWith("knowledge/") ? normalized : join4("knowledge", normalized));
+  const boundary = `${resolve5(knowledgeRoot)}${sep3}`;
+  if (!absolute.startsWith(boundary) || !absolute.toLowerCase().endsWith(".md")) {
+    throw new Error(`Knowledge concept path escapes knowledge/: ${input}`);
+  }
+  return absolute;
+}
+async function requireKnowledgeRepository(targetInput) {
+  const target = resolve5(targetInput);
+  const config = await readConfig(target);
+  if (config.profile !== "knowledge") {
+    throw new Error(`Knowledge command requires a knowledge repository: ${target}`);
+  }
+  return target;
+}
+function parseFrontmatter(content, required) {
+  const lines = content.split(/\r?\n/);
+  if (lines[0] !== "---") {
+    return {
+      body: content,
+      ...required ? { error: "concept must start with YAML frontmatter" } : {}
+    };
+  }
+  const end = lines.indexOf("---", 1);
+  if (end < 0) {
+    return { body: content, error: "frontmatter is not closed" };
+  }
+  try {
+    const metadata = parse(lines.slice(1, end).join("\n"));
+    if (!isRecord(metadata)) {
+      return { body: lines.slice(end + 1).join("\n"), error: "frontmatter must be a mapping" };
+    }
+    return { metadata, body: lines.slice(end + 1).join("\n") };
+  } catch (error) {
+    return { body: lines.slice(end + 1).join("\n"), error: `invalid YAML: ${errorMessage(error)}` };
+  }
+}
+function normalizeVerifications(value) {
+  if (Array.isArray(value)) {
+    return value.filter(isRecord);
+  }
+  return isRecord(value) ? [value] : [];
+}
+function footnoteData(body) {
+  const definitions = new Set(
+    [...body.matchAll(/^\[\^([A-Za-z0-9_-]+)\]:/gm)].map((match) => match[1])
+  );
+  const counts = /* @__PURE__ */ new Map();
+  for (const match of body.matchAll(/\[\^([A-Za-z0-9_-]+)\]/g)) {
+    const id = match[1];
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  const references = new Set(
+    [...counts].filter(([id, count2]) => count2 > (definitions.has(id) ? 1 : 0)).map(([id]) => id)
+  );
+  return { references, definitions };
+}
+function containsUntrustedIntakePath(content) {
+  return /(?:^|[\s("'`:=])(?:(?:\.\.\/|\.\/|\/)*(?:raw|intake)\/|(?:raw|intake):)[^\s)"'`]*/im.test(content);
+}
+function isPinnedCodeResource(value) {
+  return /^git:.+@[0-9a-f]{40}#[^#\s]+$/i.test(value);
+}
+function isVersionControlResource(value) {
+  return /^git:.+@[0-9a-f]{40}(?:#[^#\s]+)?$/i.test(value) || /^https?:\/\/\S+\/(?:pull|merge_requests|commit|commits)\/\S+$/i.test(value);
+}
+function isProjectChangeResource(value) {
+  return /^project-change:[a-z0-9][a-z0-9-]{0,95}#[A-Za-z0-9_./-]+$/.test(value);
+}
+function projectChangeRecord(resource, index, archiveOnly) {
+  const match = /^project-change:([^#]+)#/.exec(resource);
+  if (!match) {
+    return void 0;
+  }
+  const id = match[1];
+  return index.archive.get(id) ?? (!archiveOnly ? index.active.get(id) : void 0);
+}
+function hasApprovedHumanReview(metadata, requiredStage, actor) {
+  const review = recordValue(metadata.maintainer_review);
+  const stages = requiredStage ? [requiredStage] : ["framing", "completion"];
+  return stages.some((stage) => {
+    const entry = recordValue(review?.[stage]);
+    return entry?.status === "approved" && stringValue(entry.by).startsWith("human:") && (!actor || entry.by === actor) && isIsoDateTime(stringValue(entry.at));
+  });
+}
+function isActor(value) {
+  return /^(?:human:[^\s:]+|process:[^\s:]+|[^/\s]+\/[^/\s]+)$/.test(value);
+}
+function decodeUtf8(content) {
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(content);
+  return text;
+}
+function portable(path) {
+  return path.split(sep3).join("/");
+}
+function recordValue(value) {
+  return isRecord(value) ? value : void 0;
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function stringValue(value) {
+  return typeof value === "string" ? value : "";
+}
+function stringArray(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+}
+function isIsoDateTime(value) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+// src/doctor.ts
+async function runDoctor(targetInput, options = {}) {
+  const target = resolve6(targetInput);
+  const checks = [];
+  let config;
+  try {
+    config = await readConfig(target);
+    checks.push({ name: "config", status: "pass", message: `${config.profile} profile` });
+  } catch (error) {
+    checks.push({ name: "config", status: "fail", message: errorMessage(error) });
+    return { target, checks };
+  }
+  const gitRepository = isGitRepository(target);
+  checks.push({
+    name: "git",
+    status: gitRepository ? "pass" : "fail",
+    message: gitRepository ? "Git repository detected" : "Target is not a Git worktree"
+  });
+  if (config.profile === "leaf") {
+    const graphifyAvailable = options.graphifyAvailable ?? spawnSync2("graphify", ["--version"], { stdio: "ignore" }).status === 0;
+    checks.push({
+      name: "graphify-cli",
+      status: graphifyAvailable ? "pass" : "fail",
+      message: graphifyAvailable ? "Graphify is available" : "Graphify is not available"
+    });
+    checks.push(await pathCheck(
+      "graphify-graph",
+      join5(target, "graphify-out/graph.json"),
+      "warn",
+      "Graphify graph is ready",
+      "Graphify graph has not been built"
+    ));
+  }
+  if (config.skills?.scope === "project") {
+    for (const skill of skillsForProfile(config.profile)) {
+      if (config.skills.agents.includes("codex")) {
+        checks.push(await pathCheck(
+          `codex-skill-${skill}`,
+          join5(target, ".agents/skills", skill, "SKILL.md"),
+          "fail",
+          `Codex skill ${skill} is installed`,
+          `Codex skill ${skill} is missing`
+        ));
+      }
+      if (config.skills.agents.includes("claude")) {
+        checks.push(await pathCheck(
+          `claude-skill-${skill}`,
+          join5(target, ".claude/skills", skill, "SKILL.md"),
+          "fail",
+          `Claude skill ${skill} is installed`,
+          `Claude skill ${skill} is missing`
+        ));
+      }
+    }
+  } else if (config.skills?.scope === "user") {
+    checks.push({
+      name: "user-skills",
+      status: "warn",
+      message: "User-scope skills are managed by the skills CLI outside this repository"
+    });
+  }
+  const knowledgeRoot = resolveKnowledgeRoot(target, config);
+  const qmdAvailable = options.qmdAvailable ?? spawnSync2("qmd", ["--version"], { stdio: "ignore" }).status === 0;
+  checks.push({
+    name: "qmd-cli",
+    status: qmdAvailable ? "pass" : "fail",
+    message: qmdAvailable ? "QMD is available" : "QMD is missing; install it with bun install -g @tobilu/qmd"
+  });
+  checks.push(await pathCheck(
+    "qmd-index-config",
+    join5(knowledgeRoot, ".qmd/index.yml"),
+    "fail",
+    `Project-local QMD collections found at ${knowledgeRoot}`,
+    `Project-local QMD configuration is missing at ${knowledgeRoot}`
+  ));
+  checks.push(await pathCheck(
+    "knowledge",
+    join5(knowledgeRoot, "knowledge/index.md"),
+    "fail",
+    `Knowledge bundle found at ${knowledgeRoot}`,
+    `Knowledge bundle is missing at ${knowledgeRoot}`
+  ));
+  checks.push(await pathCheck(
+    "maintainer-guide",
+    join5(target, "PROJECT_WORKFLOW.md"),
+    "fail",
+    "Maintainer guide is present",
+    "PROJECT_WORKFLOW.md is missing"
+  ));
+  if (config.profile === "knowledge") {
+    for (const directory of [
+      "raw",
+      "intake/cases/active",
+      "intake/cases/archive",
+      "changes/active",
+      "changes/archive",
+      "changes/inbox"
+    ]) {
+      checks.push(await pathCheck(
+        `knowledge-${directory}`,
+        join5(target, directory),
+        "fail",
+        `${directory} exists`,
+        `${directory} is missing`
+      ));
+    }
+    try {
+      const validation = await validateKnowledge(target);
+      checks.push({
+        name: "curated-knowledge",
+        status: validation.valid ? "pass" : "fail",
+        message: validation.valid ? `${validation.files} curated Markdown file(s) satisfy the trust profile` : `${validation.errors.length} curated knowledge validation error(s)`
+      });
+    } catch (error) {
+      checks.push({
+        name: "curated-knowledge",
+        status: "fail",
+        message: errorMessage(error)
+      });
+    }
+  }
+  try {
+    const plan = await buildInstallPlan({
+      target,
+      profile: config.profile,
+      ...config.profile === "leaf" ? { knowledge: knowledgeRoot } : {},
+      ...config.skills ? { skills: config.skills } : {}
+    });
+    const conflicts = plan.operations.filter((operation) => operation.status === "conflict");
+    const pending = plan.operations.filter(
+      (operation) => operation.status === "create" || operation.status === "update"
+    );
+    if (conflicts.length > 0) {
+      checks.push({
+        name: "installation",
+        status: "fail",
+        message: `${conflicts.length} workflow conflict(s)`
+      });
+    } else if (pending.length > 0) {
+      checks.push({
+        name: "installation",
+        status: "warn",
+        message: `${pending.length} workflow update(s) pending`
+      });
+    } else {
+      checks.push({
+        name: "installation",
+        status: "pass",
+        message: "Workflow assets are current"
+      });
+    }
+  } catch (error) {
+    checks.push({ name: "installation", status: "fail", message: errorMessage(error) });
+  }
+  return { target, profile: config.profile, checks };
+}
+function doctorPassed(report) {
+  return report.checks.every((check) => check.status !== "fail");
+}
+async function pathCheck(name, path, missingStatus, presentMessage, missingMessage) {
+  try {
+    await access2(path, constants2.F_OK);
+    return { name, status: "pass", message: presentMessage };
+  } catch {
+    return { name, status: missingStatus, message: missingMessage };
+  }
+}
+
+// src/skill-installer.ts
+import { spawnSync as spawnSync3 } from "node:child_process";
+import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { dirname as dirname4, join as join6, resolve as resolve7 } from "node:path";
+function installSkills(options) {
+  if (options.scope === "none" || options.agents.length === 0) {
+    return;
+  }
+  if (options.yes) {
+    assertNonInteractiveInstallIsClean(options);
+  }
+  const cli = resolveSkillsCli();
+  const args = [
+    cli,
+    "add",
+    resolve7(options.distributionRoot),
+    ...skillsForProfile(options.profile).flatMap((skill) => ["--skill", skill]),
+    ...options.agents.flatMap((agent) => [
+      "--agent",
+      agent === "claude" ? "claude-code" : "codex"
+    ]),
+    "--copy",
+    ...options.scope === "user" ? ["--global"] : [],
+    ...options.yes ? ["--yes"] : []
+  ];
+  const runtime = runtimeCommand(cli, args.slice(1));
+  const result = spawnSync3(runtime.command, runtime.args, {
+    cwd: resolve7(options.target),
+    encoding: "utf8",
+    stdio: options.yes ? ["ignore", "pipe", "pipe"] : "inherit"
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const detail = options.yes ? result.stderr.trim() || result.stdout.trim() : "skills installer exited without completing";
+    throw new Error(`Skill installation failed: ${detail}`);
+  }
+}
+function assertNonInteractiveInstallIsClean(options) {
+  if (options.scope === "user") {
+    throw new Error(
+      "Refusing non-interactive user-scope skill replacement; rerun without --yes"
+    );
+  }
+  for (const skill of skillsForProfile(options.profile)) {
+    const paths = [
+      ...options.agents.includes("codex") ? [join6(options.target, ".agents/skills", skill)] : [],
+      ...options.agents.includes("claude") ? [join6(options.target, ".claude/skills", skill)] : []
+    ];
+    const existing = paths.find((path) => existsSync(path));
+    if (existing) {
+      throw new Error(
+        `Refusing non-interactive skill replacement at ${existing}; rerun without --yes`
+      );
+    }
+  }
+}
+function resolveSkillsCli() {
+  const require2 = createRequire(import.meta.url);
+  const packagePath = require2.resolve("skills/package.json");
+  return join6(dirname4(packagePath), "bin/cli.mjs");
+}
+function runtimeCommand(cli, args) {
+  if ("Deno" in globalThis) {
+    return { command: process.execPath, args: ["run", "-A", cli, ...args] };
+  }
+  return { command: process.execPath, args: [cli, ...args] };
+}
+
+// src/intake.ts
+import { spawnSync as spawnSync4 } from "node:child_process";
+import { constants as constants3 } from "node:fs";
+import {
+  access as access3,
+  mkdir as mkdir2,
+  readFile as readFile6,
+  readdir as readdir3,
+  rename as rename2,
+  writeFile as writeFile2
+} from "node:fs/promises";
+import { dirname as dirname5, join as join7, resolve as resolve8 } from "node:path";
+var SOURCE_STATUSES = /* @__PURE__ */ new Set([
+  "pending",
+  "reviewed",
+  "no-relevant-claims",
+  "needs-maintainer",
+  "unreadable"
+]);
+var CANDIDATE_STATUSES = /* @__PURE__ */ new Set([
+  "confirmed",
+  "rejected",
+  "unresolved"
+]);
+async function inventoryRaw(options) {
+  const target = await requireKnowledgeRepository2(options.target);
+  const baseline = resolveCommit(target, options.baseline ?? "HEAD");
+  const entries = readGitTree(target, baseline, ["raw"]);
+  const history = await readIntakeSourceHistory(target);
+  const byIdentity = /* @__PURE__ */ new Map();
+  const byPath = /* @__PURE__ */ new Map();
+  for (const source of history) {
+    const identity = `${source.path}\0${source.objectId}`;
+    byIdentity.set(identity, [...byIdentity.get(identity) ?? [], source]);
+    byPath.set(source.path, [...byPath.get(source.path) ?? [], source]);
+  }
+  return {
+    target,
+    baseline,
+    entries: entries.map((entry) => {
+      const exact = byIdentity.get(`${entry.path}\0${entry.objectId}`) ?? [];
+      return {
+        path: entry.path,
+        objectId: entry.objectId,
+        state: rawInventoryState(exact, byPath.get(entry.path) ?? []),
+        cases: exact.map(({ id, lifecycle, outcome, sourceStatus }) => ({
+          id,
+          lifecycle,
+          outcome,
+          sourceStatus
+        }))
+      };
+    }),
+    uncommitted: rawWorkingTreePaths(target)
+  };
+}
+async function beginIntakeCase(options) {
+  const target = await requireKnowledgeRepository2(options.target);
+  const pathspecs = normalizePathspecs(options.paths ?? ["raw"]);
+  assertScopeMatchesWorkingTree(target, options.baseline ?? "HEAD", pathspecs);
+  const baseline = resolveCommit(target, options.baseline ?? "HEAD");
+  const sources = readGitTree(target, baseline, pathspecs);
+  if (sources.length === 0) {
+    throw new Error(`Intake scope contains no Git-tracked files: ${pathspecs.join(", ")}`);
+  }
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug(options.slug)}`;
+  const activeRoot = join7(target, "intake/cases/active");
+  const id = await uniqueDirectoryId(activeRoot, base);
+  const directory = join7(activeRoot, id);
+  const path = join7(directory, "case.md");
+  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+  const template = await readFile6(
+    join7(
+      distributionRoot,
+      "skills/process-raw-intake/assets/intake-case.md"
+    ),
+    "utf8"
+  );
+  const document = parseCase(template);
+  const createdAt = now.toISOString();
+  document.metadata = {
+    ...document.metadata,
+    id,
+    title: options.title,
+    status: "active",
+    created_at: createdAt,
+    updated_at: createdAt,
+    baseline: {
+      repository: readRepositoryMetadata(target).repository,
+      commit: baseline,
+      paths: pathspecs
+    },
+    sources: sources.map((source) => ({
+      path: source.path,
+      object_id: source.objectId,
+      object_type: source.objectType,
+      mode: source.mode,
+      status: "pending",
+      candidate_ids: [],
+      note: "",
+      reviewed_by: "",
+      reviewed_at: ""
+    }))
+  };
+  await mkdir2(directory, { recursive: false });
+  await writeFile2(path, serializeCase(document), { encoding: "utf8", flag: "wx" });
+  return { id, path, baseline, files: sources.length };
+}
+async function markIntakeSource(options) {
+  const target = await requireKnowledgeRepository2(options.target);
+  if (!SOURCE_STATUSES.has(options.status) || options.status === "pending") {
+    throw new Error(
+      `Invalid final source status "${options.status}"; expected reviewed, no-relevant-claims, needs-maintainer, or unreadable`
+    );
+  }
+  const candidateIds = uniqueStrings(options.candidateIds ?? []);
+  if (options.status === "reviewed" && candidateIds.length === 0) {
+    throw new Error("reviewed status requires at least one --candidate <id>");
+  }
+  if (options.status !== "reviewed" && candidateIds.length > 0) {
+    throw new Error(`${options.status} status cannot record candidate IDs`);
+  }
+  if (!options.note.trim()) {
+    throw new Error(`${options.status} status requires --note <review result>`);
+  }
+  const casePath = intakeCasePath(target, "active", options.id);
+  const document = parseCase(await readFile6(casePath, "utf8"));
+  const sources = recordArray(document.metadata.sources);
+  const matches = sources.filter((source2) => stringValue2(source2.path) === options.path);
+  if (matches.length !== 1) {
+    throw new Error(
+      matches.length === 0 ? `Intake source is outside the frozen case scope: ${options.path}` : `Intake source path is duplicated in the case: ${options.path}`
+    );
+  }
+  const source = matches[0];
+  source.status = options.status;
+  source.candidate_ids = candidateIds;
+  source.note = options.note.trim();
+  source.reviewed_by = options.reviewedBy?.trim() || "workflow-agent/1";
+  source.reviewed_at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+  document.metadata.updated_at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+  await writeFile2(casePath, serializeCase(document), "utf8");
+  return {
+    id: options.id,
+    path: options.path,
+    status: options.status,
+    candidateIds
+  };
+}
+async function inspectIntakeCase(targetInput, id) {
+  const target = await requireKnowledgeRepository2(targetInput);
+  const path = intakeCasePath(target, "active", id);
+  const document = parseCase(await readFile6(path, "utf8"));
+  const issues = caseMetadataIssues(document.metadata);
+  const baseline = recordValue2(document.metadata.baseline);
+  const commit = stringValue2(baseline?.commit);
+  const pathspecs = stringArray2(baseline?.paths);
+  const sources = recordArray(document.metadata.sources);
+  if (commit && pathspecs.length > 0) {
+    try {
+      const expected = readGitTree(target, commit, normalizePathspecs(pathspecs));
+      issues.push(...compareTreeEntries(expected, sources));
+      try {
+        assertScopeMatchesWorkingTree(target, commit, pathspecs);
+      } catch (error) {
+        issues.push(errorMessage(error));
+      }
+    } catch (error) {
+      issues.push(errorMessage(error));
+    }
+  }
+  const candidateIds = new Set(
+    recordArray(document.metadata.candidate_claims).map((candidate) => stringValue2(candidate.id)).filter(Boolean)
+  );
+  const referenced = /* @__PURE__ */ new Set();
+  for (const source of sources) {
+    for (const candidateId of stringArray2(source.candidate_ids)) {
+      referenced.add(candidateId);
+      if (!candidateIds.has(candidateId)) {
+        issues.push(`${stringValue2(source.path)} references undefined candidate ${candidateId}`);
+      }
+    }
+  }
+  for (const candidateId of candidateIds) {
+    if (!referenced.has(candidateId)) {
+      issues.push(`candidate ${candidateId} is not linked from any scoped source`);
+    }
+  }
+  const promotion = recordValue2(document.metadata.promotion);
+  if (promotion?.status === "applied" && stringArray2(promotion.concepts).length > 0) {
+    const validation = await validateKnowledge(target, stringArray2(promotion.concepts));
+    issues.push(...validation.errors.map((issue) => `${issue.path}: ${issue.message}`));
+  }
+  return {
+    id,
+    path,
+    ...commit ? { baseline: commit } : {},
+    files: sources.length,
+    reviewed: sources.filter(
+      (source) => source.status === "reviewed" || source.status === "no-relevant-claims"
+    ).length,
+    issues: [...new Set(issues)]
+  };
+}
+async function closeIntakeCase(options) {
+  const target = await requireKnowledgeRepository2(options.target);
+  const path = intakeCasePath(target, "active", options.id);
+  const directory = dirname5(path);
+  const document = parseCase(await readFile6(path, "utf8"));
+  if (options.outcome === "completed") {
+    const inspected = await inspectIntakeCase(target, options.id);
+    if (inspected.issues.length > 0) {
+      throw new Error(`Completed intake case is blocked: ${inspected.issues.join("; ")}`);
+    }
+  }
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const archivePath = join7(target, "intake/cases/archive", options.id);
+  await assertPathAbsent(archivePath, "intake case archive");
+  document.metadata.status = options.outcome;
+  document.metadata.outcome = options.outcome;
+  document.metadata.closed_at = now.toISOString();
+  document.metadata.updated_at = now.toISOString();
+  await writeFile2(path, serializeCase(document), "utf8");
+  await mkdir2(dirname5(archivePath), { recursive: true });
+  await rename2(directory, archivePath);
+  return { id: options.id, outcome: options.outcome, archivePath };
+}
+function caseMetadataIssues(metadata) {
+  const issues = [];
+  const baseline = recordValue2(metadata.baseline);
+  const sources = recordArray(metadata.sources);
+  const candidates = recordArray(metadata.candidate_claims);
+  const promotion = recordValue2(metadata.promotion);
+  const omissionAudit = recordValue2(metadata.omission_audit);
+  if (metadata.status !== "active") {
+    issues.push("status must remain active until wfctl archives the case");
+  }
+  if (!stringValue2(baseline?.repository)) {
+    issues.push("baseline.repository is required");
+  }
+  if (!/^[0-9a-f]{40,64}$/i.test(stringValue2(baseline?.commit))) {
+    issues.push("baseline.commit must be a full Git object ID");
+  }
+  if (stringArray2(baseline?.paths).length === 0) {
+    issues.push("baseline.paths must contain the bounded raw pathspecs");
+  }
+  if (sources.length === 0) {
+    issues.push("sources must contain every file from the frozen Git scope");
+  }
+  const seenPaths = /* @__PURE__ */ new Set();
+  for (const [index, source] of sources.entries()) {
+    const prefix = `sources[${index}]`;
+    const path = stringValue2(source.path);
+    const status = stringValue2(source.status);
+    const candidatesForSource = stringArray2(source.candidate_ids);
+    if (!path.startsWith("raw/")) {
+      issues.push(`${prefix}.path must be under raw/`);
+    } else if (seenPaths.has(path)) {
+      issues.push(`${prefix}.path is duplicated: ${path}`);
+    } else {
+      seenPaths.add(path);
+    }
+    if (!/^[0-9a-f]{40,64}$/i.test(stringValue2(source.object_id))) {
+      issues.push(`${prefix}.object_id must be a full Git object ID`);
+    }
+    if (!SOURCE_STATUSES.has(status)) {
+      issues.push(`${prefix}.status is unknown: ${status}`);
+    } else if (status === "pending") {
+      issues.push(`${path}: source review is pending`);
+    } else if (status === "needs-maintainer" || status === "unreadable") {
+      issues.push(`${path}: source review is blocked as ${status}`);
+    }
+    if (status === "reviewed" && candidatesForSource.length === 0) {
+      issues.push(`${path}: reviewed source requires candidate_ids`);
+    }
+    if (status !== "reviewed" && candidatesForSource.length > 0) {
+      issues.push(`${path}: only reviewed sources may reference candidate_ids`);
+    }
+    if (status !== "pending" && !stringValue2(source.note).trim()) {
+      issues.push(`${path}: final source status requires a review note`);
+    }
+    if (status !== "pending" && (!stringValue2(source.reviewed_by) || !isIsoDateTime2(stringValue2(source.reviewed_at)))) {
+      issues.push(`${path}: final source status requires reviewer and ISO review time`);
+    }
+  }
+  const seenCandidates = /* @__PURE__ */ new Set();
+  for (const [index, candidate] of candidates.entries()) {
+    const prefix = `candidate_claims[${index}]`;
+    const id = stringValue2(candidate.id);
+    if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
+      issues.push(`${prefix}.id must be a stable lowercase identifier`);
+    } else if (seenCandidates.has(id)) {
+      issues.push(`${prefix}.id is duplicated: ${id}`);
+    } else {
+      seenCandidates.add(id);
+    }
+    if (!stringValue2(candidate.claim).trim()) {
+      issues.push(`${prefix}.claim is required`);
+    }
+    if (!stringValue2(candidate.authority).trim()) {
+      issues.push(`${prefix}.authority is required`);
+    }
+    const disposition = stringValue2(candidate.disposition);
+    if (!CANDIDATE_STATUSES.has(disposition)) {
+      issues.push(`${prefix}.disposition must be confirmed, rejected, or unresolved`);
+    } else if (disposition === "unresolved") {
+      issues.push(`${prefix}.disposition remains unresolved`);
+    }
+  }
+  if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
+    issues.push("promotion.status must be applied or not-needed");
+  } else if (promotion.status === "applied" && stringArray2(promotion.concepts).length === 0) {
+    issues.push("promotion.concepts must list promoted concept files");
+  } else if (promotion.status === "applied" && stringArray2(promotion.concepts).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))) {
+    issues.push("promotion.concepts must list concept files, not index.md or log.md");
+  } else if (promotion.status === "not-needed" && !stringValue2(promotion.reason).trim()) {
+    issues.push("promotion.reason must explain why no concept was promoted");
+  }
+  if (promotion?.status === "applied" && promotion.validation !== "passed") {
+    issues.push("promotion.validation must be passed for applied promotion");
+  }
+  if (promotion?.status === "not-needed" && promotion.validation !== "not-needed") {
+    issues.push("promotion.validation must be not-needed when no concept was promoted");
+  }
+  if (omissionAudit?.result !== "passed") {
+    issues.push("omission_audit.result must be passed");
+  }
+  return issues;
+}
+function compareTreeEntries(expected, declared) {
+  const issues = [];
+  const expectedByPath = new Map(expected.map((entry) => [entry.path, entry]));
+  const declaredByPath = new Map(
+    declared.map((entry) => [stringValue2(entry.path), entry])
+  );
+  for (const entry of expected) {
+    const source = declaredByPath.get(entry.path);
+    if (!source) {
+      issues.push(`frozen Git scope is missing source entry: ${entry.path}`);
+      continue;
+    }
+    if (source.object_id !== entry.objectId || source.object_type !== entry.objectType || source.mode !== entry.mode) {
+      issues.push(`frozen Git identity does not match baseline: ${entry.path}`);
+    }
+  }
+  for (const source of declared) {
+    const path = stringValue2(source.path);
+    if (!expectedByPath.has(path)) {
+      issues.push(`source is outside the frozen Git scope: ${path}`);
+    }
+  }
+  return issues;
+}
+async function readIntakeSourceHistory(target) {
+  const history = [];
+  for (const lifecycle of ["active", "archive"]) {
+    const root = join7(target, "intake/cases", lifecycle);
+    let entries;
+    try {
+      entries = await readdir3(root, { withFileTypes: true });
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        continue;
+      }
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const document = parseCase(
+        await readFile6(join7(root, entry.name, "case.md"), "utf8")
+      );
+      const outcome = stringValue2(document.metadata.outcome) || stringValue2(document.metadata.status);
+      for (const source of recordArray(document.metadata.sources)) {
+        const path = stringValue2(source.path);
+        const objectId = stringValue2(source.object_id);
+        if (!path || !objectId) {
+          continue;
+        }
+        history.push({
+          id: entry.name,
+          lifecycle,
+          outcome,
+          sourceStatus: stringValue2(source.status),
+          path,
+          objectId
+        });
+      }
+    }
+  }
+  return history;
+}
+function rawInventoryState(exact, samePath) {
+  if (exact.some(
+    (source) => source.sourceStatus === "needs-maintainer" || source.sourceStatus === "unreadable"
+  )) {
+    return "blocked";
+  }
+  if (exact.some((source) => source.lifecycle === "active")) {
+    return "active";
+  }
+  const completed = exact.filter(
+    (source) => source.lifecycle === "archive" && source.outcome === "completed"
+  );
+  if (completed.some((source) => source.sourceStatus === "reviewed")) {
+    return "reviewed";
+  }
+  if (completed.some((source) => source.sourceStatus === "no-relevant-claims")) {
+    return "no-relevant-claims";
+  }
+  if (exact.length > 0) {
+    return "unresolved";
+  }
+  if (samePath.length > 0) {
+    return "changed";
+  }
+  return "unseen";
+}
+function rawWorkingTreePaths(target) {
+  const output = git2(target, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
+    "--",
+    "raw"
+  ]);
+  const records = output.split("\0");
+  const paths = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record2 = records[index];
+    if (!record2) {
+      continue;
+    }
+    const status = record2.slice(0, 2);
+    const path = record2.slice(3);
+    if (path) {
+      paths.push(path);
+    }
+    if (status[0] === "R" || status[0] === "C") {
+      index += 1;
+    }
+  }
+  return uniqueStrings(paths).sort();
+}
+function readGitTree(target, commit, pathspecs) {
+  const output = git2(target, [
+    "ls-tree",
+    "-r",
+    "-z",
+    "--full-tree",
+    commit,
+    "--",
+    ...pathspecs
+  ]);
+  return output.split("\0").filter(Boolean).map((entry) => {
+    const separator = entry.indexOf("	");
+    if (separator < 0) {
+      throw new Error(`Cannot parse Git tree entry for intake scope: ${entry}`);
+    }
+    const [mode, objectType, objectId] = entry.slice(0, separator).split(" ");
+    const path = entry.slice(separator + 1);
+    if (!mode || !objectType || !objectId || !path) {
+      throw new Error(`Cannot parse Git tree entry for intake scope: ${entry}`);
+    }
+    return { mode, objectType, objectId, path };
+  }).sort((left, right) => left.path.localeCompare(right.path));
+}
+function assertScopeMatchesWorkingTree(target, baseline, pathspecs) {
+  const commit = resolveCommit(target, baseline);
+  const status = git2(target, [
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+    "--",
+    ...pathspecs
+  ]);
+  if (status) {
+    throw new Error(
+      "Selected raw scope has uncommitted changes; commit it before freezing an intake case"
+    );
+  }
+  const diff = spawnSync4(
+    "git",
+    ["-C", target, "diff", "--quiet", commit, "--", ...pathspecs],
+    { stdio: "ignore" }
+  );
+  if (diff.status === 1) {
+    throw new Error(
+      `Selected raw scope no longer matches baseline ${commit}; start from a matching revision`
+    );
+  }
+  if (diff.status !== 0) {
+    throw new Error("Git could not compare the selected raw scope with its baseline");
+  }
+}
+function resolveCommit(target, revision) {
+  const commit = git2(target, ["rev-parse", "--verify", `${revision}^{commit}`]);
+  if (!/^[0-9a-f]{40,64}$/i.test(commit)) {
+    throw new Error(`Git did not return a full commit ID for ${revision}`);
+  }
+  return commit;
+}
+function git2(target, args) {
+  const result = spawnSync4("git", ["-C", target, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 64 * 1024 * 1024
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `Git intake operation failed: ${result.stderr.trim() || args.join(" ")}`
+    );
+  }
+  return result.stdout.replace(/\n$/, "");
+}
+function normalizePathspecs(values) {
+  const normalized = uniqueStrings(values.map(
+    (value) => value.trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "")
+  ));
+  if (normalized.length === 0) {
+    throw new Error("At least one raw path is required");
+  }
+  for (const value of normalized) {
+    if (value !== "raw" && !value.startsWith("raw/") || value.startsWith("/") || value.split("/").includes("..")) {
+      throw new Error(`Intake paths must remain under raw/: ${value}`);
+    }
+  }
+  return normalized.sort();
+}
+async function requireKnowledgeRepository2(targetInput) {
+  const target = resolve8(targetInput);
+  const config = await readConfig(target);
+  if (config.profile !== "knowledge") {
+    throw new Error(`Knowledge command requires a knowledge repository: ${target}`);
+  }
+  return target;
+}
+function parseCase(content) {
+  const lines = content.split(/\r?\n/);
+  if (lines[0] !== "---") {
+    throw new Error("Intake case must start with YAML frontmatter");
+  }
+  const end = lines.indexOf("---", 1);
+  if (end < 0) {
+    throw new Error("Intake case frontmatter is not closed");
+  }
+  try {
+    const metadata = parse(lines.slice(1, end).join("\n"));
+    if (!isRecord2(metadata)) {
+      throw new Error("Intake case frontmatter must be a mapping");
+    }
+    return { metadata, body: lines.slice(end + 1).join("\n") };
+  } catch (error) {
+    throw new Error(`Invalid intake case frontmatter: ${errorMessage(error)}`);
+  }
+}
+function serializeCase(document) {
+  return `---
+${stringify3(document.metadata, { lineWidth: 0 }).trimEnd()}
+---
+
+${document.body.trimStart()}`;
+}
+function intakeCasePath(target, state, id) {
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
+    throw new Error(`Invalid intake case id: ${id}`);
+  }
+  return join7(target, "intake/cases", state, id, "case.md");
+}
+async function uniqueDirectoryId(root, base) {
+  for (let index = 1; index < 1e3; index += 1) {
+    const candidate = index === 1 ? base : `${base}-${index}`;
+    try {
+      await access3(join7(root, candidate), constants3.F_OK);
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return candidate;
+      }
+      throw error;
+    }
+  }
+  throw new Error(`Cannot allocate a unique intake case id for ${base}`);
+}
+async function assertPathAbsent(path, label) {
+  try {
+    await access3(path, constants3.F_OK);
+    throw new Error(`${label} already exists: ${path}`);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+function normalizeSlug(value) {
+  const slug = value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!slug) {
+    throw new Error("Intake case slug must contain ASCII letters or digits");
+  }
+  return slug.slice(0, 64);
+}
+function recordArray(value) {
+  return Array.isArray(value) ? value.filter(isRecord2) : [];
+}
+function recordValue2(value) {
+  return isRecord2(value) ? value : void 0;
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function stringValue2(value) {
+  return typeof value === "string" ? value : "";
+}
+function stringArray2(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+}
+function uniqueStrings(values) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+function isIsoDateTime2(value) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+// src/work.ts
+import {
+  access as access4,
+  mkdir as mkdir3,
+  readdir as readdir4,
+  readFile as readFile7,
+  realpath,
+  rename as rename3,
+  unlink,
+  writeFile as writeFile3
+} from "node:fs/promises";
+import { constants as constants4 } from "node:fs";
+import { dirname as dirname6, join as join8, resolve as resolve9, sep as sep4 } from "node:path";
+
 // src/work-spec.ts
 function parseWorkSpec(content) {
   const lines = content.split(/\r?\n/);
@@ -12375,7 +13601,7 @@ function parseWorkSpec(content) {
     throw new Error("Work spec frontmatter is not closed");
   }
   const metadata = parse(lines.slice(1, end).join("\n"));
-  if (!isRecord(metadata)) {
+  if (!isRecord3(metadata)) {
     throw new Error("Work spec frontmatter must be a mapping");
   }
   return {
@@ -12393,11 +13619,11 @@ ${document.body.trimStart()}`;
 function completionIssues(document, requireCompleted) {
   const issues = [];
   const metadata = document.metadata;
-  const mode = stringValue(metadata.mode);
-  const verification = recordValue(metadata.verification);
-  const alignment = recordValue(metadata.knowledge_alignment);
-  const graph = recordValue(metadata.graph_evidence);
-  const maintainerReview = recordValue(metadata.maintainer_review);
+  const verification = recordValue3(metadata.verification);
+  const alignment = recordValue3(metadata.knowledge_alignment);
+  const graph = recordValue3(metadata.graph_evidence);
+  const maintainerReview = recordValue3(metadata.maintainer_review);
+  const promotion = recordValue3(metadata.knowledge_promotion);
   if (requireCompleted && metadata.status !== "completed") {
     issues.push("status must be completed");
   }
@@ -12419,92 +13645,116 @@ function completionIssues(document, requireCompleted) {
   if (!Array.isArray(verification?.unresolved) || verification.unresolved.length > 0) {
     issues.push("verification.unresolved must be an empty list");
   }
-  if (mode !== "handoff") {
-    if (!nonEmptyArray(alignment?.reviewed)) {
-      issues.push("knowledge_alignment.reviewed must contain at least one concept");
-    }
-    if (!nonEmptyArray(graph?.queries)) {
-      issues.push("graph_evidence.queries must contain at least one query");
-    }
-    if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
-      issues.push("knowledge_alignment.conflicts must be resolved");
-    }
-    reviewIssues("framing", maintainerReview, issues);
-    reviewIssues("completion", maintainerReview, issues);
+  if (!nonEmptyArray(alignment?.reviewed)) {
+    issues.push("knowledge_alignment.reviewed must contain at least one concept");
+  }
+  if (!nonEmptyArray(graph?.queries)) {
+    issues.push("graph_evidence.queries must contain at least one query");
+  }
+  if (!/^[0-9a-f]{40}$/i.test(stringValue3(verification?.revision))) {
+    issues.push("verification.revision must pin the verified Git commit");
+  }
+  if (!stringValue3(verification?.worktree_id).trim()) {
+    issues.push("verification.worktree_id must identify the verified checkout");
+  }
+  if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
+    issues.push("knowledge_alignment.conflicts must be resolved");
+  }
+  reviewIssues("framing", maintainerReview, issues);
+  reviewIssues("completion", maintainerReview, issues);
+  if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
+    issues.push("knowledge_promotion.status must be applied or not-needed");
+  } else if (promotion.status === "applied" && !nonEmptyStringArray(promotion.concepts)) {
+    issues.push("knowledge_promotion.concepts must list every updated concept");
+  } else if (promotion.status === "applied" && promotion.concepts.some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))) {
+    issues.push("knowledge_promotion.concepts must list concept files, not index.md or log.md");
+  } else if (promotion.status === "not-needed" && !stringValue3(promotion.reason).trim()) {
+    issues.push("knowledge_promotion.reason must explain why no current knowledge changed");
+  }
+  if (containsUntrustedIntakePath2(document.body) || containsUntrustedIntakePath2(JSON.stringify(document.metadata))) {
+    issues.push("project change records must not cite raw/ or intake/ paths");
   }
   return issues;
 }
-function isRecord(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function recordValue(value) {
-  return isRecord(value) ? value : void 0;
+function recordValue3(value) {
+  return isRecord3(value) ? value : void 0;
 }
 function nonEmptyArray(value) {
   return Array.isArray(value) && value.length > 0;
 }
-function stringValue(value) {
+function nonEmptyStringArray(value) {
+  return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
+}
+function stringValue3(value) {
   return typeof value === "string" ? value : "";
 }
+function containsUntrustedIntakePath2(content) {
+  return /(?:^|[\s("'`:=])(?:(?:\.\.\/|\.\/|\/)*(?:raw|intake)\/|(?:raw|intake):)[^\s)"'`]*/im.test(content);
+}
 function reviewIssues(stage, review, issues) {
-  const entry = recordValue(review?.[stage]);
+  const entry = recordValue3(review?.[stage]);
   const prefix = `maintainer_review.${stage}`;
   if (entry?.status !== "approved") {
     issues.push(`${prefix}.status must be approved`);
   }
-  if (!stringValue(entry?.by).startsWith("human:")) {
+  if (!stringValue3(entry?.by).startsWith("human:")) {
     issues.push(`${prefix}.by must identify a human actor`);
   }
-  if (!isIsoDateTime(stringValue(entry?.at))) {
+  if (!isIsoDateTime3(stringValue3(entry?.at))) {
     issues.push(`${prefix}.at must be an ISO 8601 datetime`);
   }
 }
-function isIsoDateTime(value) {
+function isIsoDateTime3(value) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
 
 // src/work.ts
 async function beginWork(options) {
-  const target = resolve7(options.target);
+  const metadata = readRepositoryMetadata(resolve9(options.target));
+  const target = metadata.root;
   const config = await readConfig(target);
   if (config.profile !== "leaf") {
     throw new Error("Work records must be started from a leaf repository");
   }
-  if (options.mode !== "handoff") {
-    if (!options.knowledgeRef?.trim()) {
-      throw new Error("Full and slice work require --knowledge-ref <path>");
-    }
-    if (!options.graphQuery?.trim()) {
-      throw new Error("Full and slice work require --graph-query <query>");
-    }
-    await assertGraphReady(target);
-  }
-  const knowledgeRoot = resolveKnowledgeRoot(target, config);
-  await assertKnowledgeRoot(knowledgeRoot);
+  const configuredKnowledgeRoot = resolveKnowledgeRoot(target, config);
+  await assertKnowledgeRoot(configuredKnowledgeRoot);
+  const knowledgeRoot = await realpath(configuredKnowledgeRoot);
   if (options.knowledgeRef) {
     await assertKnowledgeReference(knowledgeRoot, options.knowledgeRef);
   }
-  const metadata = readRepositoryMetadata(target);
   const now = options.now ?? /* @__PURE__ */ new Date();
   const date = now.toISOString().slice(0, 10);
-  const slug = normalizeSlug(options.slug);
-  const id = await uniqueWorkId(join6(knowledgeRoot, "changes/active"), `${date}-${slug}`);
+  const slug = normalizeSlug2(options.slug);
+  const id = await uniqueWorkId(join8(knowledgeRoot, "changes/active"), `${date}-${slug}`);
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const templatePath = join6(
+  const templatePath = join8(
     distributionRoot,
     "skills/manage-project-work/assets/work-spec.md"
   );
-  const template = parseWorkSpec(await readFile6(templatePath, "utf8"));
+  const template = parseWorkSpec(await readFile7(templatePath, "utf8"));
   const createdAt = now.toISOString();
+  const activeDirectory = join8(knowledgeRoot, "changes/active", id);
+  const specPath = join8(activeDirectory, "change.md");
+  const pointerPath = join8(target, ".workflow/current", `${id}.json`);
   template.metadata = {
     ...template.metadata,
     id,
     title: options.title,
     mode: options.mode,
-    status: "active",
+    status: "shaping",
     created_at: createdAt,
     updated_at: createdAt,
     source: metadata,
+    workspace: {
+      code_root: target,
+      knowledge_root: knowledgeRoot,
+      spec_path: specPath,
+      pointer_path: pointerPath,
+      worktree_id: metadata.worktreeId
+    },
     knowledge_alignment: {
       reviewed: options.knowledgeRef ? [options.knowledgeRef] : [],
       conflicts: []
@@ -12513,145 +13763,276 @@ async function beginWork(options) {
       queries: options.graphQuery ? [options.graphQuery] : []
     }
   };
-  const activeDirectory = join6(knowledgeRoot, "changes/active", id);
-  const specPath = join6(activeDirectory, "SPEC.md");
-  const pointerPath = join6(target, ".workflow/current", `${id}.json`);
   await mkdir3(activeDirectory, { recursive: false });
   await writeFile3(specPath, serializeWorkSpec(template), { encoding: "utf8", flag: "wx" });
-  await mkdir3(dirname4(pointerPath), { recursive: true });
+  await mkdir3(dirname6(pointerPath), { recursive: true });
   await writeFile3(
     pointerPath,
     `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 3,
       id,
+      codeRoot: target,
+      knowledgeRoot,
       spec: portableRelative(target, specPath),
-      createdAt
+      createdAt,
+      source: metadata
     }, null, 2)}
 `,
     { encoding: "utf8", flag: "wx" }
   );
-  return { id, specPath, pointerPath };
+  return { id, codeRoot: target, knowledgeRoot, specPath, pointerPath };
+}
+async function createHandoff(options) {
+  const metadata = readRepositoryMetadata(resolve9(options.target));
+  const target = metadata.root;
+  const config = await readConfig(target);
+  if (config.profile !== "leaf") {
+    throw new Error("Handoffs must be created from a leaf repository");
+  }
+  const configuredKnowledgeRoot = resolveKnowledgeRoot(target, config);
+  await assertKnowledgeRoot(configuredKnowledgeRoot);
+  const knowledgeRoot = await realpath(configuredKnowledgeRoot);
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug2(options.slug)}`;
+  const inboxRoot = join8(knowledgeRoot, "changes/inbox");
+  const id = await uniqueFileId(inboxRoot, base);
+  const path = join8(inboxRoot, `${id}.md`);
+  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+  const template = parseWorkSpec(await readFile7(
+    join8(distributionRoot, "skills/manage-project-work/assets/handoff.md"),
+    "utf8"
+  ));
+  template.metadata = {
+    ...template.metadata,
+    id,
+    title: options.title,
+    status: "inbox",
+    created_at: now.toISOString(),
+    source: metadata
+  };
+  await writeFile3(path, serializeWorkSpec(template), {
+    encoding: "utf8",
+    flag: "wx"
+  });
+  return { id, codeRoot: target, knowledgeRoot, path };
 }
 async function verifyWork(targetInput, id) {
-  const target = resolve7(targetInput);
-  const config = await readConfig(target);
-  const knowledgeRoot = resolveKnowledgeRoot(target, config);
-  const specPath = join6(knowledgeRoot, "changes/active", id, "SPEC.md");
-  const document = parseWorkSpec(await readFile6(specPath, "utf8"));
+  const context = await requireWorkContext(targetInput, id);
+  const document = parseWorkSpec(await readFile7(context.specPath, "utf8"));
+  const issues = completionIssues(document, false);
+  if (context.currentSource.dirty) {
+    issues.push("bound source checkout must be clean for final verification");
+  }
+  const verification = record(document.metadata.verification);
+  if (verification?.revision !== context.currentSource.commit) {
+    issues.push("verification.revision does not match the current bound commit");
+  }
+  if (verification?.worktree_id !== context.currentSource.worktreeId) {
+    issues.push("verification.worktree_id does not match the current bound worktree");
+  }
   return {
     id,
-    specPath,
-    issues: completionIssues(document, false)
+    specPath: context.specPath,
+    issues
   };
 }
-async function flushWork(options) {
-  const target = resolve7(options.target);
-  const config = await readConfig(target);
-  const knowledgeRoot = resolveKnowledgeRoot(target, config);
-  const activeDirectory = join6(knowledgeRoot, "changes/active", options.id);
-  const specPath = join6(activeDirectory, "SPEC.md");
-  const document = parseWorkSpec(await readFile6(specPath, "utf8"));
+async function closeWork(options) {
+  const context = await requireWorkContext(options.target, options.id);
+  const target = context.codeRoot;
+  const knowledgeRoot = context.knowledgeRoot;
+  const activeDirectory = dirname6(context.specPath);
+  const document = parseWorkSpec(await readFile7(context.specPath, "utf8"));
+  const metadata = readRepositoryMetadata(target);
   if (options.outcome === "completed") {
     const issues = completionIssues(document, true);
     if (issues.length > 0) {
-      throw new Error(`Completed flush is blocked: ${issues.join("; ")}`);
+      throw new Error(`Completed close is blocked: ${issues.join("; ")}`);
+    }
+    const promotion = record(document.metadata.knowledge_promotion);
+    if (promotion?.status === "applied") {
+      const concepts = stringArray3(promotion.concepts);
+      const validation = await validateKnowledge(knowledgeRoot, concepts);
+      if (!validation.valid) {
+        throw new Error(
+          `Completed close is blocked by curated knowledge validation: ${validation.errors.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}`
+        );
+      }
+    }
+    if (metadata.dirty) {
+      throw new Error(
+        "Completed close is blocked: the bound source checkout is dirty; commit or otherwise preserve the verified implementation, then verify again"
+      );
+    }
+    const verification = record(document.metadata.verification);
+    if (verification?.revision !== metadata.commit) {
+      throw new Error(
+        `Completed close is blocked: verification.revision ${String(verification?.revision ?? "")} does not match current commit ${metadata.commit}`
+      );
+    }
+    if (verification?.worktree_id !== metadata.worktreeId) {
+      throw new Error(
+        `Completed close is blocked: verification.worktree_id ${String(verification?.worktree_id ?? "")} does not match current worktree ${metadata.worktreeId}`
+      );
     }
   }
-  const archivePath = join6(knowledgeRoot, "changes/archive", options.id);
+  const archivePath = join8(knowledgeRoot, "changes/archive", options.id);
   await assertAbsent(archivePath, "archive");
   const now = options.now ?? /* @__PURE__ */ new Date();
-  const metadata = readRepositoryMetadata(target);
-  const rawDirectory = join6(
-    knowledgeRoot,
-    "raw",
-    now.toISOString().slice(0, 4),
-    now.toISOString().slice(5, 7)
-  );
-  const rawName = `${compactTimestamp(now)}--${safeName(metadata.repository)}--${safeName(options.id)}.md`;
-  const rawPath = join6(rawDirectory, rawName);
-  await assertAbsent(rawPath, "raw record");
-  const raw = buildRawRecord(document, metadata, options.outcome, options.id, now);
-  await mkdir3(rawDirectory, { recursive: true });
-  await writeFile3(rawPath, raw, { encoding: "utf8", flag: "wx" });
-  await mkdir3(dirname4(archivePath), { recursive: true });
+  document.metadata.status = options.outcome;
+  document.metadata.outcome = options.outcome;
+  document.metadata.closed_at = now.toISOString();
+  document.metadata.updated_at = now.toISOString();
+  document.metadata.source_at_close = metadata;
+  await writeFile3(context.specPath, serializeWorkSpec(document), "utf8");
+  await mkdir3(dirname6(archivePath), { recursive: true });
   await rename3(activeDirectory, archivePath);
-  await removePointer(join6(target, ".workflow/current", `${options.id}.json`));
-  return { id: options.id, outcome: options.outcome, rawPath, archivePath };
+  await removePointer(join8(target, ".workflow/current", `${options.id}.json`));
+  return { id: options.id, outcome: options.outcome, archivePath };
 }
-function buildRawRecord(document, repository, outcome, id, now) {
-  const title = typeof document.metadata.title === "string" ? document.metadata.title : id;
-  const frontmatter = {
-    type: "Work Record",
-    title,
-    description: `${outcome} project work from ${repository.repository}`,
-    status: outcome === "completed" ? "stable" : outcome === "partial" ? "draft" : "deprecated",
-    tags: ["workflow", "raw", outcome],
-    generated: {
-      by: `wfctl/${WORKFLOW_VERSION}`,
-      at: now.toISOString()
-    },
-    sources: [
-      {
-        id: "source-repository",
-        resource: repository.remote ? `${repository.remote}#${repository.commit}` : `repository:${repository.repository}@${repository.commit}`,
-        title: repository.repository
-      }
-    ],
-    workflow: {
-      id,
-      outcome,
-      flushed_at: now.toISOString(),
-      source: repository,
-      spec: document.metadata
-    }
-  };
-  return `---
-${stringify3(frontmatter, { lineWidth: 0 }).trimEnd()}
----
-
-${document.body.trimStart()}`;
-}
-async function assertGraphReady(target) {
-  try {
-    await access3(join6(target, "graphify-out/graph.json"), constants3.R_OK);
-  } catch {
-    throw new Error("Graphify graph is missing; build graphify-out/graph.json before starting work");
+async function workStatus(targetInput, id) {
+  const source = readRepositoryMetadata(resolve9(targetInput));
+  const target = source.root;
+  const pointerRoot = join8(target, ".workflow/current");
+  const ids = id ? [id] : (await readdir4(pointerRoot, { withFileTypes: true })).filter((entry) => entry.isFile() && entry.name.endsWith(".json")).map((entry) => entry.name.slice(0, -5)).sort();
+  const results = [];
+  for (const workId of ids) {
+    results.push(await inspectWorkContext(target, source, workId));
   }
+  return results;
 }
 async function assertKnowledgeRoot(root) {
   try {
-    await access3(join6(root, "knowledge/index.md"), constants3.R_OK);
+    await access4(join8(root, "knowledge/index.md"), constants4.R_OK);
   } catch {
     throw new Error(`Knowledge repository is not initialized: ${root}`);
   }
 }
 async function assertKnowledgeReference(root, reference) {
   const normalized = reference.replace(/^\/+/, "");
-  const absolute = resolve7(root, normalized);
-  const boundary = `${resolve7(root)}${sep3}`;
-  if (absolute !== resolve7(root) && !absolute.startsWith(boundary)) {
-    throw new Error("Knowledge reference escapes the knowledge repository");
+  const absolute = resolve9(root, normalized);
+  const knowledgeRoot = join8(root, "knowledge");
+  if (!inside(knowledgeRoot, absolute) || !absolute.toLowerCase().endsWith(".md")) {
+    throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
   }
   try {
-    await access3(absolute, constants3.R_OK);
+    await access4(absolute, constants4.R_OK);
   } catch (error) {
     throw new Error(`Knowledge reference is not readable: ${reference} (${errorMessage(error)})`);
   }
+}
+async function requireWorkContext(targetInput, id) {
+  const results = await workStatus(targetInput, id);
+  const context = results[0];
+  if (!context) {
+    throw new Error(`Active work pointer not found: ${id}`);
+  }
+  if (!context.valid) {
+    throw new Error(
+      `Work context mismatch for ${id}: ${context.issues.join("; ")}`
+    );
+  }
+  return context;
+}
+async function inspectWorkContext(target, currentSource, id) {
+  const pointerPath = join8(target, ".workflow/current", `${id}.json`);
+  const raw = JSON.parse(await readFile7(pointerPath, "utf8"));
+  if (raw.schemaVersion !== 3 || raw.id !== id || !raw.codeRoot || !raw.knowledgeRoot || !raw.spec || !raw.source) {
+    throw new Error(`Unsupported or malformed active work pointer: ${pointerPath}`);
+  }
+  const pointer = raw;
+  const specPath = resolve9(target, pointer.spec);
+  const issues = [];
+  if (pointer.codeRoot !== currentSource.root) {
+    issues.push(
+      `current checkout is ${currentSource.root}, but work is bound to ${pointer.codeRoot}`
+    );
+  }
+  if (pointer.source.repository !== currentSource.repository) {
+    issues.push(
+      `current repository is ${currentSource.repository}, but work is bound to ${pointer.source.repository}`
+    );
+  }
+  if (pointer.source.worktreeId !== currentSource.worktreeId) {
+    issues.push(
+      `current worktree is ${currentSource.worktreeId}, but work is bound to ${pointer.source.worktreeId}`
+    );
+  }
+  const config = await readConfig(target);
+  const configuredKnowledgeRoot = await realpath(resolveKnowledgeRoot(target, config));
+  if (pointer.knowledgeRoot !== configuredKnowledgeRoot) {
+    issues.push(
+      `configured knowledge root is ${configuredKnowledgeRoot}, but work is bound to ${pointer.knowledgeRoot}`
+    );
+  }
+  const activeRoot = join8(pointer.knowledgeRoot, "changes/active");
+  if (!inside(activeRoot, specPath)) {
+    issues.push(`spec path is outside the active work root: ${specPath}`);
+  }
+  try {
+    const document = parseWorkSpec(await readFile7(specPath, "utf8"));
+    const workspace = record(document.metadata.workspace);
+    if (workspace?.code_root !== pointer.codeRoot) {
+      issues.push("spec workspace.code_root does not match the leaf pointer");
+    }
+    if (workspace?.knowledge_root !== pointer.knowledgeRoot) {
+      issues.push("spec workspace.knowledge_root does not match the leaf pointer");
+    }
+    if (workspace?.spec_path !== specPath) {
+      issues.push("spec workspace.spec_path does not match its actual path");
+    }
+    if (workspace?.worktree_id !== pointer.source.worktreeId) {
+      issues.push("spec workspace.worktree_id does not match the leaf pointer");
+    }
+  } catch (error) {
+    issues.push(`cannot read bound spec: ${errorMessage(error)}`);
+  }
+  return {
+    id,
+    valid: issues.length === 0,
+    codeRoot: pointer.codeRoot,
+    knowledgeRoot: pointer.knowledgeRoot,
+    specPath,
+    pointerPath,
+    source: pointer.source,
+    currentSource,
+    issues
+  };
+}
+function inside(parent, child) {
+  const boundary = `${resolve9(parent)}${sep4}`;
+  return resolve9(child).startsWith(boundary);
+}
+function record(value) {
+  return typeof value === "object" && value !== null ? value : void 0;
+}
+function stringArray3(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
 }
 async function uniqueWorkId(activeRoot, base) {
   for (let index = 1; index < 1e3; index += 1) {
     const candidate = index === 1 ? base : `${base}-${index}`;
     try {
-      await access3(join6(activeRoot, candidate), constants3.F_OK);
+      await access4(join8(activeRoot, candidate), constants4.F_OK);
     } catch {
       return candidate;
     }
   }
   throw new Error(`Cannot allocate a unique work id for ${base}`);
 }
+async function uniqueFileId(root, base) {
+  for (let index = 1; index < 1e3; index += 1) {
+    const candidate = index === 1 ? base : `${base}-${index}`;
+    try {
+      await access4(join8(root, `${candidate}.md`), constants4.F_OK);
+    } catch {
+      return candidate;
+    }
+  }
+  throw new Error(`Cannot allocate a unique handoff id for ${base}`);
+}
 async function assertAbsent(path, label) {
   try {
-    await access3(path, constants3.F_OK);
+    await access4(path, constants4.F_OK);
     throw new Error(`${label} already exists: ${path}`);
   } catch (error) {
     if (isMissingFileError(error)) {
@@ -12669,22 +14050,18 @@ async function removePointer(path) {
     }
   }
 }
-function normalizeSlug(value) {
+function normalizeSlug2(value) {
   const slug = value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   if (!slug) {
     throw new Error("Work slug must contain ASCII letters or digits");
   }
   return slug.slice(0, 64);
 }
-function compactTimestamp(value) {
-  return value.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-}
-function safeName(value) {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-}
 
 // src/cli.ts
-var main = new Command().name("wfctl").version(WORKFLOW_VERSION).description("Bootstrap and enforce a shared agent project workflow.").throwErrors().command("plan", installCommand("Show the exact installation plan.", false)).command("apply", installCommand("Apply a conflict-free installation plan.", true)).command("init", installCommand("Initialize a workflow environment.", true)).command("sync", syncCommand()).command("bootstrap", bootstrapCommand()).command("render", renderCommand()).command("doctor", doctorCommand()).command("work", workCommand());
+var main = new Command().name("wfctl").version(WORKFLOW_VERSION).description(
+  "Install and operate a shared project workflow.\n\nSetup:\n  init       Install or repair a knowledge or leaf repository\n  check      Validate the current workflow installation\n\nMaintenance:\n  upgrade    Upgrade installed rules, skills, templates, and guides\n\nKnowledge operations:\n  knowledge  Inventory raw input, run bounded cases, and validate knowledge\n\nProject work:\n  work       Create handoffs or start, verify, and close change records"
+).throwErrors().command("init", initCommand()).command("check", checkCommand()).command("upgrade", upgradeCommand()).command("knowledge", knowledgeCommand()).command("work", workCommand());
 try {
   await main.parse(process.argv.slice(2));
 } catch (error) {
@@ -12692,150 +14069,177 @@ try {
 `);
   process.exitCode = 1;
 }
-function installCommand(description, apply) {
-  return new Command().description(description).arguments("<profile:string>").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-k, --knowledge <path:string>", "Knowledge repository for a leaf profile.").option("--json", "Print machine-readable JSON.").action(async (options, profileValue) => {
-    const profile = parseProfile(profileValue);
-    const target = resolve8(options.target);
-    const knowledge = options.knowledge ? resolve8(options.knowledge) : void 0;
-    const plan = await buildInstallPlan({
+function initCommand() {
+  return new Command().description(
+    "Install or repair a workflow environment.\nRepository kind: knowledge (central knowledge base) or leaf (source checkout)."
+  ).arguments("[knowledge|leaf:string]").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-k, --knowledge <path:string>", "Knowledge repository for a leaf.").option("-s, --skills <scope:string>", "Skill scope: project, user, or none.").option("-a, --agents <agents:string>", "Skill targets: codex, claude, or both.").option(
+    "--print-instructions <artifact:string>",
+    "Print agents or guide content for manual integration, then exit."
+  ).option("--dry-run", "Preview all wfctl changes without applying them.").option("-y, --yes", "Accept defaults and safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options, profileValue) => {
+    const target = resolve10(options.target);
+    const promptOptions = {
+      yes: options.yes === true,
+      json: options.json === true
+    };
+    const profile = await resolveProfile(profileValue, target, promptOptions);
+    let knowledge = options.knowledge ? resolve10(options.knowledge) : await installedKnowledgePath(target, profile);
+    if (profile === "leaf" && !knowledge && !promptOptions.yes && !promptOptions.json && interactive()) {
+      const answer = await ask("Knowledge repository path: ");
+      if (answer) {
+        knowledge = resolve10(answer);
+      }
+    }
+    if (options.printInstructions) {
+      await printInstructions(
+        options.printInstructions,
+        target,
+        profile,
+        knowledge
+      );
+      return;
+    }
+    const preferences = await resolveInstallPreferences({
+      ...options.skills ? { skills: options.skills } : {},
+      ...options.agents ? { agents: options.agents } : {},
+      ...promptOptions
+    });
+    await installWorkflow({
       target,
       profile,
-      ...knowledge ? { knowledge } : {}
+      ...knowledge ? { knowledge } : {},
+      ...preferences,
+      dryRun: options.dryRun === true,
+      yes: options.yes === true,
+      json: options.json === true
     });
-    if (!apply) {
-      printPlan(plan, options.json === true);
-      if (plan.operations.some((operation) => operation.status === "conflict")) {
-        process.exitCode = 2;
-      }
-      return;
-    }
-    const result = await applyInstallPlan(plan);
-    if (options.json) {
-      printJson({ ...summarizePlan(plan), applied: result });
-    } else {
-      process.stdout.write(
-        `Applied ${result.changed} change(s) to ${plan.target}
-State: ${result.statePath}
-Guide: ${resolve8(plan.target, "PROJECT_WORKFLOW.md")}
-`
-      );
-    }
   });
 }
-function syncCommand() {
-  return new Command().description("Synchronize an existing workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--plan", "Show the plan without applying it.").option("--json", "Print machine-readable JSON.").action(async (options) => {
-    const target = resolve8(options.target);
+function upgradeCommand() {
+  return new Command().description("Upgrade an existing workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-s, --skills <scope:string>", "Change skill scope: project, user, or none.").option("-a, --agents <agents:string>", "Change skill targets: codex, claude, or both.").option("--dry-run", "Preview all wfctl changes without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
+    const target = resolve10(options.target);
     const config = await readConfig(target);
+    const scope = options.skills ? parseSkillScope(options.skills) : config.skills?.scope ?? "project";
+    const agents = options.agents ? parseAgentTargets(options.agents) : config.skills?.agents ?? ["codex", "claude"];
     const knowledge = config.profile === "leaf" ? resolveKnowledgeRoot(target, config) : void 0;
-    const plan = await buildInstallPlan({
+    await installWorkflow({
       target,
       profile: config.profile,
-      ...knowledge ? { knowledge } : {}
+      ...knowledge ? { knowledge } : {},
+      scope,
+      agents,
+      dryRun: options.dryRun === true,
+      yes: options.yes === true,
+      json: options.json === true
     });
-    if (options.plan) {
-      printPlan(plan, options.json === true);
-      if (plan.operations.some((operation) => operation.status === "conflict")) {
-        process.exitCode = 2;
-      }
-      return;
-    }
-    const result = await applyInstallPlan(plan);
-    if (options.json) {
-      printJson({ ...summarizePlan(plan), applied: result });
-    } else {
-      process.stdout.write(`Synchronized ${result.changed} change(s) in ${target}
-`);
-    }
   });
 }
-function bootstrapCommand() {
-  return new Command().description("Install the user-level setup skill for clean repositories.").command("plan", bootstrapActionCommand(false)).command("install", bootstrapActionCommand(true));
-}
-function bootstrapActionCommand(apply) {
-  return new Command().description(
-    apply ? "Install or safely update the user-level setup skill." : "Show the user-level setup skill installation plan."
-  ).option("--agent <agent:string>", "codex, claude, or both.", { default: "both" }).option("--codex-skills-root <path:string>", "Override the Codex user skills root.").option("--claude-skills-root <path:string>", "Override the Claude user skills root.").option("--json", "Print machine-readable JSON.").action(async (options) => {
-    const plan = await buildBootstrapPlan({
-      agent: parseBootstrapAgent(options.agent),
-      ...options.codexSkillsRoot ? { codexSkillsRoot: resolve8(options.codexSkillsRoot) } : {},
-      ...options.claudeSkillsRoot ? { claudeSkillsRoot: resolve8(options.claudeSkillsRoot) } : {}
-    });
-    if (!apply) {
-      printBootstrapPlan(plan, options.json === true);
-      if (plan.operations.some((operation) => operation.status === "conflict")) {
-        process.exitCode = 2;
-      }
-      return;
-    }
-    const result = await applyBootstrapPlan(plan);
-    if (options.json) {
-      printJson({ ...summarizeBootstrapPlan(plan), applied: result });
+async function installWorkflow(input) {
+  if (input.json && !input.dryRun && !input.yes) {
+    throw new Error("--json requires --dry-run or --yes");
+  }
+  const distributionRoot = await findDistributionRoot();
+  const plan = await buildInstallPlan({
+    target: input.target,
+    profile: input.profile,
+    ...input.knowledge ? { knowledge: input.knowledge } : {},
+    distributionRoot,
+    skills: { scope: input.scope, agents: input.agents }
+  });
+  if (input.dryRun) {
+    if (input.json) {
+      printJson({
+        ...summarizePlan(plan),
+        skills: skillSummary(input),
+        applied: false
+      });
     } else {
-      process.stdout.write(
-        `Installed bootstrap skill with ${result.changed} change(s)
-${result.statePaths.map((path) => `State: ${path}`).join("\n")}
+      printPlan(plan);
+      printSkillSummary(input);
+    }
+    if (plan.operations.some((operation) => operation.status === "conflict")) {
+      process.exitCode = 2;
+    }
+    return;
+  }
+  if (!input.json) {
+    printPlan(plan);
+    printSkillSummary(input);
+  }
+  const resolved = await resolveConflicts(plan, input.yes || input.json);
+  if (!input.yes && !input.json && !await confirm("Continue with installation?")) {
+    throw new Error("Installation stopped by user");
+  }
+  installSkills({
+    target: input.target,
+    distributionRoot,
+    profile: input.profile,
+    scope: input.scope,
+    agents: input.agents,
+    yes: input.yes || input.json
+  });
+  const applied = await applyInstallPlan(resolved);
+  const report = await runDoctor(input.target);
+  if (input.json) {
+    printJson({
+      ...summarizePlan(resolved),
+      skills: skillSummary(input),
+      applied,
+      check: report
+    });
+  } else {
+    process.stdout.write(
+      `Installed ${applied.changed} workflow change(s) in ${resolved.target}
+Guide: ${resolve10(resolved.target, "PROJECT_WORKFLOW.md")}
 `
-      );
+    );
+    for (const backup of applied.backups) {
+      process.stdout.write(`Backup: ${backup}
+`);
     }
-  });
+    printCheck(report);
+  }
+  if (!doctorPassed(report)) {
+    process.exitCode = 2;
+  }
 }
-function renderCommand() {
-  return new Command().description("Render text for manual integration.").command(
-    "agents",
-    new Command().description("Render the wfctl AGENTS.md / CLAUDE.md managed block.").option("-p, --profile <profile:string>", "knowledge or leaf.", { required: true }).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-k, --knowledge <path:string>", "Knowledge repository for a leaf profile.").action(async (options) => {
-      const profile = parseProfile(options.profile);
-      const target = resolve8(options.target);
-      const config = createConfig(
-        profile,
-        target,
-        options.knowledge ? resolve8(options.knowledge) : void 0
-      );
-      const distributionRoot = await findDistributionRoot();
-      const body = await renderAgentInstructions(
-        distributionRoot,
-        profile,
-        config.knowledge?.path
-      );
-      process.stdout.write(`<!-- wfctl:begin -->
-${body}
-<!-- wfctl:end -->
-`);
-    })
-  ).command(
-    "guide",
-    new Command().description("Render the maintainer-facing project workflow guide.").option("-p, --profile <profile:string>", "knowledge or leaf.", { required: true }).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-k, --knowledge <path:string>", "Knowledge repository for a leaf profile.").action(async (options) => {
-      const profile = parseProfile(options.profile);
-      const target = resolve8(options.target);
-      const config = createConfig(
-        profile,
-        target,
-        options.knowledge ? resolve8(options.knowledge) : void 0
-      );
-      const distributionRoot = await findDistributionRoot();
-      const guide = await renderMaintainerGuide(
-        distributionRoot,
-        profile,
-        config.knowledge?.path
-      );
-      process.stdout.write(`<!-- wfctl:begin -->
-${guide}
-<!-- wfctl:end -->
-`);
-    })
+async function resolveConflicts(plan, nonInteractive) {
+  const conflicts = plan.operations.filter(
+    (operation) => operation.status === "conflict"
   );
+  if (conflicts.length === 0) {
+    return plan;
+  }
+  const hard = conflicts.filter((operation) => !operation.replaceable);
+  if (hard.length > 0) {
+    throw new Error(
+      `Resolve structural conflict(s) before installation: ${hard.map((operation) => operation.path).join(", ")}`
+    );
+  }
+  if (nonInteractive) {
+    throw new Error(
+      `Refusing non-interactive replacement of conflict(s): ${conflicts.map((operation) => operation.path).join(", ")}`
+    );
+  }
+  for (const operation of conflicts) {
+    const replace = await confirm(
+      `Replace ${operation.path} with the canonical version after creating a backup?`
+    );
+    if (!replace) {
+      throw new Error(`Installation stopped at conflict: ${operation.path}`);
+    }
+    operation.status = "update";
+    operation.reason = "explicit replacement with backup";
+    operation.backup = true;
+  }
+  return plan;
 }
-function doctorCommand() {
-  return new Command().description("Diagnose a workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+function checkCommand() {
+  return new Command().description("Validate a workflow installation and its required dependencies.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
     const report = await runDoctor(options.target);
     if (options.json) {
       printJson(report);
     } else {
-      process.stdout.write(`Workflow doctor: ${report.target}
-`);
-      for (const check of report.checks) {
-        process.stdout.write(`${check.status.toUpperCase().padEnd(4)} ${check.name}: ${check.message}
-`);
-      }
+      printCheck(report);
     }
     if (!doctorPassed(report)) {
       process.exitCode = 2;
@@ -12843,9 +14247,31 @@ function doctorCommand() {
   });
 }
 function workCommand() {
-  return new Command().description("Manage central project work records.").command(
-    "begin",
-    new Command().description("Create one canonical living spec in the knowledge repository.").arguments("<slug:string>").option("-t, --target <path:string>", "Leaf repository.", { default: "." }).option("--title <title:string>", "Human-readable work title.", { required: true }).option("--mode <mode:string>", "full, slice, or handoff.", { default: "full" }).option("--knowledge-ref <path:string>", "Reviewed curated knowledge concept.").option("--graph-query <query:string>", "Graphify query used before framing.").option("--json", "Print machine-readable JSON.").action(async (options, slug) => {
+  return new Command().description("Manage central change records bound to exact leaf checkouts.").command(
+    "handoff",
+    new Command().description("Create a lightweight, non-authoritative inbox handoff.").arguments("<slug:string>").option("-t, --target <path:string>", "Leaf checkout.", { default: "." }).option("--title <title:string>", "Human-readable handoff title.", {
+      required: true
+    }).option("--json", "Print machine-readable JSON.").action(async (options, slug) => {
+      const result = await createHandoff({
+        target: options.target,
+        slug,
+        title: options.title
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Created ${result.id}
+Code root: ${result.codeRoot}
+Knowledge root: ${result.knowledgeRoot}
+Handoff: ${result.path}
+`
+        );
+      }
+    })
+  ).command(
+    "start",
+    new Command().description("Start a shaping record before significant-task discussion continues.").arguments("<slug:string>").option("-t, --target <path:string>", "Leaf checkout.", { default: "." }).option("--title <title:string>", "Human-readable work title.", { required: true }).option("--mode <mode:string>", "full or slice.", { default: "full" }).option("--knowledge-ref <path:string>", "Already-reviewed curated concept, if known.").option("--graph-query <query:string>", "Already-run Graphify query, if available.").option("--json", "Print machine-readable JSON.").action(async (options, slug) => {
       const result = await beginWork({
         target: options.target,
         slug,
@@ -12857,14 +14283,48 @@ function workCommand() {
       if (options.json) {
         printJson(result);
       } else {
-        process.stdout.write(`Created ${result.id}
+        process.stdout.write(
+          `Created ${result.id}
+Code root: ${result.codeRoot}
+Knowledge root: ${result.knowledgeRoot}
 Spec: ${result.specPath}
+Pointer: ${result.pointerPath}
+`
+        );
+      }
+    })
+  ).command(
+    "status",
+    new Command().description("Show and validate the code-root/spec binding.").arguments("[id:string]").option("-t, --target <path:string>", "Leaf checkout.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+      const results = await workStatus(options.target, id);
+      if (options.json) {
+        printJson(results);
+      } else if (results.length === 0) {
+        process.stdout.write("No active work records for this checkout.\n");
+      } else {
+        for (const result of results) {
+          process.stdout.write(
+            `${result.valid ? "VALID" : "INVALID"} ${result.id}
+Code root: ${result.codeRoot}
+Knowledge root: ${result.knowledgeRoot}
+Spec: ${result.specPath}
+Worktree: ${result.currentSource.worktreeId} (${result.currentSource.branch})
+Revision: ${result.currentSource.commit} (${result.currentSource.dirty ? "dirty" : "clean"})
+`
+          );
+          for (const issue of result.issues) {
+            process.stdout.write(`- ${issue}
 `);
+          }
+        }
+      }
+      if (results.some((result) => !result.valid)) {
+        process.exitCode = 2;
       }
     })
   ).command(
     "verify",
-    new Command().description("Check the structural completion gate for a living spec.").arguments("<id:string>").option("-t, --target <path:string>", "Leaf repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+    new Command().description("Check the structural completion gate for a bound change record.").arguments("<id:string>").option("-t, --target <path:string>", "Bound leaf checkout.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
       const result = await verifyWork(options.target, id);
       if (options.json) {
         printJson(result);
@@ -12884,11 +14344,11 @@ Spec: ${result.specPath}
       }
     })
   ).command(
-    "flush",
-    new Command().description("Archive a living spec and emit an immutable raw work record.").arguments("<id:string>").option("-t, --target <path:string>", "Leaf repository.", { default: "." }).option("--outcome <outcome:string>", "completed, partial, or abandoned.", {
+    "close",
+    new Command().description("Archive a bound change record after its required gates pass.").arguments("<id:string>").option("-t, --target <path:string>", "Bound leaf checkout.", { default: "." }).option("--outcome <outcome:string>", "completed, partial, or abandoned.", {
       required: true
     }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
-      const result = await flushWork({
+      const result = await closeWork({
         target: options.target,
         id,
         outcome: parseOutcome(options.outcome)
@@ -12897,8 +14357,7 @@ Spec: ${result.specPath}
         printJson(result);
       } else {
         process.stdout.write(
-          `Flushed ${result.id} as ${result.outcome}
-Raw: ${result.rawPath}
+          `Closed ${result.id} as ${result.outcome}
 Archive: ${result.archivePath}
 `
         );
@@ -12906,21 +14365,266 @@ Archive: ${result.archivePath}
     })
   );
 }
+function knowledgeCommand() {
+  return new Command().description(
+    "Operate the knowledge trust boundary.\nraw/ is continuous untrusted intake; cases freeze Git coverage; knowledge/ is curated truth.\nQMD provides retrieval directly and is not wrapped by wfctl."
+  ).command("raw", knowledgeRawCommand()).command("case", knowledgeCaseCommand()).command(
+    "validate",
+    new Command().description("Validate curated knowledge against the strict workflow trust profile.").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--concept <path:string>", "Validate one concept path.", { collect: true }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+      const concepts = Array.isArray(options.concept) ? options.concept : options.concept ? [options.concept] : void 0;
+      const result = await validateKnowledge(options.target, concepts);
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Curated knowledge: ${result.valid ? "valid" : "invalid"} (${result.files} file(s))
+`
+        );
+        for (const issue of result.errors) {
+          process.stdout.write(`ERROR ${issue.path}: ${issue.message}
+`);
+        }
+        for (const issue of result.warnings) {
+          process.stdout.write(`WARN  ${issue.path}: ${issue.message}
+`);
+        }
+      }
+      if (!result.valid) {
+        process.exitCode = 2;
+      }
+    })
+  );
+}
+function knowledgeRawCommand() {
+  return new Command().description("Inventory committed raw blobs without interpreting their meaning.").command(
+    "inventory",
+    new Command().description("Classify each raw path and Git blob against intake case coverage.").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--baseline <commitish:string>", "Git baseline.", { default: "HEAD" }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+      const result = await inventoryRaw({
+        target: options.target,
+        baseline: options.baseline
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Raw inventory at ${result.baseline}
+Committed files: ${result.entries.length}
+`
+        );
+        for (const entry of result.entries) {
+          process.stdout.write(
+            `${entry.state.padEnd(18)} ${entry.path} ${entry.objectId}
+`
+          );
+        }
+        if (result.uncommitted.length > 0) {
+          process.stdout.write("Uncommitted raw paths (commit before intake):\n");
+          for (const path of result.uncommitted) {
+            process.stdout.write(`- ${path}
+`);
+          }
+        }
+      }
+    })
+  );
+}
+function knowledgeCaseCommand() {
+  return new Command().description("Manage bounded raw-intake cases frozen to exact Git blobs.").command(
+    "start",
+    new Command().description("Freeze a Git-tracked raw scope and create its review ledger.").arguments("<slug:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--title <title:string>", "Human-readable bounded topic.", { required: true }).option("--baseline <commitish:string>", "Git baseline.", { default: "HEAD" }).option(
+      "--path <path:string>",
+      "Tracked path under raw/; repeat to define the scope. Defaults to raw/.",
+      { collect: true }
+    ).option("--json", "Print machine-readable JSON.").action(async (options, slug) => {
+      const paths = Array.isArray(options.path) ? options.path : options.path ? [options.path] : void 0;
+      const result = await beginIntakeCase({
+        target: options.target,
+        slug,
+        title: options.title,
+        baseline: options.baseline,
+        ...paths ? { paths } : {}
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Created ${result.id}
+Case: ${result.path}
+Baseline: ${result.baseline}
+Files: ${result.files}
+`
+        );
+      }
+    })
+  ).command(
+    "mark",
+    new Command().description("Record the complete review result for one frozen source file.").arguments("<id:string> <path:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option(
+      "--status <status:string>",
+      "reviewed, no-relevant-claims, needs-maintainer, or unreadable.",
+      { required: true }
+    ).option("--candidate <id:string>", "Candidate claim ID; repeat as needed.", {
+      collect: true
+    }).option("--note <text:string>", "Full-file review result.", { required: true }).option("--by <actor:string>", "Reviewing agent actor.", {
+      default: "workflow-agent/1"
+    }).option("--json", "Print machine-readable JSON.").action(async (options, id, path) => {
+      const candidateIds = Array.isArray(options.candidate) ? options.candidate : options.candidate ? [options.candidate] : [];
+      const result = await markIntakeSource({
+        target: options.target,
+        id,
+        path,
+        status: options.status,
+        candidateIds,
+        note: options.note,
+        reviewedBy: options.by
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Marked ${result.path} as ${result.status} in ${result.id}
+`
+        );
+      }
+    })
+  ).command(
+    "check",
+    new Command().description("Check frozen Git coverage, reviews, candidates, and promotion state.").arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+      const result = await inspectIntakeCase(options.target, id);
+      if (options.json) {
+        printJson(result);
+      } else if (result.issues.length === 0) {
+        process.stdout.write(
+          `Intake case gate passed: ${result.path}
+Files reviewed: ${result.reviewed}/${result.files}
+`
+        );
+      } else {
+        process.stdout.write(`Intake case gate failed: ${result.path}
+`);
+        process.stdout.write(`Files reviewed: ${result.reviewed}/${result.files}
+`);
+        for (const issue of result.issues) {
+          process.stdout.write(`- ${issue}
+`);
+        }
+      }
+      if (result.issues.length > 0) {
+        process.exitCode = 2;
+      }
+    })
+  ).command(
+    "close",
+    new Command().description("Archive a bounded intake case with its honest outcome.").arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--outcome <outcome:string>", "completed, partial, or abandoned.", {
+      required: true
+    }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+      const result = await closeIntakeCase({
+        target: options.target,
+        id,
+        outcome: parseOutcome(options.outcome)
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Closed ${result.id} as ${result.outcome}
+Archive: ${result.archivePath}
+`
+        );
+      }
+    })
+  );
+}
+async function resolveProfile(value, target, options) {
+  if (value) {
+    return parseProfile(value);
+  }
+  try {
+    return (await readConfig(target)).profile;
+  } catch {
+    if (options.yes || options.json || !interactive()) {
+      throw new Error(
+        "Repository kind is required: wfctl init knowledge or wfctl init leaf"
+      );
+    }
+    return parseProfile(
+      await ask("Repository kind [knowledge/leaf]: ")
+    );
+  }
+}
+async function installedKnowledgePath(target, profile) {
+  if (profile === "knowledge") {
+    return void 0;
+  }
+  try {
+    const config = await readConfig(target);
+    return resolveKnowledgeRoot(target, config);
+  } catch {
+    return void 0;
+  }
+}
+async function printInstructions(artifact, target, profile, knowledge) {
+  if (artifact !== "agents" && artifact !== "guide") {
+    throw new Error(
+      `Invalid instruction artifact "${artifact}"; expected agents or guide`
+    );
+  }
+  const config = createConfig(profile, target, knowledge);
+  const distributionRoot = await findDistributionRoot();
+  const body = artifact === "agents" ? await renderAgentInstructions(
+    distributionRoot,
+    profile,
+    config.knowledge?.path
+  ) : await renderMaintainerGuide(
+    distributionRoot,
+    profile,
+    config.knowledge?.path
+  );
+  process.stdout.write(`<!-- wfctl:begin -->
+${body}
+<!-- wfctl:end -->
+`);
+}
+async function resolveInstallPreferences(options) {
+  let scope = options.skills ? parseSkillScope(options.skills) : void 0;
+  if (!scope && !options.yes && !options.json && interactive()) {
+    const answer = await ask("Skill scope [project/user/none] (project): ");
+    scope = answer ? parseSkillScope(answer) : "project";
+  }
+  scope ??= "project";
+  if (scope === "none") {
+    return { scope, agents: [] };
+  }
+  let agents = options.agents ? parseAgentTargets(options.agents) : void 0;
+  if (!agents && !options.yes && !options.json && interactive()) {
+    const answer = await ask("Install for [both/codex/claude] (both): ");
+    agents = answer ? parseAgentTargets(answer) : ["codex", "claude"];
+  }
+  return { scope, agents: agents ?? ["codex", "claude"] };
+}
 function parseProfile(value) {
   if (value !== "knowledge" && value !== "leaf") {
-    throw new Error(`Invalid profile "${value}"; expected knowledge or leaf`);
+    throw new Error(`Invalid repository kind "${value}"; expected knowledge or leaf`);
   }
   return value;
 }
-function parseBootstrapAgent(value) {
-  if (value !== "codex" && value !== "claude" && value !== "both") {
-    throw new Error(`Invalid agent "${value}"; expected codex, claude, or both`);
+function parseSkillScope(value) {
+  if (value !== "project" && value !== "user" && value !== "none") {
+    throw new Error(`Invalid skill scope "${value}"; expected project, user, or none`);
   }
   return value;
+}
+function parseAgentTargets(value) {
+  if (value === "both") {
+    return ["codex", "claude"];
+  }
+  if (value === "codex" || value === "claude") {
+    return [value];
+  }
+  throw new Error(`Invalid agent target "${value}"; expected codex, claude, or both`);
 }
 function parseWorkMode(value) {
-  if (value !== "full" && value !== "slice" && value !== "handoff") {
-    throw new Error(`Invalid mode "${value}"; expected full, slice, or handoff`);
+  if (value !== "full" && value !== "slice") {
+    throw new Error(`Invalid mode "${value}"; expected full or slice`);
   }
   return value;
 }
@@ -12930,34 +14634,67 @@ function parseOutcome(value) {
   }
   return value;
 }
-function printPlan(plan, json) {
+function printPlan(plan) {
   const summary = summarizePlan(plan);
-  if (json) {
-    printJson(summary);
-    return;
-  }
-  process.stdout.write(`Workflow plan: ${plan.profile} -> ${plan.target}
-`);
+  process.stdout.write(
+    `Workflow preview: ${plan.profile} -> ${plan.target}
+Create ${summary.counts.create ?? 0}, update ${summary.counts.update ?? 0}, unchanged ${summary.counts.unchanged ?? 0}, conflicts ${summary.counts.conflict ?? 0}
+`
+  );
   for (const operation of plan.operations) {
+    if (operation.status === "unchanged") {
+      continue;
+    }
     process.stdout.write(
-      `${operation.status.toUpperCase().padEnd(9)} ${operation.kind.padEnd(13)} ${operation.path} \u2014 ${operation.reason}
+      `${operation.status.toUpperCase().padEnd(9)} ${operation.path} \u2014 ${operation.reason}
 `
     );
   }
 }
-function printBootstrapPlan(plan, json) {
-  if (json) {
-    printJson(summarizeBootstrapPlan(plan));
+function skillSummary(input) {
+  return {
+    scope: input.scope,
+    agents: input.agents,
+    installer: input.scope === "none" ? "disabled" : "skills@1.5.9"
+  };
+}
+function printSkillSummary(input) {
+  if (input.scope === "none") {
+    process.stdout.write("Skills: not installed\n");
     return;
   }
-  process.stdout.write(`Bootstrap skill plan: ${plan.agent}
+  process.stdout.write(
+    `Skills: ${input.scope} scope for ${input.agents.join(", ")} via skills CLI
+`
+  );
+}
+function printCheck(report) {
+  process.stdout.write(`Workflow check: ${report.target}
 `);
-  for (const operation of plan.operations) {
+  for (const check of report.checks) {
     process.stdout.write(
-      `${operation.status.toUpperCase().padEnd(9)} ${operation.agent.padEnd(7)} ${operation.path} \u2014 ${operation.reason}
+      `${check.status.toUpperCase().padEnd(4)} ${check.name}: ${check.message}
 `
     );
   }
+}
+async function confirm(question) {
+  if (!interactive()) {
+    return false;
+  }
+  const answer = (await ask(`${question} [y/N] `)).toLowerCase();
+  return answer === "y" || answer === "yes";
+}
+async function ask(question) {
+  const reader = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return (await reader.question(question)).trim();
+  } finally {
+    reader.close();
+  }
+}
+function interactive() {
+  return process.stdin.isTTY === true && process.stdout.isTTY === true;
 }
 function printJson(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}

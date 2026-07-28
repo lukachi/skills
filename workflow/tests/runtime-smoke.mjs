@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readlinkSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,9 +16,21 @@ const cases = [
   { name: "bun", command: "bun", args: ["dist/cli.js", "--version"] },
   { name: "deno", command: "deno", args: ["run", "-A", "dist/cli.js", "--version"] },
 ];
+const toolRoot = mkdtempSync(join(tmpdir(), "wfctl-tools-"));
+const bin = join(toolRoot, "bin");
+mkdirSync(bin);
+writeFileSync(join(bin, "qmd"), "#!/bin/sh\nexit 0\n");
+chmodSync(join(bin, "qmd"), 0o755);
+const testEnv = {
+  ...process.env,
+  PATH: `${bin}:${process.env.PATH ?? ""}`,
+};
 
 for (const runtime of cases) {
-  const result = spawnSync(runtime.command, runtime.args, { encoding: "utf8" });
+  const result = spawnSync(runtime.command, runtime.args, {
+    encoding: "utf8",
+    env: testEnv,
+  });
   if (result.error?.code === "ENOENT") {
     throw new Error(`${runtime.name} is required for the wfctl runtime matrix`);
   }
@@ -23,19 +42,70 @@ for (const runtime of cases) {
   assert.match(result.stdout, /0\.1\.0/, `${runtime.name} did not print wfctl version`);
 
   const target = mkdtempSync(join(tmpdir(), `wfctl-${runtime.name}-`));
+  spawnSync("git", ["-C", target, "init", "-q"]);
   const planArgs = runtime.name === "deno"
-    ? ["run", "-A", "dist/cli.js", "plan", "knowledge", "--target", target, "--json"]
-    : ["dist/cli.js", "plan", "knowledge", "--target", target, "--json"];
-  const plan = spawnSync(runtime.command, planArgs, { encoding: "utf8" });
-  assert.equal(plan.status, 0, `${runtime.name} plan failed:\n${plan.stderr || plan.stdout}`);
+    ? [
+      "run",
+      "-A",
+      "dist/cli.js",
+      "init",
+      "knowledge",
+      "--target",
+      target,
+      "--skills",
+      "none",
+      "--dry-run",
+      "--json",
+    ]
+    : [
+      "dist/cli.js",
+      "init",
+      "knowledge",
+      "--target",
+      target,
+      "--skills",
+      "none",
+      "--dry-run",
+      "--json",
+    ];
+  const plan = spawnSync(runtime.command, planArgs, {
+    encoding: "utf8",
+    env: testEnv,
+  });
+  assert.equal(plan.status, 0, `${runtime.name} preview failed:\n${plan.stderr || plan.stdout}`);
   const parsed = JSON.parse(plan.stdout);
   assert.equal(parsed.profile, "knowledge");
   assert.ok(parsed.counts.create > 0);
 
   const applyArgs = runtime.name === "deno"
-    ? ["run", "-A", "dist/cli.js", "init", "knowledge", "--target", target, "--json"]
-    : ["dist/cli.js", "init", "knowledge", "--target", target, "--json"];
-  const applied = spawnSync(runtime.command, applyArgs, { encoding: "utf8" });
+    ? [
+      "run",
+      "-A",
+      "dist/cli.js",
+      "init",
+      "knowledge",
+      "--target",
+      target,
+      "--skills",
+      "none",
+      "--yes",
+      "--json",
+    ]
+    : [
+      "dist/cli.js",
+      "init",
+      "knowledge",
+      "--target",
+      target,
+      "--skills",
+      "none",
+      "--yes",
+      "--json",
+    ];
+  const applied = spawnSync(runtime.command, applyArgs, {
+    encoding: "utf8",
+    env: testEnv,
+  });
   assert.equal(
     applied.status,
     0,
@@ -45,11 +115,14 @@ for (const runtime of cases) {
   assert.equal(existsSync(join(target, "PROJECT_WORKFLOW.md")), true);
   assert.equal(readlinkSync(join(target, "CLAUDE.md")), "AGENTS.md");
 
-  const converged = spawnSync(runtime.command, planArgs, { encoding: "utf8" });
+  const converged = spawnSync(runtime.command, planArgs, {
+    encoding: "utf8",
+    env: testEnv,
+  });
   assert.equal(
     converged.status,
     0,
-    `${runtime.name} converged plan failed:\n${converged.stderr || converged.stdout}`,
+    `${runtime.name} converged preview failed:\n${converged.stderr || converged.stdout}`,
   );
   assert.equal(JSON.parse(converged.stdout).counts.create, 0);
   process.stdout.write(`${runtime.name}: ok\n`);

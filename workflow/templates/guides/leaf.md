@@ -4,24 +4,40 @@
 The curated project knowledge for this repository is at
 `{{KNOWLEDGE_PATH}}`.
 
-At the start of significant work, ask the agent to show the framing review
-packet after Graphify analysis and knowledge alignment. During implementation,
-review only material deviations or new decisions. At the end, ask for the
-completion review packet before accepting the completed outcome.
+At the start of significant work, the agent first creates a shaping record so
+the discussion cannot disappear after compaction. It then performs Graphify
+code analysis and QMD-assisted current-knowledge alignment before presenting
+the framing packet. QMD runs from the configured knowledge root and searches
+only its `knowledge` collection by default. At the end, review the verification
+and knowledge delta before accepting completion.
 
-Typical commands used by the agent:
+The agent typically runs:
 
 ```sh
-wfctl work begin <slug> \
+wfctl work start <slug> \
   --title "<outcome>" \
-  --mode full \
-  --knowledge-ref knowledge/<relevant-concept>.md \
-  --graph-query "<relationship question>"
+  --mode full
 
+wfctl work status <work-id>
 wfctl work verify <work-id>
-wfctl work flush <work-id> --outcome completed
+wfctl work close <work-id> --outcome completed
 ```
 
-The canonical spec remains in the knowledge repository under
-`changes/active/`. This leaf contains only a pointer under `.workflow/current/`;
-do not create a competing local spec.
+The canonical change/spec/progress file remains under `changes/active/` in the
+knowledge repository. This leaf stores only a pointer in `.workflow/current/`.
+
+`wfctl work status` reports two intentionally different paths:
+
+- `Code root`: the exact leaf checkout or linked worktree where implementation
+  may be read and modified.
+- `Spec`: the exact central change file where specification and progress are
+  maintained.
+
+The agent must never infer another checkout from repository name, branch, Git
+common directory, or spec location. A worktree mismatch blocks verification
+and close.
+
+During discussion, every material change to requirements, constraints,
+alternatives, decisions, scope, risk, questions, or next action is written to
+the same spec before work continues. On resume, the agent reads that full file
+rather than relying on remembered chat.

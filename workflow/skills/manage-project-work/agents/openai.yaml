@@ -1,4 +1,4 @@
 interface:
   display_name: "Manage Project Work"
-  short_description: "Drive one living spec and progress file"
-  default_prompt: "Use $manage-project-work to classify this task and maintain its living specification and progress."
+  short_description: "Persist shaping and bind work to one spec"
+  default_prompt: "Use $manage-project-work to create the shaping record early, bind the exact code checkout, and persist material discussion and progress."

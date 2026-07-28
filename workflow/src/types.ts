@@ -3,13 +3,19 @@ export const CONFIG_SCHEMA_VERSION = 1;
 export const STATE_SCHEMA_VERSION = 1;
 
 export type Profile = "knowledge" | "leaf";
-export type WorkMode = "full" | "slice" | "handoff";
+export type WorkMode = "full" | "slice";
 export type WorkOutcome = "completed" | "partial" | "abandoned";
+export type SkillScope = "project" | "user" | "none";
+export type AgentTarget = "codex" | "claude";
 
 export interface WorkflowConfig {
   schemaVersion: 1;
   profile: Profile;
   installedVersion: string;
+  skills?: {
+    scope: SkillScope;
+    agents: AgentTarget[];
+  };
   knowledge?: {
     path: string;
   };
@@ -34,6 +40,8 @@ export interface PlanOperation {
   linkTarget?: string;
   expectedHash?: string;
   track?: boolean;
+  replaceable?: boolean;
+  backup?: boolean;
 }
 
 export interface InstallPlan {
@@ -48,6 +56,10 @@ export interface PlanOptions {
   profile: Profile;
   knowledge?: string;
   distributionRoot?: string;
+  skills?: {
+    scope: SkillScope;
+    agents: AgentTarget[];
+  };
 }
 
 export interface DoctorCheck {
@@ -64,11 +76,14 @@ export interface DoctorReport {
 
 export interface RepositoryMetadata {
   repository: string;
+  root: string;
   checkout: string;
   branch: string;
   commit: string;
   remote: string;
+  dirty: boolean;
   worktree: boolean;
+  worktreeId: string;
 }
 
 export interface WorkSpecDocument {
