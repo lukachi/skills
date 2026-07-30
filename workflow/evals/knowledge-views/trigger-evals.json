@@ -1,0 +1,146 @@
+[
+  {
+    "id": "product-explain-client",
+    "prompt": "Explain the current revival capability to the client who funded the game. They do not want code details.",
+    "should_trigger": ["curate-product-knowledge"],
+    "should_not_trigger": ["curate-engineering-knowledge"]
+  },
+  {
+    "id": "product-update-capability",
+    "prompt": "Update the combat capability page after the approved revival rule changed.",
+    "should_trigger": ["curate-project-knowledge", "curate-product-knowledge", "verify-knowledge-quality"],
+    "should_not_trigger": []
+  },
+  {
+    "id": "product-area-onboarding",
+    "prompt": "Create a stakeholder-friendly Area overview for the economy, including markets and player trading.",
+    "should_trigger": ["curate-product-knowledge", "verify-knowledge-quality"],
+    "should_not_trigger": ["curate-engineering-knowledge"]
+  },
+  {
+    "id": "product-delivery-drift",
+    "prompt": "The accepted feature is only partially implemented. Correct the current product knowledge without rewriting the intent.",
+    "should_trigger": ["curate-product-knowledge", "verify-knowledge-quality"],
+    "should_not_trigger": []
+  },
+  {
+    "id": "product-cross-area-flow",
+    "prompt": "Document the current player purchase flow that crosses identity, economy, and inventory for product managers.",
+    "should_trigger": ["curate-product-knowledge"],
+    "should_not_trigger": ["curate-engineering-knowledge"]
+  },
+  {
+    "id": "engineering-implementation",
+    "prompt": "Document how revival is implemented across the API and client, including contracts and failure handling.",
+    "should_trigger": ["curate-engineering-knowledge", "verify-knowledge-quality"],
+    "should_not_trigger": ["curate-product-knowledge"]
+  },
+  {
+    "id": "engineering-architecture",
+    "prompt": "Update the current architecture knowledge for the event pipeline after verifying the source repositories.",
+    "should_trigger": ["curate-engineering-knowledge", "verify-knowledge-quality"],
+    "should_not_trigger": ["curate-product-knowledge"]
+  },
+  {
+    "id": "engineering-repository-ownership",
+    "prompt": "Record which repository owns profile persistence and where the integration boundary lives.",
+    "should_trigger": ["curate-engineering-knowledge"],
+    "should_not_trigger": ["curate-product-knowledge"]
+  },
+  {
+    "id": "engineering-drift-audit",
+    "prompt": "The source no longer matches the documented data flow. Audit and update only verified engineering knowledge.",
+    "should_trigger": ["curate-engineering-knowledge", "verify-knowledge-quality"],
+    "should_not_trigger": []
+  },
+  {
+    "id": "quality-product-review",
+    "prompt": "Review this capability before stable status. Check factuality, stakeholder language, exceptions, and delivery.",
+    "should_trigger": ["verify-knowledge-quality"],
+    "should_not_trigger": []
+  },
+  {
+    "id": "quality-technical-leak",
+    "prompt": "Check whether the product page leaks class names, API routes, schemas, or source paths.",
+    "should_trigger": ["verify-knowledge-quality"],
+    "should_not_trigger": ["curate-engineering-knowledge"]
+  },
+  {
+    "id": "quality-stale-edit",
+    "prompt": "The concept changed after review. Verify whether its quality and truth receipts are still current.",
+    "should_trigger": ["verify-knowledge-quality"],
+    "should_not_trigger": []
+  },
+  {
+    "id": "quality-engineering-intent",
+    "prompt": "Audit this implementation page for product intent inferred from code and claims broader than evidence.",
+    "should_trigger": ["verify-knowledge-quality"],
+    "should_not_trigger": ["curate-product-knowledge"]
+  },
+  {
+    "id": "orchestrate-completed-change",
+    "prompt": "Promote the durable result of this completed multi-repository change into current project knowledge.",
+    "should_trigger": ["curate-project-knowledge"],
+    "should_not_trigger": []
+  },
+  {
+    "id": "orchestrate-reconstruction",
+    "prompt": "The reconstruction candidates are approved and ready for promotion into the product and technical maps.",
+    "should_trigger": ["curate-project-knowledge", "curate-product-knowledge", "curate-engineering-knowledge"],
+    "should_not_trigger": []
+  },
+  {
+    "id": "orchestrate-decision",
+    "prompt": "Replace the old no-revival decision with the approved special-item rule and preserve the history.",
+    "should_trigger": ["curate-project-knowledge", "verify-knowledge-quality"],
+    "should_not_trigger": []
+  },
+  {
+    "id": "negative-button-color",
+    "prompt": "Change the button from blue to green.",
+    "should_trigger": [],
+    "should_not_trigger": ["curate-project-knowledge", "curate-product-knowledge", "curate-engineering-knowledge", "verify-knowledge-quality"]
+  },
+  {
+    "id": "negative-code-fix",
+    "prompt": "Fix the null pointer in the inventory handler and run its tests.",
+    "should_trigger": [],
+    "should_not_trigger": ["curate-product-knowledge", "curate-engineering-knowledge"]
+  },
+  {
+    "id": "negative-raw-unreviewed",
+    "prompt": "Copy this new raw idea directly into current knowledge.",
+    "should_trigger": ["curate-project-knowledge"],
+    "should_not_trigger": ["curate-product-knowledge", "curate-engineering-knowledge"]
+  },
+  {
+    "id": "negative-proposal",
+    "prompt": "We are brainstorming a possible resurrection system. Nothing has been accepted or implemented.",
+    "should_trigger": [],
+    "should_not_trigger": ["curate-product-knowledge", "curate-engineering-knowledge", "verify-knowledge-quality"]
+  },
+  {
+    "id": "negative-explain-code-only",
+    "prompt": "Trace which function calls the database adapter in this checkout.",
+    "should_trigger": [],
+    "should_not_trigger": ["curate-product-knowledge", "verify-knowledge-quality"]
+  },
+  {
+    "id": "negative-navigation-only",
+    "prompt": "Fix a broken link in the knowledge index without changing any claim.",
+    "should_trigger": [],
+    "should_not_trigger": ["curate-product-knowledge", "curate-engineering-knowledge"]
+  },
+  {
+    "id": "negative-prd",
+    "prompt": "Draft a proposal for a feature we may build next quarter.",
+    "should_trigger": [],
+    "should_not_trigger": ["curate-product-knowledge", "curate-engineering-knowledge", "verify-knowledge-quality"]
+  },
+  {
+    "id": "negative-user-help",
+    "prompt": "Write step-by-step end-user instructions for changing a password.",
+    "should_trigger": [],
+    "should_not_trigger": ["curate-product-knowledge", "curate-engineering-knowledge"]
+  }
+]

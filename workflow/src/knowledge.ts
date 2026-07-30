@@ -50,6 +50,71 @@ interface DecisionNode {
   hasSupersededBy: boolean;
 }
 
+const KNOWLEDGE_VIEW_PURPOSE = new Map([
+  ["product", "current-behavior"],
+  ["engineering", "technical-realization"],
+  ["decision", "decision-history"],
+  ["reference", "external-context"],
+  ["uncertainty", "open-question"],
+]);
+
+const KNOWLEDGE_AUDIENCES = new Set([
+  "stakeholder",
+  "maintainer",
+  "domain-expert",
+  "engineer",
+  "operator",
+  "agent",
+]);
+
+const QUALITY_CHECKS = [
+  "factuality",
+  "audience-fit",
+  "abstraction",
+  "completeness",
+  "delivery-state",
+];
+
+const PRODUCT_SECTIONS = [
+  "What this provides",
+  "Who it serves",
+  "Current behavior",
+  "Rules and outcomes",
+  "Boundaries and exceptions",
+  "Delivery",
+  "Examples",
+  "Evolution",
+  "Related knowledge",
+  "Engineering details",
+];
+
+const ENGINEERING_SECTIONS = [
+  "Responsibility",
+  "Current implementation",
+  "Boundaries and ownership",
+  "Data and control flow",
+  "Contracts and invariants",
+  "Failure and operational behavior",
+  "Verification",
+  "Product knowledge",
+  "Relationships",
+];
+
+const AREA_INDEX_SECTIONS = [
+  "Purpose",
+  "Who it serves",
+  "Scope and boundaries",
+  "Current product behavior",
+  "Capabilities",
+  "Use cases and flows",
+  "Rules and outcomes",
+  "Delivery overview",
+  "Current decisions",
+  "Evolution",
+  "Open questions",
+  "Engineering details",
+];
+
 export async function validateKnowledge(
   targetInput: string,
   conceptPaths?: string[],
@@ -105,6 +170,9 @@ export async function validateKnowledge(
         if (!parsed.metadata || parsed.metadata.okf_version !== "0.2") {
           errors.push({ path: displayPath, message: "root index.md must declare okf_version: \"0.2\"" });
         }
+      }
+      if (/^knowledge\/areas\/[^/]+\/index\.md$/.test(displayPath)) {
+        validateAreaIndex(displayPath, content, errors, warnings);
       }
       continue;
     }
@@ -165,6 +233,9 @@ function validateConcept(
   const verifications = normalizeVerifications(metadata.verified);
   const realization = recordValue(metadata.realization);
   const expectedContentHash = conceptDocumentHash(metadata, body);
+  const view = stringValue(metadata.view);
+  const purpose = stringValue(metadata.purpose);
+  const audience = stringArray(metadata.audience);
 
   if (!type) {
     errors.push({ path, message: "type is required by OKF v0.2" });
@@ -201,6 +272,20 @@ function validateConcept(
       errors.push({ path, message: `unknown authority class: ${value}` });
     }
   }
+
+  validateKnowledgeView(
+    path,
+    view,
+    purpose,
+    audience,
+    authority,
+    metadata,
+    body,
+    expectedContentHash,
+    status,
+    errors,
+    warnings,
+  );
 
   const sourceIds = new Set<string>();
   let hasHumanAuthority = false;
@@ -1076,6 +1161,319 @@ function validateRealization(
   }
 }
 
+function validateKnowledgeView(
+  path: string,
+  view: string,
+  purpose: string,
+  audience: string[],
+  authority: string[],
+  metadata: Record<string, unknown>,
+  body: string,
+  expectedContentHash: string,
+  status: string,
+  errors: KnowledgeValidationIssue[],
+  warnings: KnowledgeValidationIssue[],
+): void {
+  const requiredPurpose = KNOWLEDGE_VIEW_PURPOSE.get(view);
+  if (!requiredPurpose) {
+    errors.push({
+      path,
+      message: "view must be product, engineering, decision, reference, or uncertainty",
+    });
+  } else if (purpose !== requiredPurpose) {
+    errors.push({
+      path,
+      message: `purpose must be "${requiredPurpose}" for view "${view}"`,
+    });
+  }
+
+  if (audience.length === 0) {
+    errors.push({ path, message: "audience must contain at least one reader role" });
+  }
+  for (const role of audience) {
+    if (!KNOWLEDGE_AUDIENCES.has(role)) {
+      errors.push({ path, message: `unknown audience role: ${role}` });
+    }
+  }
+  if (view === "product" && !audience.includes("stakeholder")) {
+    errors.push({ path, message: "product view must include the stakeholder audience" });
+  }
+  if (
+    view === "engineering"
+    && !audience.some((role) => role === "engineer" || role === "operator")
+  ) {
+    errors.push({
+      path,
+      message: "engineering view must include the engineer or operator audience",
+    });
+  }
+  if (
+    (view === "decision" || view === "uncertainty")
+    && !audience.includes("maintainer")
+  ) {
+    errors.push({
+      path,
+      message: `${view} view must include the maintainer audience`,
+    });
+  }
+
+  const expectedView = expectedViewForPath(path);
+  if (expectedView && view !== expectedView) {
+    errors.push({
+      path,
+      message: `view must match its knowledge lane: expected "${expectedView}", found "${view || "(missing)"}"`,
+    });
+  }
+  if (view === "decision" && !authority.includes("decision")) {
+    errors.push({ path, message: "decision view requires decision authority" });
+  }
+  if (view === "reference" && !authority.includes("external")) {
+    errors.push({ path, message: "reference view requires external authority" });
+  }
+  if (
+    view === "engineering"
+    && (authority.includes("intent") || authority.includes("product-meaning"))
+  ) {
+    errors.push({
+      path,
+      message: "engineering view must link product meaning instead of claiming product authority",
+    });
+  }
+
+  if (view === "product") {
+    validateRequiredSections(path, body, PRODUCT_SECTIONS, errors);
+    validateLinkOnlySection(path, body, "Engineering details", errors);
+    if (/```|~~~/m.test(body)) {
+      errors.push({ path, message: "product view must not contain fenced code" });
+    }
+    if (/`/.test(body)) {
+      errors.push({
+        path,
+        message: "product view must not contain inline code or technical identifiers",
+      });
+    }
+    const technicalHeading = markdownHeadings(body).find((heading) =>
+      /(?:technical|implementation|architecture|api|schema|source code)/i.test(heading)
+      && heading.toLowerCase() !== "engineering details"
+    );
+    if (technicalHeading) {
+      errors.push({
+        path,
+        message: `product view contains a technical section: ${technicalHeading}`,
+      });
+    }
+    if (containsTechnicalIdentifiers(stakeholderText(body))) {
+      warnings.push({
+        path,
+        message: "product view contains technical-looking identifiers; verify the stakeholder abstraction",
+      });
+    }
+  }
+  if (view === "engineering") {
+    validateRequiredSections(path, body, ENGINEERING_SECTIONS, errors);
+  }
+
+  validateQualityReceipt(
+    path,
+    recordValue(recordValue(metadata["x-wf"])?.quality),
+    expectedContentHash,
+    status,
+    stringValue(recordValue(metadata.generated)?.at),
+    errors,
+  );
+}
+
+function expectedViewForPath(path: string): string | undefined {
+  if (
+    /^knowledge\/(?:vision|product)\//.test(path)
+    || /^knowledge\/areas\/[^/]+\/(?:capabilities|use-cases|concepts|rules)\//.test(path)
+  ) {
+    return "product";
+  }
+  if (
+    /^knowledge\/(?:architecture|repositories)\//.test(path)
+    || /^knowledge\/areas\/[^/]+\/implementation\//.test(path)
+  ) {
+    return "engineering";
+  }
+  if (
+    /^knowledge\/decisions\//.test(path)
+    || /^knowledge\/areas\/[^/]+\/decisions\//.test(path)
+  ) {
+    return "decision";
+  }
+  if (/^knowledge\/references\//.test(path)) {
+    return "reference";
+  }
+  if (/^knowledge\/uncertainties\//.test(path)) {
+    return "uncertainty";
+  }
+  return undefined;
+}
+
+function validateQualityReceipt(
+  path: string,
+  quality: Record<string, unknown> | undefined,
+  expectedContentHash: string,
+  lifecycle: string,
+  generatedAt: string,
+  errors: KnowledgeValidationIssue[],
+): void {
+  if (!quality) {
+    if (lifecycle === "stable") {
+      errors.push({ path, message: "stable concepts require x-wf.quality review" });
+    }
+    return;
+  }
+  const status = stringValue(quality.status);
+  if (!["pending", "passed"].includes(status)) {
+    errors.push({ path, message: "x-wf.quality.status must be pending or passed" });
+    return;
+  }
+  if (status === "pending") {
+    if (lifecycle === "stable") {
+      errors.push({ path, message: "stable concepts require a passed x-wf.quality review" });
+    }
+    return;
+  }
+  if (!isActor(stringValue(quality.by))) {
+    errors.push({ path, message: "x-wf.quality.by must follow the OKF actor convention" });
+  }
+  if (!isIsoDateTime(stringValue(quality.at))) {
+    errors.push({ path, message: "x-wf.quality.at must be an ISO 8601 datetime" });
+  } else if (Date.parse(stringValue(quality.at)) < Date.parse(generatedAt)) {
+    errors.push({
+      path,
+      message: "x-wf.quality.at must be at or after generated.at",
+    });
+  }
+  if (stringValue(quality.content_hash) !== expectedContentHash) {
+    errors.push({
+      path,
+      message: "x-wf.quality.content_hash must match the current knowledge content hash",
+    });
+  }
+  const checks = stringArray(quality.checks);
+  for (const check of QUALITY_CHECKS) {
+    if (!checks.includes(check)) {
+      errors.push({ path, message: `x-wf.quality.checks must include ${check}` });
+    }
+  }
+  for (const check of checks) {
+    if (!QUALITY_CHECKS.includes(check)) {
+      errors.push({ path, message: `unknown x-wf.quality check: ${check}` });
+    }
+  }
+}
+
+function validateAreaIndex(
+  path: string,
+  body: string,
+  errors: KnowledgeValidationIssue[],
+  warnings: KnowledgeValidationIssue[],
+): void {
+  validateRequiredSections(path, body, AREA_INDEX_SECTIONS, errors);
+  validateLinkOnlySection(path, body, "Engineering details", errors);
+  if (/```|~~~|`/.test(body)) {
+    errors.push({
+      path,
+      message: "Area index is stakeholder-facing and must not contain code or technical identifiers",
+    });
+  }
+  if (containsTechnicalIdentifiers(stakeholderText(body))) {
+    warnings.push({
+      path,
+      message: "Area index contains technical-looking identifiers; move details to engineering knowledge",
+    });
+  }
+}
+
+function validateRequiredSections(
+  path: string,
+  body: string,
+  required: string[],
+  errors: KnowledgeValidationIssue[],
+): void {
+  const headings = new Set(markdownHeadings(body).map((heading) => heading.toLowerCase()));
+  for (const section of required) {
+    if (!headings.has(section.toLowerCase())) {
+      errors.push({ path, message: `required section is missing: ${section}` });
+    }
+  }
+}
+
+function markdownHeadings(body: string): string[] {
+  return [...body.matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm)]
+    .map((match) => match[1]!.trim());
+}
+
+function stakeholderText(body: string): string {
+  return body
+    .replace(/\]\([^)]+\)/g, "]")
+    .replace(/^\[\^[A-Za-z0-9_-]+\]:.*$/gm, "");
+}
+
+function containsTechnicalIdentifiers(body: string): boolean {
+  return /\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/\S+|\b[A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|py|rs|go|java|kt|swift|sql|proto|json|ya?ml)\b|\b[a-z]+_[a-z0-9_]+\b/.test(body);
+}
+
+function validateLinkOnlySection(
+  path: string,
+  body: string,
+  heading: string,
+  errors: KnowledgeValidationIssue[],
+): void {
+  const section = markdownSection(body, heading);
+  if (section === undefined) {
+    return;
+  }
+  const invalid = section
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .find((line) =>
+      !/^(?:[-*]\s+)?\[[^\]]+\]\([^)]+\)$/.test(line)
+      && !/^(?:none|not applicable)\.?$/i.test(line)
+    );
+  if (invalid) {
+    errors.push({
+      path,
+      message: `${heading} must contain links only, or an explicit not-applicable statement`,
+    });
+  }
+}
+
+function markdownSection(body: string, heading: string): string | undefined {
+  const lines = body.split(/\r?\n/);
+  const wanted = heading.toLowerCase();
+  let start = -1;
+  let level = 0;
+  for (const [index, line] of lines.entries()) {
+    const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (match && match[2]!.trim().toLowerCase() === wanted) {
+      start = index + 1;
+      level = match[1]!.length;
+      break;
+    }
+  }
+  if (start < 0) {
+    return undefined;
+  }
+  let end = lines.length;
+  for (let index = start; index < lines.length; index += 1) {
+    const match = /^(#{1,6})\s+/.exec(lines[index]!);
+    if (match && match[1]!.length <= level) {
+      end = index;
+      break;
+    }
+    if (/^\[\^[A-Za-z0-9_-]+\]:/.test(lines[index]!)) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
+
 function isActor(value: string): boolean {
   return /^(?:human:[^\s:]+|process:[^\s:]+|[^/\s]+\/[^/\s]+)$/.test(value);
 }
@@ -1104,6 +1502,12 @@ function conceptDocumentHash(
 ): string {
   const material = { ...metadata };
   delete material.verified;
+  const workflow = recordValue(material["x-wf"]);
+  if (workflow) {
+    const workflowMaterial = { ...workflow };
+    delete workflowMaterial.quality;
+    material["x-wf"] = workflowMaterial;
+  }
   return createHash("sha256")
     .update(JSON.stringify(canonicalValue(material)))
     .update("\n")

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
   readlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,6 +14,7 @@ const cases = [
   { name: "bun", command: "bun", args: ["dist/cli.js", "--version"] },
   { name: "deno", command: "deno", args: ["run", "-A", "dist/cli.js", "--version"] },
 ];
+const packageVersion = JSON.parse(readFileSync("package.json", "utf8")).version;
 for (const runtime of cases) {
   const result = spawnSync(runtime.command, runtime.args, {
     encoding: "utf8",
@@ -25,7 +27,11 @@ for (const runtime of cases) {
     0,
     `${runtime.name} failed:\n${result.stderr || result.stdout}`,
   );
-  assert.match(result.stdout, /0\.3\.0/, `${runtime.name} did not print wfctl version`);
+  assert.match(
+    result.stdout,
+    new RegExp(`wfctl ${packageVersion.replaceAll(".", "\\.")}`),
+    `${runtime.name} did not print wfctl version`,
+  );
 
   const target = mkdtempSync(join(tmpdir(), `wfctl-${runtime.name}-`));
   spawnSync("git", ["-C", target, "init", "-q"]);

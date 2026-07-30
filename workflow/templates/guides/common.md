@@ -130,6 +130,8 @@ OKF is a portable Markdown format, not an approval workflow. This project adds
 a stricter profile:
 
 - explicit `status`, `generated`, provenance, and current verification;
+- explicit `view`, `purpose`, and `audience` so product and engineering
+  knowledge cannot silently collapse into one document;
 - explicit authority classes so deterministic validation can distinguish
   normative, implementation, historical, and external claims;
 - explicit intent, delivery, and alignment state for product-bearing concepts;
@@ -138,12 +140,16 @@ a stricter profile:
 - human verification for intent and normative decisions;
 - explicit supersession or deprecation reason;
 - reciprocal acyclic decision lineages with one stable current record;
+- a semantic quality receipt bound to the current content hash;
+- stakeholder sections and a no-code boundary for product documents;
+- technical coverage and linked product meaning for engineering documents;
 - no raw path, source, link, or footnote in current knowledge.
 
 `stable` is lifecycle, not automatic truth. A material edit updates
 `generated.at` and changes the deterministic knowledge content hash. Older
-verification no longer matches; the agent records a fresh verification event
-only after computing `wfctl knowledge hash --concept <path>`.
+verification and quality receipts no longer match. The agent runs the semantic
+quality review and records both fresh receipts only after computing
+`wfctl knowledge hash --concept <path>`.
 
 ## Choose the work route
 

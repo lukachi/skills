@@ -56,17 +56,18 @@ offer a manual command only as a recovery path.
 
 | User need | Required handling |
 | --- | --- |
-| Explain current behavior or onboard a newcomer | Follow the Area index into capabilities, use cases, rules, and only then technical realization. Separate current truth, rationale, and open questions. Cite stable knowledge paths. |
+| Explain current behavior or onboard a newcomer | Stay in the product view: Area index, capabilities, use cases, rules, delivery, and current decisions. Explain in stakeholder language. Open engineering knowledge only when requested or necessary to qualify delivery. |
+| Explain how behavior is implemented | Start from the product concept, then follow its engineering links into implementation, architecture, repositories, contracts, and verification. Keep the two answers distinct. |
 | Find where a topic belongs or who owns it | Identify the primary Area, owning repositories, affected capabilities, and genuinely cross-Area links. Report ambiguity instead of inventing an owner. |
 | Trace what changed and why | Start from the stable current decision, follow `supersedes` links through every predecessor, then read the Area `Evolution` section and local `log.md`. Explain each transition, rationale, consequences, and unresolved questions. |
 | Compare intended behavior with implementation | Invoke `analyze-with-graphify` in each exact leaf checkout, then inspect source, tests, and runtime evidence. Do not edit leaf code from this repository. |
 | Build knowledge for an existing project or audit the whole baseline | Invoke `reconstruct-project-knowledge`. It owns registry inspection, source selection, case lifecycle, and promotion. Ask the maintainer only when repository identity or competing worktrees create a real choice; do not improvise a baseline from search snippets or raw notes. |
 | Audit knowledge health | Run `wfctl knowledge build`; inspect its broken-link, relation, lineage, and reachability failures, then check stale verification, weak provenance, conflicting current claims, duplicate concepts, missing Area maps, misplaced cross-Area material, and implementation claims that may have drifted. Return a prioritized repair list with evidence. |
-| Improve navigation or structure | Repair indexes, names, summaries, and links without changing semantic claims. If the repair changes current truth, invoke `curate-project-knowledge`. |
+| Improve navigation or structure | Repair indexes, names, summaries, and links without changing semantic claims. If the repair changes current truth, invoke `curate-project-knowledge`, which routes product and engineering authoring separately. |
 | Reconcile contradictory claims | Build a compact adjudication packet: question, each candidate claim, supporting and conflicting authoritative observations, missing facts, recommendation, and the exact maintainer decision needed. Keep unresolved claims out of `knowledge/`. |
 | Review new or changed raw material | Invoke `process-raw-intake`. Never search raw as part of an ordinary current-truth answer and never cite raw from knowledge. |
 | Triage `changes/inbox/` or intake cases | Classify each atomic claim by semantic role, intent, delivery, time, relations, and routing. Name the owner and next evidence or decision needed; do not silently promote it. |
-| Promote a completed change or confirmed candidate | Invoke `curate-project-knowledge`, update the smallest coherent concepts and decision lineage, validate, and refresh QMD. |
+| Promote a completed change or confirmed candidate | Invoke `curate-project-knowledge`. It routes product content to `curate-product-knowledge`, technical content to `curate-engineering-knowledge`, and all changed concepts to `verify-knowledge-quality` before validation. |
 | Discuss a new product or architecture direction | Invoke `manage-project-work` and start a project-only living spec here before extended discussion. It has no code root. Record every material turn, obtain review, and promote only the final approved direction. Bind leaves only if implementation work becomes part of the scope. |
 | Implement or fix source code | Identify the owning leaf repository and redirect the task there. Never write product code from the knowledge repository. |
 
@@ -76,9 +77,10 @@ offer a manual command only as a recovery path.
    or explicit cross-Area concern.
 2. Follow links outward only when they materially affect the answer. Do not
    flatten the entire corpus into one summary.
-3. Prefer product meaning and current behavior first. Add implementation
-   detail and history only when requested or needed to avoid a misleading
-   answer.
+3. Prefer the stakeholder-facing product view first. Do not blend source,
+   architecture, API, schema, or repository detail into it. Add a separately
+   labeled engineering answer and history only when requested or needed to
+   avoid a misleading delivery claim.
 4. State:
    - the current answer;
    - the concepts and authoritative sources reviewed;

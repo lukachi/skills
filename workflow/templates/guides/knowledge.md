@@ -120,24 +120,39 @@ bounded topics rather than asking an agent to summarize the entire dump.
 ### Current knowledge maintenance
 
 Your main road is `knowledge/index.md` → `knowledge/areas/<area>/index.md`.
-Each Area explains purpose, scope, current behavior, capabilities, flows,
-technical realization, decisions, evolution, and open questions. Human-facing
-meaning remains readable before technical detail.
+Each Area index is a stakeholder page: purpose, audience, current product
+behavior, capabilities, flows, rules, delivery, decisions, evolution, and open
+questions. It links engineering details but does not explain code.
 
 Within an Area, `capabilities/`, `use-cases/`, `concepts/`, `rules/`,
 `implementation/`, and `decisions/` are sibling collections. Start with the
-Area index and capability, follow links to rules or use cases, then open
-implementation or decision records only when you need technical realization or
-rationale. Genuinely cross-Area flows live under `product/flows/`; system-wide
-architecture and decisions use their root collections.
+Area index and product capability, follow rules or use cases for conditions,
+then open `implementation/` only when you need engineering realization and
+`decisions/` when you need rationale. Genuinely cross-Area flows live under
+`product/flows/`; system-wide engineering knowledge uses `architecture/` and
+`repositories/`.
+
+Product concepts declare `view: product` and are written for product managers,
+clients, domain experts, and maintainers. They explain outcomes, observable
+behavior, rules, exceptions, delivery, examples, and meaningful evolution.
+They contain no code, identifiers, endpoints, schemas, source paths, or
+implementation walkthroughs. Their Engineering details section contains links
+only.
+
+Engineering concepts declare `view: engineering` and are written for engineers
+and operators. They explain implementation, ownership, flow, contracts,
+failure behavior, operations, and verification at exact source revisions.
+They link product meaning rather than deriving it from code.
 
 The agent uses QMD only against the `knowledge` collection, reads selected
 concepts directly, updates the smallest coherent Area, uses claim-level
-authoritative sources, preserves immutable decision records, runs
-`wfctl knowledge validate`, and refreshes QMD. Current decisions live at one
-stable path; predecessors remain deprecated with reciprocal links. Area
-Evolution sections explain what changed and why, while Area `log.md` files
-carry local chronology. The root log is only a high-level aggregator.
+authoritative sources, preserves immutable decision records, and invokes the
+semantic quality gate. A stable concept requires a current quality receipt and
+normal verification bound to the same content hash. The agent then runs
+`wfctl knowledge validate`, builds the graphs, and refreshes QMD. Current
+decisions live at one stable path; predecessors remain deprecated with
+reciprocal links. Area Evolution sections explain what changed and why, while
+Area `log.md` files carry local chronology.
 
 Ask for a review packet rather than reading the entire corpus. Focus on product
 intent, meaning, normative architecture, ownership, contracts, decisions,

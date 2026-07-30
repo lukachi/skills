@@ -121,7 +121,7 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   assert.ok(upgrade.operations.some((operation) =>
     operation.path === ".workflow/config.json"
     && operation.status === "update"
-    && /0\.3\.0/.test(operation.reason)
+    && /0\.4\.0/.test(operation.reason)
   ));
 });
 
@@ -370,12 +370,18 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
   await access(join(knowledge, ".claude/skills/qmd/SKILL.md"));
   await access(join(knowledge, ".agents/skills/process-raw-intake/SKILL.md"));
   await access(join(knowledge, ".agents/skills/reconstruct-project-knowledge/SKILL.md"));
+  await access(join(knowledge, ".agents/skills/curate-product-knowledge/SKILL.md"));
+  await access(join(knowledge, ".agents/skills/curate-engineering-knowledge/SKILL.md"));
+  await access(join(knowledge, ".agents/skills/verify-knowledge-quality/SKILL.md"));
   await access(join(leaf, ".agents/skills/setup-workflow-environment/SKILL.md"));
   await access(join(leaf, ".agents/skills/analyze-with-graphify/SKILL.md"));
   await access(join(leaf, ".agents/skills/align-project-knowledge/SKILL.md"));
   await access(join(leaf, ".agents/skills/manage-project-work/SKILL.md"));
   await access(join(leaf, ".agents/skills/verify-project-work/SKILL.md"));
   await access(join(leaf, ".agents/skills/curate-project-knowledge/SKILL.md"));
+  await access(join(leaf, ".agents/skills/curate-product-knowledge/SKILL.md"));
+  await access(join(leaf, ".agents/skills/curate-engineering-knowledge/SKILL.md"));
+  await access(join(leaf, ".agents/skills/verify-knowledge-quality/SKILL.md"));
   await assert.rejects(access(join(leaf, ".agents/skills/operate-project-knowledge/SKILL.md")));
   await assert.rejects(access(join(leaf, ".agents/skills/process-raw-intake/SKILL.md")));
   await assert.rejects(

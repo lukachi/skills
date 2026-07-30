@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Knowledge Quality"
+  short_description: "Verify truth, audience, abstraction, and coverage"
+  default_prompt: "Use $verify-knowledge-quality to audit a knowledge document before it becomes stable."

@@ -30,6 +30,15 @@ delivery, alignment, temporal scope, explicit relations, and routing. Run
 durable-output omission probes and rebuild the deterministic claim ledger
 before calling intake complete.
 
+During promotion, `curate-project-knowledge` is the orchestrator. Route
+stakeholder-facing Areas, capabilities, use cases, flows, domain concepts,
+product rules, delivery, and evolution to `curate-product-knowledge`. Route
+implementation, architecture, repositories, contracts, data/control flow,
+runtime, and operations to `curate-engineering-knowledge`. Invoke
+`verify-knowledge-quality` before any materially changed concept becomes
+stable. Never let code define accepted product intent or let product pages
+contain implementation walkthroughs.
+
 Use `reconstruct-project-knowledge` when current knowledge must be built or
 audited from one or more existing leaf repositories. Bind exact clean
 checkouts with `wfctl knowledge reconstruct start`, keep local paths only in

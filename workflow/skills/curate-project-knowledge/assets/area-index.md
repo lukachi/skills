@@ -2,53 +2,60 @@
 
 ## Purpose
 
-Explain what recognizable responsibility or functionality this Area provides
-and why it exists.
+Explain the recognizable responsibility or product functionality this Area
+provides and why it exists.
+
+## Who it serves
+
+Name the people, roles, and neighboring Areas that depend on it.
 
 ## Scope and boundaries
 
-State what belongs here, what does not, and which neighboring Areas interact
-with it.
+State what belongs here, what does not, and the important boundaries with
+neighboring Areas.
 
-## Current model
+## Current product behavior
 
-Summarize the current human-facing behavior and language. Link detailed
-concepts and rules instead of flattening them here.
-
-State which capabilities are accepted, which are absent or partial, and where
-observed implementation has unknown intent or known drift. Do not present
-implemented code as product intent by default.
+Summarize current observable behavior in stakeholder language. Keep accepted
+intent, available delivery, partial or absent delivery, and known drift
+distinct. Link detailed concepts instead of flattening them here.
 
 ## Capabilities
 
-- Link each file under `capabilities/` and state the outcome it provides. Each
-  capability links its related use cases, rules, implementation, and current
-  decisions; those artifacts remain in their own sibling collections.
+- Link each capability and state the product outcome it provides.
 
 ## Use cases and flows
 
-- Link Area-local use cases from `use-cases/`.
+- Link Area-local use cases.
 - Link genuinely cross-Area flows from `knowledge/product/flows/`.
 
-## Technical realization
+## Rules and outcomes
 
-- Link Area-owned implementation from `implementation/`. Link system-wide
-  architecture from `knowledge/architecture/`, plus repository ownership,
-  contracts, and pinned code evidence.
+- Link material product rules and summarize only the outcome or constraint a
+  stakeholder needs to understand.
 
-## Decisions
+## Delivery overview
 
-- Link Area-owned current decisions from `decisions/`. Use root
-  `knowledge/decisions/` only for genuinely cross-Area decisions.
-- Link the current stable decision for each active lineage.
-- Link deprecated predecessors only through the current decision or Evolution.
+Summarize which accepted capabilities are available, partial, absent, retired,
+or uncertain. Do not present implementation as accepted intent by default.
+
+## Current decisions
+
+- Link the stable current decision for each active Area-owned lineage.
+- Reach deprecated predecessors through the current decision or Evolution.
 
 ## Evolution
 
-Summarize meaningful changes with enough context to understand what changed,
-why, and what it affected. Link full immutable decision records and the local
-`log.md`; do not reduce evolution to bare `A supersedes B` links.
+Explain meaningful changes with enough context to understand what changed,
+why, and what it affected. Link full decision records and the local `log.md`;
+do not reduce history to bare supersession links.
 
 ## Open questions
 
 - Link trusted current uncertainties. Raw candidates do not belong here.
+
+## Engineering details
+
+- Link Area-owned engineering concepts from `implementation/`.
+- Link system-wide architecture and repository ownership where relevant.
+- Keep this section link-only; technical explanations live in those documents.

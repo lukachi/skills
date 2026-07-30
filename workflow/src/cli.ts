@@ -689,7 +689,8 @@ function knowledgeCommand() {
     .description(
       "Operate the knowledge trust boundary.\n"
         + "raw/ is untrusted intake; reconstruction maps pinned leaves; knowledge/ is curated truth.\n"
-        + "wfctl validates and compiles explicit knowledge and claim relations; QMD provides semantic retrieval.",
+        + "Product views explain current behavior to stakeholders; engineering views record verified realization.\n"
+        + "wfctl validates views, quality receipts, and explicit relations; QMD provides semantic retrieval.",
     )
     .command("raw", knowledgeRawCommand())
     .command("case", knowledgeCaseCommand())
@@ -716,7 +717,9 @@ function knowledgeCommand() {
     .command(
       "validate",
       new Command()
-        .description("Validate curated knowledge against the strict workflow trust profile.")
+        .description(
+          "Validate knowledge views, provenance, delivery state, and semantic quality receipts.",
+        )
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
         .option("--concept <path:string>", "Validate one concept path.", { collect: true })
         .option("--json", "Print machine-readable JSON.")

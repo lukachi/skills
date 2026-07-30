@@ -257,8 +257,10 @@ After compaction or interruption:
 2. Create the smallest coherent project map: vision and repository ownership,
    then Areas and only the capabilities, flows, rules, implementation,
    decisions, and uncertainties supported now.
-3. Keep product-facing meaning separate from technical realization. Product
-   concepts declare reviewed intent, delivery, and alignment state.
+3. Route stakeholder-facing concepts through `curate-product-knowledge` and
+   technical realization through `curate-engineering-knowledge`. Product
+   concepts declare reviewed intent, delivery, and alignment state; engineering
+   concepts link that meaning rather than deriving it from code.
 4. Give implementation claims pinned source-code evidence. Give reconstructed
    history pinned version-control evidence. Give normative claims an explicit
    maintainer decision recorded by candidate ID in this case.
@@ -269,8 +271,9 @@ After compaction or interruption:
    candidate from at least one dossier, structured surface, or supplemental
    input. `promoted_to` remains accepted only for legacy reconstruction v3
    records; do not author it in new cases.
-6. Draft the concepts, record the complete promotion map and maintainer
-   approval, then compute a fresh content hash for each stable concept:
+6. Draft the concepts, invoke `verify-knowledge-quality` for every material
+   document, record the complete promotion map and maintainer approval, then
+   compute a fresh content hash for each stable concept:
 
    ```sh
    wfctl knowledge hash --concept knowledge/.../<concept>.md

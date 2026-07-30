@@ -173,7 +173,7 @@ export async function runDoctor(
       status: validation.valid ? "pass" : "fail",
       message: validation.valid
         ? `${validation.files} curated Markdown file(s) satisfy the trust profile`
-        : `${validation.errors.length} curated knowledge validation error(s)`,
+        : `${validation.errors.length} validation error(s); ask the knowledge agent to repair or migrate the affected views, then run wfctl knowledge validate`,
     });
     if (validation.valid) {
       const compilation = await compileKnowledgeGraph(knowledgeRoot);

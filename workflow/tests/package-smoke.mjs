@@ -34,6 +34,15 @@ try {
 
   const packaged = join(sandbox, "package");
   assert.equal(existsSync(join(packaged, "GETTING_STARTED.md")), true);
+  assert.equal(existsSync(join(packaged, "VERIFY_KNOWLEDGE_VIEWS.md")), true);
+  assert.equal(
+    existsSync(join(packaged, "evals/knowledge-views/trigger-evals.json")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "evals/knowledge-views/behavior-evals.json")),
+    true,
+  );
   assert.equal(existsSync(join(packaged, "LICENSE")), true);
   assert.equal(existsSync(join(packaged, "skills/manage-project-work/SKILL.md")), true);
   assert.equal(
@@ -46,6 +55,18 @@ try {
   );
   assert.equal(
     existsSync(join(packaged, "skills/reconstruct-project-knowledge/SKILL.md")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "skills/curate-product-knowledge/SKILL.md")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "skills/curate-engineering-knowledge/SKILL.md")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "skills/verify-knowledge-quality/SKILL.md")),
     true,
   );
   assert.equal(existsSync(join(packaged, "rules/leaf/workflow-routing.md")), true);

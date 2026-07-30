@@ -1,160 +1,100 @@
 ---
 name: curate-project-knowledge
-description: Promote independently verified claims from reviewed change records, reconstruction cases, raw-intake candidates, source code, primary external sources, and explicit maintainer decisions into the current OKF knowledge bundle. Use when a significant change alters durable project intent, product meaning, architecture, contracts, ownership, decisions, or operational knowledge; when a source-first project baseline or confirmed raw candidates are ready for promotion; when superseding a decision; or when validating Area indexes and history. Never use raw files as evidence.
+description: Orchestrate promotion of independently verified claims into a workflow project's current OKF knowledge bundle. Use when a completed change, reconstruction case, raw-intake candidate, source audit, external source, or maintainer decision is ready to update durable product knowledge, engineering knowledge, decision lineage, Area navigation, or project history. Route stakeholder-facing content to curate-product-knowledge, technical realization to curate-engineering-knowledge, and every material document through verify-knowledge-quality. Never copy raw input into knowledge or let code define product intent.
 ---
 
 # Curate Project Knowledge
 
-Maintain the smallest trustworthy description of current project truth. The
-knowledge bundle complements source code; it does not duplicate discoverable
-implementation detail.
+Coordinate the promotion boundary. Do not author product and engineering views
+as one blended document.
 
 Read [the knowledge model](references/knowledge-model.md) before first-time
-promotion or decision migration.
+promotion, a new Area, or decision migration.
 
 ## Accepted inputs
 
 A promotion may start from:
 
-- a completed, maintainer-reviewed record in `changes/archive/`;
-- confirmed candidate IDs in a raw intake case;
-- confirmed candidate IDs in a source-first reconstruction case;
+- a completed and maintainer-reviewed archived change;
+- confirmed raw-intake candidate IDs with independent authority;
+- confirmed source-first reconstruction candidate IDs;
 - directly inspected source and tests at an exact Git revision;
 - a primary external source;
 - an explicit current maintainer decision.
 
-`raw/` is never an accepted source. Do not open a raw file and translate it
-directly into a concept. For raw material, invoke `process-raw-intake` first.
+`raw/`, intake prose, QMD results, compiled graphs, Graphify output, and
+agent-written summaries are never authority.
 
-## Handle common promotion cases
+## Route each durable claim
 
-- **Completed significant change:** compare the accepted work record with the
-  verified implementation and update only durable project truth.
-- **Confirmed raw candidates:** promote only candidates routed to
-  `current-knowledge` or `history`, not the raw wording. Attach independent
-  authoritative evidence, preserve temporal scope and claim lineage, and
-  write the exact routing destinations.
-- **Source-first baseline:** promote confirmed reconstruction candidates into
-  the smallest human map. Keep observed implementation distinct from accepted
-  intent and record missing, partial, accidental, or drifted delivery honestly.
-- **Changed product rule or decision:** create a successor decision, deprecate
-  predecessors reciprocally, and update the Area's current model and Evolution
-  summary.
-- **New Area or capability:** create the smallest useful Area map and only the
-  typed documents needed now. Do not pre-create speculative hierarchies.
-- **Implementation drift:** refresh implementation concepts from a pinned leaf
-  revision after Graphify-assisted direct inspection; do not rewrite product
-  intent to match accidental code.
-- **Duplicate or misplaced knowledge:** choose one stable owner, merge without
-  losing material conditions or exceptions, and replace duplicates with clear
-  links where useful.
-- **Cross-Area behavior:** keep one honest primary Area when possible. Use a
-  root flow, architecture document, or decision only when ownership is truly
-  shared.
-- **Navigation-only maintenance:** preserve claims and provenance. Use
-  `operate-project-knowledge` unless the edit changes semantic truth.
+Classify claims before selecting files:
 
-## Authority by claim
+| Durable concern | View and owner |
+| --- | --- |
+| Current product purpose, capability, use case, flow, domain concept, rule, delivery summary, or Area evolution | Invoke `curate-product-knowledge` |
+| Current implementation, architecture, repository ownership, contract, data/control flow, runtime, or operations | Invoke `curate-engineering-knowledge` |
+| Approved choice, rationale, consequences, and supersession | Use the decision template, then invoke `verify-knowledge-quality` |
+| Primary external context | Use `view: reference`, preserve the primary source, then verify |
+| Trusted unresolved current question | Use `view: uncertainty`, state missing authority, then verify |
+| Proposed, rejected, or unadopted behavior | Keep outside `knowledge/` in changes, intake, or reconstruction |
 
-- Product intent and domain meaning require an explicit maintainer decision.
-- Implementation reality requires pinned source-code locations and direct
-  inspection; runtime behavior also requires a fresh receipt when static code
-  cannot prove it. A claim that delivery is absent may instead use a completed,
-  reviewed reconstruction receipt because no nonexistent source path can be
-  pinned.
-- Architectural rationale, ownership, contracts, and policy require a
-  maintainer-reviewed decision and must not contradict current code.
-- Historical implementation requires pinned Git or review history plus either
-  a reviewed archived change or a reviewed reconstruction receipt.
-- External facts require primary sources.
-- Agent-written concepts and Graphify output have no independent authority.
-
-If one concept mixes authority classes, attribute each material claim with a
-matching `[^source-id]` footnote.
+A significant product change normally updates both a product concept and its
+linked engineering concept. A refactor with unchanged product behavior may
+update engineering knowledge only. Do not create an empty counterpart merely
+for symmetry.
 
 ## Promotion procedure
 
-1. Work from the knowledge root. Inspect the current session skill catalog,
-   require and invoke the official native `qmd` skill, and stop for skill
-   installation plus session restart if it is absent.
-2. Start at `knowledge/index.md`, then use
-   `qmd search ... -c knowledge` or a structured `qmd query` with authored
-   `intent:`, `lex:`, `vec:`, and optional `hyde:` fields to discover relevant
-   concepts. QMD MCP `query` is equivalent when called with
-   `collections: ["knowledge"]`. Read selected files directly; QMD rank is not
-   evidence.
-3. Inspect lifecycle, freshness, provenance, verification, and supersession
-   before relying on an existing concept.
-4. If implementation reality matters, invoke `analyze-with-graphify` in the
-   exact source checkout. Use it for navigation, then inspect actual source,
-   tests, and runtime evidence at the recorded revision.
-5. Identify the primary Area before choosing a file. Place capabilities,
-   use cases, concepts, rules, implementation, and decisions in their sibling
-   typed collections under that Area. Link relationships; do not physically
-   nest implementation or decisions below a capability or flow. Use
-   `product/flows/`, root `architecture/`, or root `decisions/` only when no
-   single Area is the honest primary owner. A flow may link several Areas. Use
-   a bounded context only when technical analysis proves a coherent model and
-   language boundary; do not use it as a synonym for Area.
-6. Compare the proposed claim with current concepts and accepted change
-   records. Separate current human-facing truth, technical realization,
-   history, and unresolved questions.
-7. Ask the maintainer only for missing intent, authority, or a material
-   decision. Present the decision, evidence, conflicts, recommendation, and
-   requested response.
-8. Create or update the smallest coherent concepts using
-   [the concept template](assets/concept.md). For a new Area, create its
-   human-facing `index.md` from [the Area template](assets/area-index.md) and
-   add only the needed `capabilities/`, `concepts/`, `rules/`, `use-cases/`,
-   `implementation/`, `decisions/`, and `log.md`. Make capability and use-case
-   documents link their related rules, implementation, and decisions. Declare
-   only material semantic edges in `x-wf.relations`; give each edge a
-   meaningful `context` and repeat its target as a normal Markdown link.
-9. Give every source a stable `id`, `resource`, and workflow `kind`; attach
-   material claims with matching footnotes.
-   Product-bearing concepts also declare `realization.intent`,
-   `realization.delivery`, `realization.alignment`, and `assessed_at`. Curated
-   intent may be `accepted` or `superseded`, never merely `proposed`.
-10. Set `generated.at` to the latest material edit. Old verification does not
-    survive that edit.
-11. Finish the material content, then run `wfctl knowledge hash --concept
-    <path>`. Use `status: stable` only after adding a suitable verification at
-    or after `generated.at` whose `content_hash` exactly matches that output.
-    Normative claims require a human verification. The hash excludes the
-    `verified` field itself, so recording the event does not change the
-    measured content.
-12. Author decisions from [the decision template](assets/decision.md). Preserve
-    each approved decision's substantive body; later changes may update only
-    lifecycle and lineage metadata. When a decision changes:
-    - create a new record with a stable `decision_id`, `effective_at`, and
-      project-relative `supersedes` paths;
-    - mark each predecessor `deprecated` and set its reciprocal
-      `superseded_by`;
-    - keep exactly one `stable` current decision per connected lineage;
-    - explain context, exact decision, rationale, alternatives, consequences,
-      affected Areas/capabilities, transition, and unresolved questions;
-    - never create `v1/`, `v2/`, or date-versioned copies of the whole Area.
-13. Update the Area index's `Current model` and `Evolution` sections. The
-    Evolution summary must explain what changed, why, and what it affected,
-    then link the full decisions. Append detail to that Area's `log.md`. Keep
-    the root `knowledge/log.md` as a high-level recent aggregator only.
-14. A project-change source is authoritative only when its active record is
-    structurally completion-ready or its archive outcome is completed. A
-    reconstruction source is authoritative only when every non-concept
-    receipt gate passes. Do not use a merely active or partially filled record
-    to make a concept stable.
-15. Run `wfctl knowledge validate --target <knowledge-root>`, then
-    `wfctl knowledge build --target <knowledge-root>`. The build must succeed
-    so broken links, invalid typed relations, stable orphan concepts, and
-    missing, non-reciprocal, or cyclic explicit claim lineage cannot silently
-    enter the maintained reading surface. The generated claim ledger is audit
-    and navigation state, not authority.
-16. Run `qmd update` so retrieval reflects the validated files. Re-run
-    `qmd embed -c knowledge` when semantic vectors are needed.
-17. Do not report promotion complete while validation or graph compilation
-    fails.
+1. Work from the knowledge root. Require and invoke the native QMD skill, use
+   QMD to locate candidates, and read every selected document directly.
+2. Identify the smallest primary Area. Use root product flows, architecture,
+   repositories, or decisions only when ownership genuinely crosses Areas.
+3. Inspect existing lifecycle, provenance, realization, quality receipt,
+   verification, and decision lineage.
+4. When implementation matters, invoke `analyze-with-graphify` in each exact
+   leaf, then inspect pinned source, tests, contracts, and runtime evidence.
+5. Separate accepted intent, observed delivery, alignment, technical
+   realization, decision history, and uncertainty. Ask the maintainer only for
+   missing product authority, chronology, ownership, or a material decision.
+6. Route product and engineering documents to their specialized skills. Never
+   reuse one body for both audiences.
+7. For a new Area, create its product-facing index from
+   [the Area template](assets/area-index.md). Add only the typed sibling
+   collections needed now: `capabilities/`, `use-cases/`, `concepts/`,
+   `rules/`, `implementation/`, `decisions/`, and `log.md`.
+8. Give every concept explicit `view`, `purpose`, and `audience`. Attribute
+   every material claim with an authoritative source ID and matching footnote.
+9. Declare only material semantic edges in `x-wf.relations`; include a
+   meaningful context and a matching human-visible Markdown link.
+10. Author decisions from [the decision template](assets/decision.md). Keep
+    one stable current decision per lineage; make supersession reciprocal and
+    acyclic. Preserve approved predecessor bodies.
+11. Update the product-facing Area index and its Evolution section when
+    current behavior changes. Append detailed chronology to the local log.
+12. Invoke `verify-knowledge-quality` for every new or materially changed
+    concept. Do not self-approve a failed, uncertain, unread, or blocked check.
+13. Finish content before hashing. Bind the passed quality receipt and normal
+    verification to the same `wfctl knowledge hash --concept <path>` output.
+    Normative claims require human verification.
+14. Run `wfctl knowledge validate`, `wfctl knowledge build`, and `qmd update`.
+    Rebuild embeddings only when semantic retrieval is needed.
+15. Return to the originating intake, reconstruction, or change workflow and
+    record exact promoted paths. Do not report completion while any gate fails.
 
-After raw-intake promotion, return control to `process-raw-intake` so it can
-run candidate-covering omission probes against the durable outputs. Unresolved
-candidates stay in the intake case. Use `knowledge/uncertainties/` only for a
-live project question established by trusted current evidence.
+## Authority rules
+
+- Product intent, meaning, rules, and normative decisions require explicit
+  maintainer authority.
+- Existing implementation requires pinned source and direct inspection.
+  Runtime claims require a fresh receipt when static code is insufficient.
+- An absent delivery claim may use a reviewed whole-scope reconstruction
+  receipt because nonexistent code cannot be pinned.
+- Architectural rationale, ownership, contracts, and policy require
+  maintainer review and contradiction checks against current implementation.
+- Historical implementation requires pinned version-control history plus a
+  reviewed archive or reconstruction receipt.
+- External facts require primary sources.
+
+If a concept mixes authority classes, attribute each material claim to the
+correct source. A quality receipt checks the writing and evidence match; it
+does not create authority.

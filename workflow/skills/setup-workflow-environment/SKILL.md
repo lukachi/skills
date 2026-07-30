@@ -93,7 +93,22 @@ manual or automation-oriented instructions.
 15. Point the maintainer to `PROJECT_WORKFLOW.md`; it defines their review
     responsibilities for both profiles.
 
-Use `wfctl upgrade` for an existing installation. Read [the installation contract](references/install-contract.md) when handling unusual files or symlinks.
+Use `wfctl upgrade` for an existing installation. A workflow 0.3 knowledge
+repository requires a content migration after the generated assets upgrade:
+
+1. inventory every existing curated concept without changing its meaning;
+2. route stakeholder current behavior to `curate-product-knowledge`;
+3. route technical realization to `curate-engineering-knowledge`;
+4. split any mixed concept and connect the two views with explicit links;
+5. preserve decision lineage, provenance, delivery state, and uncertainty;
+6. invoke `verify-knowledge-quality` and record fresh quality plus normal
+   verification receipts for the final content hash;
+7. run `wfctl knowledge validate` and `wfctl knowledge build`.
+
+Never infer a view, audience, or product meaning merely to silence an upgrade
+error. Leave the concept draft and ask the maintainer when authority is
+missing. Read [the installation contract](references/install-contract.md) when
+handling unusual files or symlinks.
 
 ## Safety
 

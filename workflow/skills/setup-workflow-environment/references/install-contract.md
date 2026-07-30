@@ -24,6 +24,10 @@
 - Install `reconstruct-project-knowledge` only for the knowledge profile.
 - Install `curate-project-knowledge` for both profiles because a leaf agent
   must promote durable truth before closing significant work.
+- Install `curate-product-knowledge`, `curate-engineering-knowledge`, and
+  `verify-knowledge-quality` for both profiles. The orchestrator depends on
+  them to keep stakeholder and technical views separate and to bind semantic
+  review to the current content hash.
 - Install alignment, work management, and verification skills for both
   profiles. Knowledge needs them for project-only and multi-repository living
   specs; a project-only record has no implementation checkout.

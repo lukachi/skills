@@ -69,6 +69,9 @@ material never becomes evidence. The mechanical gate proves that nothing in
 the selected revisions was silently omitted; it cannot prove that an agent
 understood every meaning, so your review is still authoritative.
 
+If you are evaluating the workflow itself rather than using it day to day,
+follow [the knowledge-view verification guide](VERIFY_KNOWLEDGE_VIEWS.md).
+
 Leaf initialization registers each repository and remembers that exact
 worktree. It does not make the worktree active for reconstruction. You do not
 need to manage that registry. When you ask for reconstruction, the agent uses
@@ -191,6 +194,32 @@ normally buried inside a capability or flow directory. Instead, the Area index,
 capability, and use-case documents link the relevant rules, decisions, and
 implementation records.
 
+### Two linked reading views
+
+The knowledge base does not mix product explanation and source-code
+explanation in one body.
+
+- **Product view** — Area indexes, capabilities, use cases, domain concepts,
+  rules, and product flows. Read this when you want to know what the product
+  provides, who it serves, how it behaves now, which rules and exceptions
+  apply, and whether delivery is complete. It is written for product managers,
+  clients, domain experts, and maintainers.
+- **Engineering view** — implementation, architecture, repositories,
+  contracts, runtime, and operations. Read this when you need to change,
+  operate, or verify the software.
+- **Decision view** — rationale and evolution. Read this when you need to know
+  why the current behavior or architecture was chosen.
+
+Product pages link Engineering details but contain no code, identifiers,
+endpoints, schemas, source paths, or implementation walkthroughs. Engineering
+pages link product meaning and never treat code as proof of intent.
+
+When the agent materially changes a concept, it runs an adversarial semantic
+review for factuality, audience fit, abstraction, completeness, and delivery
+state. The passed review and normal verification are bound to the same content
+hash. If the document changes afterward, both become stale and validation
+fails.
+
 For example:
 
 ```text
@@ -205,12 +234,13 @@ knowledge/areas/combat/
 └── log.md
 ```
 
-To understand revival as a user:
+To understand revival as a stakeholder:
 
 1. Read `areas/combat/index.md`.
 2. Open `capabilities/revival.md` for current behavior.
 3. Follow a relevant use case or rule for exact conditions.
-4. Open `implementation/revival-runtime.md` only for technical realization.
+4. Open `implementation/revival-runtime.md` only when you need engineering
+   realization.
 5. Open the current decision, then its predecessors, to understand why the
    behavior changed.
 

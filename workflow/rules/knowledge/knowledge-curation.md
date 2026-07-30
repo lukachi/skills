@@ -31,6 +31,13 @@ Use `process-raw-intake` for raw intake and
 `curate-project-knowledge` for promotion. Never copy, link, footnote, or cite a
 raw path from `knowledge/`.
 
+Treat `curate-project-knowledge` as the promotion orchestrator, not a universal
+writer. Invoke `curate-product-knowledge` for stakeholder-facing current
+behavior and `curate-engineering-knowledge` for implementation and
+architecture. Invoke `verify-knowledge-quality` after every material concept
+edit and before stable status. A passed quality receipt must bind the current
+content hash; it records review but creates no authority.
+
 Classify raw and reconstruction statements atomically. Keep semantic role,
 epistemic disposition, intent, delivery, alignment, temporal scope, explicit
 claim relations, and routing independent. File age and capture order never
@@ -133,6 +140,13 @@ raw references.
 
 Product-bearing concepts also declare independent intent, delivery, and
 alignment state. Proposed ideas remain outside curated current knowledge.
+
+Every concept declares `view`, `purpose`, and `audience`. Product documents
+must include the stakeholder audience, use the standard product sections, and
+contain no code, identifiers, endpoints, schemas, paths, or technical sections.
+Their Engineering details section is link-only. Engineering documents must
+include an engineer or operator audience, use the standard technical sections,
+and link product meaning instead of claiming it from code.
 
 Run `wfctl knowledge validate` and `wfctl knowledge build` after promotion. A
 failed validation or build blocks a completed knowledge update.

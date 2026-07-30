@@ -34,3 +34,9 @@ During discussion, every material change to requirements, constraints,
 alternatives, decisions, scope, risk, questions, or next action is written to
 the same spec before work continues. On resume, the agent reads that full file
 rather than relying on remembered chat.
+
+When the completed change updates durable knowledge, review two separate
+results when both changed: the stakeholder-facing product behavior and the
+engineering realization. The product view should be understandable without
+code; the engineering view should pin the actual implementation. A semantic
+quality receipt and strict validation must pass before either is called stable.

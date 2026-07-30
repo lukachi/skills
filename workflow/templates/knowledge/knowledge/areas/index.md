@@ -18,3 +18,9 @@ Product-bearing pages state intent, delivery, and alignment independently.
 This keeps accepted but unimplemented capabilities, partial delivery, legacy
 behavior with unknown intent, and known drift visible without flattening them
 into one misleading status.
+
+Product pages and engineering pages are separate linked views. Capabilities,
+use cases, domain concepts, and product rules explain stakeholder-visible
+behavior. `implementation/` explains technical realization. The Area index
+summarizes the product view first and links engineering details without
+embedding them.

@@ -6945,7 +6945,7 @@ var WORKFLOW_VERSION, CONFIG_SCHEMA_VERSION, STATE_SCHEMA_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    WORKFLOW_VERSION = "0.3.0";
+    WORKFLOW_VERSION = "0.4.0";
     CONFIG_SCHEMA_VERSION = 1;
     STATE_SCHEMA_VERSION = 1;
   }
@@ -14886,6 +14886,9 @@ function graphNode(path, metadata, body) {
   const description = stringValue(metadata?.description);
   const type = stringValue(metadata?.type);
   const status = stringValue(metadata?.status);
+  const view = stringValue(metadata?.view);
+  const purpose = stringValue(metadata?.purpose);
+  const audience = stringArray(metadata?.audience);
   return {
     id: graphId(path),
     path,
@@ -14893,7 +14896,10 @@ function graphNode(path, metadata, body) {
     title,
     ...description ? { description } : {},
     ...type ? { type } : {},
-    ...status ? { status } : {}
+    ...status ? { status } : {},
+    ...view ? { view } : {},
+    ...purpose ? { purpose } : {},
+    ...audience.length > 0 ? { audience } : {}
   };
 }
 function markdownLinks(body, lineOffset) {
@@ -15072,7 +15078,7 @@ var init_knowledge_graph = __esm({
     init_mdast_util_from_markdown();
     init_browser();
     init_config();
-    GRAPH_SCHEMA_VERSION = 1;
+    GRAPH_SCHEMA_VERSION = 2;
     GRAPH_PATH = ".workflow/current/knowledge-graph.json";
     RELATION_KINDS = /* @__PURE__ */ new Set([
       "supports",
@@ -19560,6 +19566,9 @@ async function validateKnowledge(targetInput, conceptPaths) {
           errors.push({ path: displayPath, message: 'root index.md must declare okf_version: "0.2"' });
         }
       }
+      if (/^knowledge\/areas\/[^/]+\/index\.md$/.test(displayPath)) {
+        validateAreaIndex(displayPath, content3, errors, warnings);
+      }
       continue;
     }
     const parsed = parseFrontmatter2(content3, true);
@@ -19606,6 +19615,9 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
   const verifications = normalizeVerifications(metadata.verified);
   const realization = recordValue6(metadata.realization);
   const expectedContentHash = conceptDocumentHash(metadata, body);
+  const view = stringValue6(metadata.view);
+  const purpose = stringValue6(metadata.purpose);
+  const audience = stringArray5(metadata.audience);
   if (!type) {
     errors.push({ path, message: "type is required by OKF v0.2" });
   }
@@ -19641,6 +19653,19 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
       errors.push({ path, message: `unknown authority class: ${value}` });
     }
   }
+  validateKnowledgeView(
+    path,
+    view,
+    purpose,
+    audience,
+    authority,
+    metadata,
+    body,
+    expectedContentHash,
+    status,
+    errors,
+    warnings
+  );
   const sourceIds = /* @__PURE__ */ new Set();
   let hasHumanAuthority = false;
   let hasPinnedCode = false;
@@ -20338,6 +20363,244 @@ function validateRealization(path, authority, realization, errors) {
     });
   }
 }
+function validateKnowledgeView(path, view, purpose, audience, authority, metadata, body, expectedContentHash, status, errors, warnings) {
+  const requiredPurpose = KNOWLEDGE_VIEW_PURPOSE.get(view);
+  if (!requiredPurpose) {
+    errors.push({
+      path,
+      message: "view must be product, engineering, decision, reference, or uncertainty"
+    });
+  } else if (purpose !== requiredPurpose) {
+    errors.push({
+      path,
+      message: `purpose must be "${requiredPurpose}" for view "${view}"`
+    });
+  }
+  if (audience.length === 0) {
+    errors.push({ path, message: "audience must contain at least one reader role" });
+  }
+  for (const role of audience) {
+    if (!KNOWLEDGE_AUDIENCES.has(role)) {
+      errors.push({ path, message: `unknown audience role: ${role}` });
+    }
+  }
+  if (view === "product" && !audience.includes("stakeholder")) {
+    errors.push({ path, message: "product view must include the stakeholder audience" });
+  }
+  if (view === "engineering" && !audience.some((role) => role === "engineer" || role === "operator")) {
+    errors.push({
+      path,
+      message: "engineering view must include the engineer or operator audience"
+    });
+  }
+  if ((view === "decision" || view === "uncertainty") && !audience.includes("maintainer")) {
+    errors.push({
+      path,
+      message: `${view} view must include the maintainer audience`
+    });
+  }
+  const expectedView = expectedViewForPath(path);
+  if (expectedView && view !== expectedView) {
+    errors.push({
+      path,
+      message: `view must match its knowledge lane: expected "${expectedView}", found "${view || "(missing)"}"`
+    });
+  }
+  if (view === "decision" && !authority.includes("decision")) {
+    errors.push({ path, message: "decision view requires decision authority" });
+  }
+  if (view === "reference" && !authority.includes("external")) {
+    errors.push({ path, message: "reference view requires external authority" });
+  }
+  if (view === "engineering" && (authority.includes("intent") || authority.includes("product-meaning"))) {
+    errors.push({
+      path,
+      message: "engineering view must link product meaning instead of claiming product authority"
+    });
+  }
+  if (view === "product") {
+    validateRequiredSections(path, body, PRODUCT_SECTIONS, errors);
+    validateLinkOnlySection(path, body, "Engineering details", errors);
+    if (/```|~~~/m.test(body)) {
+      errors.push({ path, message: "product view must not contain fenced code" });
+    }
+    if (/`/.test(body)) {
+      errors.push({
+        path,
+        message: "product view must not contain inline code or technical identifiers"
+      });
+    }
+    const technicalHeading = markdownHeadings(body).find(
+      (heading) => /(?:technical|implementation|architecture|api|schema|source code)/i.test(heading) && heading.toLowerCase() !== "engineering details"
+    );
+    if (technicalHeading) {
+      errors.push({
+        path,
+        message: `product view contains a technical section: ${technicalHeading}`
+      });
+    }
+    if (containsTechnicalIdentifiers(stakeholderText(body))) {
+      warnings.push({
+        path,
+        message: "product view contains technical-looking identifiers; verify the stakeholder abstraction"
+      });
+    }
+  }
+  if (view === "engineering") {
+    validateRequiredSections(path, body, ENGINEERING_SECTIONS, errors);
+  }
+  validateQualityReceipt(
+    path,
+    recordValue6(recordValue6(metadata["x-wf"])?.quality),
+    expectedContentHash,
+    status,
+    stringValue6(recordValue6(metadata.generated)?.at),
+    errors
+  );
+}
+function expectedViewForPath(path) {
+  if (/^knowledge\/(?:vision|product)\//.test(path) || /^knowledge\/areas\/[^/]+\/(?:capabilities|use-cases|concepts|rules)\//.test(path)) {
+    return "product";
+  }
+  if (/^knowledge\/(?:architecture|repositories)\//.test(path) || /^knowledge\/areas\/[^/]+\/implementation\//.test(path)) {
+    return "engineering";
+  }
+  if (/^knowledge\/decisions\//.test(path) || /^knowledge\/areas\/[^/]+\/decisions\//.test(path)) {
+    return "decision";
+  }
+  if (/^knowledge\/references\//.test(path)) {
+    return "reference";
+  }
+  if (/^knowledge\/uncertainties\//.test(path)) {
+    return "uncertainty";
+  }
+  return void 0;
+}
+function validateQualityReceipt(path, quality, expectedContentHash, lifecycle, generatedAt, errors) {
+  if (!quality) {
+    if (lifecycle === "stable") {
+      errors.push({ path, message: "stable concepts require x-wf.quality review" });
+    }
+    return;
+  }
+  const status = stringValue6(quality.status);
+  if (!["pending", "passed"].includes(status)) {
+    errors.push({ path, message: "x-wf.quality.status must be pending or passed" });
+    return;
+  }
+  if (status === "pending") {
+    if (lifecycle === "stable") {
+      errors.push({ path, message: "stable concepts require a passed x-wf.quality review" });
+    }
+    return;
+  }
+  if (!isActor(stringValue6(quality.by))) {
+    errors.push({ path, message: "x-wf.quality.by must follow the OKF actor convention" });
+  }
+  if (!isIsoDateTime5(stringValue6(quality.at))) {
+    errors.push({ path, message: "x-wf.quality.at must be an ISO 8601 datetime" });
+  } else if (Date.parse(stringValue6(quality.at)) < Date.parse(generatedAt)) {
+    errors.push({
+      path,
+      message: "x-wf.quality.at must be at or after generated.at"
+    });
+  }
+  if (stringValue6(quality.content_hash) !== expectedContentHash) {
+    errors.push({
+      path,
+      message: "x-wf.quality.content_hash must match the current knowledge content hash"
+    });
+  }
+  const checks = stringArray5(quality.checks);
+  for (const check of QUALITY_CHECKS) {
+    if (!checks.includes(check)) {
+      errors.push({ path, message: `x-wf.quality.checks must include ${check}` });
+    }
+  }
+  for (const check of checks) {
+    if (!QUALITY_CHECKS.includes(check)) {
+      errors.push({ path, message: `unknown x-wf.quality check: ${check}` });
+    }
+  }
+}
+function validateAreaIndex(path, body, errors, warnings) {
+  validateRequiredSections(path, body, AREA_INDEX_SECTIONS, errors);
+  validateLinkOnlySection(path, body, "Engineering details", errors);
+  if (/```|~~~|`/.test(body)) {
+    errors.push({
+      path,
+      message: "Area index is stakeholder-facing and must not contain code or technical identifiers"
+    });
+  }
+  if (containsTechnicalIdentifiers(stakeholderText(body))) {
+    warnings.push({
+      path,
+      message: "Area index contains technical-looking identifiers; move details to engineering knowledge"
+    });
+  }
+}
+function validateRequiredSections(path, body, required, errors) {
+  const headings = new Set(markdownHeadings(body).map((heading) => heading.toLowerCase()));
+  for (const section of required) {
+    if (!headings.has(section.toLowerCase())) {
+      errors.push({ path, message: `required section is missing: ${section}` });
+    }
+  }
+}
+function markdownHeadings(body) {
+  return [...body.matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm)].map((match) => match[1].trim());
+}
+function stakeholderText(body) {
+  return body.replace(/\]\([^)]+\)/g, "]").replace(/^\[\^[A-Za-z0-9_-]+\]:.*$/gm, "");
+}
+function containsTechnicalIdentifiers(body) {
+  return /\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/\S+|\b[A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|py|rs|go|java|kt|swift|sql|proto|json|ya?ml)\b|\b[a-z]+_[a-z0-9_]+\b/.test(body);
+}
+function validateLinkOnlySection(path, body, heading, errors) {
+  const section = markdownSection(body, heading);
+  if (section === void 0) {
+    return;
+  }
+  const invalid = section.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).find(
+    (line) => !/^(?:[-*]\s+)?\[[^\]]+\]\([^)]+\)$/.test(line) && !/^(?:none|not applicable)\.?$/i.test(line)
+  );
+  if (invalid) {
+    errors.push({
+      path,
+      message: `${heading} must contain links only, or an explicit not-applicable statement`
+    });
+  }
+}
+function markdownSection(body, heading) {
+  const lines = body.split(/\r?\n/);
+  const wanted = heading.toLowerCase();
+  let start = -1;
+  let level2 = 0;
+  for (const [index2, line] of lines.entries()) {
+    const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (match && match[2].trim().toLowerCase() === wanted) {
+      start = index2 + 1;
+      level2 = match[1].length;
+      break;
+    }
+  }
+  if (start < 0) {
+    return void 0;
+  }
+  let end = lines.length;
+  for (let index2 = start; index2 < lines.length; index2 += 1) {
+    const match = /^(#{1,6})\s+/.exec(lines[index2]);
+    if (match && match[1].length <= level2) {
+      end = index2;
+      break;
+    }
+    if (/^\[\^[A-Za-z0-9_-]+\]:/.test(lines[index2])) {
+      end = index2;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
 function isActor(value) {
   return /^(?:human:[^\s:]+|process:[^\s:]+|[^/\s]+\/[^/\s]+)$/.test(value);
 }
@@ -20358,6 +20621,12 @@ async function hashKnowledgeConcept(targetInput, conceptPath) {
 function conceptDocumentHash(metadata, body) {
   const material = { ...metadata };
   delete material.verified;
+  const workflow = recordValue6(material["x-wf"]);
+  if (workflow) {
+    const workflowMaterial = { ...workflow };
+    delete workflowMaterial.quality;
+    material["x-wf"] = workflowMaterial;
+  }
   return createHash6("sha256").update(JSON.stringify(canonicalValue(material))).update("\n").update(body.replace(/\r\n/g, "\n").trimEnd()).digest("hex");
 }
 function canonicalValue(value) {
@@ -20393,6 +20662,7 @@ function stringArray5(value) {
 function isIsoDateTime5(value) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
+var KNOWLEDGE_VIEW_PURPOSE, KNOWLEDGE_AUDIENCES, QUALITY_CHECKS, PRODUCT_SECTIONS, ENGINEERING_SECTIONS, AREA_INDEX_SECTIONS;
 var init_knowledge = __esm({
   "src/knowledge.ts"() {
     "use strict";
@@ -20401,6 +20671,65 @@ var init_knowledge = __esm({
     init_knowledge_graph();
     init_reconstruction();
     init_work_spec();
+    KNOWLEDGE_VIEW_PURPOSE = /* @__PURE__ */ new Map([
+      ["product", "current-behavior"],
+      ["engineering", "technical-realization"],
+      ["decision", "decision-history"],
+      ["reference", "external-context"],
+      ["uncertainty", "open-question"]
+    ]);
+    KNOWLEDGE_AUDIENCES = /* @__PURE__ */ new Set([
+      "stakeholder",
+      "maintainer",
+      "domain-expert",
+      "engineer",
+      "operator",
+      "agent"
+    ]);
+    QUALITY_CHECKS = [
+      "factuality",
+      "audience-fit",
+      "abstraction",
+      "completeness",
+      "delivery-state"
+    ];
+    PRODUCT_SECTIONS = [
+      "What this provides",
+      "Who it serves",
+      "Current behavior",
+      "Rules and outcomes",
+      "Boundaries and exceptions",
+      "Delivery",
+      "Examples",
+      "Evolution",
+      "Related knowledge",
+      "Engineering details"
+    ];
+    ENGINEERING_SECTIONS = [
+      "Responsibility",
+      "Current implementation",
+      "Boundaries and ownership",
+      "Data and control flow",
+      "Contracts and invariants",
+      "Failure and operational behavior",
+      "Verification",
+      "Product knowledge",
+      "Relationships"
+    ];
+    AREA_INDEX_SECTIONS = [
+      "Purpose",
+      "Who it serves",
+      "Scope and boundaries",
+      "Current product behavior",
+      "Capabilities",
+      "Use cases and flows",
+      "Rules and outcomes",
+      "Delivery overview",
+      "Current decisions",
+      "Evolution",
+      "Open questions",
+      "Engineering details"
+    ];
   }
 });
 
@@ -28535,17 +28864,23 @@ var COMMON_SKILLS = [
 var PROFILE_SKILLS = {
   knowledge: [
     "align-project-knowledge",
+    "curate-engineering-knowledge",
+    "curate-product-knowledge",
     "curate-project-knowledge",
     "manage-project-work",
     "operate-project-knowledge",
     "process-raw-intake",
     "reconstruct-project-knowledge",
+    "verify-knowledge-quality",
     "verify-project-work"
   ],
   leaf: [
     "align-project-knowledge",
+    "curate-engineering-knowledge",
+    "curate-product-knowledge",
     "curate-project-knowledge",
     "manage-project-work",
+    "verify-knowledge-quality",
     "verify-project-work"
   ]
 };
@@ -29735,7 +30070,7 @@ async function runDoctor(targetInput, options = {}) {
     checks.push({
       name: "curated-knowledge",
       status: validation.valid ? "pass" : "fail",
-      message: validation.valid ? `${validation.files} curated Markdown file(s) satisfy the trust profile` : `${validation.errors.length} curated knowledge validation error(s)`
+      message: validation.valid ? `${validation.files} curated Markdown file(s) satisfy the trust profile` : `${validation.errors.length} validation error(s); ask the knowledge agent to repair or migrate the affected views, then run wfctl knowledge validate`
     });
     if (validation.valid) {
       const compilation = await compileKnowledgeGraph(knowledgeRoot);
@@ -31197,7 +31532,7 @@ Archive: ${result.archivePath}
 }
 function knowledgeCommand() {
   return new Command().description(
-    "Operate the knowledge trust boundary.\nraw/ is untrusted intake; reconstruction maps pinned leaves; knowledge/ is curated truth.\nwfctl validates and compiles explicit knowledge and claim relations; QMD provides semantic retrieval."
+    "Operate the knowledge trust boundary.\nraw/ is untrusted intake; reconstruction maps pinned leaves; knowledge/ is curated truth.\nProduct views explain current behavior to stakeholders; engineering views record verified realization.\nwfctl validates views, quality receipts, and explicit relations; QMD provides semantic retrieval."
   ).command("raw", knowledgeRawCommand()).command("case", knowledgeCaseCommand()).command("sources", knowledgeSourcesCommand()).command("reconstruct", knowledgeReconstructCommand()).command(
     "hash",
     new Command().description(
@@ -31213,7 +31548,9 @@ function knowledgeCommand() {
     })
   ).command(
     "validate",
-    new Command().description("Validate curated knowledge against the strict workflow trust profile.").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--concept <path:string>", "Validate one concept path.", { collect: true }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+    new Command().description(
+      "Validate knowledge views, provenance, delivery state, and semantic quality receipts."
+    ).option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--concept <path:string>", "Validate one concept path.", { collect: true }).option("--json", "Print machine-readable JSON.").action(async (options) => {
       const concepts = Array.isArray(options.concept) ? options.concept : options.concept ? [options.concept] : void 0;
       const result = await validateKnowledge(options.target, concepts);
       if (options.json) {

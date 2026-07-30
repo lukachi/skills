@@ -6,3 +6,8 @@ capabilities and rules here.
 
 Use `flows/` only for genuinely cross-Area end-to-end product flows. Area-local
 use cases remain under `knowledge/areas/<area>/use-cases/`.
+
+Write for product managers, clients, domain experts, and maintainers. Describe
+observable behavior, outcomes, rules, boundaries, delivery, and examples.
+Keep code, APIs, schemas, repositories, and architecture in linked engineering
+knowledge.

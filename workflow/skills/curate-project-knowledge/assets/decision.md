@@ -3,6 +3,12 @@ type: Decision
 title: "<decision title>"
 description: "<current decision in one sentence>"
 status: draft
+view: decision
+purpose: decision-history
+audience:
+  - maintainer
+  - domain-expert
+  - engineer
 decision_id: "<stable-lowercase-id>"
 effective_at: "<ISO-8601>"
 area: "<primary-area>"
@@ -17,6 +23,8 @@ supersedes: []
 superseded_by: ""
 x-wf:
   relations: []
+  quality:
+    status: pending
 sources:
   - id: "<maintainer-decision-id>"
     kind: maintainer-decision
@@ -29,9 +37,10 @@ sources:
 
 Explain the situation and the problem that required a decision.[^maintainer-decision-id]
 
-# Decision
+# Product decision
 
-State the exact decision and its boundaries.
+State the exact stakeholder-visible choice and its boundaries in plain
+language.
 
 # Rationale
 
@@ -43,17 +52,20 @@ List material alternatives and why they were not selected.
 
 # Consequences and tradeoffs
 
-State benefits, costs, risks, constraints, and accepted tradeoffs.
+State benefits, costs, risks, constraints, and accepted tradeoffs. Link
+engineering knowledge for technical consequences instead of embedding an
+implementation walkthrough.
 
-# Affected Areas and capabilities
+# Affected knowledge
 
-Link every materially affected Area, capability, use case, rule, or contract.
-Record non-lineage semantic edges in `x-wf.relations` with the same target and
-a meaningful `context`.
+Link every materially affected Area, capability, use case, rule, engineering
+concept, or contract. Record non-lineage semantic edges in `x-wf.relations`
+with the same target and meaningful context.
 
 # Transition and migration
 
-Explain how the project moves from the predecessor state, or state `None`.
+Explain the product transition and link separate engineering migration detail,
+or state `None`.
 
 # Unresolved questions
 
@@ -63,11 +75,10 @@ List remaining questions, or state `None`.
 
 Explain what this changes relative to each predecessor. Use project-relative
 `knowledge/...` paths in `supersedes` and `superseded_by`; keep reciprocal
-links accurate, and include matching Markdown links to every predecessor and
-successor in this section.
+links accurate and include matching links to every predecessor and successor.
 
-[^maintainer-decision-id]: Explicit maintainer approval recorded in the linked project change.
+[^maintainer-decision-id]: Explicit maintainer approval in the linked decision receipt.
 
-Before changing `status` to `stable`, run
-`wfctl knowledge hash --concept knowledge/.../<decision>.md` and add a
-verification event with `by`, `at`, and the returned `content_hash`.
+Before changing `status` to `stable`, invoke `verify-knowledge-quality`, run
+`wfctl knowledge hash --concept knowledge/.../<decision>.md`, and bind both
+the passed quality receipt and human verification to the returned hash.

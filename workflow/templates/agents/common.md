@@ -30,3 +30,9 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
 - For significant multi-turn work, create the shaping spec early, update it
   after every material maintainer turn, and resume from the full file rather
   than conversation memory.
+- Treat product-facing and engineering knowledge as linked views, never one
+  blended document. Product pages explain current behavior to stakeholders;
+  engineering pages explain implementation to engineers and operators.
+- Route product authoring to `curate-product-knowledge`, technical authoring to
+  `curate-engineering-knowledge`, and every material knowledge edit through
+  `verify-knowledge-quality` before it becomes stable.

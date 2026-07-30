@@ -25,7 +25,10 @@ For significant work, follow these gates in order:
     revision/worktree fields or one `verification.repositories` receipt per
     repository.
 13. Promote any durable verified truth into `knowledge/`, or record why no
-    current knowledge changed.
+    current knowledge changed. Route stakeholder-facing behavior through
+    `curate-product-knowledge`, technical realization through
+    `curate-engineering-knowledge`, and every changed concept through
+    `verify-knowledge-quality`.
 14. Present the completion review packet and record explicit maintainer
     approval.
 15. Mark the record completed only when verification and promotion records are

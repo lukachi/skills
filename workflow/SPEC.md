@@ -45,6 +45,19 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - `knowledge/index.md` and Area indexes are the primary human road. Areas own
   capabilities, concepts, rules, use cases, implementation, decisions, and
   local evolution without flattening the project.
+- Knowledge exposes linked product and engineering views rather than blending
+  both audiences in one document. Product concepts explain current behavior,
+  rules, delivery, examples, and evolution to stakeholders. Engineering
+  concepts explain implementation, architecture, ownership, contracts,
+  failure behavior, operations, and verification.
+- Every concept declares a view, purpose, and audience. Product and engineering
+  paths have deterministic lane contracts and required sections. Product
+  documents reject code and technical sections; engineering documents link
+  product meaning instead of inferring it from code.
+- Every stable concept requires a semantic quality receipt bound to the same
+  material content hash as its normal verification. The receipt records
+  factuality, audience fit, abstraction, completeness, and delivery-state
+  review without creating authority.
 - Decisions evolve through immutable records, reciprocal acyclic supersession
   links, and one stable current record per lineage.
 - Raw candidates, source-first reconstruction claims, and ongoing change
@@ -307,6 +320,14 @@ The workflow guarantees complete accounting, not perfect understanding:
   inputs, missing promotion, and absent maintainer approval.
 - [x] Curated product concepts distinguish accepted intent, observed delivery,
   and alignment without treating code as automatic product truth.
+- [x] Product and engineering knowledge use separate path-aware view, purpose,
+  audience, and required-section contracts.
+- [x] Product validation rejects code, inline identifiers, technical sections,
+  and incomplete stakeholder structure.
+- [x] Stable concepts require a current semantic quality receipt covering
+  factuality, audience fit, abstraction, completeness, and delivery state.
+- [x] Specialized product, engineering, and quality skills are installed for
+  both profiles and routed by the promotion orchestrator.
 
 ## Progress
 
@@ -323,6 +344,8 @@ The workflow guarantees complete accounting, not perfect understanding:
 - [x] Implement and verify complete-accounting source-first reconstruction.
 - [x] Implement the adjudicated intake v4 claim model, migration, routing,
   omission probes, and shared claim ledger.
+- [x] Implement separate product and engineering knowledge views with semantic
+  quality verification and black-box behavior evals.
 
 ## Out of scope for v2
 

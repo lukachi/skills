@@ -6,7 +6,9 @@ knowledge repository and any number of leaf source repositories.
 New to the workflow? Start with
 **[Getting started with wfctl](GETTING_STARTED.md)**. It explains maintainer
 behavior, the daily work loop, and common situations without requiring CLI
-knowledge.
+knowledge. Workflow authors and reviewers can use
+**[Verify the knowledge views workflow](VERIFY_KNOWLEDGE_VIEWS.md)** for
+deterministic tests and Codex/Claude black-box scenarios.
 
 For maintainers, the normal CLI surface is only `wfctl init knowledge` and
 `wfctl init leaf`; both may also be delegated to the setup skill. Installed
@@ -90,8 +92,8 @@ Project installations remain profile-specific:
 | Profile | Installed skills |
 | --- | --- |
 | Both | `setup-workflow-environment`, `analyze-with-graphify`, official `qmd` |
-| Knowledge | `operate-project-knowledge`, `reconstruct-project-knowledge`, `process-raw-intake`, `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge` |
-| Leaf | `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge` |
+| Knowledge | `operate-project-knowledge`, `reconstruct-project-knowledge`, `process-raw-intake`, `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge`, `curate-product-knowledge`, `curate-engineering-knowledge`, `verify-knowledge-quality` |
+| Leaf | `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge`, `curate-product-knowledge`, `curate-engineering-knowledge`, `verify-knowledge-quality` |
 
 ## Initialize
 
@@ -258,10 +260,18 @@ conclusions.
 
 `knowledge/index.md` is the human entry point.
 `knowledge/areas/<area>/index.md` is the primary map for each durable product
-or functional Area. It separates current human-facing behavior from technical
-realization and links capabilities, rules, flows, decisions, and local
-evolution. Decision changes create immutable successor records with reciprocal
-lineage links; they do not clone whole versioned Areas.
+or functional Area. Product-facing capabilities, use cases, concepts, rules,
+flows, delivery, and evolution are written for stakeholders without code or
+implementation detail. Separate engineering concepts cover implementation,
+architecture, repositories, contracts, runtime, and operations, and link back
+to product meaning. Decision changes create immutable successor records with
+reciprocal lineage links; they do not clone whole versioned Areas.
+
+Every concept declares `view`, `purpose`, and `audience`. Stable concepts also
+carry a content-hash-bound semantic quality receipt after factuality, audience,
+abstraction, completeness, and delivery-state review. `wfctl knowledge
+validate` enforces the lane, required sections, product no-code boundary,
+receipt freshness, authority, provenance, links, and lifecycle.
 
 The generated QMD collections preserve the trust boundary: `knowledge` is the
 only default collection, while `changes`, `intake`, `reconstruction`, and

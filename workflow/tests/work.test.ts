@@ -146,6 +146,9 @@ test("runs the completed central work lifecycle", async () => {
 type: Architecture Decision
 title: World loop authority
 status: stable
+view: decision
+purpose: decision-history
+audience: [maintainer, engineer]
 decision_id: world-loop-authority
 effective_at: 2026-07-28T11:55:00Z
 supersedes: []
@@ -155,6 +158,8 @@ generated: { by: workflow-agent/1, at: 2026-07-28T11:30:00Z }
 verified: { by: human:test-maintainer, at: 2026-07-28T11:55:00Z }
 x-wf:
   relations: []
+  quality:
+    status: pending
 sources:
   - id: world-loop-decision
     kind: maintainer-decision
@@ -544,10 +549,34 @@ async function sealConcept(target: string, relativePath: string): Promise<void> 
     ...verified,
     content_hash: "0".repeat(64),
   };
+  const workflow = (
+    typeof document.metadata["x-wf"] === "object"
+    && document.metadata["x-wf"] !== null
+    && !Array.isArray(document.metadata["x-wf"])
+  )
+    ? document.metadata["x-wf"] as Record<string, unknown>
+    : {};
+  workflow.quality = {
+    status: "passed",
+    by: "workflow-agent/1",
+    at: "2026-07-28T11:55:00Z",
+    content_hash: "0".repeat(64),
+    checks: [
+      "factuality",
+      "audience-fit",
+      "abstraction",
+      "completeness",
+      "delivery-state",
+    ],
+  };
+  document.metadata["x-wf"] = workflow;
   await writeFile(absolute, serializeWorkSpec(document), "utf8");
   const sealed = parseWorkSpec(await readFile(absolute, "utf8"));
-  (sealed.metadata.verified as Record<string, unknown>).content_hash =
-    (await hashKnowledgeConcept(target, relativePath)).contentHash;
+  const hash = (await hashKnowledgeConcept(target, relativePath)).contentHash;
+  (sealed.metadata.verified as Record<string, unknown>).content_hash = hash;
+  (
+    (sealed.metadata["x-wf"] as Record<string, unknown>).quality as Record<string, unknown>
+  ).content_hash = hash;
   await writeFile(absolute, serializeWorkSpec(sealed), "utf8");
 }
 

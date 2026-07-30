@@ -1,0 +1,141 @@
+[
+  {
+    "id": "implemented-current-product",
+    "prompt": "Curate the verified current revival behavior for a client.",
+    "required": [
+      "separates accepted intent from verified delivery",
+      "uses stakeholder language",
+      "preserves rules and exceptions",
+      "links engineering details without summarizing implementation",
+      "runs quality verification before stable"
+    ],
+    "forbidden": [
+      "class or function names",
+      "API routes or schemas",
+      "raw as evidence",
+      "presenting history before the current answer"
+    ]
+  },
+  {
+    "id": "accepted-absent-product",
+    "prompt": "The maintainer accepts companion trading, but complete source reconstruction finds no implementation.",
+    "required": [
+      "records accepted intent",
+      "records absent delivery",
+      "records drift or unknown alignment honestly",
+      "does not invent a source path for absent code"
+    ],
+    "forbidden": [
+      "claims the capability is available",
+      "removes the accepted idea because code is absent"
+    ]
+  },
+  {
+    "id": "legacy-unknown-intent",
+    "prompt": "Source proves an implemented stealing mechanic, but no authority establishes whether product still accepts it.",
+    "required": [
+      "records observed implementation separately",
+      "keeps intent unknown or requests maintainer authority",
+      "does not silently promote code into accepted product meaning"
+    ],
+    "forbidden": [
+      "calls implementation intended",
+      "calls implementation correct"
+    ]
+  },
+  {
+    "id": "product-rule-supersession",
+    "prompt": "Revival changed from no revival, to one health point, to requiring a special item.",
+    "required": [
+      "updates one current product path",
+      "creates or follows reciprocal decision lineage",
+      "explains what changed and why in Evolution",
+      "keeps full rationale in decision records"
+    ],
+    "forbidden": [
+      "versions the whole Area",
+      "flattens every decision into the current behavior body"
+    ]
+  },
+  {
+    "id": "engineering-realization",
+    "prompt": "Document how the verified revival capability is realized across two source repositories.",
+    "required": [
+      "pins repositories, revisions, paths, and evidence",
+      "covers ownership, flow, contracts, failures, and verification",
+      "links the product capability",
+      "uses Graphify before direct source inspection"
+    ],
+    "forbidden": [
+      "redefines product meaning",
+      "uses Graphify output as authority",
+      "mixes machine-local worktree paths into durable knowledge"
+    ]
+  },
+  {
+    "id": "mixed-raw-and-code",
+    "prompt": "Raw says revival costs gold, code says it consumes an item, and the maintainer has not resolved the conflict.",
+    "required": [
+      "keeps raw outside authority",
+      "records code as observed delivery only",
+      "asks for the exact missing product decision",
+      "blocks stable product truth"
+    ],
+    "forbidden": [
+      "chooses the newer source automatically",
+      "uses majority agreement as authority"
+    ]
+  },
+  {
+    "id": "semantic-review-failure",
+    "prompt": "Review a product capability that includes endpoint names and omits a rare but material exception.",
+    "required": [
+      "fails abstraction",
+      "fails completeness",
+      "identifies the exact leaked details and omitted exception",
+      "withholds the quality receipt"
+    ],
+    "forbidden": [
+      "passes because deterministic validation mostly succeeds",
+      "rewrites without reporting the evidence gap"
+    ]
+  },
+  {
+    "id": "quality-hash-staleness",
+    "prompt": "A stable concept was edited after its semantic review.",
+    "required": [
+      "detects the stale quality content hash",
+      "reruns the full semantic review",
+      "records a new hash only after content is final"
+    ],
+    "forbidden": [
+      "copies the old hash",
+      "updates the receipt without rereading evidence"
+    ]
+  },
+  {
+    "id": "trivial-change-near-miss",
+    "prompt": "Move two unchanged controls on a page without changing the flow or behavior.",
+    "required": [
+      "does not launch knowledge authoring",
+      "preserves the lightweight workflow route"
+    ],
+    "forbidden": [
+      "creates product and engineering concepts merely because files changed"
+    ]
+  },
+  {
+    "id": "cross-area-whole-product",
+    "prompt": "A purchase involves identity, economy, inventory, and notifications across several repositories.",
+    "required": [
+      "creates one cross-Area product flow when no Area is the honest owner",
+      "keeps each Area capability at its primary owner",
+      "creates separate engineering realization",
+      "reconciles partial repository observations into one whole-project behavior"
+    ],
+    "forbidden": [
+      "creates one product truth per repository",
+      "hardcodes frontend, backend, or client roles"
+    ]
+  }
+]

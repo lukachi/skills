@@ -1,6 +1,6 @@
 {
   "name": "wfctl",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": false,
   "license": "MIT",
   "description": "Deterministic project workflow bootstrap and lifecycle CLI",
@@ -10,7 +10,9 @@
   },
   "files": [
     "GETTING_STARTED.md",
+    "VERIFY_KNOWLEDGE_VIEWS.md",
     "dist",
+    "evals",
     "rules",
     "skills",
     "templates"
@@ -18,7 +20,7 @@
   "scripts": {
     "build": "bun scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "bun test tests/*.test.ts",
+    "test": "bun scripts/test.mjs",
     "test:preflight": "bun tests/preflight-integration.mjs",
     "test:qmd": "bun tests/qmd-integration.mjs",
     "test:graphify": "bun tests/graphify-integration.mjs",

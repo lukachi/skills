@@ -48,17 +48,23 @@ const COMMON_SKILLS = [
 const PROFILE_SKILLS: Record<PlanOptions["profile"], string[]> = {
   knowledge: [
     "align-project-knowledge",
+    "curate-engineering-knowledge",
+    "curate-product-knowledge",
     "curate-project-knowledge",
     "manage-project-work",
     "operate-project-knowledge",
     "process-raw-intake",
     "reconstruct-project-knowledge",
+    "verify-knowledge-quality",
     "verify-project-work",
   ],
   leaf: [
     "align-project-knowledge",
+    "curate-engineering-knowledge",
+    "curate-product-knowledge",
     "curate-project-knowledge",
     "manage-project-work",
+    "verify-knowledge-quality",
     "verify-project-work",
   ],
 };

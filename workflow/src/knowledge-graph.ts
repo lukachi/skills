@@ -12,7 +12,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { parse } from "yaml";
 import { readConfig } from "./config.js";
 
-const GRAPH_SCHEMA_VERSION = 1;
+const GRAPH_SCHEMA_VERSION = 2;
 const GRAPH_PATH = ".workflow/current/knowledge-graph.json";
 const RELATION_KINDS = new Set([
   "supports",
@@ -35,6 +35,9 @@ export interface KnowledgeGraphNode {
   description?: string;
   type?: string;
   status?: string;
+  view?: string;
+  purpose?: string;
+  audience?: string[];
 }
 
 export interface KnowledgeGraphEdge {
@@ -405,6 +408,9 @@ function graphNode(
   const description = stringValue(metadata?.description);
   const type = stringValue(metadata?.type);
   const status = stringValue(metadata?.status);
+  const view = stringValue(metadata?.view);
+  const purpose = stringValue(metadata?.purpose);
+  const audience = stringArray(metadata?.audience);
   return {
     id: graphId(path),
     path,
@@ -413,6 +419,9 @@ function graphNode(
     ...(description ? { description } : {}),
     ...(type ? { type } : {}),
     ...(status ? { status } : {}),
+    ...(view ? { view } : {}),
+    ...(purpose ? { purpose } : {}),
+    ...(audience.length > 0 ? { audience } : {}),
   };
 }
 

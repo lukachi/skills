@@ -204,9 +204,10 @@ answer or keep the candidate unresolved outside `knowledge/`.
    conditions, lineage, and next decision. Start project-only significant work
    with `wfctl work start` when shaping must continue.
 3. Group current/history candidates into the smallest coherent concepts and
-   invoke `curate-project-knowledge`. Every knowledge-routed candidate must
-   declare independent `evidence`, required `maintainer_decision`, and every
-   destination under `routing.destinations`.
+   invoke `curate-project-knowledge`. It routes product and engineering views
+   to their specialized skills and invokes `verify-knowledge-quality`. Every
+   knowledge-routed candidate must declare independent `evidence`, required
+   `maintainer_decision`, and every destination under `routing.destinations`.
 4. Require claim-level authoritative sources and explicit trust metadata.
 5. Require the union of current/history destinations to equal
    `promotion.concepts`. `not-needed` is invalid while any candidate routes to

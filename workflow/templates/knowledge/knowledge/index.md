@@ -24,3 +24,7 @@ use cases, implementation notes, decisions, or local evolution log.
 Product-facing concepts distinguish accepted intent, observed delivery, and
 their alignment; implemented code is not treated as intended product behavior
 unless the project has explicitly accepted it.
+
+Product pages are written for stakeholders and contain no implementation
+walkthroughs. Follow their Engineering details links only when you need source,
+architecture, contracts, runtime, or operations.

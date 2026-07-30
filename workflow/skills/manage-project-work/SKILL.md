@@ -77,7 +77,9 @@ If uncertain, describe the possible impact and ask the maintainer whether to use
     records `verification.knowledge_reviewed: true` and knowledge checks
     instead of inventing code receipts.
 16. Decide whether the verified change alters durable current knowledge. If it
-    does, invoke `curate-project-knowledge`, list the updated concepts under
+    does, invoke `curate-project-knowledge`. Route product behavior and
+    engineering realization separately, invoke `verify-knowledge-quality` for
+    every changed concept, list the updated concepts under
     `knowledge_promotion.concepts`, and run
     `wfctl knowledge validate --target <Knowledge root>` using the exact root
     returned by `wfctl work status`. If it does not, set

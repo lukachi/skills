@@ -21,3 +21,8 @@ Keep one canonical change/spec/progress file in the knowledge repository,
 update it after every material maintainer turn,
 verify with `verify-project-work`, promote durable truth to curated knowledge,
 then archive the exact change record.
+
+During promotion, keep linked product and engineering views separate. Invoke
+`curate-product-knowledge` for stakeholder-facing behavior,
+`curate-engineering-knowledge` for technical realization, and
+`verify-knowledge-quality` before a materially changed concept becomes stable.

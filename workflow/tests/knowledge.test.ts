@@ -450,7 +450,7 @@ test("reconstructs a source-first baseline without raw input or durable checkout
   caseDocument.metadata.maintainer_review = {
     status: "approved",
     by: "human:test-maintainer",
-    at: "2026-07-28T14:00:00Z",
+    at: "2026-07-30T14:00:00Z",
     notes: ["Approved the reconstructed baseline."],
   };
   await writeFile(started.path, serializeWorkSpec(caseDocument), "utf8");
@@ -557,7 +557,7 @@ The capability is implemented and tested at the pinned revision.
   );
   await writeFile(
     join(target, "knowledge/areas/core/index.md"),
-    "# Core\n\n- [Capabilities](capabilities/)\n",
+    areaIndex("Core", "- [Capabilities](capabilities/)\n"),
     "utf8",
   );
   await writeFile(
@@ -572,6 +572,9 @@ type: Capability
 title: Greeting
 description: Return a greeting for a supplied name.
 status: stable
+view: product
+purpose: current-behavior
+audience: [stakeholder, maintainer, domain-expert]
 area: core
 authority: [product-meaning, implementation]
 generated: { by: workflow-agent/1, at: 2026-07-28T14:00:00Z }
@@ -593,13 +596,45 @@ sources:
     resource: git:${repository.repository}@${repository.commit}#src/main.ts:greet
 ---
 
-# Current meaning
+# What this provides
 
 The project accepts and delivers a greeting capability.[^baseline-decision][^greeting-source]
 
-# Relationships
+# Who it serves
+
+People who request a greeting.
+
+# Current behavior
+
+A supplied name receives a greeting.
+
+# Rules and outcomes
+
+The greeting uses the supplied name.
+
+# Boundaries and exceptions
+
+No additional behavior is established by this baseline.
+
+# Delivery
+
+The capability is verified as available.
+
+# Examples
+
+A person supplies a name and receives a greeting addressed to that name.
+
+# Evolution
+
+This baseline establishes the current behavior.
+
+# Related knowledge
 
 - [Core Area](../index.md)
+
+# Engineering details
+
+Not applicable.
 
 [^baseline-decision]: Maintainer-approved reconstruction claim.
 [^greeting-source]: Pinned implementation.
@@ -613,6 +648,9 @@ type: Capability
 title: Farewell
 description: Return a farewell for a supplied name.
 status: stable
+view: product
+purpose: current-behavior
+audience: [stakeholder, maintainer, domain-expert]
 area: core
 authority: [intent, implementation]
 generated: { by: workflow-agent/1, at: 2026-07-28T14:00:00Z }
@@ -634,14 +672,46 @@ sources:
     resource: project-reconstruction:${started.id}#farewell-capability
 ---
 
-# Current meaning
+# What this provides
 
 The project accepts a farewell capability, but the reviewed source baseline
 contains no implementation.[^farewell-decision][^farewell-coverage]
 
-# Relationships
+# Who it serves
+
+People who would receive a farewell.
+
+# Current behavior
+
+The accepted farewell is not currently available.
+
+# Rules and outcomes
+
+No delivered farewell outcome exists yet.
+
+# Boundaries and exceptions
+
+Acceptance does not imply availability.
+
+# Delivery
+
+The capability is absent from the reviewed implementation.
+
+# Examples
+
+A farewell request cannot currently produce the accepted outcome.
+
+# Evolution
+
+The baseline records accepted intent before delivery.
+
+# Related knowledge
 
 - [Core Area](../index.md)
+
+# Engineering details
+
+Not applicable.
 
 [^farewell-decision]: Maintainer-approved product intent.
 [^farewell-coverage]: Reviewed whole-scope reconstruction receipt.
@@ -739,6 +809,9 @@ test("validates the strict curated knowledge trust profile", async () => {
 type: Architecture Decision
 title: Current loop authority
 status: stable
+view: decision
+purpose: decision-history
+audience: [maintainer, domain-expert, engineer]
 decision_id: current-loop-authority
 effective_at: 2026-07-28T12:05:00Z
 supersedes: []
@@ -840,6 +913,9 @@ The world loop is server-authoritative.[^loop-decision]
 type: Architecture
 title: Runtime implementation
 status: draft
+view: engineering
+purpose: technical-realization
+audience: [engineer, operator, maintainer]
 authority: [implementation]
 generated: { by: workflow-agent/1, at: 2026-07-28T12:00:00Z }
 sources:
@@ -1357,6 +1433,9 @@ test("does not authorize stable knowledge from an incomplete active change", asy
 type: Decision
 title: Incomplete decision
 status: stable
+view: decision
+purpose: decision-history
+audience: [maintainer, domain-expert, engineer]
 decision_id: incomplete-decision
 effective_at: 2026-07-28T11:00:00Z
 supersedes: []
@@ -1409,7 +1488,7 @@ test("validates reciprocal acyclic decision evolution", async () => {
   );
   await writeFile(
     join(target, "knowledge/areas/combat/index.md"),
-    "# Combat\n\n- [Decisions](decisions/)\n",
+    areaIndex("Combat", "- [Decisions](decisions/)\n"),
     "utf8",
   );
   await writeFile(
@@ -1429,6 +1508,9 @@ test("validates reciprocal acyclic decision evolution", async () => {
 type: Decision
 title: ${title}
 status: ${status}
+view: decision
+purpose: decision-history
+audience: [maintainer, domain-expert, engineer]
 decision_id: ${id}
 effective_at: 2026-07-28T11:00:00Z
 area: combat
@@ -1509,6 +1591,9 @@ type: External Reference
 title: ${title}
 description: A test reference.
 status: draft
+view: reference
+purpose: external-context
+audience: [maintainer, engineer, agent]
 authority: [external]
 generated: { by: workflow-agent/1, at: 2026-07-28T12:00:00Z }
 x-wf:
@@ -1582,6 +1667,171 @@ ${bodyLink}
   const broken = await validateKnowledge(target);
   assert.ok(broken.errors.some((issue) =>
     /internal Markdown link does not resolve/.test(issue.message)
+  ));
+});
+
+test("enforces product and engineering view contracts with current quality receipts", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-knowledge-views-");
+  const changeId = "2026-07-29-revival";
+  await mkdir(join(target, "changes/archive", changeId), { recursive: true });
+  await writeFile(
+    join(target, "changes/archive", changeId, "change.md"),
+    completedProjectChange(changeId),
+    "utf8",
+  );
+  const areaRoot = join(target, "knowledge/areas/combat");
+  const capabilities = join(areaRoot, "capabilities");
+  await mkdir(capabilities, { recursive: true });
+  await writeFile(
+    join(target, "knowledge/areas/index.md"),
+    "# Areas\n\n- [Combat](combat/)\n",
+    "utf8",
+  );
+  await writeFile(
+    join(areaRoot, "index.md"),
+    areaIndex("Combat", "- [Revival](capabilities/revival.md)\n"),
+    "utf8",
+  );
+  await writeFile(
+    join(capabilities, "index.md"),
+    "# Combat capabilities\n\n- [Revival](revival.md)\n",
+    "utf8",
+  );
+  const conceptPath = "knowledge/areas/combat/capabilities/revival.md";
+  await writeFile(join(target, conceptPath), productConcept(changeId), "utf8");
+  await sealConcept(target, conceptPath);
+
+  const valid = await validateKnowledge(target);
+  assert.equal(valid.valid, true, JSON.stringify(valid.errors));
+  assert.equal(
+    valid.warnings.some((issue) => /technical-looking identifiers/.test(issue.message)),
+    false,
+    JSON.stringify(valid.warnings),
+  );
+  const built = await writeKnowledgeGraph(target);
+  const node = built.graph.nodes.find((candidate) => candidate.path === conceptPath);
+  assert.equal(node?.view, "product");
+  assert.equal(node?.purpose, "current-behavior");
+  assert.deepEqual(node?.audience, ["stakeholder", "maintainer", "domain-expert"]);
+
+  const sealed = await readFile(join(target, conceptPath), "utf8");
+  await writeFile(
+    join(target, conceptPath),
+    sealed.replace(
+      "# Engineering details\n\nNot applicable.",
+      "# Engineering details\n\nThe runtime uses `RevivalService`.",
+    ),
+    "utf8",
+  );
+  const leaked = await validateKnowledge(target, [conceptPath]);
+  assert.ok(leaked.errors.some((issue) => /inline code|links only/.test(issue.message)));
+
+  await writeFile(join(target, conceptPath), sealed, "utf8");
+  const parsed = parseWorkSpec(sealed);
+  (
+    (parsed.metadata["x-wf"] as Record<string, unknown>).quality as Record<string, unknown>
+  ).content_hash = "f".repeat(64);
+  await writeFile(join(target, conceptPath), serializeWorkSpec(parsed), "utf8");
+  const staleQuality = await validateKnowledge(target, [conceptPath]);
+  assert.ok(staleQuality.errors.some((issue) =>
+    /quality\.content_hash must match/.test(issue.message)
+  ));
+
+  const missingSection = parseWorkSpec(sealed);
+  missingSection.body = missingSection.body.replace(
+    "# Examples\n\nAn eligible defeated character returns to play after revival.\n\n",
+    "",
+  );
+  await writeFile(join(target, conceptPath), serializeWorkSpec(missingSection), "utf8");
+  const incompleteProduct = await validateKnowledge(target, [conceptPath]);
+  assert.ok(incompleteProduct.errors.some((issue) =>
+    /required section is missing: Examples/.test(issue.message)
+  ));
+
+  const engineeringPath = join(areaRoot, "implementation/revival.md");
+  await mkdir(dirname(engineeringPath), { recursive: true });
+  await writeFile(
+    engineeringPath,
+    `---
+type: Implementation
+title: Revival implementation
+status: draft
+view: engineering
+purpose: technical-realization
+audience: [engineer, operator]
+area: combat
+authority: [product-meaning, implementation]
+generated: { by: workflow-agent/1, at: 2026-07-29T12:00:00Z }
+x-wf:
+  relations: []
+  quality:
+    status: pending
+sources:
+  - id: implementation
+    kind: source-code
+    resource: git:dnd-api@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#src/revival.ts
+---
+
+# Responsibility
+
+Technical responsibility.[^implementation]
+
+# Current implementation
+
+Current implementation.
+
+# Boundaries and ownership
+
+Ownership boundary.
+
+# Data and control flow
+
+Control flow.
+
+# Contracts and invariants
+
+Contract.
+
+# Failure and operational behavior
+
+Failure behavior.
+
+# Verification
+
+Verification evidence.
+
+# Product knowledge
+
+- [Revival](../capabilities/revival.md)
+
+# Relationships
+
+- [Combat Area](../index.md)
+
+[^implementation]: Pinned implementation.
+`,
+    "utf8",
+  );
+  const mixedAuthority = await validateKnowledge(target, [
+    "knowledge/areas/combat/implementation/revival.md",
+  ]);
+  assert.ok(mixedAuthority.errors.some((issue) =>
+    /link product meaning instead of claiming product authority/.test(issue.message)
+  ));
+});
+
+test("rejects incomplete stakeholder Area indexes", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-area-view-");
+  await mkdir(join(target, "knowledge/areas/combat"), { recursive: true });
+  await writeFile(
+    join(target, "knowledge/areas/combat/index.md"),
+    "# Combat\n\n## Purpose\n\nCombat behavior.\n",
+    "utf8",
+  );
+  const result = await validateKnowledge(target);
+  assert.ok(result.errors.some((issue) =>
+    issue.path === "knowledge/areas/combat/index.md"
+    && /required section is missing: Who it serves/.test(issue.message)
   ));
 });
 
@@ -1667,11 +1917,166 @@ async function sealConcept(target: string, relativePath: string): Promise<void> 
     ...verified,
     content_hash: "0".repeat(64),
   };
+  const workflow = (
+    typeof document.metadata["x-wf"] === "object"
+    && document.metadata["x-wf"] !== null
+    && !Array.isArray(document.metadata["x-wf"])
+  )
+    ? document.metadata["x-wf"] as Record<string, unknown>
+    : {};
+  workflow.quality = {
+    status: "passed",
+    by: "workflow-agent/1",
+    at: "2026-07-30T14:00:00Z",
+    content_hash: "0".repeat(64),
+    checks: [
+      "factuality",
+      "audience-fit",
+      "abstraction",
+      "completeness",
+      "delivery-state",
+    ],
+  };
+  document.metadata["x-wf"] = workflow;
   await writeFile(absolute, serializeWorkSpec(document), "utf8");
   const sealed = parseWorkSpec(await readFile(absolute, "utf8"));
-  (sealed.metadata.verified as Record<string, unknown>).content_hash =
-    (await hashKnowledgeConcept(target, relativePath)).contentHash;
+  const hash = (await hashKnowledgeConcept(target, relativePath)).contentHash;
+  (sealed.metadata.verified as Record<string, unknown>).content_hash = hash;
+  (
+    (sealed.metadata["x-wf"] as Record<string, unknown>).quality as Record<string, unknown>
+  ).content_hash = hash;
   await writeFile(absolute, serializeWorkSpec(sealed), "utf8");
+}
+
+function areaIndex(title: string, links: string): string {
+  return `# ${title}
+
+## Purpose
+
+Describe the Area purpose.
+
+## Who it serves
+
+Describe the people and neighboring Areas.
+
+## Scope and boundaries
+
+Describe what belongs here.
+
+## Current product behavior
+
+Describe current behavior.
+
+## Capabilities
+
+${links.trim()}
+
+## Use cases and flows
+
+Not applicable.
+
+## Rules and outcomes
+
+Not applicable.
+
+## Delivery overview
+
+Describe current delivery.
+
+## Current decisions
+
+Link current decisions when available.
+
+## Evolution
+
+Describe meaningful change.
+
+## Open questions
+
+None.
+
+## Engineering details
+
+Not applicable.
+`;
+}
+
+function productConcept(changeId: string): string {
+  return `---
+type: Product Capability
+title: Revival
+description: Return an eligible defeated character to play.
+status: stable
+view: product
+purpose: current-behavior
+audience: [stakeholder, maintainer, domain-expert]
+area: combat
+capabilities: [revival]
+authority: [product-meaning, implementation]
+generated: { by: workflow-agent/1, at: 2026-07-29T12:00:00Z }
+verified: { by: "human:test-maintainer", at: 2026-07-29T12:00:00Z }
+realization:
+  intent: accepted
+  delivery: verified
+  alignment: aligned
+  assessed_at: 2026-07-29T12:00:00Z
+x-wf:
+  relations: []
+  quality:
+    status: pending
+sources:
+  - id: decision
+    kind: maintainer-decision
+    resource: project-change:${changeId}#decision
+    author: "human:test-maintainer"
+  - id: delivery
+    kind: source-code
+    resource: git:dnd-api@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#src/revival.ts
+---
+
+# What this provides
+
+Revival returns an eligible defeated character to play.[^decision]
+
+# Who it serves
+
+Players whose characters have been defeated.
+
+# Current behavior
+
+An eligible defeated character returns and can continue playing.[^delivery]
+
+# Rules and outcomes
+
+Revival succeeds only when the current eligibility rule is satisfied.
+
+# Boundaries and exceptions
+
+Ineligible characters remain defeated.
+
+# Delivery
+
+The behavior is verified as available.
+
+# Examples
+
+An eligible defeated character returns to play after revival.
+
+# Evolution
+
+This current explanation is governed by the reviewed revival decision.
+
+# Related knowledge
+
+- [Combat Area](../index.md)
+
+# Engineering details
+
+Not applicable.
+
+[^decision]: Reviewed product decision.
+[^delivery]: Pinned implementation evidence.
+`;
 }
 
 function completedProjectChange(id: string): string {
