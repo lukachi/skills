@@ -50,6 +50,10 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   rules, delivery, examples, and evolution to stakeholders. Engineering
   concepts explain implementation, architecture, ownership, contracts,
   failure behavior, operations, and verification.
+- Read-only product exploration is separate from curation. A newcomer may ask
+  what the project is or what it can do without knowing Areas or capabilities;
+  the agent presents a compact current product map and progressively reveals
+  Area and capability detail without modifying project state.
 - Every concept declares a view, purpose, and audience. Product and engineering
   paths have deterministic lane contracts and required sections. Product
   documents reject code and technical sections; engineering documents link
@@ -328,6 +332,9 @@ The workflow guarantees complete accounting, not perfect understanding:
   factuality, audience fit, abstraction, completeness, and delivery state.
 - [x] Specialized product, engineering, and quality skills are installed for
   both profiles and routed by the promotion orchestrator.
+- [x] A dedicated read-only exploration skill supports discovery, Area
+  exploration, and focused product follow-ups without leaking the hidden eval
+  rubric into user prompts.
 
 ## Progress
 
@@ -346,6 +353,8 @@ The workflow guarantees complete accounting, not perfect understanding:
   omission probes, and shared claim ledger.
 - [x] Implement separate product and engineering knowledge views with semantic
   quality verification and black-box behavior evals.
+- [x] Implement progressive newcomer discovery as a read-only skill and split
+  discovery evals from focused authoring conformance.
 
 ## Out of scope for v2
 

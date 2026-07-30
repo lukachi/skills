@@ -3,6 +3,12 @@
 Classify work before changing product or implementation state. Creating a
 `shaping` record is safe recordkeeping, not implementation.
 
+A read-only question about the project, its current capabilities, or one
+product direction is not implementation work. Invoke
+`explore-project-knowledge` against the configured knowledge repository and
+answer progressively. Do not create a shaping record unless the conversation
+turns into a proposed decision or change.
+
 Use the full workflow when work may change observable behavior, domain meaning, interfaces, data or control flow, persistent state, security, reliability, architecture, operational behavior, or coordination across components or repositories.
 
 Skip the full workflow only when the change is clearly local and preserves behavior and contracts, such as presentation-only polish, copy edits, formatting, or a mechanical correction with no design choice.

@@ -33,6 +33,10 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
 - Treat product-facing and engineering knowledge as linked views, never one
   blended document. Product pages explain current behavior to stakeholders;
   engineering pages explain implementation to engineers and operators.
+- Route broad project discovery, newcomer onboarding, Area exploration, and
+  focused product-understanding questions to `explore-project-knowledge`.
+  Exploration is read-only: answer progressively from curated knowledge
+  without requiring the user to know Areas, capability names, or file paths.
 - Route product authoring to `curate-product-knowledge`, technical authoring to
   `curate-engineering-knowledge`, and every material knowledge edit through
   `verify-knowledge-quality` before it becomes stable.

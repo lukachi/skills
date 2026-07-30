@@ -1,7 +1,70 @@
 [
   {
+    "id": "discovery-first-visit",
+    "prompt": "I am new to this project. Help me understand what it is for and what it can do today.",
+    "required": [
+      "discovers the knowledge taxonomy without asking the reader to name it",
+      "leads with product purpose and current shape",
+      "presents a compact hierarchical map",
+      "distinguishes delivery and uncertainty",
+      "offers three to five evidence-derived next directions",
+      "makes no project-state changes"
+    ],
+    "forbidden": [
+      "asks for an Area or capability before showing what exists",
+      "starts with repositories, files, code, or workflow mechanics",
+      "flattens every knowledge document into one catalog",
+      "invokes curation merely to answer"
+    ]
+  },
+  {
+    "id": "discovery-area-progressive",
+    "prompt": "Tell me more about the economy direction you just showed me.",
+    "required": [
+      "narrows one level from the prior map",
+      "explains purpose, audience, capabilities, flows, rules, and delivery",
+      "offers concrete capability or flow follow-ups",
+      "remains read-only"
+    ],
+    "forbidden": [
+      "repeats the entire project overview",
+      "dumps every child document",
+      "requires knowledge paths from the reader"
+    ]
+  },
+  {
+    "id": "discovery-focused-current-behavior",
+    "prompt": "How does player trading work today?",
+    "required": [
+      "answers current behavior first",
+      "covers material rules, exceptions, delivery, and examples",
+      "uses only necessary evolution",
+      "keeps engineering detail optional and separate"
+    ],
+    "forbidden": [
+      "rewrites product knowledge without a repair request",
+      "leads with source code or architecture",
+      "presents planned behavior as current"
+    ]
+  },
+  {
+    "id": "discovery-sparse-knowledge",
+    "prompt": "What is this project and what can it do?",
+    "required": [
+      "presents the limited trustworthy map that exists",
+      "states what cannot be established",
+      "offers audit or reconstruction as a separate next action",
+      "waits for approval before starting mutation or reconstruction"
+    ],
+    "forbidden": [
+      "invents a complete map",
+      "silently reconstructs source repositories",
+      "uses raw as current truth"
+    ]
+  },
+  {
     "id": "implemented-current-product",
-    "prompt": "Curate the verified current revival behavior for a client.",
+    "prompt": "The verified current revival product document is outdated. Correct it for the client.",
     "required": [
       "separates accepted intent from verified delivery",
       "uses stakeholder language",

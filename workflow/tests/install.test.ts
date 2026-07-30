@@ -49,6 +49,7 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   assert.match(agents, /before inspecting, searching, planning/);
   assert.match(agents, /official native `graphify` skill/);
   assert.match(agents, /Invoke `operate-project-knowledge` as the default entry point/);
+  assert.match(agents, /invoke\s+`explore-project-knowledge`/i);
   assert.match(agents, /natural-language request as the user interface/);
   assert.equal(await readlink(join(target, "CLAUDE.md")), "AGENTS.md");
   assert.match(await readFile(join(target, "knowledge/index.md"), "utf8"), /okf_version/);
@@ -91,11 +92,15 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   );
   assert.match(
     await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
-    /The only normal manual CLI entry points are `wfctl init knowledge` and `wfctl/,
+    /The normal optional manual CLI entry points are `wfctl init knowledge`, `wfctl/,
   );
   assert.match(
     await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
     /What to ask the knowledge agent/,
+  );
+  assert.match(
+    await readFile(join(target, "PROJECT_WORKFLOW.md"), "utf8"),
+    /I am new to this project/,
   );
   const second = await buildInstallPlan({
     target,
@@ -121,7 +126,7 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   assert.ok(upgrade.operations.some((operation) =>
     operation.path === ".workflow/config.json"
     && operation.status === "update"
-    && /0\.4\.0/.test(operation.reason)
+    && /0\.5\.0/.test(operation.reason)
   ));
 });
 
@@ -366,6 +371,8 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
 
   await access(join(knowledge, ".agents/skills/operate-project-knowledge/SKILL.md"));
   await access(join(knowledge, ".claude/skills/operate-project-knowledge/SKILL.md"));
+  await access(join(knowledge, ".agents/skills/explore-project-knowledge/SKILL.md"));
+  await access(join(knowledge, ".claude/skills/explore-project-knowledge/SKILL.md"));
   await access(join(knowledge, ".agents/skills/qmd/SKILL.md"));
   await access(join(knowledge, ".claude/skills/qmd/SKILL.md"));
   await access(join(knowledge, ".agents/skills/process-raw-intake/SKILL.md"));
@@ -374,6 +381,8 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
   await access(join(knowledge, ".agents/skills/curate-engineering-knowledge/SKILL.md"));
   await access(join(knowledge, ".agents/skills/verify-knowledge-quality/SKILL.md"));
   await access(join(leaf, ".agents/skills/setup-workflow-environment/SKILL.md"));
+  await access(join(leaf, ".agents/skills/explore-project-knowledge/SKILL.md"));
+  await access(join(leaf, ".claude/skills/explore-project-knowledge/SKILL.md"));
   await access(join(leaf, ".agents/skills/analyze-with-graphify/SKILL.md"));
   await access(join(leaf, ".agents/skills/align-project-knowledge/SKILL.md"));
   await access(join(leaf, ".agents/skills/manage-project-work/SKILL.md"));

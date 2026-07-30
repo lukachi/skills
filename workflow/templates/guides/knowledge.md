@@ -8,6 +8,8 @@ The knowledge repository supports two different operations.
 Use an agent here for shared project understanding, not leaf implementation.
 Typical requests include:
 
+- help me understand what this project is and what it can do today;
+- show me its main product directions and where I could explore next;
 - explain the current state of an Area, capability, flow, or decision;
 - trace how a decision evolved and why;
 - inventory and process new `raw/` material;
@@ -22,6 +24,30 @@ The agent may inspect multiple leaf repositories through Graphify to verify
 implementation claims, but it never edits their source code from this
 repository. If the outcome requires implementation, continue from the owning
 leaf repository.
+
+### First visit and product exploration
+
+You do not need to know the project's Areas, capability names, file layout, or
+implementation before asking a useful question. Start naturally:
+
+> I am new to this project. Help me understand what it is for and what it can
+> do today.
+
+The agent reads the curated product knowledge and gives you a compact map:
+purpose, intended audience, major product directions, current delivery,
+important unknowns, and a few useful next branches. Choose one of the names it
+shows:
+
+> Tell me more about the economy.
+
+Then narrow again only if useful:
+
+> How does player trading work today?
+
+This path is read-only. Asking a question does not edit knowledge or start a
+change. If the agent finds missing, stale, or contradictory knowledge, it
+reports the limitation and offers a separate audit, reconstruction, or repair
+step.
 
 Significant product or architecture discussion starts a project-only living
 spec here with `wfctl work start`. It has no code root, so the agent cannot

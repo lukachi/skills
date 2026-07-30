@@ -1,4 +1,4 @@
-export const WORKFLOW_VERSION = "0.4.0";
+export const WORKFLOW_VERSION = "0.5.0";
 export const CONFIG_SCHEMA_VERSION = 1;
 export const STATE_SCHEMA_VERSION = 1;
 

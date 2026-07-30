@@ -6,6 +6,12 @@ implementation state. For significant work, create the `shaping` record first,
 then invoke `analyze-with-graphify` and `align-project-knowledge` before
 implementation.
 
+For read-only questions about what the project is, what it currently provides,
+or how one product direction works, invoke `explore-project-knowledge` against
+the configured knowledge repository. Do not require the user to name an Area,
+capability, or knowledge path. A product explanation alone does not create a
+work record or authorize code changes.
+
 Run QMD from the configured knowledge repository for knowledge retrieval. Do
 not query `raw/` or `intake/` to fill gaps in current project truth.
 

@@ -6945,7 +6945,7 @@ var WORKFLOW_VERSION, CONFIG_SCHEMA_VERSION, STATE_SCHEMA_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    WORKFLOW_VERSION = "0.4.0";
+    WORKFLOW_VERSION = "0.5.0";
     CONFIG_SCHEMA_VERSION = 1;
     STATE_SCHEMA_VERSION = 1;
   }
@@ -28867,6 +28867,7 @@ var PROFILE_SKILLS = {
     "curate-engineering-knowledge",
     "curate-product-knowledge",
     "curate-project-knowledge",
+    "explore-project-knowledge",
     "manage-project-work",
     "operate-project-knowledge",
     "process-raw-intake",
@@ -28879,6 +28880,7 @@ var PROFILE_SKILLS = {
     "curate-engineering-knowledge",
     "curate-product-knowledge",
     "curate-project-knowledge",
+    "explore-project-knowledge",
     "manage-project-work",
     "verify-knowledge-quality",
     "verify-project-work"

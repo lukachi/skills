@@ -50,6 +50,10 @@ try {
     true,
   );
   assert.equal(
+    existsSync(join(packaged, "skills/explore-project-knowledge/SKILL.md")),
+    true,
+  );
+  assert.equal(
     existsSync(join(packaged, "skills/process-raw-intake/SKILL.md")),
     true,
   );

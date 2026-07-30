@@ -16,6 +16,13 @@ status checks, verification, and archival of the work record; you never need
 its ID or commands. It asks you only for ambiguous routing, framing, product
 authority, commit authorization, and completion decisions.
 
+You may also ask read-only product questions here:
+
+> I am new to this project. What is it for and what can it do today?
+
+The agent reads the configured knowledge repository and progressively explains
+the product without creating a work record or changing this checkout.
+
 The canonical change/spec/progress file remains under `changes/active/` in the
 knowledge repository. This leaf stores only a pointer in `.workflow/current/`.
 

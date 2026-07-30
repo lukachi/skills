@@ -17,16 +17,17 @@ language; the agent chooses and runs `wfctl`, QMD, Graphify, Git inspection,
 and record-maintenance operations. You do not need command syntax, record IDs,
 generated paths, or structured-file schemas.
 
-The only normal manual CLI entry points are `wfctl init knowledge` and `wfctl
-init leaf`, and the setup agent can run those too. Other commands remain
-available for automation, diagnostics, recovery, and contributors developing
-the workflow itself. You review framing, missing authority, material choices,
-completion, and current knowledge claims.
+The normal optional manual CLI entry points are `wfctl init knowledge`, `wfctl
+init leaf`, and `wfctl upgrade` from the repository being upgraded; the setup
+agent can run them too. `--target` and other commands remain available for
+agents, automation, diagnostics, recovery, and workflow contributors. You
+review framing, missing authority, material choices, completion, and current
+knowledge claims.
 
-After initialization, ask in ordinary language: “process raw,” “reconstruct
-the baseline,” “explain this Area,” “implement this change,” or “check the
-workflow.” The installed skills translate those requests into the complete
-internal procedure.
+After initialization, ask in ordinary language: “help me understand this
+project,” “process raw,” “reconstruct the baseline,” “explain this Area,”
+“implement this change,” or “check the workflow.” The installed skills
+translate those requests into the complete internal procedure.
 
 ## Trust boundary
 

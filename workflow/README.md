@@ -10,11 +10,16 @@ knowledge. Workflow authors and reviewers can use
 **[Verify the knowledge views workflow](VERIFY_KNOWLEDGE_VIEWS.md)** for
 deterministic tests and Codex/Claude black-box scenarios.
 
-For maintainers, the normal CLI surface is only `wfctl init knowledge` and
-`wfctl init leaf`; both may also be delegated to the setup skill. Installed
-agents own routine `check`, `upgrade`, `knowledge`, `work`, QMD, and Graphify
-operations. The detailed commands below are an agent, automation, recovery, and
-workflow-development reference—not a prerequisite for using the workflow.
+For maintainers, the normal optional CLI surface is `wfctl init knowledge`,
+`wfctl init leaf`, and `wfctl upgrade` from the repository being upgraded; all
+may also be delegated to the setup skill. Installed agents own routine
+`check`, `knowledge`, `work`, QMD, and Graphify operations. `--target` and the
+detailed commands below are agent, automation, recovery, and
+workflow-development surfaces—not prerequisites for using the workflow.
+
+After setup, a newcomer can simply ask what the project is and what it can do.
+The read-only `explore-project-knowledge` skill builds a progressive product
+map from curated knowledge before asking the reader to choose a direction.
 
 The package is the canonical distribution source. Consumer repositories receive
 versioned rules and templates, managed instruction blocks, and profile-specific
@@ -92,8 +97,8 @@ Project installations remain profile-specific:
 | Profile | Installed skills |
 | --- | --- |
 | Both | `setup-workflow-environment`, `analyze-with-graphify`, official `qmd` |
-| Knowledge | `operate-project-knowledge`, `reconstruct-project-knowledge`, `process-raw-intake`, `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge`, `curate-product-knowledge`, `curate-engineering-knowledge`, `verify-knowledge-quality` |
-| Leaf | `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge`, `curate-product-knowledge`, `curate-engineering-knowledge`, `verify-knowledge-quality` |
+| Knowledge | `operate-project-knowledge`, `explore-project-knowledge`, `reconstruct-project-knowledge`, `process-raw-intake`, `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge`, `curate-product-knowledge`, `curate-engineering-knowledge`, `verify-knowledge-quality` |
+| Leaf | `explore-project-knowledge`, `align-project-knowledge`, `manage-project-work`, `verify-project-work`, `curate-project-knowledge`, `curate-product-knowledge`, `curate-engineering-knowledge`, `verify-knowledge-quality` |
 
 ## Initialize
 

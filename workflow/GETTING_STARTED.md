@@ -31,6 +31,7 @@ download roughly 2 GB of local models.
 Manual CLI use normally ends after initializing the knowledge repository and
 its leaf repositories. From then on, speak to the agent:
 
+- “I am new to this project. Help me understand what it is and what it can do.”
 - “Process the new raw material.”
 - “Reconstruct the project knowledge baseline.”
 - “Explain how this Area currently works.”
@@ -129,12 +130,16 @@ The installed `operate-project-knowledge` skill is the default entry point: it
 recognizes the common request and routes raw intake, code verification, or
 source-first reconstruction, or semantic promotion to the stricter specialized
 skill when needed.
+For ordinary product understanding it routes to the read-only
+`explore-project-knowledge` skill, which discovers the project map before
+expecting you to know an Area, capability, or document name.
 It also keeps a disposable relationship graph current: QMD finds likely
 documents, the graph follows explicit reviewed links, and the agent reads the
 actual Markdown before answering. You do not maintain this graph manually.
 
 | What you want | What to ask | What the knowledge agent does |
 | --- | --- | --- |
+| Discover the project | “I am new here. What is this project for and what can it do today?” | Gives a compact product map, distinguishes delivery and uncertainty, and offers a few useful directions to explore next without changing project state. |
 | Understand current truth | “Explain the current account-recovery model.” | Reads curated knowledge, follows Areas and current decisions, and gives a human-facing summary. |
 | Explore decision history | “Show how the recovery policy changed and why.” | Follows the current decision lineage, predecessors, Area Evolution, and local log. |
 | Process new material | “Process the new raw material.” | Inventories new blobs, proposes bounded batches, extracts candidate claims, and verifies them. |
@@ -163,7 +168,21 @@ scope; the agent owns the binding mechanics.
 
 ## Find your way through project knowledge
 
-Start with:
+You do not need to know the filesystem. Ask:
+
+> Help me understand this project and what it can do today.
+
+The agent first shows a compact product map, then lets you narrow naturally:
+
+> Tell me more about combat.
+
+> How does revival work today?
+
+These questions are read-only. They do not create a spec or rewrite knowledge.
+If the agent finds that knowledge is insufficient, it says so and offers a
+separate audit or reconstruction.
+
+If you prefer to browse the Markdown yourself, start with:
 
 ```text
 knowledge/index.md

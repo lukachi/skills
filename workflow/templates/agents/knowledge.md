@@ -13,6 +13,12 @@ this repository. It handles common explanation, ownership, history, audit,
 navigation, contradiction, and triage requests, then routes specialized work
 without crossing repository boundaries.
 
+When a person asks what the project is, what it can do, where to start, what
+works today, or asks a natural follow-up about one product direction, invoke
+`explore-project-knowledge`. Give them a useful product map before asking them
+to choose an Area or capability. Reveal detail gradually and do not modify
+knowledge merely to answer a question.
+
 Accept requests in ordinary project language. Own source-registry inspection,
 worktree selection mechanics, case creation, QMD retrieval, Graphify
 invocation, validation, and close operations. Ask the maintainer for the

@@ -1,6 +1,6 @@
 ---
 name: operate-project-knowledge
-description: Navigate, explain, audit, organize, and triage a project's curated knowledge repository. Use whenever work starts inside a knowledge-profile repository and the user asks what is currently true; how an Area, capability, use case, flow, rule, implementation, repository boundary, uncertainty, or decision works; what changed and why; where a topic belongs or who owns it; what knowledge is stale, missing, duplicated, contradictory, orphaned, or weakly sourced; how to improve human navigation; what pending intake or handoffs need attention; or which knowledge workflow should handle a request. Route raw processing, source verification, and verified promotion to their specialized skills, and never implement leaf source changes from the knowledge repository.
+description: Navigate, explain, audit, organize, and triage a project's curated knowledge repository. Use whenever work starts inside a knowledge-profile repository and the user asks what the project is, what it can do, where to start, what is currently true; how an Area, capability, use case, flow, rule, implementation, repository boundary, uncertainty, or decision works; what changed and why; where a topic belongs or who owns it; what knowledge is stale, missing, duplicated, contradictory, orphaned, or weakly sourced; how to improve human navigation; what pending intake or handoffs need attention; or which knowledge workflow should handle a request. Route newcomer and product exploration to explore-project-knowledge, raw processing, source verification, and verified promotion to their specialized skills, and never implement leaf source changes from the knowledge repository.
 ---
 
 # Operate Project Knowledge
@@ -56,7 +56,7 @@ offer a manual command only as a recovery path.
 
 | User need | Required handling |
 | --- | --- |
-| Explain current behavior or onboard a newcomer | Stay in the product view: Area index, capabilities, use cases, rules, delivery, and current decisions. Explain in stakeholder language. Open engineering knowledge only when requested or necessary to qualify delivery. |
+| Discover the project, onboard a newcomer, or explain current product behavior | Invoke `explore-project-knowledge`. It owns progressive product discovery and focused stakeholder explanations without modifying project state. |
 | Explain how behavior is implemented | Start from the product concept, then follow its engineering links into implementation, architecture, repositories, contracts, and verification. Keep the two answers distinct. |
 | Find where a topic belongs or who owns it | Identify the primary Area, owning repositories, affected capabilities, and genuinely cross-Area links. Report ambiguity instead of inventing an owner. |
 | Trace what changed and why | Start from the stable current decision, follow `supersedes` links through every predecessor, then read the Area `Evolution` section and local `log.md`. Explain each transition, rationale, consequences, and unresolved questions. |
@@ -72,6 +72,10 @@ offer a manual command only as a recovery path.
 | Implement or fix source code | Identify the owning leaf repository and redirect the task there. Never write product code from the knowledge repository. |
 
 ## Answer current-knowledge questions
+
+For broad product discovery, Area exploration, and focused stakeholder
+questions, invoke `explore-project-knowledge` rather than requiring the reader
+to know the taxonomy or document path. For other questions:
 
 1. Bound the question by Area, capability, flow, decision lineage, repository,
    or explicit cross-Area concern.

@@ -15,11 +15,11 @@ scope, and conflict decisions, not routine command execution. Provide a manual
 command only when bootstrapping without `wfctl`, missing authority, or tool
 access prevents execution; state that blocker explicitly.
 
-Treat `wfctl init knowledge` and `wfctl init leaf` as the only normal
-maintainer-facing CLI entry points, and even those may be delegated to this
-skill. All later `check`, `upgrade`, `knowledge`, `work`, QMD, and Graphify
-operations belong to the agent unless the maintainer explicitly requests
-manual or automation-oriented instructions.
+Treat `wfctl init knowledge`, `wfctl init leaf`, and repository-local `wfctl
+upgrade` as the normal optional maintainer-facing CLI entry points, and all may
+be delegated to this skill. `--target`, `check`, `knowledge`, `work`, QMD, and
+Graphify operations belong to the agent unless the maintainer explicitly
+requests manual or automation-oriented instructions.
 
 ## Procedure
 
@@ -64,6 +64,8 @@ manual or automation-oriented instructions.
     skill from `qmd skills path qmd` for every selected agent. New skills are
     not active in the current session automatically; tell the maintainer to
     restart the agent session before knowledge-dependent work.
+    Confirm `explore-project-knowledge` is installed for both profiles so
+    project discovery works identically from knowledge and leaf sessions.
 12. For a knowledge profile, confirm that `.qmd/index.yml` defines separate
     `knowledge`, `changes`, `intake`, `reconstruction`, and `raw` collections.
     Confirm that `reconstruction/active` and `reconstruction/archive` exist and

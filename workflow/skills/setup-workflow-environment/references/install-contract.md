@@ -20,6 +20,10 @@
 - Install `operate-project-knowledge` only for the knowledge profile as the
   default router for explanation, history, audit, navigation, contradiction,
   and triage requests.
+- Install `explore-project-knowledge` for both profiles. It gives knowledge and
+  leaf sessions the same read-only progressive product-discovery path through
+  the configured knowledge repository without requiring user knowledge of
+  Areas, capabilities, or files.
 - Install `process-raw-intake` only for the knowledge profile.
 - Install `reconstruct-project-knowledge` only for the knowledge profile.
 - Install `curate-project-knowledge` for both profiles because a leaf agent

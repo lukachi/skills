@@ -1,5 +1,11 @@
 # Knowledge authority
 
+Route product discovery and ordinary explanation to
+`explore-project-knowledge`. It is a read-only path through curated knowledge:
+do not create, repair, promote, or verify concepts merely because someone asked
+what the project does. Report a discovered gap and wait for a separate repair,
+audit, reconstruction, or curation request.
+
 The repository has five separate surfaces:
 
 - `raw/`: continuous untrusted input; never evidence and never current truth.

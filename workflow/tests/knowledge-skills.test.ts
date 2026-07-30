@@ -8,6 +8,7 @@ import { parse } from "yaml";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const skills = [
   "curate-project-knowledge",
+  "explore-project-knowledge",
   "curate-product-knowledge",
   "curate-engineering-knowledge",
   "verify-knowledge-quality",
@@ -46,6 +47,18 @@ test("knowledge view skills are complete and explicitly routed", async () => {
   assert.match(orchestrator, /curate-product-knowledge/);
   assert.match(orchestrator, /curate-engineering-knowledge/);
   assert.match(orchestrator, /verify-knowledge-quality/);
+
+  const router = await readFile(
+    join(root, "skills/operate-project-knowledge/SKILL.md"),
+    "utf8",
+  );
+  assert.match(router, /invoke `explore-project-knowledge`/i);
+
+  const explorer = contents.get("explore-project-knowledge")!;
+  assert.match(explorer, /what this project is, why it exists, what it can do today/);
+  assert.match(explorer, /reveal it gradually/);
+  assert.match(explorer, /Ask at most one question/);
+  assert.match(explorer, /Do not create or edit knowledge/);
 
   const product = contents.get("curate-product-knowledge")!;
   assert.match(product, /Area, capability, use case, product flow/);
@@ -126,9 +139,33 @@ test("trigger and behavior eval corpora cover positives and near misses", async 
     assert.ok(trigger.some((entry) => entry.should_not_trigger.includes(skill)));
   }
   assert.ok(trigger.filter((entry) => entry.should_trigger.length === 0).length >= 5);
+  assert.ok(trigger.some((entry) =>
+    entry.id === "discovery-newcomer-natural"
+    && entry.should_trigger.includes("explore-project-knowledge")
+  ));
+  const discovery = trigger.find((entry) => entry.id === "discovery-newcomer-natural")!;
+  assert.doesNotMatch(discovery.prompt, /Area|capability|repository|source|format|skill/i);
+  assert.ok(discovery.should_not_trigger.includes("curate-product-knowledge"));
+  assert.ok(behavior.some((entry) => entry.id === "discovery-first-visit"));
+  assert.ok(behavior.some((entry) => entry.id === "discovery-area-progressive"));
+  assert.ok(behavior.some((entry) => entry.id === "discovery-focused-current-behavior"));
+  assert.ok(behavior.some((entry) => entry.id === "discovery-sparse-knowledge"));
   assert.ok(behavior.every((entry) =>
     entry.prompt.length > 0
     && entry.required.length > 0
     && entry.forbidden.length > 0
   ));
+});
+
+test("verification guide separates natural discovery from authoring conformance", async () => {
+  const guide = await readFile(join(root, "VERIFY_KNOWLEDGE_VIEWS.md"), "utf8");
+  assert.match(guide, /## 3\. Test newcomer discovery/);
+  assert.match(
+    guide,
+    /> I am new to this project\. Help me understand what it is for and what it can/,
+  );
+  assert.match(guide, /Keep the assertions hidden from the tested agent/);
+  assert.match(guide, /## 4\. Test progressive follow-ups/);
+  assert.match(guide, /## 5\. Test authoring conformance separately/);
+  assert.match(guide, /This is a controlled conformance test, not a normal onboarding prompt/);
 });
