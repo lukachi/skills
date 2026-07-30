@@ -34,10 +34,12 @@ before reporting success and safely adds `graphify-out/` to the repository
 `wfctl` installs its project-local collection configuration but does not
 reimplement indexing, embeddings, retrieval, or reranking.
 
-`wfctl` does compile a separate deterministic relationship graph from authored
-Markdown links and workflow metadata. This is not semantic search: it makes
-human-visible relationships, decision lineage, Area ownership, broken links,
-and orphaned stable concepts mechanically checkable.
+`wfctl` does compile deterministic relationship artifacts from authored
+Markdown links and workflow metadata: one graph for curated knowledge and one
+claim ledger for explicit intake/reconstruction lineage. This is not semantic
+search or authority: it makes human-visible relationships, decision lineage,
+Area ownership, broken links, orphaned stable concepts, and candidate
+supersession mechanically checkable.
 
 ## Development
 
@@ -126,16 +128,18 @@ exact `qmd pull`, `qmd embed`, and verification path instead of raw model
 diagnostics. Long-running leaf graph construction shows a terminal spinner and
 an explicit completion result.
 
-Knowledge initialization builds the deterministic relationship graph and runs
-`qmd update`, so structural navigation and lexical BM25 retrieval are part of
-installation success. Leaf initialization builds or incrementally refreshes
+Knowledge initialization builds both deterministic relationship artifacts and
+runs `qmd update`, so structural navigation, claim-lineage audit, and lexical
+BM25 retrieval are part of installation success. Leaf initialization builds or
+incrementally refreshes
 the checkout-local Graphify graph, registers the repository with knowledge,
 and adds that exact worktree to the machine-local registry. It never silently
 changes the active reconstruction worktree. Tracked registry state contains no
 local paths; ignored runtime state stores known worktrees and the explicit
 active selection. `wfctl check` detects a missing source graph
-or a missing or stale knowledge graph and reports QMD version, status, indexed
-documents, core doctor health, model cache, and embedding freshness separately.
+or a missing or stale knowledge/claim graph and reports QMD version, status,
+indexed documents, core doctor health, model cache, and embedding freshness
+separately.
 Missing semantic models or embeddings are warnings: exact/lexical retrieval
 still works. Run `qmd pull` and `qmd embed` only when semantic/hybrid retrieval
 is needed; the default model set is roughly 2 GB.
@@ -188,11 +192,15 @@ semantic understanding. Completed
 baseline reconstruction requires validated promotion and explicit maintainer
 review. It never edits leaf source.
 
-`raw/` is a continuous append-only dump surface, not evidence. The knowledge
-agent inventories exact Git blobs, uses QMD to propose bounded thematic batches,
-freezes an accepted scope into a Git-backed case, reads every frozen file,
-adjudicates candidate claims against source repositories and maintainer
-decisions, then promotes only independently verified truth:
+`raw/` is a continuous, append-oriented dump surface, not evidence. A changed
+path is a new Git blob and new input; earlier frozen cases remain intact. The
+knowledge agent inventories exact Git blobs, uses QMD to propose bounded
+thematic batches, freezes an accepted scope into a Git-backed case, reads every
+frozen file,
+splits material statements into atomic claims, distinguishes semantic role,
+intent, delivery, time, and lineage, verifies each against source repositories
+or maintainer authority, routes proposals/history/current truth separately,
+then checks the durable result for omissions:
 
 ```sh
 cd /path/to/project-knowledge
@@ -217,6 +225,14 @@ wfctl knowledge case mark <case-id> raw/world-loop/history.md \
   --note "Read in full; recorded all candidate claims" \
   --target /path/to/project-knowledge
 
+# After routing and authoring durable outputs:
+wfctl knowledge case probe <case-id> <probe-id> \
+  --question "What changed in the world-loop rule, and when?" \
+  --candidate <claim-id> \
+  --status passed \
+  --answer "<answer recovered without raw>" \
+  --output knowledge/areas/<area>/decisions/<decision>.md
+
 wfctl knowledge case check <case-id> --target /path/to/project-knowledge
 wfctl knowledge validate --target /path/to/project-knowledge
 wfctl knowledge build --target /path/to/project-knowledge
@@ -225,13 +241,20 @@ wfctl knowledge build --target /path/to/project-knowledge
 The case stores the exact baseline commit and Git blob identity for every
 selected file. That proves corpus identity and file accounting, not semantic
 understanding. QMD provides BM25, vector, hybrid, and reranked retrieval; the
-agent still performs full-file review and a second omission audit.
+agent still performs full-file review and candidate-covering omission probes.
+Existing v3 cases are converted explicitly with `wfctl knowledge case migrate`;
+conservative `unknown` fields must be reviewed before completion. Legacy
+promotion paths are retained only as migration context and are not treated as
+current routes until a separate review corrects them.
 `knowledge/` must never link to or cite `raw/` or `intake/`.
 
-The build writes `.workflow/current/knowledge-graph.json`, an ignored and fully
-rebuildable artifact. Markdown remains authoritative. QMD finds candidate
-documents, the compiled graph expands through explicit relationships, and the
-agent reads the selected files before drawing conclusions.
+The build writes two ignored, fully rebuildable artifacts:
+`.workflow/current/knowledge-graph.json` for curated Markdown navigation and
+`.workflow/current/claim-ledger.json` for explicit intake/reconstruction claim
+lineage. Neither is authority and neither invents missing relations. Markdown,
+independent evidence, and maintainer decisions remain authoritative. QMD finds
+candidate documents; the agent reads the selected files before drawing
+conclusions.
 
 `knowledge/index.md` is the human entry point.
 `knowledge/areas/<area>/index.md` is the primary map for each durable product
@@ -268,9 +291,11 @@ wfctl work close 2026-07-28-world-loop --outcome completed
 ```
 
 `handoff` creates a lightweight record under `changes/inbox/` with exact
-repository, revision, checkout, and worktree metadata. It has no completion or
-authority status; the agent later triages it into a normal change, curated
-knowledge, or rejection.
+source-repository metadata. From a leaf it preserves revision, checkout, and
+worktree identity; from knowledge it creates a project-only handoff suitable
+for routed intake/reconstruction proposals. It has no completion or authority
+status; the agent later triages it into a normal change, curated knowledge, or
+rejection.
 
 `start` supports three scopes: project-only from knowledge with no code root,
 one exact leaf checkout, or several explicitly selected leaf worktrees. The

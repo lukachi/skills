@@ -164,6 +164,10 @@ try {
     existsSync(join(target, ".workflow/current/knowledge-graph.json")),
     true,
   );
+  assert.equal(
+    existsSync(join(target, ".workflow/current/claim-ledger.json")),
+    true,
+  );
 
   const knowledgeHelp = spawnSync(
     "node",
@@ -176,6 +180,15 @@ try {
   assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+scan\s/m);
   assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+mark\s/m);
   assert.doesNotMatch(stripAnsi(knowledgeHelp.stdout), /^\s+coverage\s/m);
+
+  const caseHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "knowledge", "case", "--help"],
+    { encoding: "utf8" },
+  );
+  assert.equal(caseHelp.status, 0, caseHelp.stderr || caseHelp.stdout);
+  assert.match(stripAnsi(caseHelp.stdout), /^\s+migrate\s/m);
+  assert.match(stripAnsi(caseHelp.stdout), /^\s+probe\s/m);
 
   const graphBuild = spawnSync(
     "node",
@@ -193,6 +206,10 @@ try {
   assert.equal(JSON.parse(graphBuild.stdout).built, true);
   assert.equal(
     existsSync(join(target, ".workflow/current/knowledge-graph.json")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(target, ".workflow/current/claim-ledger.json")),
     true,
   );
 

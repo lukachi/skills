@@ -79,7 +79,7 @@ Graphify is not the analyzer for Markdown, raw intake, or OKF concepts. QMD
 provides BM25, semantic, and hybrid retrieval for those surfaces; direct file
 reading, Git coverage, provenance, and validation remain authoritative.
 
-## Compiled knowledge graph
+## Compiled knowledge and claim graphs
 
 `wfctl knowledge build` validates `knowledge/` and compiles only authored
 Markdown links, typed `x-wf.relations`, Area ownership, and decision lineage
@@ -87,9 +87,16 @@ into `.workflow/current/knowledge-graph.json`. The ignored file is a
 rebuildable navigation artifact: it adds no inferred truth and is never edited
 or cited as authority.
 
+The same build writes `.workflow/current/claim-ledger.json` from intake and
+reconstruction cases. It contains atomic claim states and only explicit
+supersession, contradiction, refinement, implementation, and derivation
+relations. It helps trace adjudication and chronology, but never decides truth
+or compensates for a relation the agent failed to record.
+
 QMD discovers candidate documents by meaning. The compiled graph expands those
-candidates through explicit reviewed relationships. Graphify handles source
-code. In every case, the agent reads the selected source documents directly.
+candidates through explicit reviewed relationships. The claim ledger traces
+operational lineage. Graphify handles source code. In every case, the agent
+reads the selected source documents directly.
 
 ## QMD retrieval boundary
 
@@ -151,8 +158,9 @@ impact, recommends a route, and asks you. A compact handoff change record may
 preserve useful lightweight findings without imposing the full gate.
 
 Accepted lightweight handoffs go to `changes/inbox/` through
-`wfctl work handoff`. They retain exact source/worktree metadata but remain
-non-authoritative until triaged.
+`wfctl work handoff`. Leaf handoffs retain exact source/worktree metadata;
+knowledge handoffs retain project-only intake/reconstruction proposals and
+their claim references. Both remain non-authoritative until triaged.
 
 ## Review gates
 

@@ -40,10 +40,13 @@ offer a manual command only as a recovery path.
    `qmd query` with authored `intent:`, `lex:`, `vec:`, and optional `hyde:`
    fields for broader retrieval.
 5. Run `wfctl knowledge build`. Stop treating the corpus as healthy if strict
-   validation or graph compilation fails. Use the generated
+   validation, knowledge-graph compilation, or claim-ledger compilation fails.
+   Use the generated
    `.workflow/current/knowledge-graph.json` to expand from QMD candidates
    through explicit backlinks, typed relationships, Area ownership, and
-   decision lineage; never edit the generated file.
+   decision lineage. Use `.workflow/current/claim-ledger.json` only to trace
+   explicit intake/reconstruction claim lineage. Never edit or treat either
+   generated file as evidence.
 6. Read every selected document directly. QMD ranks possible destinations; it
    neither proves a claim nor establishes complete coverage.
 7. Check lifecycle, `generated`, `verification`, provenance, decision lineage,
@@ -62,7 +65,7 @@ offer a manual command only as a recovery path.
 | Improve navigation or structure | Repair indexes, names, summaries, and links without changing semantic claims. If the repair changes current truth, invoke `curate-project-knowledge`. |
 | Reconcile contradictory claims | Build a compact adjudication packet: question, each candidate claim, supporting and conflicting authoritative observations, missing facts, recommendation, and the exact maintainer decision needed. Keep unresolved claims out of `knowledge/`. |
 | Review new or changed raw material | Invoke `process-raw-intake`. Never search raw as part of an ordinary current-truth answer and never cite raw from knowledge. |
-| Triage `changes/inbox/` or intake cases | Classify each item as promote, verify, defer, reject, or blocked. Name the owner and next evidence or decision needed; do not silently promote it. |
+| Triage `changes/inbox/` or intake cases | Classify each atomic claim by semantic role, intent, delivery, time, relations, and routing. Name the owner and next evidence or decision needed; do not silently promote it. |
 | Promote a completed change or confirmed candidate | Invoke `curate-project-knowledge`, update the smallest coherent concepts and decision lineage, validate, and refresh QMD. |
 | Discuss a new product or architecture direction | Invoke `manage-project-work` and start a project-only living spec here before extended discussion. It has no code root. Record every material turn, obtain review, and promote only the final approved direction. Bind leaves only if implementation work becomes part of the scope. |
 | Implement or fix source code | Identify the owning leaf repository and redirect the task there. Never write product code from the knowledge repository. |
@@ -105,7 +108,7 @@ invoke `curate-project-knowledge`.
 - Treat `changes/`, `intake/`, and `reconstruction/` as qualified operational
   records, not the default current-truth surface.
 - Treat `raw/` as untrusted input, never evidence.
-- Treat QMD, the compiled knowledge graph, and Graphify as navigation tools,
+- Treat QMD, both compiled graphs, and Graphify as navigation/audit tools,
   never independent authorities.
 - Keep one stable path for current truth and preserve changed decisions through
   explicit lineage rather than versioned copies of whole Areas.

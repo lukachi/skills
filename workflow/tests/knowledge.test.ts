@@ -19,12 +19,18 @@ import {
   inspectIntakeCase,
   inventoryRaw,
   markIntakeSource,
+  migrateIntakeCase,
+  recordIntakeProbe,
 } from "../src/intake.js";
 import {
   hashKnowledgeConcept,
   validateKnowledge,
 } from "../src/knowledge.js";
 import { writeKnowledgeGraph } from "../src/knowledge-graph.js";
+import {
+  compileClaimLedger,
+  writeClaimLedger,
+} from "../src/claim-ledger.js";
 import { buildInstallPlan } from "../src/planner.js";
 import {
   beginProjectReconstruction,
@@ -40,6 +46,47 @@ import { addLeafRepository } from "../src/repository-registry.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+function intakeClaim(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: "candidate",
+    claim: "Atomic candidate claim.",
+    claim_class: "implementation",
+    semantic_role: "observation",
+    intent_state: "not-applicable",
+    delivery_state: "verified",
+    alignment: "not-applicable",
+    temporal: {
+      captured_at: "2026-07-28T12:20:00.000Z",
+      asserted_at: "",
+      valid_from: "",
+      valid_to: "",
+    },
+    relations: {
+      supersedes: [],
+      superseded_by: [],
+      contradicts: [],
+      refines: [],
+      implements: [],
+      derived_from: [],
+    },
+    evidence: [],
+    disposition: "unresolved",
+    reason: "Verification remains incomplete.",
+    maintainer_decision: {
+      status: "not-needed",
+      by: "",
+      at: "",
+    },
+    routing: {
+      lane: "case-only",
+      destinations: [],
+    },
+    ...overrides,
+  };
+}
 
 test("freezes intake coverage to exact Git blobs and detects working-tree drift", async () => {
   const target = await initializedKnowledgeRepository("wfctl-intake-");
@@ -97,13 +144,12 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
     now: new Date("2026-07-28T12:20:00.000Z"),
   });
   const reviewed = parseWorkSpec(await readFile(started.path, "utf8"));
-  reviewed.metadata.candidate_claims = [{
+  reviewed.metadata.candidate_claims = [intakeClaim({
     id: "legacy-loop-claim",
     claim: "The legacy notes describe a loop.",
-    authority: "implementation",
     disposition: "unresolved",
     reason: "Source verification is still required.",
-  }];
+  })];
   reviewed.metadata.promotion = {
     status: "not-needed",
     concepts: [],
@@ -113,6 +159,7 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
   reviewed.metadata.omission_audit = {
     result: "passed",
     notes: ["Every frozen file was read or explicitly classified."],
+    probes: [],
   };
   await writeFile(started.path, serializeWorkSpec(reviewed), "utf8");
   assert.ok(
@@ -130,14 +177,17 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
     /disposition remains unresolved/,
   );
 
-  reviewed.metadata.candidate_claims = [{
+  reviewed.metadata.candidate_claims = [intakeClaim({
     id: "legacy-loop-claim",
     claim: "The legacy notes describe a loop.",
-    authority: "implementation",
     disposition: "confirmed",
     evidence: [],
-    promoted_to: ["knowledge/architecture/legacy-loop.md"],
-  }];
+    intent_state: "accepted",
+    routing: {
+      lane: "current-knowledge",
+      destinations: ["knowledge/architecture/legacy-loop.md"],
+    },
+  })];
   reviewed.metadata.promotion = {
     status: "applied",
     concepts: ["knowledge/architecture/legacy-loop.md"],
@@ -151,13 +201,12 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
     ),
   );
 
-  reviewed.metadata.candidate_claims = [{
+  reviewed.metadata.candidate_claims = [intakeClaim({
     id: "legacy-loop-claim",
     claim: "The legacy notes describe a loop.",
-    authority: "implementation",
     disposition: "rejected",
     reason: "Pinned source inspection disproved the raw candidate.",
-  }];
+  })];
   reviewed.metadata.promotion = {
     status: "not-needed",
     concepts: [],
@@ -258,6 +307,7 @@ test("reviewed reconstruction raw input must converge at its frozen baseline", a
   intakeDocument.metadata.omission_audit = {
     result: "passed",
     notes: ["The only frozen source was read completely."],
+    probes: [],
   };
   await writeFile(intake.path, serializeWorkSpec(intakeDocument), "utf8");
   await closeIntakeCase({
@@ -879,6 +929,7 @@ test("runs a bounded legacy reconciliation case lifecycle", async () => {
   document.metadata.omission_audit = {
     result: "passed",
     notes: ["The only scoped section has an explicit disposition."],
+    probes: [],
   };
   await writeFile(started.path, serializeWorkSpec(document), "utf8");
   assert.deepEqual((await inspectIntakeCase(target, started.id)).issues, []);
@@ -891,6 +942,399 @@ test("runs a bounded legacy reconciliation case lifecycle", async () => {
   });
   await access(join(closed.archivePath, "case.md"));
   await assert.rejects(access(started.path));
+});
+
+test("migrates intake v3 conservatively and requires semantic review", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-intake-migrate-");
+  await writeFile(join(target, "raw/legacy.md"), "# Legacy\n\nOld statement.\n", "utf8");
+  commitAll(target, "add legacy statement");
+  const started = await beginIntakeCase({
+    target,
+    slug: "migration",
+    title: "Migrate legacy intake",
+    distributionRoot,
+    now: new Date("2026-07-28T10:00:00.000Z"),
+  });
+  await markIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/legacy.md",
+    status: "reviewed",
+    candidateIds: ["legacy-statement"],
+    note: "Read completely; the statement is not authoritative.",
+    now: new Date("2026-07-28T10:05:00.000Z"),
+  });
+  const document = parseWorkSpec(await readFile(started.path, "utf8"));
+  document.metadata.intake_case_version = 3;
+  delete document.metadata.migration;
+  document.metadata.candidate_claims = [{
+    id: "legacy-statement",
+    claim: "The raw file asserts an old implementation state.",
+    authority: "implementation",
+    evidence: [],
+    disposition: "rejected",
+    reason: "Pinned source inspection disproved it.",
+    promoted_to: [],
+  }];
+  document.metadata.promotion = {
+    status: "not-needed",
+    concepts: [],
+    reason: "The claim was rejected.",
+    validation: "not-needed",
+  };
+  document.metadata.omission_audit = {
+    result: "passed",
+    notes: ["Legacy audit text."],
+  };
+  await writeFile(started.path, serializeWorkSpec(document), "utf8");
+
+  const migrated = await migrateIntakeCase({
+    target,
+    id: started.id,
+    now: new Date("2026-07-28T10:10:00.000Z"),
+  });
+  assert.equal(migrated.fromVersion, 3);
+  assert.equal(migrated.version, 4);
+  assert.equal(migrated.migrationStatus, "needs-review");
+  const blocked = await inspectIntakeCase(target, started.id);
+  assert.ok(blocked.issues.some((issue) => /migration\.status/.test(issue)));
+  assert.ok(blocked.issues.some((issue) => /semantic_role must be classified/.test(issue)));
+
+  const upgraded = parseWorkSpec(await readFile(started.path, "utf8"));
+  const candidate = (upgraded.metadata.candidate_claims as Array<Record<string, unknown>>)[0]!;
+  candidate.semantic_role = "observation";
+  candidate.intent_state = "not-applicable";
+  candidate.delivery_state = "unknown";
+  candidate.alignment = "not-applicable";
+  upgraded.metadata.omission_audit = {
+    result: "passed",
+    notes: ["The rejected candidate was preserved and intentionally not routed."],
+    probes: [],
+  };
+  await writeFile(started.path, serializeWorkSpec(upgraded), "utf8");
+  await migrateIntakeCase({
+    target,
+    id: started.id,
+    review: true,
+    reviewedBy: "workflow-agent/test",
+    note: "Reviewed every conservative field against the complete frozen source.",
+    now: new Date("2026-07-28T10:15:00.000Z"),
+  });
+  assert.deepEqual((await inspectIntakeCase(target, started.id)).issues, []);
+});
+
+test("does not infer current truth or permit one-step review during v3 migration", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-intake-migrate-current-");
+  await writeFile(join(target, "raw/legacy.md"), "# Legacy\n\nPromoted once.\n", "utf8");
+  commitAll(target, "add formerly promoted statement");
+  const started = await beginIntakeCase({
+    target,
+    slug: "migration-current",
+    title: "Do not infer current truth",
+    distributionRoot,
+    now: new Date("2026-07-28T10:00:00.000Z"),
+  });
+  await markIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/legacy.md",
+    status: "reviewed",
+    candidateIds: ["legacy-promoted"],
+    note: "Read completely; legacy promotion does not establish current status.",
+    now: new Date("2026-07-28T10:05:00.000Z"),
+  });
+  const document = parseWorkSpec(await readFile(started.path, "utf8"));
+  document.metadata.intake_case_version = 3;
+  delete document.metadata.migration;
+  document.metadata.candidate_claims = [{
+    id: "legacy-promoted",
+    claim: "The project should use the legacy rule.",
+    authority: "intent",
+    evidence: [],
+    disposition: "confirmed",
+    reason: "",
+    promoted_to: ["knowledge/areas/core/rules/legacy-rule.md"],
+  }];
+  await writeFile(started.path, serializeWorkSpec(document), "utf8");
+
+  await assert.rejects(
+    migrateIntakeCase({
+      target,
+      id: started.id,
+      review: true,
+      note: "Unsafe one-step review.",
+    }),
+    /separate gate/,
+  );
+  assert.equal(
+    parseWorkSpec(await readFile(started.path, "utf8")).metadata.intake_case_version,
+    3,
+  );
+
+  await migrateIntakeCase({ target, id: started.id });
+  const migrated = parseWorkSpec(await readFile(started.path, "utf8"));
+  const candidate = (migrated.metadata.candidate_claims as Array<Record<string, unknown>>)[0]!;
+  assert.deepEqual(candidate.routing, { lane: "case-only", destinations: [] });
+  assert.deepEqual(candidate.migration_source, {
+    authority: "intent",
+    promoted_to: ["knowledge/areas/core/rules/legacy-rule.md"],
+  });
+  assert.ok((await inspectIntakeCase(target, started.id)).issues.some((issue) =>
+    /confirmed candidates require a durable routing lane/.test(issue)
+  ));
+});
+
+test("enforces claim routing, reciprocal lineage, and omission probes", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-claim-ledger-");
+  await mkdir(join(target, "raw/ideas"), { recursive: true });
+  await writeFile(join(target, "raw/ideas/old.md"), "# Old\n\nAn early proposal.\n", "utf8");
+  await writeFile(join(target, "raw/ideas/new.md"), "# New\n\nA refined proposal.\n", "utf8");
+  commitAll(target, "add proposal lineage");
+  const started = await beginIntakeCase({
+    target,
+    slug: "proposal-lineage",
+    title: "Reconcile proposal lineage",
+    paths: ["raw/ideas"],
+    distributionRoot,
+    now: new Date("2026-07-28T11:00:00.000Z"),
+  });
+  await markIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/ideas/old.md",
+    status: "reviewed",
+    candidateIds: ["old-proposal"],
+    note: "Read completely; captured the earlier proposal.",
+    now: new Date("2026-07-28T11:05:00.000Z"),
+  });
+  await markIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/ideas/new.md",
+    status: "reviewed",
+    candidateIds: ["new-proposal"],
+    note: "Read completely; captured the refined proposal.",
+    now: new Date("2026-07-28T11:10:00.000Z"),
+  });
+  const document = parseWorkSpec(await readFile(started.path, "utf8"));
+  const changePath = "changes/inbox/proposal-lineage.md";
+  const refinedChangePath = "changes/inbox/refined-proposal.md";
+  await writeFile(
+    join(target, changePath),
+    "# Proposal lineage\n\nPreserves both proposals and their relationship.\n",
+    "utf8",
+  );
+  await writeFile(
+    join(target, refinedChangePath),
+    "# Refined proposal\n\nPreserves the refined proposal.\n",
+    "utf8",
+  );
+  document.metadata.candidate_claims = [
+    intakeClaim({
+      id: "old-proposal",
+      claim: "The project could use the earlier proposal.",
+      claim_class: "product-intent",
+      semantic_role: "idea",
+      intent_state: "proposed",
+      delivery_state: "absent",
+      alignment: "unknown",
+      disposition: "deferred",
+      reason: "It remains a reviewed proposal, not accepted intent.",
+      relations: {
+        supersedes: [],
+        superseded_by: ["new-proposal"],
+        contradicts: [],
+        refines: [],
+        implements: [],
+        derived_from: [],
+      },
+      routing: {
+        lane: "change",
+        destinations: [changePath],
+      },
+    }),
+    intakeClaim({
+      id: "new-proposal",
+      claim: "The project could use the refined proposal.",
+      claim_class: "product-intent",
+      semantic_role: "idea",
+      intent_state: "proposed",
+      delivery_state: "absent",
+      alignment: "unknown",
+      disposition: "deferred",
+      reason: "It remains a reviewed proposal, not accepted intent.",
+      relations: {
+        supersedes: ["old-proposal"],
+        superseded_by: [],
+        contradicts: [],
+        refines: ["old-proposal"],
+        implements: [],
+        derived_from: [],
+      },
+      routing: {
+        lane: "change",
+        destinations: [refinedChangePath],
+      },
+    }),
+  ];
+  document.metadata.promotion = {
+    status: "not-needed",
+    concepts: [],
+    reason: "Both reviewed proposals remain in the change lane.",
+    validation: "not-needed",
+  };
+  document.metadata.omission_audit = {
+    result: "pending",
+    notes: ["Probe the durable proposal handoff without consulting raw."],
+    probes: [],
+  };
+  await writeFile(started.path, serializeWorkSpec(document), "utf8");
+  await recordIntakeProbe({
+    target,
+    id: started.id,
+    probeId: "incomplete-combined-probe",
+    question: "What are both proposals?",
+    candidateIds: ["old-proposal", "new-proposal"],
+    status: "passed",
+    answer: "Only the earlier proposal was inspected.",
+    outputPaths: [changePath],
+    reviewedBy: "workflow-agent/test",
+    now: new Date("2026-07-28T11:12:00.000Z"),
+  });
+  assert.ok((await inspectIntakeCase(target, started.id)).issues.some((issue) =>
+    /does not inspect a routed output for candidate new-proposal/.test(issue)
+  ));
+  await recordIntakeProbe({
+    target,
+    id: started.id,
+    probeId: "incomplete-combined-probe",
+    question: "What are both proposals?",
+    candidateIds: ["old-proposal", "new-proposal"],
+    status: "passed",
+    answer: "Both durable proposal records were inspected.",
+    outputPaths: [changePath, refinedChangePath],
+    reviewedBy: "workflow-agent/test",
+    now: new Date("2026-07-28T11:13:00.000Z"),
+  });
+  await assert.rejects(
+    recordIntakeProbe({
+      target,
+      id: started.id,
+      probeId: "invalid-waiver",
+      question: "Can this probe be skipped?",
+      candidateIds: ["old-proposal"],
+      status: "waived",
+      answer: "No authority was recorded.",
+      outputPaths: [],
+    }),
+    /waiver-by human:<id>/,
+  );
+  await recordIntakeProbe({
+    target,
+    id: started.id,
+    probeId: "earlier-proposal",
+    question: "What earlier proposal preceded the refinement?",
+    candidateIds: ["old-proposal"],
+    status: "failed",
+    answer: "The durable handoff omitted the predecessor.",
+    outputPaths: [changePath],
+    reviewedBy: "workflow-agent/test",
+    now: new Date("2026-07-28T11:15:00.000Z"),
+  });
+  assert.ok((await inspectIntakeCase(target, started.id)).issues.some((issue) =>
+    /omission_audit\.probes\[\d+\]\.status remains failed/.test(issue)
+  ));
+  await recordIntakeProbe({
+    target,
+    id: started.id,
+    probeId: "earlier-proposal",
+    question: "What earlier proposal preceded the refinement?",
+    candidateIds: ["old-proposal"],
+    status: "passed",
+    answer: "The handoff preserves the earlier proposal and its successor.",
+    outputPaths: [changePath],
+    reviewedBy: "workflow-agent/test",
+    now: new Date("2026-07-28T11:20:00.000Z"),
+  });
+  await recordIntakeProbe({
+    target,
+    id: started.id,
+    probeId: "refined-proposal",
+    question: "What proposal currently awaits maintainer consideration?",
+    candidateIds: ["new-proposal"],
+    status: "passed",
+    answer: "The refined proposal is recorded as proposed, not current truth.",
+    outputPaths: [refinedChangePath],
+    reviewedBy: "workflow-agent/test",
+    now: new Date("2026-07-28T11:25:00.000Z"),
+  });
+  assert.deepEqual((await inspectIntakeCase(target, started.id)).issues, []);
+
+  const reconstructionDirectory = join(
+    target,
+    "reconstruction/active/source-baseline",
+  );
+  await mkdir(reconstructionDirectory, { recursive: true });
+  await writeFile(
+    join(reconstructionDirectory, "case.md"),
+    serializeWorkSpec({
+      metadata: {
+        reconstruction_version: 3,
+        id: "source-baseline",
+        created_at: "2026-07-28T11:30:00.000Z",
+        updated_at: "2026-07-28T11:30:00.000Z",
+        candidate_claims: [{
+          id: "source-observation",
+          claim: "The source analysis considered the refined proposal.",
+          claim_class: "implementation",
+          semantic_role: "observation",
+          intent_state: "unknown",
+          delivery_state: "implemented",
+          alignment: "unknown",
+          disposition: "confirmed",
+          relations: {
+            supersedes: [],
+            superseded_by: [],
+            contradicts: [],
+            refines: [],
+            implements: [],
+            derived_from: [`intake:${started.id}#new-proposal`],
+          },
+          routing: {
+            lane: "current-knowledge",
+            destinations: ["knowledge/architecture/source-observation.md"],
+          },
+        }],
+      },
+      body: "# Source baseline\n",
+    }),
+    "utf8",
+  );
+  const compiled = await compileClaimLedger(target);
+  assert.deepEqual(compiled.errors, []);
+  assert.equal(compiled.ledger.stats.claims, 3);
+  assert.equal(compiled.ledger.stats.intakeCases, 1);
+  assert.equal(compiled.ledger.stats.reconstructionCases, 1);
+  assert.ok(compiled.ledger.edges.some((edge) =>
+    edge.kind === "supersedes"
+    && edge.source.endsWith("#new-proposal")
+    && edge.target.endsWith("#old-proposal")
+  ));
+  assert.ok(compiled.ledger.edges.some((edge) =>
+    edge.kind === "derived_from"
+    && edge.source === "reconstruction:source-baseline#source-observation"
+    && edge.target === `intake:${started.id}#new-proposal`
+  ));
+  const written = await writeClaimLedger(target);
+  await access(written.path);
+
+  const broken = parseWorkSpec(await readFile(started.path, "utf8"));
+  const old = (broken.metadata.candidate_claims as Array<Record<string, unknown>>)[0]!;
+  (old.relations as Record<string, unknown>).superseded_by = [];
+  await writeFile(started.path, serializeWorkSpec(broken), "utf8");
+  assert.ok((await inspectIntakeCase(target, started.id)).issues.some((issue) =>
+    /requires reciprocal superseded_by/.test(issue)
+  ));
 });
 
 test("does not authorize stable knowledge from an incomplete active change", async () => {

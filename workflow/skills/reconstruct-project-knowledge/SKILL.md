@@ -216,10 +216,18 @@ needed change, identify the owning leaf and open normal significant work there.
    evidence, never assumed from names or a built-in topology. Never promote one
    leaf's partial view as the whole capability. Record unowned behavior,
    mismatched schemas, and incomplete implementations.
-5. Classify each candidate with three independent axes:
+5. Classify each candidate with the shared adjudicated-claim model:
+   - `claim_class` and `semantic_role`;
    - `intent_state`: what the project currently intends;
    - `delivery_state`: what implementation currently delivers;
    - `alignment`: whether those two are known to agree.
+   - `temporal`: capture, assertion, and effective time when established;
+   - `relations`: explicit supersession, contradiction, refinement,
+     implementation, and derivation links;
+   - `routing`: current knowledge, history, change, or case-only.
+   Use cross-case references such as
+   `intake:<case-id>#<candidate-id>` when a reconstruction candidate resolves,
+   refines, or supersedes a raw-intake candidate. Capture order is not truth.
 6. Keep `proposed` intent outside current knowledge. Mark it `deferred` or
    `rejected`, or run a normal decision/change workflow when the maintainer
    wants to adopt it.
@@ -254,10 +262,13 @@ After compaction or interruption:
 4. Give implementation claims pinned source-code evidence. Give reconstructed
    history pinned version-control evidence. Give normative claims an explicit
    maintainer decision recorded by candidate ID in this case.
-5. Put every confirmed candidate in `promoted_to`, reconcile it with
-   `promotion.concepts`, and leave no unresolved candidate. Link every
+5. Put every confirmed current/history candidate in
+   `routing.destinations`, reconcile those knowledge destinations with
+   `promotion.concepts`, and leave no unresolved candidate. Proposed work
+   routes to `changes/`; rejected material stays case-only. Link every
    candidate from at least one dossier, structured surface, or supplemental
-   input.
+   input. `promoted_to` remains accepted only for legacy reconstruction v3
+   records; do not author it in new cases.
 6. Draft the concepts, record the complete promotion map and maintainer
    approval, then compute a fresh content hash for each stable concept:
 
@@ -269,7 +280,9 @@ After compaction or interruption:
    wfctl knowledge reconstruct check <case-id>
    ```
 
-   Knowledge validation may use a completion-ready active reconstruction
+   The build also refreshes the disposable cross-case claim ledger and rejects
+   missing, non-reciprocal, or cyclic explicit claim relations. Knowledge
+   validation may use a completion-ready active reconstruction
    receipt while `promotion.validation` is still pending. Set it to `passed`
    only after validation actually succeeds, then rerun the reconstruction
    check.

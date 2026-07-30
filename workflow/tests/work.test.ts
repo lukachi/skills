@@ -312,6 +312,18 @@ test("creates a lightweight handoff in the knowledge inbox", async () => {
   await assert.rejects(
     access(join(leaf, ".workflow/current", `${created.id}.json`)),
   );
+
+  const projectOnly = await createHandoff({
+    target: knowledge,
+    slug: "raw-proposal",
+    title: "Raw proposal",
+    distributionRoot,
+    now: new Date("2026-07-28T10:05:00.000Z"),
+  });
+  assert.equal(projectOnly.codeRoot, undefined);
+  assert.equal(projectOnly.knowledgeRoot, await realpath(knowledge));
+  assert.match(projectOnly.path, /changes\/inbox\/2026-07-28-raw-proposal\.md$/);
+  assert.match(await readFile(projectOnly.path, "utf8"), /status: inbox/);
 });
 
 test("detects linked Git worktrees for close metadata", async () => {

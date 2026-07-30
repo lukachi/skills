@@ -88,7 +88,7 @@ export interface CreateHandoffOptions {
 
 export interface CreateHandoffResult {
   id: string;
-  codeRoot: string;
+  codeRoot?: string;
   knowledgeRoot: string;
   path: string;
 }
@@ -282,10 +282,9 @@ export async function createHandoff(
   const source = readRepositoryMetadata(resolve(options.target));
   const target = source.root;
   const config = await readConfig(target);
-  if (config.profile !== "leaf") {
-    throw new Error("Handoffs must be created from a leaf repository");
-  }
-  const knowledgeRoot = await realpath(resolveKnowledgeRoot(target, config));
+  const knowledgeRoot = config.profile === "knowledge"
+    ? await realpath(target)
+    : await realpath(resolveKnowledgeRoot(target, config));
   await assertKnowledgeRoot(knowledgeRoot);
   const now = options.now ?? new Date();
   const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug(options.slug)}`;
@@ -309,7 +308,12 @@ export async function createHandoff(
     encoding: "utf8",
     flag: "wx",
   });
-  return { id, codeRoot: target, knowledgeRoot, path };
+  return {
+    id,
+    ...(config.profile === "leaf" ? { codeRoot: target } : {}),
+    knowledgeRoot,
+    path,
+  };
 }
 
 export async function verifyWork(

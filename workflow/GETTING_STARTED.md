@@ -273,8 +273,21 @@ Tell the agent:
 
 The agent inventories new and changed Git blobs, groups them by topic, and
 proposes bounded review batches. You approve a batch; the agent reads every
-included source, verifies candidate claims against code or human authority, and
-promotes only confirmed knowledge.
+included source and separates each material statement into an atomic claim.
+For each claim it records what kind of statement it is, whether it is verified,
+intended, delivered, current or historical, what it supersedes or contradicts,
+and where it must go:
+
+- current accepted truth → curated knowledge;
+- former durable truth → decision/evolution history;
+- proposals and plans → the change inbox or an active change;
+- rejected or unresolved material → the intake case only.
+
+The agent then asks diagnostic questions against those durable outputs without
+looking back at raw. Missing conditions, exceptions, or chronology become
+repair work instead of silently disappearing. A generated claim ledger helps
+trace explicit lineage across intake and reconstruction, but it does not decide
+truth.
 
 ## Common situations
 

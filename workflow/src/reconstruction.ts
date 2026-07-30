@@ -51,6 +51,7 @@ import {
   type SurfaceKind,
 } from "./reconstruction-coverage.js";
 import { resolveReconstructionLeaves } from "./repository-registry.js";
+import { compileClaimLedger } from "./claim-ledger.js";
 import type { WorkOutcome } from "./types.js";
 import {
   isRecord,
@@ -588,6 +589,20 @@ export async function inspectProjectReconstruction(
     const validation = await validateKnowledge(target, stringArray(promotion.concepts));
     issues.push(...validation.errors.map((issue) => `${issue.path}: ${issue.message}`));
   }
+  try {
+    const claims = await compileClaimLedger(target);
+    const claimPrefix = `reconstruction:${id}#`;
+    issues.push(
+      ...claims.errors
+        .filter((issue) =>
+          issue.origin === "reconstruction" && issue.caseId === id
+          || issue.claimIds?.some((claimId) => claimId.startsWith(claimPrefix))
+        )
+        .map((issue) => issue.message),
+    );
+  } catch (error) {
+    issues.push(`claim ledger: ${errorMessage(error)}`);
+  }
 
   return {
     ...receipt,
@@ -1085,9 +1100,18 @@ function reconstructionMetadataIssues(
       }
     }
     if (disposition === "confirmed") {
-      const promotedTo = stringArray(candidate.promoted_to);
+      const routing = recordValue(candidate.routing);
+      const promotedTo = stringArray(routing?.destinations).length > 0
+        ? stringArray(routing?.destinations)
+        : stringArray(candidate.promoted_to);
       if (promotedTo.length === 0) {
-        issues.push(`${prefix}.promoted_to must identify the curated concepts`);
+        issues.push(`${prefix}.routing.destinations must identify the curated concepts`);
+      }
+      if (
+        routing
+        && !["current-knowledge", "history"].includes(stringValue(routing.lane))
+      ) {
+        issues.push(`${prefix}.routing.lane must be current-knowledge or history when confirmed`);
       }
       for (const concept of promotedTo) {
         if (!isKnowledgeConceptPath(concept)) {

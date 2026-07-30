@@ -64,9 +64,22 @@ Keep atomic candidates in frontmatter. Classify each claim independently:
 - id: stable-lowercase-id
   claim: Exact claim
   claim_class: implementation
+  semantic_role: observation
   intent_state: unknown
   delivery_state: implemented
   alignment: unknown
+  temporal:
+    captured_at: "<ISO-8601>"
+    asserted_at: ""
+    valid_from: ""
+    valid_to: ""
+  relations:
+    supersedes: []
+    superseded_by: []
+    contradicts: []
+    refines: []
+    implements: []
+    derived_from: []
   evidence:
     - kind: source-code
       resource: git:owner/repository@<full-commit>#<path>:<symbol>
@@ -76,12 +89,17 @@ Keep atomic candidates in frontmatter. Classify each claim independently:
     status: not-needed
     by: ""
     at: ""
-  promoted_to:
-    - knowledge/areas/<area>/implementation/<concept>.md
+  routing:
+    lane: current-knowledge
+    destinations:
+      - knowledge/areas/<area>/implementation/<concept>.md
 ```
 
 Use `deferred` for a reviewed proposal that is intentionally kept outside
-current knowledge. `unresolved` blocks completed reconstruction.
+current knowledge. `unresolved` blocks completed reconstruction. The
+reconstruction v3 gate still accepts legacy `promoted_to`, but new cases must
+author the richer routing and relation fields so the shared claim ledger can
+preserve cross-source lineage.
 
 # Contradictions and adjudication
 

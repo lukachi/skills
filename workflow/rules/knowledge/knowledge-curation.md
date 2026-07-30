@@ -31,7 +31,15 @@ Use `process-raw-intake` for raw intake and
 `curate-project-knowledge` for promotion. Never copy, link, footnote, or cite a
 raw path from `knowledge/`.
 
-Treat `raw/` as permanent append-only intake. Run
+Classify raw and reconstruction statements atomically. Keep semantic role,
+epistemic disposition, intent, delivery, alignment, temporal scope, explicit
+claim relations, and routing independent. File age and capture order never
+decide current truth. Proposed work routes to `changes/`; rejected or
+unresolved raw material remains case-only.
+
+Treat `raw/` as permanent, append-oriented intake. A changed path becomes a new
+Git blob and therefore new input; never rewrite the frozen identity in an
+earlier case. Run
 `wfctl knowledge raw inventory` to distinguish exact Git blobs that are unseen,
 changed, active, reviewed, blocked, or unresolved. Let QMD and direct reading
 help the agent propose bounded thematic cases; do not require the maintainer to
@@ -84,6 +92,11 @@ typed `x-wf.relations`, Area ownership, and decision lineage into
 not evidence. Never edit it. Every typed target must also be a human-visible
 Markdown link, and every stable concept must remain reachable from
 `knowledge/index.md`.
+
+The same build compiles `.workflow/current/claim-ledger.json` from intake and
+reconstruction cases. Use it to trace only explicit candidate lineage. Missing
+reciprocal relations and supersession cycles must be resolved before
+completion. The claim ledger is disposable and never establishes truth.
 
 For code claims, invoke `analyze-with-graphify` in the exact source checkout,
 then inspect the actual source and checks. Graphify output is navigation, not

@@ -33,7 +33,10 @@ import {
   inspectIntakeCase,
   inventoryRaw,
   markIntakeSource,
+  migrateIntakeCase,
+  recordIntakeProbe,
 } from "./intake.js";
+import { writeClaimLedger } from "./claim-ledger.js";
 import { hashKnowledgeConcept, validateKnowledge } from "./knowledge.js";
 import { writeKnowledgeGraph } from "./knowledge-graph.js";
 import {
@@ -335,6 +338,7 @@ async function installWorkflow(input: {
   if (input.profile === "knowledge") {
     const validation = await validateKnowledge(input.target);
     if (validation.valid) {
+      await writeClaimLedger(input.target);
       await writeKnowledgeGraph(input.target);
     }
   }
@@ -493,9 +497,11 @@ function workCommand() {
     .command(
       "handoff",
       new Command()
-        .description("Create a lightweight, non-authoritative inbox handoff.")
+        .description(
+          "Create a lightweight, non-authoritative inbox handoff from a leaf or knowledge repository.",
+        )
         .arguments("<slug:string>")
-        .option("-t, --target <path:string>", "Leaf checkout.", { default: "." })
+        .option("-t, --target <path:string>", "Workflow repository.", { default: "." })
         .option("--title <title:string>", "Human-readable handoff title.", {
           required: true,
         })
@@ -511,7 +517,7 @@ function workCommand() {
           } else {
             process.stdout.write(
               `Created ${result.id}\n`
-                + `Code root: ${result.codeRoot}\n`
+                + (result.codeRoot ? `Code root: ${result.codeRoot}\n` : "")
                 + `Knowledge root: ${result.knowledgeRoot}\n`
                 + `Handoff: ${result.path}\n`,
             );
@@ -683,7 +689,7 @@ function knowledgeCommand() {
     .description(
       "Operate the knowledge trust boundary.\n"
         + "raw/ is untrusted intake; reconstruction maps pinned leaves; knowledge/ is curated truth.\n"
-        + "wfctl validates and compiles explicit knowledge relations; QMD provides semantic retrieval.",
+        + "wfctl validates and compiles explicit knowledge and claim relations; QMD provides semantic retrieval.",
     )
     .command("raw", knowledgeRawCommand())
     .command("case", knowledgeCaseCommand())
@@ -743,7 +749,7 @@ function knowledgeCommand() {
       "build",
       new Command()
         .description(
-          "Validate curated knowledge and compile its deterministic navigation graph.",
+          "Validate curated knowledge and compile deterministic knowledge plus claim graphs.",
         )
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
         .option("--json", "Print machine-readable JSON.")
@@ -766,6 +772,7 @@ function knowledgeCommand() {
             process.exitCode = 2;
             return;
           }
+          const claims = await writeClaimLedger(options.target);
           const result = await writeKnowledgeGraph(options.target);
           if (options.json) {
             printJson({
@@ -773,13 +780,21 @@ function knowledgeCommand() {
               path: result.path,
               contentHash: result.graph.contentHash,
               stats: result.graph.stats,
+              claimLedger: {
+                path: claims.path,
+                contentHash: claims.ledger.contentHash,
+                stats: claims.ledger.stats,
+              },
               warnings: result.warnings,
             });
           } else {
             process.stdout.write(
               `Knowledge graph built: ${result.path}\n`
                 + `Nodes: ${result.graph.stats.nodes}; edges: ${result.graph.stats.edges}; `
-                + `concepts: ${result.graph.stats.concepts}\n`,
+                + `concepts: ${result.graph.stats.concepts}\n`
+                + `Claim ledger built: ${claims.path}\n`
+                + `Claims: ${claims.ledger.stats.claims}; `
+                + `relations: ${claims.ledger.stats.edges}\n`,
             );
             for (const issue of result.warnings) {
               process.stdout.write(`WARN  ${issue.path}: ${issue.message}\n`);
@@ -1408,9 +1423,99 @@ function knowledgeCaseCommand() {
         }),
     )
     .command(
+      "migrate",
+      new Command()
+        .description(
+          "Upgrade an active v3 intake case to v4, or sign its semantic migration review.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--review", "Confirm that all generated v4 classifications were reviewed.")
+        .option("--note <text:string>", "Migration review result.")
+        .option("--by <actor:string>", "Reviewing agent actor.", {
+          default: "workflow-agent/1",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await migrateIntakeCase({
+            target: options.target,
+            id,
+            review: options.review === true,
+            reviewedBy: options.by,
+            ...(options.note === undefined ? {} : { note: options.note }),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Intake case ${result.id}: v${result.fromVersion} -> v${result.version}\n`
+                + `Migration: ${result.migrationStatus}\n`
+                + `Case: ${result.path}\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "probe",
+      new Command()
+        .description(
+          "Upsert one omission probe after testing routed durable outputs without raw input.",
+        )
+        .arguments("<id:string> <probe-id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--question <text:string>", "Diagnostic question.", { required: true })
+        .option("--candidate <id:string>", "Expected candidate ID; repeat.", {
+          collect: true,
+          required: true,
+        })
+        .option("--status <status:string>", "passed, failed, or waived.", {
+          required: true,
+        })
+        .option("--answer <text:string>", "Observed answer from routed outputs.", {
+          required: true,
+        })
+        .option("--output <path:string>", "Inspected knowledge/change path; repeat.", {
+          collect: true,
+        })
+        .option("--by <actor:string>", "Reviewing agent actor.", {
+          default: "workflow-agent/1",
+        })
+        .option("--waiver-by <actor:string>", "Human actor approving a waiver.")
+        .option("--waiver-note <text:string>", "Human waiver rationale.")
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, probeId) => {
+          const result = await recordIntakeProbe({
+            target: options.target,
+            id,
+            probeId,
+            question: options.question,
+            candidateIds: collectedStrings(options.candidate),
+            status: options.status,
+            answer: options.answer,
+            outputPaths: collectedStrings(options.output),
+            reviewedBy: options.by,
+            ...(options.waiverBy === undefined
+              ? {}
+              : { waiverBy: options.waiverBy }),
+            ...(options.waiverNote === undefined
+              ? {}
+              : { waiverNote: options.waiverNote }),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Recorded omission probe ${result.probeId} as ${result.status} in ${result.id}\n`,
+            );
+          }
+        }),
+    )
+    .command(
       "check",
       new Command()
-        .description("Check frozen Git coverage, reviews, candidates, and promotion state.")
+        .description(
+          "Check frozen Git coverage, classified claims, routing, relations, probes, and promotion.",
+        )
         .arguments("<id:string>")
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
         .option("--json", "Print machine-readable JSON.")
@@ -1875,6 +1980,7 @@ function checkSection(name: string): string {
     || name === "maintainer-guide"
     || name === "curated-knowledge"
     || name === "knowledge-graph"
+    || name === "claim-ledger"
     || name === "knowledge-directories"
     || name.startsWith("knowledge-")
   ) {
@@ -1953,6 +2059,7 @@ function checkLabel(name: string): string {
     "maintainer-guide": "Maintainer guide",
     "curated-knowledge": "Curated knowledge",
     "knowledge-graph": "Knowledge graph",
+    "claim-ledger": "Claim ledger",
     "knowledge-directories": "Workflow directories",
     "repository-registry": "Leaf repositories",
     "repository-connection": "Repository connection",

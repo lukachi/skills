@@ -139,9 +139,12 @@ wfctl work handoff <slug> --title "<what should be retained>"
 
 Update the returned `Handoff` file using
 [the handoff template](assets/handoff.md). It lives under `changes/inbox/`,
-includes exact repository/worktree metadata, and remains non-authoritative
-until triaged. Refresh QMD from the knowledge root so it appears in the
-explicit `changes` collection.
+includes exact source-repository metadata, and remains non-authoritative until
+triaged. The command works from a leaf for implementation observations and
+from knowledge for project-only intake or reconstruction proposals. When it
+routes atomic candidates, fill `claim_refs` with their fully qualified claim
+IDs. Refresh QMD from the knowledge root so it appears in the explicit
+`changes` collection.
 
 Use [the work spec template](assets/work-spec.md) as the significant-work
 schema. The live copy is created by `wfctl`; do not create a second copy in the

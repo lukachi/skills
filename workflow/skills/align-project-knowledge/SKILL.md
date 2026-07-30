@@ -19,10 +19,11 @@ Do not design from code and memory alone. Establish the project's current intent
    project-local `.qmd/index.yml` is missing, stop and report the broken
    workflow environment.
 4. Run `wfctl knowledge build --target <knowledge-root>`. Stop alignment if
-   validation or graph compilation fails; do not silently reason over broken
-   navigation. The generated
-   `.workflow/current/knowledge-graph.json` is disposable navigation, never
-   authority and never an edit target.
+   validation, knowledge-graph compilation, or claim-ledger compilation fails;
+   do not silently reason over broken navigation. The generated
+   `.workflow/current/knowledge-graph.json` is disposable knowledge navigation.
+   `.workflow/current/claim-ledger.json` is disposable explicit candidate
+   lineage. Neither is authority or an edit target.
 5. Start at `knowledge/index.md`, then use `qmd search ... -c knowledge` for
    exact terms or a structured `qmd query` with authored `intent:`, `lex:`,
    `vec:`, and when useful `hyde:` fields for hybrid retrieval.

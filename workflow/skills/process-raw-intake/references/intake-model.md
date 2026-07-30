@@ -1,8 +1,9 @@
 # Continuous raw intake model
 
-`raw/` is a permanent append-only intake surface, not a one-time migration
+`raw/` is a permanent, append-oriented intake surface, not a one-time migration
 folder. Maintainers may keep adding ideas, conversations, research, exports,
-and historical artifacts throughout the project.
+and historical artifacts throughout the project. A changed path becomes a new
+Git blob and new input without rewriting an earlier frozen case.
 
 ## Why Git coverage and retrieval are separate
 
@@ -50,9 +51,12 @@ case as `partial` or keep it active; do not manufacture completion.
 
 Candidate dispositions are separate:
 
-- `confirmed`: established by the proper current authority;
+- `confirmed`: established by the proper authority; this may confirm that a
+  proposal or former state existed without making it current product truth;
 - `rejected`: disproved, superseded, abandoned, or irrelevant after
   verification;
+- `deferred`: reviewed and intentionally retained as proposed work rather than
+  promoted as current truth;
 - `unresolved`: evidence and maintainer authority are still insufficient.
 
 An unresolved candidate may exist after an individual file review, but it is
@@ -60,13 +64,68 @@ never promoted into current knowledge. Keep the case active or close it as
 `partial` or `abandoned`; a case with unresolved candidates cannot close as
 `completed`.
 
-Every confirmed candidate carries its independent authority receipt and an
-explicit `promoted_to` list. The promotion concept list must equal the union of
-those destinations. This prevents a case from labelling a claim confirmed
-while silently dropping it, and prevents a concept from appearing in the
-promotion summary without a reviewed candidate.
+## Atomic claim dimensions
 
-## Two audits
+Classify claims, not files. A single old specification may contain a still
+accepted requirement, a superseded design, an unimplemented plan, an accurate
+historical observation, and a new idea. Its path, title, date, or apparent
+document type cannot safely flatten those statements into one status.
+
+Every candidate records independent dimensions:
+
+| Dimension | Question |
+| --- | --- |
+| `claim_class` | Which authority can establish or reject this claim? |
+| `semantic_role` | Is this an idea, requirement, decision, design, plan, status, observation, or outcome? |
+| `disposition` | Has the claim been confirmed, rejected, deferred, or left unresolved? |
+| `intent_state` | Is the product intent accepted, proposed, superseded, rejected, unknown, or not applicable? |
+| `delivery_state` | Is delivery absent, partial, implemented, verified, retired, unknown, or not applicable? |
+| `alignment` | Do accepted intent and observed delivery align, drift, remain unknown, or not apply? |
+| `temporal` | When was it captured, asserted, and effective? |
+| `relations` | What does it supersede, contradict, refine, implement, or derive from? |
+| `routing` | Which durable lane and files preserve the adjudicated result? |
+
+`captured_at` records intake time, not truth time. `asserted_at` records when
+the source made the statement if known. `valid_from` and `valid_to` describe
+the established effective interval. Unknown time stays empty; it is never
+invented from file order or Git modification time.
+
+Local relation references use a candidate ID from the same case. Cross-case
+references use `intake:<case-id>#<candidate-id>` or
+`reconstruction:<case-id>#<candidate-id>`. `supersedes` /
+`superseded_by` and `contradicts` are reciprocal. Supersession must be acyclic.
+
+## Routing lanes
+
+- `current-knowledge`: confirmed current truth with accepted or
+  not-applicable intent. Ideas, plans, proposed intent, rejected intent, and
+  superseded intent cannot use this lane.
+- `history`: confirmed former truth or durable chronology. Preserve it in
+  Area decisions/evolution or another honest history concept.
+- `change`: reviewed proposed work. Create a durable handoff or active change;
+  do not present it as current knowledge.
+- `case-only`: rejected or unresolved material. It remains discoverable in the
+  operational case but produces no authoritative derivative.
+
+Every current/history candidate carries independent authority receipts and
+explicit `routing.destinations`. `promotion.concepts` must equal the union of
+knowledge destinations. Change destinations must exist before completion.
+This prevents confirmed current/history claims from being silently dropped
+and prevents outputs from appearing without a reviewed candidate.
+
+## Schema migration
+
+Version 3 cases do not contain enough structure to distinguish semantic role,
+intent, delivery, chronology, or routing. `wfctl knowledge case migrate`
+converts their shape conservatively, sets ambiguous fields to `unknown`, and
+marks migration `needs-review`. The agent must reread the frozen sources,
+correct every field, and sign a review note. Migration never infers that an old
+confirmed claim is current merely because it once had `promoted_to`. It keeps
+the old authority and destinations under candidate `migration_source`, but
+routes the candidate to `case-only` until the separate review pass classifies
+and routes it honestly. The CLI refuses migration and review in one operation.
+
+## Two audits and diagnostic probes
 
 The first pass retrieves related material, then reads every frozen file and
 extracts atomic claims. The second pass asks:
@@ -78,10 +137,32 @@ extracts atomic claims. The second pass asks:
 5. Did any knowledge concept accidentally cite or copy raw material?
 6. Did summarization erase a condition, exception, alternative, or chronology?
 
+After routing, create omission probes from the candidate ledger. Each probe
+asks a diagnostic question, lists the candidate IDs the durable outputs must
+recover, and is answered by querying and reading only those `knowledge/` or
+`changes/` outputs. This is a semantic test of the compiled result:
+
+- every non-rejected candidate must be covered;
+- `passed` requires an answer and inspected output paths;
+- a multi-candidate passed probe must inspect at least one declared output for
+  every expected candidate;
+- `failed` blocks completion and should create repair work;
+- `waived` requires an explicit human decision and rationale.
+
+The probe is not proof that every possible question works. It is a targeted
+omission detector that makes silent summarization loss observable.
+
 The Git ledger proves corpus identity and file accounting. It does not prove
 that the agent understood every sentence. The explicit full-file review,
-omission audit, source verification, and maintainer adjudication are the
-semantic safeguards. The workflow must state this limitation honestly.
+omission probes, source verification, and maintainer adjudication are the
+semantic safeguards.
+
+`wfctl knowledge build` also compiles
+`.workflow/current/claim-ledger.json` from intake and reconstruction cases.
+The artifact contains normalized claims and explicit relation edges. It is
+ignored, reproducible navigation and audit state, including case lifecycle,
+review/promotion state, evidence kinds, and candidate adjudication—not
+evidence, ranking, or an inferred source of truth.
 
 ## QMD collection policy
 

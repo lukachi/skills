@@ -100,16 +100,22 @@ bounded topics rather than asking an agent to summarize the entire dump.
 5. The agent runs QMD from this repository, explicitly searches the `raw`
    collection, and follows related terminology and contradictions.
 6. The agent then reads every frozen source in full, records every result, and
-   maintains atomic candidate claims in the case. Retrieval snippets do not
-   count as complete review.
+   maintains atomic candidate claims in the case. Each claim separately records
+   semantic role, authority, intent, delivery, alignment, time, relations, and
+   routing. Retrieval snippets do not count as complete review.
 7. Implementation candidates are checked in exact source repositories through
    Graphify followed by direct source and test inspection.
 8. You answer only unresolved intent, chronology, or authority questions.
-9. The case gate must pass before the agent claims complete file accounting
-   for that bounded case. It fails on Git drift, missing sources, pending
-   reviews, or incomplete candidate linkage.
-10. Confirmed claims pass through `curate-project-knowledge`; unresolved raw
-   claims stay outside current knowledge.
+9. Confirmed current truth routes to `knowledge/`, durable former truth routes
+   to history, proposals route to `changes/`, and rejected or unresolved
+   material stays case-only. A newer file never wins automatically.
+10. The agent asks omission-probe questions against the routed outputs without
+    consulting raw. Missing conditions or chronology become repair work.
+11. The case gate must pass before the agent claims complete accounting. It
+    fails on Git drift, missing sources, pending reviews, incomplete claim
+    linkage or routing, broken claim lineage, or failed/missing probes.
+12. Confirmed knowledge claims pass through `curate-project-knowledge`;
+    unresolved raw claims stay outside current knowledge.
 
 ### Current knowledge maintenance
 

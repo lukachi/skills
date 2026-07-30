@@ -68,9 +68,10 @@ manual or automation-oriented instructions.
     `knowledge`, `changes`, `intake`, `reconstruction`, and `raw` collections.
     Confirm that `reconstruction/active` and `reconstruction/archive` exist and
     `reconstruct-project-knowledge` is installed. `wfctl init`
-    builds `.workflow/current/knowledge-graph.json` and runs `qmd update`, so
-    explicit relationship navigation and BM25 retrieval must be ready
-    immediately. Treat
+    builds `.workflow/current/knowledge-graph.json` plus
+    `.workflow/current/claim-ledger.json` and runs `qmd update`, so explicit
+    knowledge navigation, claim-lineage audit, and BM25 retrieval must be
+    ready immediately. Treat
     `qmd-models` and `qmd-embeddings` warnings as optional semantic setup, not
     as lexical-index success. Ask before `qmd pull` or `qmd embed`; the current
     model set is roughly 2 GB.

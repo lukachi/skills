@@ -1,5 +1,5 @@
 ---
-intake_case_version: 3
+intake_case_version: 4
 id: "<case-id>"
 title: "<bounded topic>"
 status: active
@@ -12,6 +12,12 @@ baseline:
 sources: []
 candidate_claims: []
 maintainer_decisions: []
+migration:
+  from_version: null
+  status: not-needed
+  reviewed_by: ""
+  reviewed_at: ""
+  notes: []
 promotion:
   status: pending
   concepts: []
@@ -20,6 +26,7 @@ promotion:
 omission_audit:
   result: pending
   notes: []
+  probes: []
 ---
 
 # Question
@@ -33,7 +40,23 @@ Add one frontmatter object per candidate:
 ```yaml
 - id: stable-lowercase-id
   claim: Exact atomic claim
-  authority: implementation
+  claim_class: implementation
+  semantic_role: observation
+  intent_state: not-applicable
+  delivery_state: verified
+  alignment: not-applicable
+  temporal:
+    captured_at: "<ISO-8601>"
+    asserted_at: ""
+    valid_from: ""
+    valid_to: ""
+  relations:
+    supersedes: []
+    superseded_by: []
+    contradicts: []
+    refines: []
+    implements: []
+    derived_from: []
   evidence:
     - kind: source-code
       resource: git:owner/repository@<full-commit>#<path>:<symbol>
@@ -43,14 +66,17 @@ Add one frontmatter object per candidate:
     status: not-needed
     by: ""
     at: ""
-  promoted_to:
-    - knowledge/areas/<area>/implementation/<concept>.md
+  routing:
+    lane: current-knowledge
+    destinations:
+      - knowledge/areas/<area>/implementation/<concept>.md
 ```
 
 Explain each candidate here: supporting and conflicting observations, missing
 authority, verification result, and why it is confirmed, rejected, or
-unresolved. Raw locations may appear only as intake locators, never as
-evidence.
+unresolved. Classify what kind of statement it is separately from whether it
+is true, intended, delivered, current, historical, or proposed. Raw locations
+may appear only as intake locators, never as evidence.
 
 # Source review
 
@@ -67,16 +93,28 @@ receipts, primary external sources, and maintainer decisions.
 
 # Contradictions and chronology
 
-Preserve conflicting accounts and state what resolved them. If nothing can,
-keep the candidate unresolved.
+Preserve atomic conflicting accounts through claim relations. Record asserted
+and effective time when known. Capture order and file order do not establish
+truth. If independent evidence and maintainer authority cannot resolve the
+conflict, keep the candidate unresolved.
 
 # Promotion
 
-List the confirmed claims and the curated concepts that express them. Record
-why rejected or unresolved candidates were not promoted.
+Route each candidate explicitly:
+
+- current accepted truth to `current-knowledge`;
+- former durable truth to `history`;
+- proposed ideas and plans to `change`;
+- rejected or unresolved material to `case-only`.
+
+List knowledge destinations in `promotion.concepts`. Record why rejected,
+deferred, or unresolved candidates were not promoted as current truth.
 
 # Omission audit
 
-Reconcile the case against every frozen source and every candidate. Explicitly
+Reconcile the case against every frozen source and every candidate. Then write
+diagnostic probes that are answered from routed `knowledge/` or `changes/`
+outputs without consulting raw or this case. Every non-rejected candidate must
+be covered by at least one passed or explicitly human-waived probe. Explicitly
 check for lost conditions, exceptions, alternatives, negative results, and
 chronology. QMD retrieval is a discovery aid; it is not the coverage proof.

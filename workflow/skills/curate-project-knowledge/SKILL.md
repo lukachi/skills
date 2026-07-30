@@ -30,8 +30,10 @@ directly into a concept. For raw material, invoke `process-raw-intake` first.
 
 - **Completed significant change:** compare the accepted work record with the
   verified implementation and update only durable project truth.
-- **Confirmed raw candidates:** promote the candidate claims, not the raw
-  wording, and attach their independent authoritative evidence.
+- **Confirmed raw candidates:** promote only candidates routed to
+  `current-knowledge` or `history`, not the raw wording. Attach independent
+  authoritative evidence, preserve temporal scope and claim lineage, and
+  write the exact routing destinations.
 - **Source-first baseline:** promote confirmed reconstruction candidates into
   the smallest human map. Keep observed implementation distinct from accepted
   intent and record missing, partial, accidental, or drifted delivery honestly.
@@ -143,13 +145,16 @@ matching `[^source-id]` footnote.
     to make a concept stable.
 15. Run `wfctl knowledge validate --target <knowledge-root>`, then
     `wfctl knowledge build --target <knowledge-root>`. The build must succeed
-    so broken links, invalid typed relations, and stable orphan concepts cannot
-    silently enter the maintained reading surface.
+    so broken links, invalid typed relations, stable orphan concepts, and
+    missing, non-reciprocal, or cyclic explicit claim lineage cannot silently
+    enter the maintained reading surface. The generated claim ledger is audit
+    and navigation state, not authority.
 16. Run `qmd update` so retrieval reflects the validated files. Re-run
     `qmd embed -c knowledge` when semantic vectors are needed.
 17. Do not report promotion complete while validation or graph compilation
     fails.
 
-Unresolved candidates from raw intake stay in the intake case. Use
-`knowledge/uncertainties/` only for a live project question established by
-trusted current evidence.
+After raw-intake promotion, return control to `process-raw-intake` so it can
+run candidate-covering omission probes against the durable outputs. Unresolved
+candidates stay in the intake case. Use `knowledge/uncertainties/` only for a
+live project question established by trusted current evidence.

@@ -59,6 +59,23 @@ the knowledge file, not product delivery.
 reviewed but deliberately stays outside current knowledge. `unresolved` blocks
 a completed reconstruction.
 
+Reconstruction and raw intake use one claim vocabulary. In addition to
+authority class and the intent/delivery/alignment axes, new reconstruction
+candidates record:
+
+- semantic role: idea, requirement, decision, design, plan, status,
+  observation, or outcome;
+- temporal capture, assertion, and effective bounds;
+- explicit supersession, contradiction, refinement, implementation, and
+  derivation relations;
+- routing to current knowledge, history, change, or case-only.
+
+Use `intake:<case-id>#<candidate-id>` and
+`reconstruction:<case-id>#<candidate-id>` for cross-case relations. This lets
+the deterministic claim ledger connect an old raw proposal to the
+reconstruction finding that confirmed, rejected, refined, or superseded it.
+The ledger is navigation and audit state; evidence still determines truth.
+
 ## Coverage without false certainty
 
 The pinned Git tree provides complete file enumeration. Graphify provides the

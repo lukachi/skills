@@ -15,9 +15,10 @@ import { findDistributionRoot } from "./assets.js";
 import { errorMessage, isMissingFileError, readConfig } from "./config.js";
 import { readRepositoryMetadata } from "./git.js";
 import { validateKnowledge } from "./knowledge.js";
+import { compileClaimLedger } from "./claim-ledger.js";
 import type { WorkOutcome } from "./types.js";
 
-const INTAKE_CASE_VERSION = 3;
+const INTAKE_CASE_VERSION = 4;
 const SOURCE_STATUSES = new Set([
   "pending",
   "reviewed",
@@ -29,20 +30,83 @@ const SOURCE_STATUSES = new Set([
 const CANDIDATE_STATUSES = new Set([
   "confirmed",
   "rejected",
+  "deferred",
   "unresolved",
 ]);
 
-const CANDIDATE_AUTHORITIES = new Set([
-  "intent",
+const CLAIM_CLASSES = new Set([
+  "product-intent",
   "product-meaning",
   "implementation",
-  "architecture-rationale",
+  "architecture",
   "ownership",
   "contract",
   "operational-policy",
   "decision",
   "history",
   "external",
+  "uncertainty",
+]);
+
+const SEMANTIC_ROLES = new Set([
+  "idea",
+  "requirement",
+  "decision",
+  "design",
+  "plan",
+  "status",
+  "observation",
+  "outcome",
+  "unknown",
+]);
+
+const INTENT_STATES = new Set([
+  "accepted",
+  "proposed",
+  "superseded",
+  "rejected",
+  "unknown",
+  "not-applicable",
+]);
+
+const DELIVERY_STATES = new Set([
+  "absent",
+  "partial",
+  "implemented",
+  "verified",
+  "retired",
+  "unknown",
+  "not-applicable",
+]);
+
+const ALIGNMENT_STATES = new Set([
+  "aligned",
+  "drifted",
+  "unknown",
+  "not-applicable",
+]);
+
+const ROUTING_LANES = new Set([
+  "current-knowledge",
+  "history",
+  "change",
+  "case-only",
+]);
+
+const CLAIM_RELATIONS = [
+  "supersedes",
+  "superseded_by",
+  "contradicts",
+  "refines",
+  "implements",
+  "derived_from",
+] as const;
+
+const PROBE_STATUSES = new Set([
+  "pending",
+  "passed",
+  "failed",
+  "waived",
 ]);
 
 interface CaseDocument {
@@ -90,6 +154,45 @@ export interface MarkIntakeSourceResult {
   path: string;
   status: string;
   candidateIds: string[];
+}
+
+export interface RecordIntakeProbeOptions {
+  target: string;
+  id: string;
+  probeId: string;
+  question: string;
+  candidateIds: string[];
+  status: string;
+  answer: string;
+  outputPaths: string[];
+  reviewedBy?: string;
+  waiverBy?: string;
+  waiverNote?: string;
+  now?: Date;
+}
+
+export interface RecordIntakeProbeResult {
+  id: string;
+  probeId: string;
+  status: string;
+  candidateIds: string[];
+}
+
+export interface MigrateIntakeCaseOptions {
+  target: string;
+  id: string;
+  review?: boolean;
+  reviewedBy?: string;
+  note?: string;
+  now?: Date;
+}
+
+export interface MigrateIntakeCaseResult {
+  id: string;
+  path: string;
+  fromVersion: number;
+  version: number;
+  migrationStatus: string;
 }
 
 export interface IntakeCaseResult {
@@ -303,6 +406,198 @@ export async function markIntakeSource(
   };
 }
 
+export async function recordIntakeProbe(
+  options: RecordIntakeProbeOptions,
+): Promise<RecordIntakeProbeResult> {
+  const target = await requireKnowledgeRepository(options.target);
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(options.probeId)) {
+    throw new Error(`Invalid omission probe id: ${options.probeId}`);
+  }
+  if (!PROBE_STATUSES.has(options.status) || options.status === "pending") {
+    throw new Error(
+      `Invalid final probe status "${options.status}"; expected passed, failed, or waived`,
+    );
+  }
+  const candidateIds = uniqueStrings(options.candidateIds);
+  if (candidateIds.length === 0) {
+    throw new Error("Omission probe requires at least one --candidate <id>");
+  }
+  if (!options.question.trim()) {
+    throw new Error("Omission probe requires --question <diagnostic question>");
+  }
+  if (!options.answer.trim()) {
+    throw new Error("Omission probe requires --answer <observed answer>");
+  }
+  const outputPaths = uniqueStrings(options.outputPaths);
+  if (options.status === "passed" && outputPaths.length === 0) {
+    throw new Error("Passed omission probe requires at least one --output <durable path>");
+  }
+  if (outputPaths.some((path) => !isDurableRoutingPath(path))) {
+    throw new Error(
+      "Omission probe outputs must be Markdown under knowledge/ or changes/",
+    );
+  }
+  if (
+    options.status === "waived"
+    && (
+      !options.waiverBy?.startsWith("human:")
+      || !options.waiverNote?.trim()
+    )
+  ) {
+    throw new Error(
+      "Waived omission probe requires --waiver-by human:<id> and --waiver-note",
+    );
+  }
+
+  const casePath = intakeCasePath(target, "active", options.id);
+  const document = parseCase(await readFile(casePath, "utf8"));
+  requireCurrentIntakeVersion(document.metadata);
+  const candidateSet = new Set(
+    recordArray(document.metadata.candidate_claims)
+      .map((candidate) => stringValue(candidate.id))
+      .filter(Boolean),
+  );
+  for (const candidateId of candidateIds) {
+    if (!candidateSet.has(candidateId)) {
+      throw new Error(`Omission probe references undefined candidate: ${candidateId}`);
+    }
+  }
+  const omissionAudit = recordValue(document.metadata.omission_audit) ?? {};
+  const probes = recordArray(omissionAudit.probes);
+  const now = options.now ?? new Date();
+  const probe = {
+    id: options.probeId,
+    question: options.question.trim(),
+    expected_candidate_ids: candidateIds,
+    status: options.status,
+    answer: options.answer.trim(),
+    output_paths: outputPaths,
+    reviewed_by: options.reviewedBy?.trim() || "workflow-agent/1",
+    reviewed_at: now.toISOString(),
+    waiver: options.status === "waived"
+      ? {
+        status: "approved",
+        by: options.waiverBy!.trim(),
+        at: now.toISOString(),
+        note: options.waiverNote!.trim(),
+      }
+      : {
+        status: "not-needed",
+        by: "",
+        at: "",
+        note: "",
+      },
+  };
+  const existingIndex = probes.findIndex(
+    (entry) => stringValue(entry.id) === options.probeId,
+  );
+  if (existingIndex >= 0) {
+    probes[existingIndex] = probe;
+  } else {
+    probes.push(probe);
+  }
+  omissionAudit.probes = probes;
+  omissionAudit.result = probes.some((entry) => entry.status === "failed")
+    ? "failed"
+    : probes.some((entry) => entry.status === "pending")
+    ? "pending"
+    : "passed";
+  document.metadata.omission_audit = omissionAudit;
+  document.metadata.updated_at = now.toISOString();
+  await writeFile(casePath, serializeCase(document), "utf8");
+  return {
+    id: options.id,
+    probeId: options.probeId,
+    status: options.status,
+    candidateIds,
+  };
+}
+
+export async function migrateIntakeCase(
+  options: MigrateIntakeCaseOptions,
+): Promise<MigrateIntakeCaseResult> {
+  const target = await requireKnowledgeRepository(options.target);
+  const path = intakeCasePath(target, "active", options.id);
+  const document = parseCase(await readFile(path, "utf8"));
+  const rawVersion = document.metadata.intake_case_version;
+  const fromVersion = typeof rawVersion === "number" ? rawVersion : 0;
+  const now = options.now ?? new Date();
+
+  if (fromVersion === 3) {
+    if (options.review === true) {
+      throw new Error(
+        "Migration review is a separate gate: migrate first, inspect and correct every generated field, then rerun with --review",
+      );
+    }
+    document.metadata.candidate_claims = recordArray(
+      document.metadata.candidate_claims,
+    ).map((candidate) => migrateV3Candidate(candidate, document.metadata));
+    document.metadata.intake_case_version = INTAKE_CASE_VERSION;
+    document.metadata.migration = {
+      from_version: 3,
+      status: "needs-review",
+      reviewed_by: "",
+      reviewed_at: "",
+      notes: [
+        "Conservative defaults were generated. Review semantic role, independent state axes, temporal scope, relations, and routing for every candidate.",
+      ],
+    };
+    const omissionAudit = recordValue(document.metadata.omission_audit) ?? {};
+    omissionAudit.probes = recordArray(omissionAudit.probes);
+    omissionAudit.result = "pending";
+    omissionAudit.notes = uniqueStrings([
+      ...stringArray(omissionAudit.notes),
+      "Generate candidate-covering omission probes after migration review and routing.",
+    ]);
+    document.metadata.omission_audit = omissionAudit;
+  } else if (fromVersion !== INTAKE_CASE_VERSION) {
+    throw new Error(
+      `Cannot migrate intake case version ${String(rawVersion)}; supported source version is 3`,
+    );
+  }
+
+  const migration = recordValue(document.metadata.migration) ?? {};
+  if (options.review === true) {
+    if (
+      migration.from_version !== 3
+      || migration.status !== "needs-review"
+    ) {
+      throw new Error(
+        migration.status === "reviewed"
+          ? "Intake migration has already been reviewed"
+          : "This intake case has no pending v3-to-v4 migration review",
+      );
+    }
+    if (!options.note?.trim()) {
+      throw new Error("Migration review requires --note <review result>");
+    }
+    migration.status = "reviewed";
+    migration.reviewed_by = options.reviewedBy?.trim() || "workflow-agent/1";
+    migration.reviewed_at = now.toISOString();
+    migration.notes = uniqueStrings([
+      ...stringArray(migration.notes),
+      options.note,
+    ]);
+  } else if (fromVersion === INTAKE_CASE_VERSION) {
+    throw new Error(
+      migration.status === "needs-review"
+        ? "Intake case already uses version 4 and awaits review; correct the generated fields, then pass --review"
+        : "Intake case already uses version 4",
+    );
+  }
+  document.metadata.migration = migration;
+  document.metadata.updated_at = now.toISOString();
+  await writeFile(path, serializeCase(document), "utf8");
+
+  return {
+    id: options.id,
+    path,
+    fromVersion,
+    version: INTAKE_CASE_VERSION,
+    migrationStatus: stringValue(migration.status),
+  };
+}
+
 export async function inspectIntakeCase(
   targetInput: string,
   id: string,
@@ -355,6 +650,30 @@ export async function inspectIntakeCase(
     const validation = await validateKnowledge(target, stringArray(promotion.concepts));
     issues.push(...validation.errors.map((issue) => `${issue.path}: ${issue.message}`));
   }
+  const changeDestinations = new Set<string>();
+  for (const candidate of recordArray(document.metadata.candidate_claims)) {
+    const routing = recordValue(candidate.routing);
+    for (const destination of stringArray(routing?.destinations)) {
+      if (isChangePath(destination)) {
+        changeDestinations.add(destination);
+      }
+    }
+  }
+  for (const destination of changeDestinations) {
+    if (!await pathExists(join(target, destination))) {
+      issues.push(`routed change destination does not exist: ${destination}`);
+    }
+  }
+  const ledger = await compileClaimLedger(target);
+  const claimPrefix = `intake:${id}#`;
+  issues.push(
+    ...ledger.errors
+      .filter((issue) =>
+        (issue.caseId === id && issue.origin === "intake")
+        || issue.claimIds?.some((claimId) => claimId.startsWith(claimPrefix))
+      )
+      .map((issue) => issue.message),
+  );
 
   return {
     id,
@@ -408,9 +727,12 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
   const candidates = recordArray(metadata.candidate_claims);
   const promotion = recordValue(metadata.promotion);
   const omissionAudit = recordValue(metadata.omission_audit);
+  const migration = recordValue(metadata.migration);
 
   if (metadata.intake_case_version !== INTAKE_CASE_VERSION) {
-    issues.push(`intake_case_version must be ${INTAKE_CASE_VERSION}`);
+    issues.push(
+      `intake_case_version must be ${INTAKE_CASE_VERSION}; run wfctl knowledge case migrate <case-id>`,
+    );
   }
   if (metadata.status !== "active") {
     issues.push("status must remain active until wfctl archives the case");
@@ -426,6 +748,22 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
   }
   if (sources.length === 0) {
     issues.push("sources must contain every file from the frozen Git scope");
+  }
+  if (
+    migration?.status !== "not-needed"
+    && migration?.status !== "reviewed"
+  ) {
+    issues.push("migration.status must be not-needed or reviewed");
+  }
+  if (
+    migration?.status === "reviewed"
+    && (
+      !stringValue(migration.reviewed_by)
+      || !isIsoDateTime(stringValue(migration.reviewed_at))
+      || !nonEmptyStringArray(migration.notes)
+    )
+  ) {
+    issues.push("reviewed migration requires reviewer, ISO review time, and notes");
   }
 
   const seenPaths = new Set<string>();
@@ -470,6 +808,9 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
 
   const seenCandidates = new Set<string>();
   const confirmedPromotions = new Set<string>();
+  const routedDestinations = new Set<string>();
+  const probeRequiredCandidates = new Set<string>();
+  const candidateDestinations = new Map<string, Set<string>>();
   for (const [index, candidate] of candidates.entries()) {
     const prefix = `candidate_claims[${index}]`;
     const id = stringValue(candidate.id);
@@ -483,18 +824,85 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
     if (!stringValue(candidate.claim).trim()) {
       issues.push(`${prefix}.claim is required`);
     }
-    const authority = stringValue(candidate.authority);
-    if (!CANDIDATE_AUTHORITIES.has(authority)) {
-      issues.push(`${prefix}.authority is unknown: ${authority}`);
+    const claimClass = stringValue(candidate.claim_class);
+    if (!CLAIM_CLASSES.has(claimClass)) {
+      issues.push(`${prefix}.claim_class is unknown: ${claimClass}`);
     }
+    const semanticRole = stringValue(candidate.semantic_role);
+    if (!SEMANTIC_ROLES.has(semanticRole)) {
+      issues.push(`${prefix}.semantic_role is unknown: ${semanticRole}`);
+    } else if (semanticRole === "unknown") {
+      issues.push(`${prefix}.semantic_role must be classified before completion`);
+    }
+    const intentState = stringValue(candidate.intent_state);
+    const deliveryState = stringValue(candidate.delivery_state);
+    const alignment = stringValue(candidate.alignment);
+    if (!INTENT_STATES.has(intentState)) {
+      issues.push(`${prefix}.intent_state is invalid`);
+    }
+    if (!DELIVERY_STATES.has(deliveryState)) {
+      issues.push(`${prefix}.delivery_state is invalid`);
+    }
+    if (!ALIGNMENT_STATES.has(alignment)) {
+      issues.push(`${prefix}.alignment is invalid`);
+    }
+    const temporal = recordValue(candidate.temporal);
+    if (!isIsoDateTimeOrDate(stringValue(temporal?.captured_at))) {
+      issues.push(`${prefix}.temporal.captured_at is required and must be ISO-8601`);
+    }
+    for (const field of ["asserted_at", "valid_from", "valid_to"]) {
+      const value = stringValue(temporal?.[field]);
+      if (value && !isIsoDateTimeOrDate(value)) {
+        issues.push(`${prefix}.temporal.${field} must be empty or ISO-8601`);
+      }
+    }
+    const validFrom = stringValue(temporal?.valid_from);
+    const validTo = stringValue(temporal?.valid_to);
+    if (
+      validFrom
+      && validTo
+      && Date.parse(validTo) < Date.parse(validFrom)
+    ) {
+      issues.push(`${prefix}.temporal.valid_to cannot precede valid_from`);
+    }
+
+    const relations = recordValue(candidate.relations);
+    if (!relations) {
+      issues.push(`${prefix}.relations must be a mapping`);
+    } else {
+      for (const relation of CLAIM_RELATIONS) {
+        if (!Array.isArray(relations[relation])) {
+          issues.push(`${prefix}.relations.${relation} must be a list`);
+          continue;
+        }
+        const targets = stringArray(relations[relation]);
+        if (targets.length !== (relations[relation] as unknown[]).length) {
+          issues.push(`${prefix}.relations.${relation} must contain only claim references`);
+        }
+        if (targets.some((target) => !isClaimReference(target))) {
+          issues.push(`${prefix}.relations.${relation} contains an invalid claim reference`);
+        }
+        if (id && targets.includes(id)) {
+          issues.push(`${prefix}.relations.${relation} cannot reference itself`);
+        }
+        if (new Set(targets).size !== targets.length) {
+          issues.push(`${prefix}.relations.${relation} contains duplicates`);
+        }
+      }
+    }
+
     const disposition = stringValue(candidate.disposition);
     if (!CANDIDATE_STATUSES.has(disposition)) {
-      issues.push(`${prefix}.disposition must be confirmed, rejected, or unresolved`);
+      issues.push(
+        `${prefix}.disposition must be confirmed, rejected, deferred, or unresolved`,
+      );
     } else if (disposition === "unresolved") {
       issues.push(`${prefix}.disposition remains unresolved`);
     }
     if (
-      (disposition === "rejected" || disposition === "unresolved")
+      (disposition === "rejected"
+        || disposition === "deferred"
+        || disposition === "unresolved")
       && !stringValue(candidate.reason).trim()
     ) {
       issues.push(`${prefix}.reason must explain ${disposition || "the final disposition"}`);
@@ -524,15 +932,106 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
       }
     }
     const normative = [
-      "intent",
+      "product-intent",
       "product-meaning",
-      "architecture-rationale",
+      "architecture",
       "ownership",
       "contract",
       "operational-policy",
       "decision",
-    ].includes(authority);
-    if (disposition === "confirmed" && normative) {
+    ].includes(claimClass);
+    const routing = recordValue(candidate.routing);
+    const lane = stringValue(routing?.lane);
+    const destinations = stringArray(routing?.destinations);
+    if (!ROUTING_LANES.has(lane)) {
+      issues.push(`${prefix}.routing.lane is invalid`);
+    }
+    if (!Array.isArray(routing?.destinations)) {
+      issues.push(`${prefix}.routing.destinations must be a list`);
+    }
+    if (new Set(destinations).size !== destinations.length) {
+      issues.push(`${prefix}.routing.destinations contains duplicates`);
+    }
+    for (const destination of destinations) {
+      routedDestinations.add(destination);
+      if (lane === "current-knowledge" || lane === "history") {
+        if (!isConceptPath(destination)) {
+          issues.push(`${prefix}.routing contains an invalid knowledge concept: ${destination}`);
+        }
+      } else if (lane === "change") {
+        if (!isChangePath(destination)) {
+          issues.push(`${prefix}.routing contains an invalid change path: ${destination}`);
+        }
+      }
+    }
+    if (id) {
+      candidateDestinations.set(id, new Set(destinations));
+    }
+    if (lane === "case-only" && destinations.length > 0) {
+      issues.push(`${prefix}.routing.case-only cannot have destinations`);
+    }
+    if (lane !== "case-only" && destinations.length === 0) {
+      issues.push(`${prefix}.routing.${lane || "unknown"} requires destinations`);
+    }
+    if (
+      (disposition === "rejected" || disposition === "unresolved")
+      && lane !== "case-only"
+    ) {
+      issues.push(`${prefix}: ${disposition} candidates must remain case-only`);
+    }
+    if (disposition === "deferred" && lane !== "change") {
+      issues.push(`${prefix}: deferred candidates must route to change`);
+    }
+    if (
+      disposition === "confirmed"
+      && lane === "current-knowledge"
+      && !["accepted", "not-applicable"].includes(intentState)
+    ) {
+      issues.push(
+        `${prefix}: current knowledge requires accepted or not-applicable intent`,
+      );
+    }
+    if (
+      lane === "current-knowledge"
+      && ["idea", "plan"].includes(semanticRole)
+    ) {
+      issues.push(`${prefix}: ideas and plans must not route to current knowledge`);
+    }
+    if (
+      lane === "current-knowledge"
+      && ["superseded", "rejected", "proposed"].includes(intentState)
+    ) {
+      issues.push(`${prefix}: non-current intent must not route to current knowledge`);
+    }
+    if (
+      lane === "change"
+      && !["proposed", "unknown"].includes(intentState)
+    ) {
+      issues.push(`${prefix}: change routing requires proposed or unknown intent`);
+    }
+    if (
+      lane === "history"
+      && !(
+        claimClass === "history"
+        || ["superseded", "rejected"].includes(intentState)
+        || deliveryState === "retired"
+        || ["status", "outcome"].includes(semanticRole)
+      )
+    ) {
+      issues.push(`${prefix}: history routing requires an explicitly historical state`);
+    }
+    if (disposition === "confirmed" && lane === "case-only") {
+      issues.push(`${prefix}: confirmed candidates require a durable routing lane`);
+    }
+    if (disposition !== "rejected" && id) {
+      probeRequiredCandidates.add(id);
+    }
+
+    if (
+      disposition === "confirmed"
+      && normative
+      && (lane === "current-knowledge" || lane === "history")
+    ) {
       const decision = recordValue(candidate.maintainer_decision);
       if (
         decision?.status !== "approved"
@@ -544,39 +1043,49 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
     }
     if (
       disposition === "confirmed"
-      && authority === "implementation"
+      && claimClass === "implementation"
       && !evidenceKinds.has("source-code")
     ) {
       issues.push(`${prefix}: confirmed implementation requires pinned source-code evidence`);
     }
     if (
       disposition === "confirmed"
-      && authority === "history"
+      && claimClass === "history"
       && !evidenceKinds.has("version-control")
     ) {
       issues.push(`${prefix}: confirmed history requires pinned version-control evidence`);
     }
     if (
       disposition === "confirmed"
-      && authority === "external"
+      && claimClass === "external"
       && !evidenceKinds.has("external-primary")
     ) {
       issues.push(`${prefix}: confirmed external claims require a primary source`);
     }
-    if (disposition === "confirmed" && !normative && evidence.length === 0) {
+    if (
+      disposition === "confirmed"
+      && claimClass === "uncertainty"
+      && (lane === "current-knowledge" || lane === "history")
+      && evidence.length === 0
+    ) {
+      issues.push(
+        `${prefix}: a durable uncertainty requires trusted evidence for the open question`,
+      );
+    }
+    if (
+      disposition === "confirmed"
+      && !normative
+      && claimClass !== "uncertainty"
+      && evidence.length === 0
+    ) {
       issues.push(`${prefix}.evidence is required for a confirmed factual claim`);
     }
-    if (disposition === "confirmed") {
-      const promotedTo = stringArray(candidate.promoted_to);
-      if (promotedTo.length === 0) {
-        issues.push(`${prefix}.promoted_to must identify every curated destination`);
-      }
-      for (const concept of promotedTo) {
-        if (!isConceptPath(concept)) {
-          issues.push(`${prefix}.promoted_to contains an invalid concept path: ${concept}`);
-        } else {
-          confirmedPromotions.add(concept);
-        }
+    if (
+      disposition === "confirmed"
+      && (lane === "current-knowledge" || lane === "history")
+    ) {
+      for (const concept of destinations) {
+        confirmedPromotions.add(concept);
       }
     }
   }
@@ -608,9 +1117,9 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
   }
   if (
     promotion?.status === "not-needed"
-    && candidates.some((candidate) => candidate.disposition === "confirmed")
+    && confirmedPromotions.size > 0
   ) {
-    issues.push("promotion cannot be not-needed while confirmed candidates exist");
+    issues.push("promotion cannot be not-needed while knowledge-routed candidates exist");
   }
   if (promotion?.status === "applied") {
     for (const concept of confirmedPromotions) {
@@ -629,6 +1138,108 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
   }
   if (!nonEmptyStringArray(omissionAudit?.notes)) {
     issues.push("omission_audit.notes must record the explicit no-omission review");
+  }
+  const probes = recordArray(omissionAudit?.probes);
+  if (!Array.isArray(omissionAudit?.probes)) {
+    issues.push("omission_audit.probes must be a list");
+  }
+  const seenProbes = new Set<string>();
+  const coveredCandidates = new Set<string>();
+  for (const [index, probe] of probes.entries()) {
+    const prefix = `omission_audit.probes[${index}]`;
+    const id = stringValue(probe.id);
+    const status = stringValue(probe.status);
+    if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
+      issues.push(`${prefix}.id must be a stable lowercase identifier`);
+    } else if (seenProbes.has(id)) {
+      issues.push(`${prefix}.id is duplicated: ${id}`);
+    } else {
+      seenProbes.add(id);
+    }
+    if (!stringValue(probe.question).trim()) {
+      issues.push(`${prefix}.question is required`);
+    }
+    if (!PROBE_STATUSES.has(status)) {
+      issues.push(`${prefix}.status must be pending, passed, failed, or waived`);
+    } else if (status === "pending" || status === "failed") {
+      issues.push(`${prefix}.status remains ${status}`);
+    }
+    if (!stringValue(probe.answer).trim()) {
+      issues.push(`${prefix}.answer is required`);
+    }
+    const expected = stringArray(probe.expected_candidate_ids);
+    if (expected.length === 0) {
+      issues.push(`${prefix}.expected_candidate_ids must not be empty`);
+    }
+    for (const candidateId of expected) {
+      if (!seenCandidates.has(candidateId)) {
+        issues.push(`${prefix} references undefined candidate ${candidateId}`);
+      } else {
+        coveredCandidates.add(candidateId);
+      }
+    }
+    const outputPaths = stringArray(probe.output_paths);
+    if (status === "passed" && outputPaths.length === 0) {
+      issues.push(`${prefix}.output_paths are required for a passed probe`);
+    }
+    for (const outputPath of outputPaths) {
+      if (!isDurableRoutingPath(outputPath)) {
+        issues.push(`${prefix}.output_paths must stay under knowledge/ or changes/`);
+      }
+      const expectedDestinations = new Set(
+        expected.flatMap((candidateId) => [
+          ...(candidateDestinations.get(candidateId) ?? []),
+        ]),
+      );
+      if (expectedDestinations.size > 0 && !expectedDestinations.has(outputPath)) {
+        issues.push(
+          `${prefix}.output_paths contains a path outside expected candidate routing: ${outputPath}`,
+        );
+      }
+    }
+    if (status === "passed") {
+      for (const candidateId of expected) {
+        const destinations = candidateDestinations.get(candidateId) ?? new Set<string>();
+        if (
+          destinations.size > 0
+          && !outputPaths.some((outputPath) => destinations.has(outputPath))
+        ) {
+          issues.push(
+            `${prefix} does not inspect a routed output for candidate ${candidateId}`,
+          );
+        }
+      }
+    }
+    if (
+      !stringValue(probe.reviewed_by)
+      || !isIsoDateTime(stringValue(probe.reviewed_at))
+    ) {
+      issues.push(`${prefix} requires reviewer and ISO review time`);
+    }
+    if (status === "waived") {
+      const waiver = recordValue(probe.waiver);
+      if (
+        waiver?.status !== "approved"
+        || !stringValue(waiver.by).startsWith("human:")
+        || !isIsoDateTime(stringValue(waiver.at))
+        || !stringValue(waiver.note).trim()
+      ) {
+        issues.push(`${prefix}.waiver requires explicit human approval and rationale`);
+      }
+    }
+  }
+  for (const candidateId of probeRequiredCandidates) {
+    if (!coveredCandidates.has(candidateId)) {
+      issues.push(`omission audit does not probe candidate: ${candidateId}`);
+    }
+  }
+  for (const destination of routedDestinations) {
+    if (
+      !stringArray(promotion?.concepts).includes(destination)
+      && destination.startsWith("knowledge/")
+    ) {
+      issues.push(`knowledge-routed destination is missing from promotion.concepts: ${destination}`);
+    }
   }
   return issues;
 }
@@ -943,6 +1554,18 @@ async function assertPathAbsent(path: string, label: string): Promise<void> {
   }
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path, constants.F_OK);
+    return true;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 function normalizeSlug(value: string): string {
   const slug = value
     .normalize("NFKD")
@@ -987,9 +1610,95 @@ function nonEmptyStringArray(value: unknown): value is string[] {
     && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
 }
 
+function migrateV3Candidate(
+  candidate: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
+  const authority = stringValue(candidate.authority);
+  const disposition = stringValue(candidate.disposition);
+  const promotedTo = stringArray(candidate.promoted_to);
+  const capturedAt = stringValue(metadata.updated_at)
+    || stringValue(metadata.created_at);
+  const claimClass = new Map([
+    ["intent", "product-intent"],
+    ["product-meaning", "product-meaning"],
+    ["implementation", "implementation"],
+    ["architecture-rationale", "architecture"],
+    ["ownership", "ownership"],
+    ["contract", "contract"],
+    ["operational-policy", "operational-policy"],
+    ["decision", "decision"],
+    ["history", "history"],
+    ["external", "external"],
+  ]).get(authority) ?? "uncertainty";
+  const {
+    authority: _legacyAuthority,
+    promoted_to: _legacyPromotion,
+    ...rest
+  } = candidate;
+  return {
+    ...rest,
+    claim_class: claimClass,
+    semantic_role: "unknown",
+    intent_state: "unknown",
+    delivery_state: "unknown",
+    alignment: "unknown",
+    temporal: {
+      captured_at: capturedAt,
+      asserted_at: "",
+      valid_from: "",
+      valid_to: "",
+    },
+    relations: emptyClaimRelations(),
+    migration_source: {
+      authority,
+      promoted_to: promotedTo,
+    },
+    routing: {
+      lane: "case-only",
+      destinations: [],
+    },
+  };
+}
+
+function emptyClaimRelations(): Record<(typeof CLAIM_RELATIONS)[number], string[]> {
+  return CLAIM_RELATIONS.reduce(
+    (relations, relation) => {
+      relations[relation] = [];
+      return relations;
+    },
+    {} as Record<(typeof CLAIM_RELATIONS)[number], string[]>,
+  );
+}
+
+function requireCurrentIntakeVersion(metadata: Record<string, unknown>): void {
+  if (metadata.intake_case_version !== INTAKE_CASE_VERSION) {
+    throw new Error(
+      `Intake case must be migrated to version ${INTAKE_CASE_VERSION} first`,
+    );
+  }
+}
+
 function isConceptPath(value: string): boolean {
   return /^knowledge\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(value)
     && !/(?:^|\/)(?:index|log)\.md$/i.test(value);
+}
+
+function isChangePath(value: string): boolean {
+  return /^changes\/(?:active|inbox)\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(
+    value,
+  );
+}
+
+function isDurableRoutingPath(value: string): boolean {
+  return isConceptPath(value) || isChangePath(value);
+}
+
+function isClaimReference(value: string): boolean {
+  return /^[a-z0-9][a-z0-9-]{0,95}$/.test(value)
+    || /^(?:intake|reconstruction):[a-z0-9][a-z0-9-]{0,95}#[a-z0-9][a-z0-9-]{0,95}$/.test(
+      value,
+    );
 }
 
 function containsUntrustedResource(value: string): boolean {
@@ -1008,4 +1717,13 @@ function isVersionControlResource(value: string): boolean {
 function isIsoDateTime(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
     && !Number.isNaN(Date.parse(value));
+}
+
+function isIsoDateTimeOrDate(value: string): boolean {
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(value)
+    || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(
+      value,
+    )
+  ) && !Number.isNaN(Date.parse(value));
 }

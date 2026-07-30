@@ -18,7 +18,9 @@ reviewing, or verifying source code:
 
 Do not use Graphify as the primary analyzer for raw or curated Markdown.
 Use QMD for Markdown retrieval and the generated knowledge graph for explicit
-relationship expansion, then read selected files directly. Before
+relationship expansion. Use the generated claim ledger only for explicit
+intake/reconstruction lineage. Neither graph is evidence; read selected files
+directly. Before
 knowledge-dependent work, require the official native `qmd` skill in the
 current session and invoke it. An on-disk skill installed after session start
 does not count; stop and request installation or a session restart instead of

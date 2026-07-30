@@ -76,16 +76,19 @@ semantics while keeping the skill matched to the installed QMD version.
   required. Missing models or stale embeddings are warnings until semantic or
   hybrid retrieval is needed.
 
-## Knowledge relationship graph
+## Knowledge and claim relationship graphs
 
 - Compile authored Markdown links and workflow relation metadata with
   `wfctl knowledge build`; do not infer semantic relationships.
-- Store the generated artifact at
-  `.workflow/current/knowledge-graph.json`, which is already ignored.
-- Build it during a valid knowledge initialization or upgrade.
-- Make `wfctl check` fail when the artifact is missing, invalid, or stale.
+- Store the generated knowledge artifact at
+  `.workflow/current/knowledge-graph.json` and the explicit intake/
+  reconstruction claim ledger at `.workflow/current/claim-ledger.json`; both
+  are already ignored.
+- Build both during a valid knowledge initialization or upgrade.
+- Make `wfctl check` fail when either artifact is missing, invalid, or stale.
 - Keep QMD responsible for retrieval and Graphify responsible for source-code
-  structure; the compiled graph only represents reviewed knowledge links.
+  structure. The compiled graphs only represent authored knowledge links and
+  explicit claim lineage.
 
 ## Rules
 

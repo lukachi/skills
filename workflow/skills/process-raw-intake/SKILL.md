@@ -1,6 +1,6 @@
 ---
 name: process-raw-intake
-description: Inventory and process continuous untrusted raw intake through Git blob identity, bounded review cases, QMD-assisted discovery, complete source reading, authoritative verification, and maintainer adjudication. Use whenever raw/ receives ideas, thoughts, chat exports, research, specs, handoffs, historical files, or changed source versions; when proposing what raw material to review next; when every in-scope raw file must be accounted for; or when chronology, intent, and conflicting claims must be resolved without treating raw text as truth.
+description: Inventory and process continuous untrusted raw intake through Git blob identity, bounded review cases, QMD-assisted discovery, complete source reading, atomic claim classification, temporal and supersession analysis, authoritative verification, durable routing, omission probes, and maintainer adjudication. Use whenever raw/ receives ideas, thoughts, chat exports, research, specs, handoffs, historical files, or changed source versions; when proposing what raw material to review next; when every in-scope raw file must be accounted for; or when old plans, current intent, implementation status, chronology, and conflicting claims must be distinguished without treating raw text as truth.
 ---
 
 # Process Raw Intake
@@ -10,8 +10,9 @@ because it sounds plausible, is newer, or agrees with another raw file.
 
 ## Trust boundary
 
-- `raw/` is untrusted, immutable input. It may contain lies, stale plans,
-  abandoned intent, generated guesses, and contradictions.
+- `raw/` is untrusted, append-oriented input. It may contain lies, stale plans,
+  abandoned intent, generated guesses, and contradictions. A frozen Git blob
+  is immutable case input even if the same raw path later receives a new blob.
 - `intake/cases/active/` holds Git-frozen review ledgers. These may locate
   `raw/`, but remain operational records rather than evidence.
 - `knowledge/` may receive only claims independently verified against the
@@ -121,10 +122,36 @@ establish.
 
    Use `no-relevant-claims` only after complete review. Use
    `needs-maintainer` or `unreadable` when honest completion is blocked.
-5. Add every candidate as a structured `candidate_claims` entry in the case.
-   Preserve conditions, exceptions, negative results, alternatives, and
-   chronology rather than flattening them into one summary. Give rejected or
+5. Add every material statement as an atomic `candidate_claims` entry. Never
+   classify a whole file as “old,” “current,” “true,” or “a spec.” One file can
+   contain several claims with different roles and states.
+6. For every candidate, record:
+   - `claim_class`: which authority can establish it;
+   - `semantic_role`: idea, requirement, decision, design, plan, status,
+     observation, or outcome;
+   - `disposition`: confirmed, rejected, deferred, or unresolved;
+   - independent `intent_state`, `delivery_state`, and `alignment`;
+   - `temporal.captured_at`, plus asserted/effective bounds when known;
+   - explicit `relations` to claims it supersedes, contradicts, refines,
+     implements, or derives from;
+   - a `routing` lane and destinations.
+7. Preserve conditions, exceptions, negative results, alternatives, and
+   chronology rather than flattening them into one summary. Capture order and
+   file modification time do not decide truth. Give rejected, deferred, or
    unresolved candidates a concrete `reason`.
+
+If `case check` reports intake schema v3, run `wfctl knowledge case migrate
+<case-id>`. Review every conservative `unknown` field against the full frozen
+source, use `migration_source` only as a record of the former authority and
+destinations rather than proof they remain current, correct and reroute the
+claim, then run:
+
+```sh
+wfctl knowledge case migrate <case-id> --review \
+  --note "<what was checked and corrected>"
+```
+
+Never sign migration review merely because the YAML parses.
 
 ## Claim adjudication
 
@@ -139,6 +166,16 @@ For each candidate, identify its authority class:
   change;
 - external fact: the primary external source.
 
+Classify epistemic truth separately from product time:
+
+- a raw idea can be a confirmed observation that a proposal exists while its
+  `intent_state` remains `proposed`;
+- current code can be confirmed implementation while product intent remains
+  unknown;
+- accepted intent can be absent or partial in delivery and therefore drifted;
+- superseded intent and retired implementation belong to history rather than
+  current truth.
+
 For implementation claims, invoke `analyze-with-graphify` in each bound source
 repository. Use Graphify to navigate relationships, then inspect the actual
 source and checks. Do not build or query a Graphify graph for raw Markdown.
@@ -150,25 +187,62 @@ answer or keep the candidate unresolved outside `knowledge/`.
 
 ## Promotion
 
-1. Group only confirmed candidates into the smallest coherent concepts. Every
-   confirmed candidate must declare independent `evidence`, any required
-   `maintainer_decision`, and every destination in `promoted_to`.
-2. Invoke `curate-project-knowledge` to author or update those concepts.
-3. Require claim-level authoritative sources and explicit trust metadata.
-4. Require the union of confirmed `promoted_to` paths to equal
-   `promotion.concepts`. `not-needed` is invalid while any confirmed candidate
-   exists. Compute stable concept content hashes, run
+1. Route each candidate before authoring output:
+   - `current-knowledge`: confirmed accepted current truth;
+   - `history`: confirmed former truth or durable chronology;
+   - `change`: a reviewed proposal or plan that is not current truth;
+   - `case-only`: rejected or unresolved material.
+2. Create every declared destination. A proposed idea normally becomes a
+   `changes/inbox/` handoff or an active change, not a knowledge concept. For
+   lightweight retained input, run from the knowledge root:
+
+   ```sh
+   wfctl work handoff <slug> --title "<proposal or finding>"
+   ```
+
+   Fill the created handoff with the reviewed proposal, its claim IDs,
+   conditions, lineage, and next decision. Start project-only significant work
+   with `wfctl work start` when shaping must continue.
+3. Group current/history candidates into the smallest coherent concepts and
+   invoke `curate-project-knowledge`. Every knowledge-routed candidate must
+   declare independent `evidence`, required `maintainer_decision`, and every
+   destination under `routing.destinations`.
+4. Require claim-level authoritative sources and explicit trust metadata.
+5. Require the union of current/history destinations to equal
+   `promotion.concepts`. `not-needed` is invalid while any candidate routes to
+   knowledge. Compute stable concept content hashes, run
    `wfctl knowledge validate`, and record `passed` only after it succeeds.
-5. Perform a second omission audit against every frozen source and candidate,
-   then record `omission_audit.result` and non-empty `notes`.
-6. Run `wfctl knowledge case check <case-id>`.
-7. Close the honest result with
+6. Perform a second omission audit against every frozen source and candidate.
+   Generate diagnostic questions that should recover routed facts from
+   `knowledge/` or `changes/` without consulting `raw/` or the case. Run the
+   relevant scoped QMD query, read the returned durable files, compare the
+   answer with the expected candidates, and record each result:
+
+   ```sh
+   wfctl knowledge case probe <case-id> <probe-id> \
+     --question "<diagnostic question>" \
+     --candidate <candidate-id> \
+     --status passed \
+     --answer "<answer found in durable outputs>" \
+     --output <knowledge-or-change-path>
+   ```
+
+   Cover every non-rejected candidate. A failed probe creates repair work and
+   blocks completion. When one probe covers several candidates, inspect at
+   least one declared routed output for each candidate. Use `waived` only with
+   explicit human actor and rationale.
+7. Record non-empty audit notes and `omission_audit.result: passed`, then run
+   `wfctl knowledge case check <case-id>`.
+8. Run `wfctl knowledge build`. It refreshes both the curated Markdown graph
+   and the disposable cross-case claim ledger. Resolve missing, non-reciprocal,
+   or cyclic claim relations rather than deleting them to satisfy the gate.
+9. Close the honest result with
    `wfctl knowledge case close <case-id> --outcome completed|partial|abandoned`.
    Completed close fails if the Git scope changed, a frozen source is missing,
    a review is pending or blocked, candidate linkage is incomplete, or
    promotion validation fails. The archived case remains an operational audit
    trail, not a source for current knowledge.
-8. Run `wfctl knowledge raw inventory` again. A later change to the same raw
+10. Run `wfctl knowledge raw inventory` again. A later change to the same raw
    path has a different blob ID and returns as `changed`; never mutate the
    earlier case or mark a path permanently processed.
 

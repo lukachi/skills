@@ -20,6 +20,10 @@ import {
   compileKnowledgeGraph,
   type KnowledgeGraph,
 } from "./knowledge-graph.js";
+import {
+  compileClaimLedger,
+  type ClaimLedger,
+} from "./claim-ledger.js";
 import { buildInstallPlan, skillsForProfile } from "./planner.js";
 import {
   listRepositoryConnections,
@@ -177,6 +181,24 @@ export async function runDoctor(
         knowledgeRoot,
         compilation.graph,
       ));
+      try {
+        const claims = await compileClaimLedger(knowledgeRoot);
+        if (claims.errors.length > 0) {
+          checks.push({
+            name: "claim-ledger",
+            status: "fail",
+            message: `${claims.errors.length} claim-ledger error(s); run the relevant intake or reconstruction case check`,
+          });
+        } else {
+          checks.push(await claimLedgerCheck(knowledgeRoot, claims.ledger));
+        }
+      } catch (error) {
+        checks.push({
+          name: "claim-ledger",
+          status: "fail",
+          message: `Cannot compile claim ledger: ${errorMessage(error)}`,
+        });
+      }
     }
   } catch (error) {
     checks.push({
@@ -372,6 +394,36 @@ async function knowledgeGraphCheck(
       message: isMissingFileError(error)
         ? "Knowledge graph is missing; run wfctl knowledge build"
         : `Cannot read knowledge graph: ${errorMessage(error)}`,
+    };
+  }
+}
+
+async function claimLedgerCheck(
+  target: string,
+  expectedLedger: ClaimLedger,
+): Promise<DoctorCheck> {
+  const path = join(target, ".workflow/current/claim-ledger.json");
+  try {
+    const value = JSON.parse(await readFile(path, "utf8")) as unknown;
+    if (!isDeepStrictEqual(value, expectedLedger)) {
+      return {
+        name: "claim-ledger",
+        status: "fail",
+        message: "Claim ledger is stale or invalid; run wfctl knowledge build",
+      };
+    }
+    return {
+      name: "claim-ledger",
+      status: "pass",
+      message: "Deterministic claim ledger matches intake and reconstruction cases",
+    };
+  } catch (error) {
+    return {
+      name: "claim-ledger",
+      status: "fail",
+      message: isMissingFileError(error)
+        ? "Claim ledger is missing; run wfctl knowledge build"
+        : `Cannot read claim ledger: ${errorMessage(error)}`,
     };
   }
 }

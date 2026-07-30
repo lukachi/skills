@@ -25,6 +25,10 @@ collection explicitly; only `knowledge` is a default search surface. Use
 `curate-project-knowledge` only after claims have independent authority. Never
 cite raw or intake paths from `knowledge/`. Ask the maintainer when chronology,
 intent, or current truth cannot be established from trusted sources.
+Classify atomic claims by semantic role, epistemic disposition, intent,
+delivery, alignment, temporal scope, explicit relations, and routing. Run
+durable-output omission probes and rebuild the deterministic claim ledger
+before calling intake complete.
 
 Use `reconstruct-project-knowledge` when current knowledge must be built or
 audited from one or more existing leaf repositories. Bind exact clean

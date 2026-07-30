@@ -232,7 +232,8 @@ async function planConfig(target: string, desired: WorkflowConfig): Promise<Plan
       && sameKnowledge;
     const sameSkills = parsed.skills?.scope === desired.skills?.scope
       && JSON.stringify(parsed.skills?.agents) === JSON.stringify(desired.skills?.agents);
-    if (sameIdentity && sameSkills) {
+    const sameVersion = parsed.installedVersion === desired.installedVersion;
+    if (sameIdentity && sameSkills && sameVersion) {
       return {
         kind: "file",
         path: relativePath,
@@ -247,6 +248,16 @@ async function planConfig(target: string, desired: WorkflowConfig): Promise<Plan
         path: relativePath,
         status: "update",
         reason: "record skill installation settings",
+        content,
+        expectedHash: hashContent(existing),
+      };
+    }
+    if (sameIdentity && sameSkills && !sameVersion) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "update",
+        reason: `record workflow version ${desired.installedVersion}`,
         content,
         expectedHash: hashContent(existing),
       };

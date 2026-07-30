@@ -101,6 +101,13 @@ The Markdown corpus is the source of truth. The generated
 validation artifact. Rebuild it with `wfctl knowledge build`; never edit it or
 cite it as authority.
 
+The same build writes `.workflow/current/claim-ledger.json`. It normalizes
+atomic claims from intake and reconstruction cases and compiles only their
+explicit supersession, contradiction, refinement, implementation, and
+derivation relations. It helps the agent trace how a raw proposal, source
+finding, maintainer decision, and durable output connect. It does not infer a
+missing relation or decide which claim is true.
+
 Every concept declares:
 
 ```yaml
@@ -146,11 +153,13 @@ from the body. Stable concepts must be reachable by following links from
 `knowledge/index.md`; otherwise they are not part of the maintained human
 reading surface.
 
-Use the three indexes for different jobs:
+Use the four indexes for different jobs:
 
 - QMD finds candidate documents by lexical or semantic meaning.
 - The compiled graph expands from those candidates through explicit,
   reviewable knowledge relationships and checks reachability.
+- The claim ledger traces explicit adjudication and temporal lineage across
+  intake and reconstruction cases.
 - Graphify navigates implementation structure in source repositories.
 
 None of these indexes is evidence. Read the selected Markdown and source files

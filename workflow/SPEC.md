@@ -50,6 +50,13 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - Raw candidates, source-first reconstruction claims, and ongoing change
   receipts converge through the same verification, maintainer adjudication,
   promotion, and validation gate.
+- Intake v4 classifies atomic claims by semantic role, authority class,
+  epistemic disposition, intent, delivery, alignment, temporal scope, explicit
+  relations, and routing. Capture order and file age never choose current
+  truth.
+- Current truth, former durable truth, proposals, and case-only
+  rejected/unresolved material route to separate surfaces. Candidate-covering
+  omission probes test the routed outputs without consulting raw.
 - QMD is a rebuildable retrieval cache, not a source. Only curated `knowledge`
   participates in unscoped queries; `changes`, `intake`, `reconstruction`, and
   `raw` are explicitly selected collections.
@@ -59,6 +66,9 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - Authored Markdown links, typed `x-wf.relations`, Area ownership, and decision
   lineage compile deterministically into an ignored navigation graph. The
   Markdown remains the source; the graph adds no inferred facts.
+- Intake and reconstruction candidates compile into a second ignored,
+  deterministic claim ledger. It contains only explicit relations and is
+  navigation/audit state, never evidence.
 
 ## Work routing
 
@@ -78,15 +88,16 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   diagnostics, recovery, and workflow development.
 - `wfctl init [knowledge|leaf]`: preview the file plan and dependency
   preflight, resolve safe conflicts, install a workflow, and build the
-  profile's required local index (`qmd` plus the authored knowledge graph for
-  knowledge; Graphify for a leaf). Interactive knowledge initialization may
+  profile's required local indexes (`qmd` plus authored knowledge and claim
+  graphs for knowledge; Graphify for a leaf). Interactive knowledge
+  initialization may
   offer to run `git init`; non-interactive callers must opt in with
   `--init-git`. Leaf initialization never creates a Git repository.
 - `wfctl upgrade`: update an existing installation using its recorded configuration.
 - `wfctl check`: diagnose installation, Git, knowledge linkage, Graphify
   requirements for leaf repositories, QMD version/core health, lexical-index
-  readiness, deterministic knowledge-graph freshness, and optional semantic
-  readiness. Human terminal output must group checks, summarize repetitive
+  readiness, deterministic knowledge/claim-graph freshness, and optional
+  semantic readiness. Human terminal output must group checks, summarize repetitive
   successes, color statuses when supported, and turn missing QMD semantic
   setup into explicit next-step commands. JSON output retains every raw check.
 - `wfctl knowledge raw inventory`: compare committed raw `path + blob ID`
@@ -96,8 +107,14 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   commit and record every matching tree entry.
 - `wfctl knowledge case mark`: record one frozen file's complete review result
   and candidate IDs.
+- `wfctl knowledge case migrate`: explicitly convert active intake v3 cases to
+  v4 conservative fields, retain legacy routing only as review context, and
+  record the agent's semantic migration review in a separate operation.
+- `wfctl knowledge case probe`: record one diagnostic omission probe against
+  routed durable outputs.
 - `wfctl knowledge case check|close`: enforce Git identity, file accounting,
-  candidate linkage, omission audit, and promotion state.
+  atomic claim classification, routing, reciprocal lineage, omission probes,
+  and promotion state.
 - `wfctl knowledge sources add|select|list`: register arbitrary project
   repositories, remember any number of machine-local worktrees, and explicitly
   select one active reconstruction checkout per repository.
@@ -118,9 +135,11 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   promotion, and maintainer review.
 - `wfctl knowledge validate`: enforce the strict curated-knowledge profile.
 - `wfctl knowledge build`: validate and compile the deterministic knowledge
-  relationship graph into `.workflow/current/knowledge-graph.json`.
+  relationship graph into `.workflow/current/knowledge-graph.json` and the
+  cross-case claim ledger into `.workflow/current/claim-ledger.json`.
 - `wfctl work handoff`: create a non-authoritative lightweight inbox record
-  with exact repository and worktree metadata.
+  from a leaf or from knowledge, with exact source-repository metadata and
+  optional claim references.
 - `wfctl work start`: create an early project-only, single-leaf, or
   multi-repository shaping spec with one central record.
 - `wfctl work rebind`: explicitly move one repository binding to the current
@@ -153,8 +172,9 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   ignore its generated database.
 - Require QMD 2.5.3 or newer and refresh the lexical index during knowledge
   initialization and upgrade.
-- Compile the deterministic knowledge graph during a valid knowledge
-  initialization or upgrade, and fail diagnostics when it is missing or stale.
+- Compile both deterministic knowledge and claim graphs during a valid
+  knowledge initialization or upgrade, and fail diagnostics when either is
+  missing or stale.
 - Treat missing semantic models or embeddings as explicit warnings while a
   healthy BM25 index remains usable.
 - Never implement a competing semantic Markdown index, embedding store, or
@@ -242,6 +262,14 @@ The workflow guarantees complete accounting, not perfect understanding:
   competing Markdown indexer.
 - [x] Intake completion fails closed on Git drift, missing files, pending or
   blocked reviews, and incomplete candidate linkage.
+- [x] Intake v4 separates semantic role, disposition, intent, delivery,
+  alignment, temporal scope, explicit relations, and routing.
+- [x] Existing intake v3 cases migrate conservatively and require an explicit
+  semantic review.
+- [x] Completed intake requires candidate-covering omission probes against
+  durable outputs.
+- [x] Knowledge build and doctor compile and verify the deterministic
+  cross-case claim ledger.
 - [x] QMD collections keep curated knowledge default and untrusted surfaces
   opt-in.
 - [x] QMD's official native skill is installed for the selected Codex and
@@ -293,6 +321,8 @@ The workflow guarantees complete accounting, not perfect understanding:
 - [x] Define maintainer review boundaries without conflating OKF trust and
   lifecycle.
 - [x] Implement and verify complete-accounting source-first reconstruction.
+- [x] Implement the adjudicated intake v4 claim model, migration, routing,
+  omission probes, and shared claim ledger.
 
 ## Out of scope for v2
 

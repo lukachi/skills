@@ -22,6 +22,7 @@ import {
   runDoctor,
 } from "../src/doctor.js";
 import { writeKnowledgeGraph } from "../src/knowledge-graph.js";
+import { writeClaimLedger } from "../src/claim-ledger.js";
 import { buildInstallPlan, hashContent } from "../src/planner.js";
 import {
   addLeafRepository,
@@ -105,6 +106,23 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
     second.operations.every((operation) => operation.status === "unchanged"),
     true,
   );
+
+  const configPath = join(target, ".workflow/config.json");
+  const previousConfig = JSON.parse(await readFile(configPath, "utf8")) as {
+    installedVersion: string;
+  };
+  previousConfig.installedVersion = "0.2.0";
+  await writeFile(configPath, `${JSON.stringify(previousConfig, null, 2)}\n`, "utf8");
+  const upgrade = await buildInstallPlan({
+    target,
+    profile: "knowledge",
+    distributionRoot,
+  });
+  assert.ok(upgrade.operations.some((operation) =>
+    operation.path === ".workflow/config.json"
+    && operation.status === "update"
+    && /0\.3\.0/.test(operation.reason)
+  ));
 });
 
 test("renders a profile-specific leaf guide with the configured knowledge path", async () => {
@@ -321,6 +339,7 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
   }));
   await addLeafRepository(knowledge, leaf);
   await writeKnowledgeGraph(knowledge);
+  await writeClaimLedger(knowledge);
   await mkdir(join(leaf, "graphify-out"));
   await writeFile(
     join(leaf, "graphify-out/graph.json"),
@@ -444,6 +463,7 @@ test("doctor rejects a leaf without a local Graphify graph", async () => {
     distributionRoot,
   }));
   await writeKnowledgeGraph(knowledge);
+  await writeClaimLedger(knowledge);
 
   const report = await runDoctor(leaf, { runner: healthyToolRunner });
   assert.equal(doctorPassed(report), false);
