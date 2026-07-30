@@ -1,6 +1,6 @@
 ---
 name: curate-engineering-knowledge
-description: Create and update engineering-facing current knowledge about implementation, architecture, repository ownership, contracts, data or control flow, runtime behavior, operations, and technical constraints in a workflow knowledge repository. Use whenever verified product knowledge needs a separate technical realization, when source-first reconstruction promotes code observations, when implementation drift is audited, or when an engineer asks how a capability is built. Keep product meaning in linked product documents, pin every implementation claim to exact source or runtime evidence, and never infer intended behavior from code alone.
+description: Author or materially update engineering-facing current knowledge from verified implementation and reviewed product authority. Use when a completed change, source-first reconstruction, or explicit implementation-drift repair is ready to record architecture, repository ownership, contracts, data or control flow, runtime behavior, operations, or technical constraints. Do not use merely because an engineer asks how existing code works; answer that read-only question through knowledge navigation and Graphify. Keep product meaning in linked product documents and never infer intended behavior from code alone.
 ---
 
 # Curate Engineering Knowledge

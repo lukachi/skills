@@ -1,6 +1,6 @@
 ---
 name: manage-project-work
-description: Classify project work, bind implementation to the exact selected checkout or worktrees, and maintain one central living specification and progress file for significant leaf, multi-repository, or project-only work plus optional lightweight handoffs. Use when starting, discussing, planning, implementing, resuming, changing scope, recording progress, making product or architecture decisions, or handing off any feature, fix, refactor, investigation, migration, operational change, or cross-repository task.
+description: Manage a significant, sufficiently bounded project change through one canonical living specification, exact checkout bindings, implementation progress, verification, review, and knowledge promotion. Use after a feature, fix, refactor, investigation, migration, operational change, or product or architecture change is classified as significant; when resuming or re-scoping its active record; or when retaining a lightweight handoff. Do not use for read-only explanation, routine brainstorming, or trivial behavior-preserving edits. Route a broad consequential initiative with unresolved dependent decisions to shape-project-direction before implementation planning.
 ---
 
 # Manage Project Work
@@ -30,6 +30,12 @@ Treat work as lightweight only when it clearly preserves behavior and contracts.
 
 If uncertain, describe the possible impact and ask the maintainer whether to use the full workflow. Recommend one answer.
 
+If the work is consequential but not yet bounded enough to define observable
+acceptance criteria without guessing, recommend `shape-project-direction`.
+Start that deliberate mode only after the maintainer accepts it. It writes to
+the same canonical spec and returns here when the next implementation unit is
+clear.
+
 ## Full workflow
 
 1. As soon as the task is classified as significant, create the canonical
@@ -52,6 +58,9 @@ If uncertain, describe the possible impact and ask the maintainer whether to use
    claim.
 6. Invoke `align-project-knowledge` against `Knowledge root`.
 7. Resolve blocking uncertainty with the maintainer and update `Spec`.
+   Ask one focused question at a time, include the evidence and your
+   recommendation, and discover factual answers yourself. Do not send a
+   questionnaire. Update the spec before asking the next material question.
 8. Present a framing review packet covering outcome, scope, exclusions,
    acceptance criteria, and new decisions.
 9. Obtain explicit maintainer approval before implementation and record it

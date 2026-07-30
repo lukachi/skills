@@ -33,6 +33,11 @@ Uncommitted raw paths are reported separately because no stable blob identity
 exists yet. The inventory is deterministic file accounting, not a Markdown
 indexer or semantic classifier.
 
+The agent renders those counts as a short intake frontier: current generation,
+active themes, blockers, maintainer decisions, next recommended batch, and the
+remaining completion condition. This frontier is derived presentation, never
+another source of state and never a semantic guess about unseen files.
+
 ## Source review statuses
 
 - `pending`: full-file review has not finished.
@@ -106,6 +111,11 @@ references use `intake:<case-id>#<candidate-id>` or
   do not present it as current knowledge.
 - `case-only`: rejected or unresolved material. It remains discoverable in the
   operational case but produces no authoritative derivative.
+
+Repeated rejected proposals do not become true through repetition. They may
+reveal a durable negative boundary worth asking the maintainer to adopt. The
+accepted boundary can then follow normal decision and curation rules; each
+rejected proposal remains case-only.
 
 Every current/history candidate carries independent authority receipts and
 explicit `routing.destinations`. `promotion.concepts` must equal the union of

@@ -47,6 +47,12 @@ Explain the recognizable product outcome and why it matters.[^maintainer-source-
 
 Name the people, roles, or neighboring capabilities that rely on it.
 
+# Domain language
+
+Define terms introduced or owned by this concept. For a `Domain Concept`,
+state the canonical term, its contextual boundary, accepted aliases, and names
+to avoid. Otherwise state `No new terms` when the document introduces none.
+
 # Current behavior
 
 Explain what happens now in observable product terms. Keep accepted intent and

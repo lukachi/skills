@@ -54,6 +54,15 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   what the project is or what it can do without knowing Areas or capabilities;
   the agent presents a compact current product map and progressively reveals
   Area and capability detail without modifying project state.
+- Knowledge routing is hybrid: read-only explanation and diagnosis select
+  themselves from natural language, while raw processing, baseline
+  reconstruction, durable research, semantic curation, and broad direction
+  shaping require explicit user intent or confirmation. Users never need skill
+  or CLI names.
+- Broad initiatives with unresolved dependent decisions use the same canonical
+  living spec as later execution. Direction, domain language, decision
+  frontier, uncertainty, non-goals, and handoff are recorded before a bounded
+  implementation plan; no parallel strategy artifact exists.
 - Every concept declares a view, purpose, and audience. Product and engineering
   paths have deterministic lane contracts and required sections. Product
   documents reject code and technical sections; engineering documents link
@@ -62,6 +71,12 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   material content hash as its normal verification. The receipt records
   factuality, audience fit, abstraction, completeness, and delivery-state
   review without creating authority.
+- Semantic quality has independent authority/truth and reader-communication
+  passes. Both bind the same unchanged content hash; deterministic validation
+  remains a separate structural gate.
+- Canonical domain vocabulary belongs to the owning Area concept. Standalone
+  decision records are reserved for choices that are hard to reverse,
+  surprising without context, or resolve a real tradeoff.
 - Decisions evolve through immutable records, reciprocal acyclic supersession
   links, and one stable current record per lineage.
 - Raw candidates, source-first reconstruction claims, and ongoing change
@@ -95,6 +110,13 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - Clearly lightweight work may bypass the full gate.
 - Ambiguous work requires a maintainer decision.
 - Bypassed work should be offered a compact handoff record so useful information is not lost.
+- A consequential but unbounded initiative enters direction shaping only after
+  explicit user intent or confirmation. The agent asks one evidence-backed
+  question at a time, records the answer before continuing, and hands the same
+  spec to normal project work when the next bounded change is clear.
+- External research produces a candidate in the owning active record or
+  inbox. Primary sources may authorize external facts but never project intent,
+  architecture choice, or implementation state.
 
 ## CLI surface
 
@@ -335,6 +357,17 @@ The workflow guarantees complete accounting, not perfect understanding:
 - [x] A dedicated read-only exploration skill supports discovery, Area
   exploration, and focused product follow-ups without leaking the hidden eval
   rubric into user prompts.
+- [x] Read-only and deliberate knowledge modes have collision-resistant
+  triggers and black-box routing evals.
+- [x] Broad uncertain initiatives keep a durable direction map, canonical
+  language candidates, decision frontier, fog, and one-question discussion in
+  the normal living spec.
+- [x] Raw intake and reconstruction expose human-readable frontiers derived
+  from complete machine ledgers.
+- [x] Semantic quality records independent authority/truth and
+  reader-communication passes at one content hash.
+- [x] External research remains a bounded candidate until normal authority and
+  curation gates pass.
 
 ## Progress
 
@@ -355,6 +388,9 @@ The workflow guarantees complete accounting, not perfect understanding:
   quality verification and black-box behavior evals.
 - [x] Implement progressive newcomer discovery as a read-only skill and split
   discovery evals from focused authoring conformance.
+- [x] Add deliberate direction shaping, primary-source project research,
+  sparse decision policy, canonical language, frontiers, and two-axis semantic
+  review.
 
 ## Out of scope for v2
 

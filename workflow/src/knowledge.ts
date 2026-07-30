@@ -75,9 +75,15 @@ const QUALITY_CHECKS = [
   "delivery-state",
 ];
 
+const QUALITY_AXES = [
+  "authority-truth",
+  "reader-communication",
+];
+
 const PRODUCT_SECTIONS = [
   "What this provides",
   "Who it serves",
+  "Domain language",
   "Current behavior",
   "Rules and outcomes",
   "Boundaries and exceptions",
@@ -1362,6 +1368,39 @@ function validateQualityReceipt(
   for (const check of checks) {
     if (!QUALITY_CHECKS.includes(check)) {
       errors.push({ path, message: `unknown x-wf.quality check: ${check}` });
+    }
+  }
+  const axes = recordValue(quality.axes);
+  for (const axis of QUALITY_AXES) {
+    const review = recordValue(axes?.[axis]);
+    if (review?.status !== "passed") {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.status must be passed`,
+      });
+    }
+    if (!isActor(stringValue(review?.by))) {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.by must follow the OKF actor convention`,
+      });
+    }
+    if (!isIsoDateTime(stringValue(review?.at))) {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.at must be an ISO 8601 datetime`,
+      });
+    } else if (Date.parse(stringValue(review?.at)) < Date.parse(generatedAt)) {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.at must be at or after generated.at`,
+      });
+    }
+    if (stringValue(review?.content_hash) !== expectedContentHash) {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.content_hash must match the current knowledge content hash`,
+      });
     }
   }
 }

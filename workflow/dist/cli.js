@@ -6945,7 +6945,7 @@ var WORKFLOW_VERSION, CONFIG_SCHEMA_VERSION, STATE_SCHEMA_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    WORKFLOW_VERSION = "0.5.0";
+    WORKFLOW_VERSION = "0.6.0";
     CONFIG_SCHEMA_VERSION = 1;
     STATE_SCHEMA_VERSION = 1;
   }
@@ -20522,6 +20522,39 @@ function validateQualityReceipt(path, quality, expectedContentHash, lifecycle, g
       errors.push({ path, message: `unknown x-wf.quality check: ${check}` });
     }
   }
+  const axes = recordValue6(quality.axes);
+  for (const axis of QUALITY_AXES) {
+    const review = recordValue6(axes?.[axis]);
+    if (review?.status !== "passed") {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.status must be passed`
+      });
+    }
+    if (!isActor(stringValue6(review?.by))) {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.by must follow the OKF actor convention`
+      });
+    }
+    if (!isIsoDateTime5(stringValue6(review?.at))) {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.at must be an ISO 8601 datetime`
+      });
+    } else if (Date.parse(stringValue6(review?.at)) < Date.parse(generatedAt)) {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.at must be at or after generated.at`
+      });
+    }
+    if (stringValue6(review?.content_hash) !== expectedContentHash) {
+      errors.push({
+        path,
+        message: `x-wf.quality.axes.${axis}.content_hash must match the current knowledge content hash`
+      });
+    }
+  }
 }
 function validateAreaIndex(path, body, errors, warnings) {
   validateRequiredSections(path, body, AREA_INDEX_SECTIONS, errors);
@@ -20662,7 +20695,7 @@ function stringArray5(value) {
 function isIsoDateTime5(value) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
-var KNOWLEDGE_VIEW_PURPOSE, KNOWLEDGE_AUDIENCES, QUALITY_CHECKS, PRODUCT_SECTIONS, ENGINEERING_SECTIONS, AREA_INDEX_SECTIONS;
+var KNOWLEDGE_VIEW_PURPOSE, KNOWLEDGE_AUDIENCES, QUALITY_CHECKS, QUALITY_AXES, PRODUCT_SECTIONS, ENGINEERING_SECTIONS, AREA_INDEX_SECTIONS;
 var init_knowledge = __esm({
   "src/knowledge.ts"() {
     "use strict";
@@ -20693,9 +20726,14 @@ var init_knowledge = __esm({
       "completeness",
       "delivery-state"
     ];
+    QUALITY_AXES = [
+      "authority-truth",
+      "reader-communication"
+    ];
     PRODUCT_SECTIONS = [
       "What this provides",
       "Who it serves",
+      "Domain language",
       "Current behavior",
       "Rules and outcomes",
       "Boundaries and exceptions",
@@ -28872,6 +28910,8 @@ var PROFILE_SKILLS = {
     "operate-project-knowledge",
     "process-raw-intake",
     "reconstruct-project-knowledge",
+    "research-project-context",
+    "shape-project-direction",
     "verify-knowledge-quality",
     "verify-project-work"
   ],
@@ -28882,6 +28922,7 @@ var PROFILE_SKILLS = {
     "curate-project-knowledge",
     "explore-project-knowledge",
     "manage-project-work",
+    "shape-project-direction",
     "verify-knowledge-quality",
     "verify-project-work"
   ]

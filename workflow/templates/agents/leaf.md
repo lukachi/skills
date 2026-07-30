@@ -6,6 +6,12 @@ implementation state. For significant work, create the `shaping` record first,
 then invoke `analyze-with-graphify` and `align-project-knowledge` before
 implementation.
 
+If a consequential initiative has several unresolved dependent product or
+architecture choices and cannot yet support honest acceptance criteria,
+recommend `shape-project-direction`. Start it only after maintainer agreement,
+use the same central spec, and do not edit code until the next bounded change
+is clear.
+
 For read-only questions about what the project is, what it currently provides,
 or how one product direction works, invoke `explore-project-knowledge` against
 the configured knowledge repository. Do not require the user to name an Area,
@@ -32,3 +38,5 @@ During promotion, keep linked product and engineering views separate. Invoke
 `curate-product-knowledge` for stakeholder-facing behavior,
 `curate-engineering-knowledge` for technical realization, and
 `verify-knowledge-quality` before a materially changed concept becomes stable.
+The quality gate keeps authority/truth and reader communication as independent
+passes.

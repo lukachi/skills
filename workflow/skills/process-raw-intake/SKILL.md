@@ -1,6 +1,6 @@
 ---
 name: process-raw-intake
-description: Inventory and process continuous untrusted raw intake through Git blob identity, bounded review cases, QMD-assisted discovery, complete source reading, atomic claim classification, temporal and supersession analysis, authoritative verification, durable routing, omission probes, and maintainer adjudication. Use whenever raw/ receives ideas, thoughts, chat exports, research, specs, handoffs, historical files, or changed source versions; when proposing what raw material to review next; when every in-scope raw file must be accounted for; or when old plans, current intent, implementation status, chronology, and conflicting claims must be distinguished without treating raw text as truth.
+description: Inventory and process continuous untrusted raw intake through Git blob identity, bounded review cases, QMD-assisted discovery, complete source reading, atomic claim classification, temporal and supersession analysis, authoritative verification, durable routing, omission probes, and maintainer adjudication. Use after the maintainer explicitly asks to process new or changed raw material, accepts a proposed intake batch, or an approved reconstruction scope requires its frozen raw generation to converge. Handle ideas, chat exports, research, specs, historical files, chronology, and conflicts without treating raw text as truth. Do not start merely because raw files exist.
 ---
 
 # Process Raw Intake
@@ -34,6 +34,23 @@ yourself. Do not ask the maintainer for raw pathspecs, case IDs, commands, or
 YAML edits. Propose human-readable thematic batches and ask only for batch
 approval, authority, chronology, or product meaning that evidence cannot
 establish.
+
+## Show the intake frontier
+
+At the start of every run and after every completed or blocked batch, present a
+compact human-readable frontier:
+
+- inventory generation or frozen reconstruction baseline;
+- counts for unseen, changed, active, reviewed, blocked, and unresolved blobs;
+- active case themes and their blockers;
+- the next recommended bounded batch and why it has priority;
+- the exact maintainer decisions currently needed;
+- what must become zero before the requested intake scope is complete.
+
+Build this from `wfctl knowledge raw inventory`, active cases, and direct
+inspection. Do not infer the contents of unseen files from their names. The
+frontier is a navigation summary, not a second ledger; never persist competing
+counts by hand.
 
 ## Handle common intake cases
 
@@ -192,6 +209,11 @@ answer or keep the candidate unresolved outside `knowledge/`.
    - `history`: confirmed former truth or durable chronology;
    - `change`: a reviewed proposal or plan that is not current truth;
    - `case-only`: rejected or unresolved material.
+   A rejection normally stays case-only. If the same boundary keeps returning,
+   do not promote the rejected proposals. Ask whether the maintainer intends a
+   durable non-goal or negative product rule. Only the explicitly accepted
+   boundary may enter current knowledge through the normal decision threshold
+   and curation gate.
 2. Create every declared destination. A proposed idea normally becomes a
    `changes/inbox/` handoff or an active change, not a knowledge concept. For
    lightweight retained input, run from the knowledge root:
@@ -244,8 +266,10 @@ answer or keep the candidate unresolved outside `knowledge/`.
    promotion validation fails. The archived case remains an operational audit
    trail, not a source for current knowledge.
 10. Run `wfctl knowledge raw inventory` again. A later change to the same raw
-   path has a different blob ID and returns as `changed`; never mutate the
-   earlier case or mark a path permanently processed.
+    path has a different blob ID and returns as `changed`; never mutate the
+    earlier case or mark a path permanently processed.
+11. Refresh the human-readable intake frontier and state the next recommended
+    batch, blocker, or honest completion condition.
 
 For a reconstruction snapshot, repeat bounded cases until the frozen-baseline
 inventory reports only `reviewed` or `no-relevant-claims` entries. Do not widen

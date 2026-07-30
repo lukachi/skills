@@ -63,15 +63,16 @@ test("knowledge view skills are complete and explicitly routed", async () => {
   const product = contents.get("curate-product-knowledge")!;
   assert.match(product, /Area, capability, use case, product flow/);
   assert.match(product, /client or product manager/);
-  assert.match(product, /never present planned or uncertain behavior as currently available/);
+  assert.match(product, /never present planned or uncertain\s+behavior as currently available/i);
 
   const engineering = contents.get("curate-engineering-knowledge")!;
-  assert.match(engineering, /implementation, architecture, repository ownership/);
+  assert.match(engineering, /architecture, repository ownership/);
   assert.match(engineering, /never infer intended behavior from code alone/);
 
   const quality = contents.get("verify-knowledge-quality")!;
-  assert.match(quality, /mandatory semantic quality gate/);
-  assert.match(quality, /content-hash-bound quality receipt/);
+  assert.match(quality, /mandatory two-axis semantic gate/);
+  assert.match(quality, /authority-truth and reader-communication/);
+  assert.match(quality, /bind both passes to one unchanged content hash/);
 });
 
 test("knowledge view templates encode separate audiences and required sections", async () => {
@@ -85,6 +86,7 @@ test("knowledge view templates encode separate audiences and required sections",
   for (const section of [
     "What this provides",
     "Who it serves",
+    "Domain language",
     "Current behavior",
     "Rules and outcomes",
     "Boundaries and exceptions",
@@ -107,6 +109,41 @@ test("knowledge view templates encode separate audiences and required sections",
   assert.match(engineering, /- engineer/);
   assert.match(engineering, /# Current implementation/);
   assert.match(engineering, /# Product knowledge/);
+});
+
+test("direction shaping and project research are deliberate bounded modes", async () => {
+  const shape = await readFile(
+    join(root, "skills/shape-project-direction/SKILL.md"),
+    "utf8",
+  );
+  const research = await readFile(
+    join(root, "skills/research-project-context/SKILL.md"),
+    "utf8",
+  );
+  for (const [name, content] of [
+    ["shape-project-direction", shape],
+    ["research-project-context", research],
+  ] as const) {
+    assert.doesNotMatch(content, /TODO|\[TODO/);
+    const frontmatterMatch = /^---\n([\s\S]+?)\n---/.exec(content);
+    assert.ok(frontmatterMatch, `${name} must have YAML frontmatter`);
+    const frontmatter = parse(frontmatterMatch[1]!) as Record<string, unknown>;
+    assert.equal(frontmatter.name, name);
+    assert.equal(typeof frontmatter.description, "string");
+    assert.ok(String(frontmatter.description).length <= 1024);
+    const openai = parse(await readFile(
+      join(root, "skills", name, "agents/openai.yaml"),
+      "utf8",
+    )) as { interface?: Record<string, unknown> };
+    assert.ok(String(openai.interface?.short_description).length >= 25);
+    assert.ok(String(openai.interface?.short_description).length <= 64);
+  }
+  assert.match(shape, /same\s+canonical living spec|same canonical spec/);
+  assert.match(shape, /one focused question/);
+  assert.match(shape, /Do not edit product source/);
+  assert.match(research, /primary (?:and current )?sources|primary material/);
+  assert.match(research, /candidate, not authority/i);
+  assert.match(research, /claim-to-source matrix/);
 });
 
 test("trigger and behavior eval corpora cover positives and near misses", async () => {
@@ -150,6 +187,46 @@ test("trigger and behavior eval corpora cover positives and near misses", async 
   assert.ok(behavior.some((entry) => entry.id === "discovery-area-progressive"));
   assert.ok(behavior.some((entry) => entry.id === "discovery-focused-current-behavior"));
   assert.ok(behavior.some((entry) => entry.id === "discovery-sparse-knowledge"));
+  assert.ok(behavior.every((entry) =>
+    entry.prompt.length > 0
+    && entry.required.length > 0
+    && entry.forbidden.length > 0
+  ));
+});
+
+test("routing evals distinguish read-only, deliberate, and mandatory modes", async () => {
+  const trigger = JSON.parse(await readFile(
+    join(root, "evals/knowledge-routing/trigger-evals.json"),
+    "utf8",
+  )) as Array<{
+    id: string;
+    prompt: string;
+    should_trigger: string[];
+    should_not_trigger: string[];
+  }>;
+  const behavior = JSON.parse(await readFile(
+    join(root, "evals/knowledge-routing/behavior-evals.json"),
+    "utf8",
+  )) as Array<{
+    id: string;
+    prompt: string;
+    required: string[];
+    forbidden: string[];
+  }>;
+  assert.ok(trigger.length >= 12);
+  assert.ok(behavior.length >= 10);
+  assert.ok(trigger.some((entry) =>
+    entry.should_trigger.includes("shape-project-direction")
+  ));
+  assert.ok(trigger.some((entry) =>
+    entry.should_trigger.includes("research-project-context")
+  ));
+  assert.ok(trigger.some((entry) =>
+    entry.should_trigger.includes("explore-project-knowledge")
+    && entry.should_not_trigger.includes("reconstruct-project-knowledge")
+  ));
+  assert.ok(behavior.some((entry) => entry.id === "direction-one-question"));
+  assert.ok(behavior.some((entry) => entry.id === "two-axis-quality"));
   assert.ok(behavior.every((entry) =>
     entry.prompt.length > 0
     && entry.required.length > 0

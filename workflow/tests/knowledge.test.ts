@@ -604,6 +604,10 @@ The project accepts and delivers a greeting capability.[^baseline-decision][^gre
 
 People who request a greeting.
 
+# Domain language
+
+No new terms.
+
 # Current behavior
 
 A supplied name receives a greeting.
@@ -680,6 +684,10 @@ contains no implementation.[^farewell-decision][^farewell-coverage]
 # Who it serves
 
 People who would receive a farewell.
+
+# Domain language
+
+No new terms.
 
 # Current behavior
 
@@ -1737,6 +1745,19 @@ test("enforces product and engineering view contracts with current quality recei
     /quality\.content_hash must match/.test(issue.message)
   ));
 
+  const missingAxis = parseWorkSpec(sealed);
+  delete (
+    (
+      (missingAxis.metadata["x-wf"] as Record<string, unknown>)
+        .quality as Record<string, unknown>
+    ).axes as Record<string, unknown>
+  )["reader-communication"];
+  await writeFile(join(target, conceptPath), serializeWorkSpec(missingAxis), "utf8");
+  const incompleteQuality = await validateKnowledge(target, [conceptPath]);
+  assert.ok(incompleteQuality.errors.some((issue) =>
+    /quality\.axes\.reader-communication\.status must be passed/.test(issue.message)
+  ));
+
   const missingSection = parseWorkSpec(sealed);
   missingSection.body = missingSection.body.replace(
     "# Examples\n\nAn eligible defeated character returns to play after revival.\n\n",
@@ -1936,6 +1957,20 @@ async function sealConcept(target: string, relativePath: string): Promise<void> 
       "completeness",
       "delivery-state",
     ],
+    axes: {
+      "authority-truth": {
+        status: "passed",
+        by: "workflow-agent/1",
+        at: "2026-07-30T14:00:00Z",
+        content_hash: "0".repeat(64),
+      },
+      "reader-communication": {
+        status: "passed",
+        by: "workflow-agent/1",
+        at: "2026-07-30T14:00:00Z",
+        content_hash: "0".repeat(64),
+      },
+    },
   };
   document.metadata["x-wf"] = workflow;
   await writeFile(absolute, serializeWorkSpec(document), "utf8");
@@ -1945,6 +1980,11 @@ async function sealConcept(target: string, relativePath: string): Promise<void> 
   (
     (sealed.metadata["x-wf"] as Record<string, unknown>).quality as Record<string, unknown>
   ).content_hash = hash;
+  const axes = (
+    (sealed.metadata["x-wf"] as Record<string, unknown>).quality as Record<string, unknown>
+  ).axes as Record<string, Record<string, unknown>>;
+  axes["authority-truth"]!.content_hash = hash;
+  axes["reader-communication"]!.content_hash = hash;
   await writeFile(absolute, serializeWorkSpec(sealed), "utf8");
 }
 
@@ -2041,6 +2081,10 @@ Revival returns an eligible defeated character to play.[^decision]
 # Who it serves
 
 Players whose characters have been defeated.
+
+# Domain language
+
+Revival means returning an eligible defeated character to play.
 
 # Current behavior
 

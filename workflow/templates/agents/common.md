@@ -15,6 +15,8 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   index, ranking, and snippets as navigation only; verify by direct reading and
   authoritative sources.
 - Present bounded review packets and require explicit maintainer decisions at the gates defined by the workflow.
+- Ask one material question at a time, include a recommendation, and update
+  the durable record before continuing.
 - Preserve uncertainty and report missing evidence instead of guessing.
 - Execute required `wfctl` commands yourself when tool access permits. Do not
   delegate routine CLI operation, spec editing, or record maintenance to the
@@ -39,4 +41,5 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   without requiring the user to know Areas, capability names, or file paths.
 - Route product authoring to `curate-product-knowledge`, technical authoring to
   `curate-engineering-knowledge`, and every material knowledge edit through
-  `verify-knowledge-quality` before it becomes stable.
+  `verify-knowledge-quality` before it becomes stable. Keep authority/truth
+  and reader communication as separate semantic passes.

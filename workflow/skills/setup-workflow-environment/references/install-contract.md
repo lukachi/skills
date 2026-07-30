@@ -26,12 +26,16 @@
   Areas, capabilities, or files.
 - Install `process-raw-intake` only for the knowledge profile.
 - Install `reconstruct-project-knowledge` only for the knowledge profile.
+- Install `research-project-context` only for the knowledge profile.
+- Install `shape-project-direction` for both profiles so an unbounded
+  significant initiative can resolve into the same canonical work spec before
+  implementation starts.
 - Install `curate-project-knowledge` for both profiles because a leaf agent
   must promote durable truth before closing significant work.
 - Install `curate-product-knowledge`, `curate-engineering-knowledge`, and
   `verify-knowledge-quality` for both profiles. The orchestrator depends on
-  them to keep stakeholder and technical views separate and to bind semantic
-  review to the current content hash.
+  them to keep stakeholder and technical views separate and to bind independent
+  authority/truth and reader-communication review to the current content hash.
 - Install alignment, work management, and verification skills for both
   profiles. Knowledge needs them for project-only and multi-repository living
   specs; a project-only record has no implementation checkout.

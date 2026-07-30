@@ -568,6 +568,20 @@ async function sealConcept(target: string, relativePath: string): Promise<void> 
       "completeness",
       "delivery-state",
     ],
+    axes: {
+      "authority-truth": {
+        status: "passed",
+        by: "workflow-agent/1",
+        at: "2026-07-28T11:55:00Z",
+        content_hash: "0".repeat(64),
+      },
+      "reader-communication": {
+        status: "passed",
+        by: "workflow-agent/1",
+        at: "2026-07-28T11:55:00Z",
+        content_hash: "0".repeat(64),
+      },
+    },
   };
   document.metadata["x-wf"] = workflow;
   await writeFile(absolute, serializeWorkSpec(document), "utf8");
@@ -577,6 +591,11 @@ async function sealConcept(target: string, relativePath: string): Promise<void> 
   (
     (sealed.metadata["x-wf"] as Record<string, unknown>).quality as Record<string, unknown>
   ).content_hash = hash;
+  const axes = (
+    (sealed.metadata["x-wf"] as Record<string, unknown>).quality as Record<string, unknown>
+  ).axes as Record<string, Record<string, unknown>>;
+  axes["authority-truth"]!.content_hash = hash;
+  axes["reader-communication"]!.content_hash = hash;
   await writeFile(absolute, serializeWorkSpec(sealed), "utf8");
 }
 

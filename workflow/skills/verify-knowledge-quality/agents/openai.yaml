@@ -1,4 +1,4 @@
 interface:
   display_name: "Verify Knowledge Quality"
-  short_description: "Verify truth, audience, abstraction, and coverage"
-  default_prompt: "Use $verify-knowledge-quality to audit a knowledge document before it becomes stable."
+  short_description: "Review truth and communication independently"
+  default_prompt: "Use $verify-knowledge-quality to run separate authority-truth and reader-communication reviews against one unchanged knowledge content hash."

@@ -97,6 +97,13 @@ source, tests, contracts, configuration, product data, or documentation.
 `irrelevant` also needs a scoped reason. Pending and blocked entries prevent a
 completed baseline.
 
+The agent turns these ledgers into a human-readable reconstruction frontier at
+every handoff: pinned source set, outstanding file/community/surface
+accounting, optional-input status, cross-repository reconciliation, unresolved
+claims, maintainer decisions, and next action. The frontier is derived
+presentation. It never replaces the complete ledgers or proves semantic
+coverage.
+
 The coverage audit must reconcile:
 
 - every repository durably registered for a baseline, not merely the checkout

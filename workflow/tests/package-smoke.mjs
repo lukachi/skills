@@ -43,6 +43,14 @@ try {
     existsSync(join(packaged, "evals/knowledge-views/behavior-evals.json")),
     true,
   );
+  assert.equal(
+    existsSync(join(packaged, "evals/knowledge-routing/trigger-evals.json")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "evals/knowledge-routing/behavior-evals.json")),
+    true,
+  );
   assert.equal(existsSync(join(packaged, "LICENSE")), true);
   assert.equal(existsSync(join(packaged, "skills/manage-project-work/SKILL.md")), true);
   assert.equal(
@@ -71,6 +79,14 @@ try {
   );
   assert.equal(
     existsSync(join(packaged, "skills/verify-knowledge-quality/SKILL.md")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "skills/shape-project-direction/SKILL.md")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "skills/research-project-context/SKILL.md")),
     true,
   );
   assert.equal(existsSync(join(packaged, "rules/leaf/workflow-routing.md")), true);

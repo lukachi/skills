@@ -8,10 +8,11 @@ The reader should be able to answer:
 
 1. What does this provide and why does it matter?
 2. Who uses or depends on it?
-3. What happens now in observable product terms?
-4. Which rules, outcomes, boundaries, and exceptions apply?
-5. Is it available, partial, absent, retired, or uncertain?
-6. What changed materially and where can the rationale be found?
+3. Which domain terms does it own, and what do they mean here?
+4. What happens now in observable product terms?
+5. Which rules, outcomes, boundaries, and exceptions apply?
+6. Is it available, partial, absent, retired, or uncertain?
+7. What changed materially and where can the rationale be found?
 
 This is neither end-user help nor a PRD. It is the stakeholder view of current,
 verified product knowledge. Proposed behavior stays in active change records.
@@ -21,6 +22,8 @@ verified product knowledge. Proposed behavior stays in active change records.
 - Lead with the current answer.
 - Prefer short concrete sentences and active voice.
 - Use domain language; define necessary terms on first use.
+- Reuse canonical Area terminology. Record aliases and discourage overloaded
+  names rather than silently switching vocabulary.
 - Describe outcomes, choices, state changes, and visible consequences.
 - Preserve conditions, exceptions, and non-goals.
 - Replace internal identifiers with human names.
@@ -36,6 +39,7 @@ verified product knowledge. Proposed behavior stays in active change records.
 
 - `What this provides`
 - `Who it serves`
+- `Domain language`
 - `Current behavior`
 - `Rules and outcomes`
 - `Boundaries and exceptions`

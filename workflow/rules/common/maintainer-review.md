@@ -6,6 +6,9 @@ process. Follow the project review protocol in `PROJECT_WORKFLOW.md`.
 Require an explicit maintainer decision before:
 
 - choosing a workflow route when significance is ambiguous;
+- starting raw processing, whole-project reconstruction, durable external
+  research, semantic curation, or broad direction shaping when the maintainer
+  did not already request that outcome;
 - implementing a significant spec whose outcome, scope, exclusions, acceptance
   criteria, or material decisions have not already been explicitly accepted;
 - selecting current truth when evidence cannot resolve chronology or authority;
@@ -18,7 +21,7 @@ trust state honest. Raw intake itself never counts as evidence.
 
 Present a compact review packet containing the exact decision, evidence,
 conflicts, recommendation, and requested response. Record approve, correct, or
-defer. Silence is not approval.
+defer. Ask one focused question at a time. Silence is not approval.
 
 For significant work, record framing and completion decisions in the living
 spec under `maintainer_review`. Existing explicit maintainer instructions may

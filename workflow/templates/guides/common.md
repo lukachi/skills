@@ -26,8 +26,10 @@ knowledge claims.
 
 After initialization, ask in ordinary language: “help me understand this
 project,” “process raw,” “reconstruct the baseline,” “explain this Area,”
-“implement this change,” or “check the workflow.” The installed skills
-translate those requests into the complete internal procedure.
+“shape this broad direction,” “research this external constraint,” “implement
+this change,” or “check the workflow.” The installed skills translate those
+requests into the complete internal procedure. You do not need to invoke a
+skill by name.
 
 ## Trust boundary
 
@@ -141,7 +143,8 @@ a stricter profile:
 - human verification for intent and normative decisions;
 - explicit supersession or deprecation reason;
 - reciprocal acyclic decision lineages with one stable current record;
-- a semantic quality receipt bound to the current content hash;
+- a semantic quality receipt with independent authority/truth and
+  reader-communication axes bound to the current content hash;
 - stakeholder sections and a no-code boundary for product documents;
 - technical coverage and linked product meaning for engineering documents;
 - no raw path, source, link, or footnote in current knowledge.
@@ -149,7 +152,7 @@ a stricter profile:
 `stable` is lifecycle, not automatic truth. A material edit updates
 `generated.at` and changes the deterministic knowledge content hash. Older
 verification and quality receipts no longer match. The agent runs the semantic
-quality review and records both fresh receipts only after computing
+quality reviews and records fresh axis plus verification receipts only after computing
 `wfctl knowledge hash --concept <path>`.
 
 ## Choose the work route
@@ -168,6 +171,18 @@ Accepted lightweight handoffs go to `changes/inbox/` through
 `wfctl work handoff`. Leaf handoffs retain exact source/worktree metadata;
 knowledge handoffs retain project-only intake/reconstruction proposals and
 their claim references. Both remain non-authoritative until triaged.
+
+Read-only explanation, history, ownership, and health questions run
+automatically. Raw processing, whole-project reconstruction, durable external
+research, semantic curation, and broad direction shaping are deliberate:
+unless you already requested the outcome, the agent explains the gap and asks
+one focused confirmation before starting.
+
+For a consequential initiative whose dependent decisions are still unclear,
+the agent uses direction shaping before implementation planning. It records
+the destination, domain language, decision frontier, uncertainty, tradeoffs,
+and next bounded change in the same living spec used later. It never creates a
+parallel strategy source.
 
 ## Review gates
 
@@ -197,6 +212,8 @@ Each request should contain:
 5. **Requested response** — approve, correct, or defer.
 
 Deferral is valid. The agent preserves uncertainty instead of guessing.
+When several decisions are needed, the agent asks one at a time and updates
+the living record before continuing.
 
 ## Significant-work loop
 

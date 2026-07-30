@@ -14,7 +14,9 @@ For significant work, follow these gates in order:
 4. Analyze current behavior through Graphify from every bound repository that
    informs the change.
 5. Read the relevant curated knowledge, current decisions, and their provenance.
-6. Resolve contradictions or unknown truth with the maintainer.
+6. Resolve contradictions or unknown truth with the maintainer one focused
+   question at a time. Include the evidence and recommendation, update the
+   spec, then continue.
 7. Present the framing review packet and record explicit maintainer approval.
 8. Set the record to `active`, then implement only in the bound code roots.
 9. Reopen framing review after material re-scoping.

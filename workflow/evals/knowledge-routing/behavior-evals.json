@@ -1,0 +1,153 @@
+[
+  {
+    "id": "router-hides-mechanics",
+    "prompt": "I do not know which workflow mode I need. Explain the current recovery model.",
+    "required": [
+      "answers through the least expensive read-only path",
+      "does not require a skill name or CLI command",
+      "reports trustworthy gaps separately"
+    ],
+    "forbidden": [
+      "asks the user to choose a workflow command",
+      "starts reconstruction merely because knowledge is incomplete",
+      "rewrites knowledge while explaining"
+    ]
+  },
+  {
+    "id": "deliberate-mode-confirmation",
+    "prompt": "Current knowledge seems incomplete. What can you tell me and what would it take to establish a baseline?",
+    "required": [
+      "provides the useful current answer first",
+      "explains the gap, cost, and output of reconstruction",
+      "gives a recommendation",
+      "asks one focused confirmation before starting"
+    ],
+    "forbidden": [
+      "silently starts a whole-project reconstruction",
+      "requires the user to name repositories already in the registry",
+      "presents search rank as coverage"
+    ]
+  },
+  {
+    "id": "direction-one-question",
+    "prompt": "Shape a cross-Area account-security direction whose recovery, session, and ownership choices depend on each other.",
+    "required": [
+      "uses one canonical living spec",
+      "records destination, language, decision frontier, uncertainty, and non-goals",
+      "finds discoverable facts before asking",
+      "asks one highest-leverage question with a recommendation",
+      "updates the spec before asking the next question",
+      "does not edit product source"
+    ],
+    "forbidden": [
+      "creates a separate direction or strategy source",
+      "sends a questionnaire",
+      "writes an implementation plan while destination choices remain unresolved"
+    ]
+  },
+  {
+    "id": "direction-handoff",
+    "prompt": "The direction is now approved and the next bounded change is clear.",
+    "required": [
+      "records approval and deferred questions",
+      "continues the same spec through manage-project-work",
+      "converts the next bounded change into observable acceptance criteria"
+    ],
+    "forbidden": [
+      "copies the direction into a second spec",
+      "promotes proposals as current truth",
+      "loses rejected or superseded decisions"
+    ]
+  },
+  {
+    "id": "canonical-language",
+    "prompt": "During shaping, the team uses account, identity, profile, and player interchangeably.",
+    "required": [
+      "records term candidates, definitions, contextual boundaries, aliases, and names to avoid",
+      "checks current Area terminology",
+      "keeps unresolved terms in the active spec",
+      "promotes only explicitly accepted vocabulary"
+    ],
+    "forbidden": [
+      "creates a flattened global glossary by default",
+      "silently chooses the most frequent term",
+      "changes current knowledge during unresolved discussion"
+    ]
+  },
+  {
+    "id": "sparse-decisions",
+    "prompt": "Several implementation details changed, and the team repeatedly rejected resurrection without a special item.",
+    "required": [
+      "creates standalone decisions only for hard-to-reverse, surprising, or real-tradeoff choices",
+      "keeps routine choices in the owning concept, ledger, or Area evolution",
+      "keeps rejected proposals case-only",
+      "asks whether the repeated boundary is an accepted durable non-goal"
+    ],
+    "forbidden": [
+      "creates one decision record per implementation detail",
+      "promotes rejection through repetition",
+      "deletes the rejected proposal history"
+    ]
+  },
+  {
+    "id": "research-candidate",
+    "prompt": "Research the current passkey recovery standards for a pending architecture decision.",
+    "required": [
+      "bounds the decision and freshness scope",
+      "prefers and directly reads primary sources",
+      "records a claim-to-source matrix, conflicts, applicability, and limits",
+      "stores the synthesis in the owning record or a non-authoritative handoff",
+      "requires normal authority before project conclusions become current knowledge"
+    ],
+    "forbidden": [
+      "treats search snippets as evidence",
+      "lets an external standard authorize project intent",
+      "silently curates the agent summary"
+    ]
+  },
+  {
+    "id": "raw-frontier",
+    "prompt": "Resume processing a large raw dump.",
+    "required": [
+      "shows generation, accounting counts, active themes, blockers, decisions, next batch, and completion condition",
+      "derives the frontier from inventory and cases",
+      "continues bounded batches"
+    ],
+    "forbidden": [
+      "guesses unseen file contents from names",
+      "stores a competing manual ledger",
+      "claims completion from QMD retrieval"
+    ]
+  },
+  {
+    "id": "reconstruction-frontier",
+    "prompt": "Resume a multi-repository baseline after compaction.",
+    "required": [
+      "restores the case and exact bindings",
+      "shows outstanding files, communities, surfaces, optional inputs, reconciliation, claims, and decisions",
+      "names the highest-leverage next action",
+      "keeps complete CLI ledgers authoritative for accounting"
+    ],
+    "forbidden": [
+      "uses a percentage to hide pending items",
+      "mistakes one completed dossier for whole-project completion",
+      "reconstructs state from chat memory"
+    ]
+  },
+  {
+    "id": "two-axis-quality",
+    "prompt": "Verify a stable product capability before publication.",
+    "required": [
+      "runs structural validation separately",
+      "pins the candidate content hash",
+      "reviews authority and truth independently from reader communication",
+      "binds both passed axes to the same unchanged content hash",
+      "reruns both passes after a material edit"
+    ],
+    "forbidden": [
+      "lets good prose compensate for unsupported facts",
+      "lets strong evidence compensate for an unusable explanation",
+      "uses one review verdict as proof of the other axis"
+    ]
+  }
+]

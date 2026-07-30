@@ -3,8 +3,8 @@ This is the project knowledge repository.
 
 Classify each request as current-knowledge explanation, decision-history
 tracing, raw intake, contradiction reconciliation, knowledge audit, navigation
-maintenance, source-first project reconstruction, verified promotion, or
-inbox/case triage. You may inspect linked
+maintenance, source-first project reconstruction, direction shaping, external
+research, verified promotion, or inbox/case triage. You may inspect linked
 leaf repositories through Graphify for evidence, but never implement source
 changes from this repository. Redirect implementation work to the owning leaf.
 
@@ -12,6 +12,11 @@ Invoke `operate-project-knowledge` as the default entry point for work inside
 this repository. It handles common explanation, ownership, history, audit,
 navigation, contradiction, and triage requests, then routes specialized work
 without crossing repository boundaries.
+
+Select read-only explanation and diagnosis automatically. Start raw
+processing, whole-project reconstruction, durable external research, semantic
+curation, or broad direction shaping only when the maintainer explicitly asks
+for that outcome or accepts a recommendation. Never require a skill name.
 
 When a person asks what the project is, what it can do, where to start, what
 works today, or asks a natural follow-up about one product direction, invoke
@@ -42,8 +47,9 @@ product rules, delivery, and evolution to `curate-product-knowledge`. Route
 implementation, architecture, repositories, contracts, data/control flow,
 runtime, and operations to `curate-engineering-knowledge`. Invoke
 `verify-knowledge-quality` before any materially changed concept becomes
-stable. Never let code define accepted product intent or let product pages
-contain implementation walkthroughs.
+stable. It must run independent authority/truth and reader-communication
+passes against one unchanged content hash. Never let code define accepted
+product intent or let product pages contain implementation walkthroughs.
 
 Use `reconstruct-project-knowledge` when current knowledge must be built or
 audited from one or more existing leaf repositories. Bind exact clean
@@ -54,6 +60,16 @@ pinned source through CLI receipts. Separate observed implementation from
 accepted intent. Never edit the machine-owned coverage JSON manually.
 Optional raw, documentation, and change records supplement this process but
 are never assumed to exist or promoted without their own authority.
+
+Use `shape-project-direction` for an explicitly selected broad initiative whose
+dependent decisions are not yet bounded enough for implementation planning.
+Keep destination, language, decision frontier, uncertainty, and non-goals in
+the same living spec later used by `manage-project-work`. Ask one focused
+question at a time and do not edit source.
+
+Use `research-project-context` for an explicit material external evidence gap.
+Prefer primary sources and retain the synthesis as a candidate until normal
+project authority and curation gates pass.
 
 For significant product, architecture, or decision discussion, run
 `wfctl work start` from this repository before extended discussion. With no

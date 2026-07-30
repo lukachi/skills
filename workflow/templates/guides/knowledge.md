@@ -14,6 +14,8 @@ Typical requests include:
 - trace how a decision evolved and why;
 - inventory and process new `raw/` material;
 - reconstruct or audit the project map from existing leaf repositories;
+- shape a broad uncertain product or architecture direction before planning;
+- research a material external fact or standard from primary sources;
 - reconcile contradictory historical claims;
 - audit stale, missing, duplicated, or weakly sourced knowledge;
 - improve Area indexes and human navigation without inventing truth;
@@ -49,10 +51,21 @@ change. If the agent finds missing, stale, or contradictory knowledge, it
 reports the limitation and offers a separate audit, reconstruction, or repair
 step.
 
+The agent automatically selects read-only navigation. It starts raw processing,
+reconstruction, durable research, direction shaping, or semantic curation only
+when you explicitly ask for that outcome or accept its recommendation.
+
 Significant product or architecture discussion starts a project-only living
 spec here with `wfctl work start`. It has no code root, so the agent cannot
 accidentally implement in the knowledge checkout. Multi-repository work also
 starts here when one spec must bind several explicit leaf worktrees.
+
+If the initiative is too broad to define honest acceptance criteria, the agent
+first shapes its direction in that same spec. It maintains the destination,
+canonical vocabulary candidates, decision frontier, uncertainty, non-goals,
+and exact next question. It asks one question at a time and does not write
+source code. Once the next bounded change is clear, the same record continues
+through the normal significant-work loop.
 
 ### Source-first project reconstruction
 
@@ -100,7 +113,12 @@ case files, retrieval, and validation.
 9. You adjudicate only intent, rationale, ownership, chronology, or authority
    that evidence cannot establish.
 10. The agent promotes the smallest coherent human map, validates and builds
-   knowledge, obtains your baseline review, then closes the reconstruction.
+    knowledge, obtains your baseline review, then closes the reconstruction.
+
+During the run it shows a reconstruction frontier derived from the complete
+ledgers: pinned repositories, outstanding files/communities/surfaces,
+optional-input status, cross-repository reconciliation, unresolved claims,
+human decisions, and next action.
 
 The agent's reconstruction gate fails on worktree or commit drift, dirty
 source, an unaccounted file or Graphify community, unexplained runtime
@@ -143,6 +161,10 @@ bounded topics rather than asking an agent to summarize the entire dump.
 12. Confirmed knowledge claims pass through `curate-project-knowledge`;
     unresolved raw claims stay outside current knowledge.
 
+At each handoff the agent shows the raw frontier: input generation, accounting
+counts, active themes, blockers, decisions needed, next recommended batch, and
+the remaining completion condition.
+
 ### Current knowledge maintenance
 
 Your main road is `knowledge/index.md` → `knowledge/areas/<area>/index.md`.
@@ -165,6 +187,10 @@ They contain no code, identifiers, endpoints, schemas, source paths, or
 implementation walkthroughs. Their Engineering details section contains links
 only.
 
+Canonical domain terms are defined in their owning Area concepts, including
+context, accepted aliases, and names to avoid. Proposed terms stay in the
+active change record until approved.
+
 Engineering concepts declare `view: engineering` and are written for engineers
 and operators. They explain implementation, ownership, flow, contracts,
 failure behavior, operations, and verification at exact source revisions.
@@ -174,11 +200,17 @@ The agent uses QMD only against the `knowledge` collection, reads selected
 concepts directly, updates the smallest coherent Area, uses claim-level
 authoritative sources, preserves immutable decision records, and invokes the
 semantic quality gate. A stable concept requires a current quality receipt and
-normal verification bound to the same content hash. The agent then runs
+normal verification bound to the same content hash. The semantic gate has
+independent authority/truth and reader-communication passes; deterministic
+validation is a separate structural gate. The agent then runs
 `wfctl knowledge validate`, builds the graphs, and refreshes QMD. Current
 decisions live at one stable path; predecessors remain deprecated with
 reciprocal links. Area Evolution sections explain what changed and why, while
 Area `log.md` files carry local chronology.
+
+Standalone decision records are reserved for choices that are hard to reverse,
+surprising without context, or resolve a real tradeoff. Routine choices stay
+in the owning concept, change ledger, or Area evolution.
 
 Ask for a review packet rather than reading the entire corpus. Focus on product
 intent, meaning, normative architecture, ownership, contracts, decisions,

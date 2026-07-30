@@ -70,6 +70,12 @@ from code.
 
 Proposed or rejected ideas do not use a current knowledge view.
 
+Create a standalone decision only when the choice is hard to reverse,
+surprising without context, or resolves a real tradeoff. Keep routine local
+choices in the owning concept, change ledger, or Area evolution. A repeated
+rejection may expose a durable non-goal, but only an explicit maintainer
+decision promotes that negative rule; rejected proposals remain case-only.
+
 ## Human information architecture
 
 - `knowledge/index.md`: progressive project entry point.
@@ -185,12 +191,24 @@ x-wf:
       - abstraction
       - completeness
       - delivery-state
+    axes:
+      authority-truth:
+        status: passed
+        by: workflow-agent/1
+        at: 2026-07-28T12:00:00Z
+        content_hash: "<same hash>"
+      reader-communication:
+        status: passed
+        by: workflow-agent/1
+        at: 2026-07-28T12:00:00Z
+        content_hash: "<same hash>"
 ```
 
 The material hash excludes `verified` and `x-wf.quality`, allowing both
 receipts to bind the exact authored content without self-reference. Any other
 material edit changes the hash and invalidates both receipts. The quality
-receipt records a review; it creates no authority.
+receipt records a review; it creates no authority. Its two axes review
+authority/truth and reader communication independently.
 
 ## Authority by claim
 
@@ -222,3 +240,8 @@ summarizes what changed, why, and what it affected. Full decision records keep
 context, exact choice, rationale, alternatives, consequences, transition, open
 questions, and lineage. Area logs provide local chronology without flattening
 hundreds of decisions into one file.
+
+Canonical domain language belongs with the owning Area concept rather than a
+flattened global glossary. Record the preferred term, definition, contextual
+boundary, accepted aliases, and names to avoid. Proposed terminology stays in
+the active change record until product authority accepts it.

@@ -19,3 +19,9 @@ Never use task size alone as the classifier. A one-line contract change can be s
 
 Once work is classified as significant, create its shaping record before
 extended discussion so requirements and decisions survive session compaction.
+
+When a consequential initiative is too uncertain to define acceptance criteria
+without guessing across several dependent choices, recommend
+`shape-project-direction`. Start it only after maintainer agreement, keep using
+the same canonical spec, and do not edit code until it returns a bounded
+implementation frontier.

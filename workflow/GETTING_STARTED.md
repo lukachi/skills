@@ -35,6 +35,8 @@ its leaf repositories. From then on, speak to the agent:
 - “Process the new raw material.”
 - “Reconstruct the project knowledge baseline.”
 - “Explain how this Area currently works.”
+- “Help me shape this broad product direction before we plan implementation.”
+- “Research the external standard that constrains this decision.”
 - “Implement this change.”
 - “Check or upgrade the workflow environment.”
 
@@ -122,6 +124,23 @@ may offer a small handoff when the work produced a reusable finding.
 If significance is unclear, the agent explains the possible impact and
 recommends a route. You choose whether to use the full workflow.
 
+### Broad uncertain initiatives
+
+Do not force a large product or architecture initiative into an implementation
+plan while its important choices are still unknown. Ask naturally:
+
+> Help me shape the account-security direction before we decide what to build.
+
+The agent may recommend direction shaping, but starts it only after you agree.
+It uses the same canonical living spec as later project work. It maps the
+destination, affected Areas, canonical terms, decision frontier, uncertainty,
+tradeoffs, and non-goals. It asks one focused question at a time, includes a
+recommendation, and records each material answer before continuing. When the
+next bounded change is clear, the same spec continues into normal planning and
+implementation; no parallel strategy document is created.
+
+Ordinary brainstorming does not automatically start this mode.
+
 ## Work with an agent inside the knowledge repository
 
 Open an agent in the knowledge repository when the job is about shared project
@@ -144,7 +163,9 @@ actual Markdown before answering. You do not maintain this graph manually.
 | Explore decision history | “Show how the recovery policy changed and why.” | Follows the current decision lineage, predecessors, Area Evolution, and local log. |
 | Process new material | “Process the new raw material.” | Inventories new blobs, proposes bounded batches, extracts candidate claims, and verifies them. |
 | Build an existing-project baseline | “Reconstruct project knowledge from these leaf repositories.” | Binds exact clean worktrees, builds repository dossiers, reconciles intent with delivery, and asks you to adjudicate gaps. |
-| Discuss a product or architecture direction | “Let’s decide how account recovery should work.” | Starts a project-only living spec before extended discussion, keeps every material turn, and binds no code checkout until implementation is in scope. |
+| Discuss a bounded product or architecture change | “Let’s decide how account recovery should work.” | Starts a project-only living spec before extended material discussion and binds no code checkout until implementation is in scope. |
+| Shape a broad uncertain direction | “Help me shape the future account-security direction before planning implementation.” | After your confirmation, maps the destination, terminology, decision frontier, fog, and next bounded change in the same living spec. |
+| Research external context | “Research which current standard constrains this decision.” | Uses current primary sources, records applicability and conflicts, and keeps the synthesis as a candidate until normal approval and curation. |
 | Resolve old contradictions | “Reconcile the conflicting notes about session ownership.” | Builds an evidence packet from raw candidates, code, history, and maintainer authority. |
 | Audit knowledge health | “Find stale, missing, duplicated, or contradictory knowledge.” | Reviews Areas, provenance, verification, links, decision lineages, and code-backed claims. |
 | Improve navigation | “Organize the economy Area so a newcomer can understand it.” | Repairs Area indexes and links without inventing new truth. |
@@ -234,10 +255,10 @@ endpoints, schemas, source paths, or implementation walkthroughs. Engineering
 pages link product meaning and never treat code as proof of intent.
 
 When the agent materially changes a concept, it runs an adversarial semantic
-review for factuality, audience fit, abstraction, completeness, and delivery
-state. The passed review and normal verification are bound to the same content
-hash. If the document changes afterward, both become stale and validation
-fails.
+review on two independent axes: authority/truth and reader communication.
+Deterministic validation remains a third structural gate. Both semantic passes
+and normal verification bind the same content hash. If the document changes
+afterward, every receipt becomes stale and validation fails.
 
 For example:
 
@@ -310,6 +331,12 @@ with the current decision, asks for confirmation, creates a successor record,
 and preserves the earlier decision as history. Old decisions are not silently
 rewritten or deleted.
 
+Not every choice becomes a decision document. The agent creates one only when
+the choice is hard to reverse, surprising without context, or resolves a real
+tradeoff. Routine choices stay in the owning concept, change ledger, or Area
+evolution. Canonical domain terms live with their owning Area concept, with
+definitions, contextual boundaries, aliases, and discouraged names.
+
 ## Capture ideas and historical material
 
 Use `raw/` as a low-friction inbox for ideas, notes, research, chat exports,
@@ -331,6 +358,11 @@ and where it must go:
 - former durable truth → decision/evolution history;
 - proposals and plans → the change inbox or an active change;
 - rejected or unresolved material → the intake case only.
+
+At every handoff the agent shows an intake frontier: generation, counts,
+active themes, blockers, decisions needed, recommended next batch, and the
+remaining completion condition. Repeated rejected ideas remain case-only
+unless you explicitly adopt the underlying boundary as a durable non-goal.
 
 The agent then asks diagnostic questions against those durable outputs without
 looking back at raw. Missing conditions, exceptions, or chronology become

@@ -3,7 +3,12 @@
 Every item is `passed`, `failed`, `uncertain`, or `blocked`. Only an all-passed
 review may create a quality receipt.
 
-## Common checks
+Run the common truth checks as the `authority-truth` axis and the view-specific
+checks as the `reader-communication` axis. Bind both results to the same
+unchanged content hash. Deterministic validation is a separate structural
+gate.
+
+## Authority-truth axis
 
 ### Factuality
 
@@ -38,7 +43,9 @@ review may create a quality receipt.
 - A changed decision updates the current view and preserves predecessor
   lineage.
 
-## Product-view checks
+## Reader-communication axis
+
+### Product-view checks
 
 ### Audience fit
 
@@ -57,7 +64,7 @@ review may create a quality receipt.
   rewriting the product explanation.
 - Simplification did not erase a rule or exception.
 
-## Engineering-view checks
+### Engineering-view checks
 
 ### Audience fit
 
@@ -73,10 +80,12 @@ review may create a quality receipt.
 - Repository, revision, paths, tests, and runtime evidence are pinned where
   material.
 
-## Decision-view checks
+### Decision-view checks
 
-- Context, exact decision, rationale, alternatives, consequences, transition,
-  affected knowledge, and unresolved questions are present.
+- Context, exact decision, rationale, consequences, affected knowledge, and
+  lineage are present.
+- Alternatives, transition, and unresolved questions are concise and honest
+  when material; the document does not invent ceremonial content.
 - Product effect is understandable without implementation detail.
 - Technical consequences link to engineering knowledge.
 - Supersession is reciprocal, acyclic, and leaves one stable current record.

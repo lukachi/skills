@@ -273,10 +273,11 @@ to product meaning. Decision changes create immutable successor records with
 reciprocal lineage links; they do not clone whole versioned Areas.
 
 Every concept declares `view`, `purpose`, and `audience`. Stable concepts also
-carry a content-hash-bound semantic quality receipt after factuality, audience,
-abstraction, completeness, and delivery-state review. `wfctl knowledge
-validate` enforces the lane, required sections, product no-code boundary,
-receipt freshness, authority, provenance, links, and lifecycle.
+carry a content-hash-bound semantic quality receipt after independent
+authority/truth and reader-communication reviews. `wfctl knowledge validate`
+is the separate structural gate and enforces both axes, the lane, required
+sections, product no-code boundary, receipt freshness, authority, provenance,
+links, and lifecycle.
 
 The generated QMD collections preserve the trust boundary: `knowledge` is the
 only default collection, while `changes`, `intake`, `reconstruction`, and
@@ -291,6 +292,12 @@ framing review, evidence-based
 verification, current-knowledge promotion, and an immutable archived change
 record. The agent owns these commands during routine work;
 the maintainer supplies review decisions rather than operating the CLI:
+
+When a consequential initiative is not yet bounded enough for honest
+acceptance criteria, the agent first uses the same spec to record direction,
+canonical language, the decision frontier, uncertainty, and non-goals. It
+asks one evidence-backed question at a time and does not create a parallel
+strategy document.
 
 ```sh
 wfctl work handoff ui-copy-findings \

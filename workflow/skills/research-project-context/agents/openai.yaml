@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Project Context"
+  short_description: "Research external project context safely"
+  default_prompt: "Use this skill to investigate an external project-domain question from primary sources and produce a bounded candidate handoff for review."

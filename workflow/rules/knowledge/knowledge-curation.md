@@ -33,6 +33,22 @@ whole-project source baselines to `reconstruct-project-knowledge`.
 Code-backed verification always delegates to `analyze-with-graphify` in the
 exact leaf.
 
+Ordinary explanation, history tracing, ownership questions, and structural
+diagnosis are automatic read-only modes. Raw processing, baseline
+reconstruction, broad direction shaping, durable external research, and
+semantic curation are deliberate modes: start them only when explicitly
+requested or after the maintainer accepts a recommendation. The agent selects
+and executes the mode; the maintainer never needs its skill or command name.
+
+Use `shape-project-direction` when a consequential initiative has several
+dependent product or architecture decisions and normal task planning would
+guess. It maintains the same canonical work spec later used by
+`manage-project-work`; never create a parallel strategy source.
+
+Use `research-project-context` for a material external evidence gap. Prefer
+primary sources and keep the synthesis in the owning active record or a
+non-authoritative handoff until normal authority and curation gates pass.
+
 Use `process-raw-intake` for raw intake and
 `curate-project-knowledge` for promotion. Never copy, link, footnote, or cite a
 raw path from `knowledge/`.
@@ -137,6 +153,16 @@ Keep current truth at one stable path. Preserve changed decisions as immutable
 records with reciprocal, acyclic `supersedes` and `superseded_by` links, one
 stable current record per lineage, and a meaningful Evolution summary in the
 Area index.
+
+Create standalone decision records only for choices that are hard to reverse,
+surprising without context, or resolve a real tradeoff. Keep routine local
+choices in the owning concept, change ledger, or Area evolution. A rejected
+candidate remains case-only unless the maintainer explicitly turns the
+underlying boundary into a durable current non-goal or negative rule.
+
+Keep canonical domain language with its owning Area concept. During discussion
+store term candidates, definitions, aliases, conflicts, and names to avoid in
+the active change record; promote only accepted terminology.
 
 Every concept must satisfy the strict workflow profile: explicit lifecycle and
 generation metadata, claim-level authoritative sources, a verification event

@@ -1,6 +1,6 @@
 ---
 name: reconstruct-project-knowledge
-description: Build or audit a trustworthy project-knowledge baseline from one or more existing leaf source repositories, Git history, current curated knowledge, and optional documentation, change records, or raw candidates. Use when wfctl joins an established or legacy project; when knowledge is missing, partial, stale, or based mainly on old notes; when the maintainer asks what the whole project actually does; when several repositories must be mapped into Areas, capabilities, flows, ownership, contracts, implementation, and decision history; or when current product intent must be separated from observed delivery and drift. This is a bounded knowledge-repository operation, not the per-task leaf workflow.
+description: Run an explicit, bounded baseline reconstruction or whole-project audit across one or more registered leaf repositories, Git history, current curated knowledge, and optional documentation, change records, or raw candidates. Use when the maintainer asks to establish or rebuild an untrustworthy project baseline, accepts that recommendation after a knowledge gap is reported, or requests a source-wide alignment audit. Do not trigger merely because someone asks what the project does or how one capability works. This is an expensive knowledge-repository operation with complete source accounting, not the per-task leaf workflow.
 ---
 
 # Reconstruct Project Knowledge
@@ -21,6 +21,23 @@ registry, reconstruction, Graphify, QMD, case-file, validation, and close
 operations. Never ask the maintainer to run a command, copy a case ID, edit a
 dossier, or locate a generated binding. Ask only for a missing path, product
 authority, review, or a source choice that cannot be resolved safely.
+
+## Show the reconstruction frontier
+
+At start, resume, after each repository pass, and before maintainer review,
+present one compact frontier derived from the case and CLI coverage ledgers:
+
+- exact case mode and frozen repository revisions;
+- each repository's remaining files, Graphify communities, and runtime
+  surfaces by review state;
+- optional raw, documentation, and change-record lane status;
+- cross-repository flows or contracts still awaiting reconciliation;
+- unresolved candidate claims and exact maintainer decisions needed;
+- the next highest-leverage action and the completion blockers.
+
+Do not replace the CLI ledgers with prose or hide a long pending set behind a
+percentage. The frontier tells the human where the investigation stands; the
+complete JSON accounting remains the machine source.
 
 ## Choose the operation
 
@@ -192,6 +209,9 @@ The ledger guarantees accounting and delivery of bytes to the agent; it does
 not prove correct semantic understanding, so the dossier and maintainer review
 remain mandatory.
 
+Refresh the reconstruction frontier before switching repositories so the next
+agent cannot mistake local dossier completion for whole-project completion.
+
 Do not edit source code from the knowledge repository. If analysis discovers a
 needed change, identify the owning leaf and open normal significant work there.
 
@@ -251,6 +271,8 @@ After compaction or interruption:
 5. resume from recorded unresolved candidates and next actions, not chat
    memory.
 
+Then render the current reconstruction frontier before continuing analysis.
+
 ## Promote and close
 
 1. Invoke `curate-project-knowledge`.
@@ -292,6 +314,8 @@ After compaction or interruption:
 7. Present the maintainer a baseline review packet: current intended product,
    observed implementation, alignment and drift, reconstructed evolution with
    confidence limits, unknowns, and the human reading path.
+   Include the final frontier and require every requested completion blocker
+   to be zero or explicitly represented by an honest partial outcome.
 8. Record explicit `maintainer_review` approval, then close:
 
    ```sh

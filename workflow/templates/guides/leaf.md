@@ -46,4 +46,6 @@ When the completed change updates durable knowledge, review two separate
 results when both changed: the stakeholder-facing product behavior and the
 engineering realization. The product view should be understandable without
 code; the engineering view should pin the actual implementation. A semantic
-quality receipt and strict validation must pass before either is called stable.
+quality receipt with independent authority/truth and reader-communication
+passes, plus strict structural validation, must pass before either is called
+stable.

@@ -33,7 +33,7 @@ Classify claims before selecting files:
 | --- | --- |
 | Current product purpose, capability, use case, flow, domain concept, rule, delivery summary, or Area evolution | Invoke `curate-product-knowledge` |
 | Current implementation, architecture, repository ownership, contract, data/control flow, runtime, or operations | Invoke `curate-engineering-knowledge` |
-| Approved choice, rationale, consequences, and supersession | Use the decision template, then invoke `verify-knowledge-quality` |
+| Durable choice that is hard to reverse, surprising without context, or resolves a real tradeoff | Use the decision template, then invoke `verify-knowledge-quality` |
 | Primary external context | Use `view: reference`, preserve the primary source, then verify |
 | Trusted unresolved current question | Use `view: uncertainty`, state missing authority, then verify |
 | Proposed, rejected, or unadopted behavior | Keep outside `knowledge/` in changes, intake, or reconstruction |
@@ -66,9 +66,13 @@ for symmetry.
    every material claim with an authoritative source ID and matching footnote.
 9. Declare only material semantic edges in `x-wf.relations`; include a
    meaningful context and a matching human-visible Markdown link.
-10. Author decisions from [the decision template](assets/decision.md). Keep
-    one stable current decision per lineage; make supersession reciprocal and
-    acyclic. Preserve approved predecessor bodies.
+10. Create a standalone decision only when the choice is hard to reverse,
+    surprising without context, or resolves a real tradeoff. Routine
+    implementation choices and minor wording changes belong in the owning
+    concept, change ledger, or Area evolution. Author durable decisions from
+    [the decision template](assets/decision.md). Keep one stable current
+    decision per lineage; make supersession reciprocal and acyclic. Preserve
+    approved predecessor bodies.
 11. Update the product-facing Area index and its Evolution section when
     current behavior changes. Append detailed chronology to the local log.
 12. Invoke `verify-knowledge-quality` for every new or materially changed
@@ -94,6 +98,12 @@ for symmetry.
 - Historical implementation requires pinned version-control history plus a
   reviewed archive or reconstruction receipt.
 - External facts require primary sources.
+
+A rejected proposal remains case-only by default. When repeated proposals
+reveal a durable product boundary, ask the maintainer whether the boundary
+itself is an accepted non-goal or negative rule. Only that explicitly accepted
+rule may become current product knowledge or a decision; the rejected proposal
+and its raw origin still remain outside the trust boundary.
 
 If a concept mixes authority classes, attribute each material claim to the
 correct source. A quality receipt checks the writing and evidence match; it

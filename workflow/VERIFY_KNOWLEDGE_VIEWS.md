@@ -30,8 +30,8 @@ bun test tests/knowledge-skills.test.ts
 ```
 
 They prove that installation routing, skill metadata, product and engineering
-view contracts, content-hash quality receipts, and eval-corpus invariants are
-enforced. They do not prove semantic understanding.
+view contracts, two-axis content-hash quality receipts, and eval-corpus
+invariants are enforced. They do not prove semantic understanding.
 
 ## 2. Verify installation
 
@@ -57,6 +57,8 @@ curate-project-knowledge
 curate-product-knowledge
 curate-engineering-knowledge
 verify-knowledge-quality
+shape-project-direction          # both profiles
+research-project-context         # knowledge profile only
 ```
 
 Restart Codex or Claude after installation. Then ask the agent:
@@ -67,10 +69,10 @@ The agent owns `wfctl check`, validation, builds, QMD, and Graphify commands.
 Direct commands and `--target` remain recovery and automation surfaces, not
 required user knowledge.
 
-An existing workflow 0.4 knowledge repository needs no automatic content
-rewrite for the exploration skill. Upgrade installs the new read-only skill and
-instructions. Older mixed knowledge concepts still require the semantic view
-migration described by the setup skill.
+Workflow 0.6 adds a required `Domain language` product section and two
+content-hash-bound semantic axes. Existing stable concepts do not receive
+fabricated receipts during upgrade; the agent must review and migrate them
+before strict validation can pass.
 
 ## 3. Test newcomer discovery
 
@@ -163,7 +165,37 @@ A pass requires:
 - no machine-local worktree path enters durable knowledge;
 - no knowledge file changes unless the user also requested repair.
 
-## 7. Run adversarial cases
+## 7. Test routing and deliberate modes
+
+Use a fresh session for each case and speak naturally:
+
+1. Ask what the project does. It must explore, not reconstruct or curate.
+2. Ask how one existing capability is implemented. It may use Graphify but
+   must remain read-only.
+3. Ask what is known when the baseline is sparse. It must answer first, explain
+   reconstruction cost and output, then wait for one confirmation.
+4. Ask to process raw. It must show the intake frontier and propose a bounded
+   batch.
+5. Ask to shape a broad initiative with dependent choices. It must use one
+   canonical spec, ask one question at a time, and write no source code.
+6. Ask to research a current external constraint. It must prefer primary
+   sources and retain the synthesis as a candidate.
+7. Ask to verify a stable concept. It must run structural validation,
+   authority/truth review, and reader-communication review separately against
+   one unchanged hash.
+
+The hidden assertions live in:
+
+```text
+evals/knowledge-routing/trigger-evals.json
+evals/knowledge-routing/behavior-evals.json
+```
+
+Fail any run that asks the maintainer for a skill or command name, starts an
+expensive mode silently, creates a second strategy/spec source, or lets one
+quality axis stand in for the other.
+
+## 8. Run adversarial cases
 
 Use fresh sessions and one case at a time:
 
@@ -202,7 +234,7 @@ agent and version. Record model, agent version, workflow version, triggered
 skills, files read, files changed, validator output, failures, and token/time
 cost. Do not reveal the expected assertions to the tested agent.
 
-## 8. Review like a maintainer
+## 9. Review like a maintainer
 
 For discovery, ask:
 

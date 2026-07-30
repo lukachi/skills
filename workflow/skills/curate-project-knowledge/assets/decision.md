@@ -35,7 +35,8 @@ sources:
 
 # Context and problem
 
-Explain the situation and the problem that required a decision.[^maintainer-decision-id]
+Explain only the context needed to understand why this durable decision
+exists.[^maintainer-decision-id]
 
 # Product decision
 
@@ -48,7 +49,8 @@ Explain why this option was chosen.
 
 # Alternatives
 
-List material alternatives and why they were not selected.
+List only alternatives that were seriously considered and why they were not
+selected. State `None recorded` rather than inventing options.
 
 # Consequences and tradeoffs
 
@@ -65,11 +67,11 @@ with the same target and meaningful context.
 # Transition and migration
 
 Explain the product transition and link separate engineering migration detail,
-or state `None`.
+or state `Not applicable`.
 
 # Unresolved questions
 
-List remaining questions, or state `None`.
+List only questions left open by this decision, or state `None`.
 
 # Evolution
 

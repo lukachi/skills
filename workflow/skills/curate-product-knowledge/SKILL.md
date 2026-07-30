@@ -1,6 +1,6 @@
 ---
 name: curate-product-knowledge
-description: Create and update stakeholder-facing current product knowledge in a workflow knowledge repository. Use whenever an agent promotes, explains, rewrites, or reviews an Area, capability, use case, product flow, domain concept, product rule, vision statement, delivery summary, or evolution summary for product managers, clients, domain experts, or other nontechnical readers. Separate accepted intent from observed delivery, keep implementation details in linked engineering documents, preserve important rules and exceptions, and never present planned or uncertain behavior as currently available.
+description: Author or materially update stakeholder-facing current product knowledge after its claims have independent authority. Use when an approved change, reviewed reconstruction, confirmed intake candidate, source audit, or explicit maintainer decision is ready to create or correct an Area, capability, use case, product flow, domain concept, product rule, vision statement, delivery summary, or evolution summary. Do not use for ordinary explanation, discovery, brainstorming, review-only requests, or unverified raw ideas. Separate accepted intent from observed delivery and keep implementation details in linked engineering documents.
 ---
 
 # Curate Product Knowledge
@@ -40,13 +40,18 @@ before authoring or materially rewriting a product document. Use
    delivery state, examples, and meaningful evolution.
 3. Use the vocabulary a domain expert or client would use. Explain necessary
    domain terms on first use.
+   For a `Domain Concept`, explicitly record the canonical term, concise
+   definition, contextual boundary, accepted aliases, and names to avoid.
+   During unresolved discussion, keep proposed terms in the active change
+   record rather than silently changing current vocabulary.
 4. Describe outcomes and behavior, not classes, functions, endpoints, schemas,
    storage, messages, packages, repositories, or source paths.
 5. Keep `Engineering details` link-only. Put technical explanations in a
    document authored with `curate-engineering-knowledge`.
 6. Use present tense only for behavior supported by the declared delivery
    state. Say plainly when a capability is absent, partial, retired, unknown,
-   or accepted but not yet available.
+   or accepted but not yet available. Never present planned or uncertain
+   behavior as currently available.
 7. Preserve material exceptions and conditions. Plain language may simplify
    wording but must not simplify away meaning.
 8. Keep current truth at one stable path. When a decision changes, update the

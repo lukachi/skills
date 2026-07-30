@@ -50,6 +50,29 @@ Maintain the latest agreed problem, desired outcome, constraints, scope,
 assumptions, risks, and next action. Rewrite this section whenever the current
 understanding changes.
 
+# Direction map
+
+For a broad initiative, record the destination, current landscape, affected
+Areas and actors, constraints, success signals, and explicit non-goals. For a
+bounded task, state `Not required — bounded change` with a short reason.
+
+# Domain language
+
+Record proposed canonical terms, definitions, accepted aliases, names to
+avoid, and their resolution state. Keep unresolved vocabulary here; promote it
+to current knowledge only after approval.
+
+# Decision frontier
+
+List only unresolved choices whose answers can materially change product
+meaning, scope, architecture, ownership, or the next safe action. Rank them by
+leverage. For a bounded task with no frontier, state `None`.
+
+# Uncertainty and fog
+
+Record unknown facts, missing authority, contradictions, dependencies, and
+risks. For each item, state its impact and what would resolve it.
+
 # Open questions
 
 - Record unresolved questions that can change the solution, authority, or scope.

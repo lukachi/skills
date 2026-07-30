@@ -146,8 +146,8 @@
   {
     "id": "negative-raw-unreviewed",
     "prompt": "Copy this new raw idea directly into current knowledge.",
-    "should_trigger": ["curate-project-knowledge"],
-    "should_not_trigger": ["explore-project-knowledge", "curate-product-knowledge", "curate-engineering-knowledge"]
+    "should_trigger": ["process-raw-intake"],
+    "should_not_trigger": ["explore-project-knowledge", "curate-project-knowledge", "curate-product-knowledge", "curate-engineering-knowledge"]
   },
   {
     "id": "negative-proposal",
