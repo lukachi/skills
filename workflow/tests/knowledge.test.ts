@@ -30,6 +30,11 @@ import {
   beginProjectReconstruction,
   closeProjectReconstruction,
   inspectProjectReconstruction,
+  markReconstructionCommunity,
+  markReconstructionFiles,
+  readReconstructionSource,
+  recordReconstructionSurface,
+  reviewReconstructionSurfaces,
 } from "../src/reconstruction.js";
 import { addLeafRepository } from "../src/repository-registry.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
@@ -178,6 +183,108 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
   );
 });
 
+test("reviewed reconstruction raw input must converge at its frozen baseline", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-raw-convergence-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  await writeFile(
+    join(target, "raw/idea.md"),
+    "# Idea\n\nA historical idea with no current product authority.\n",
+    "utf8",
+  );
+  commitAll(target, "add raw idea");
+  const leaf = await initializedLeafRepository(
+    "wfctl-raw-convergence-leaf-",
+    target,
+  );
+  const reconstruction = await beginProjectReconstruction({
+    target,
+    slug: "raw-convergence",
+    title: "Raw convergence baseline",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-28T12:30:00.000Z"),
+  });
+  const caseDocument = parseWorkSpec(
+    await readFile(reconstruction.path, "utf8"),
+  );
+  const supplemental = caseDocument.metadata.supplemental_inputs as Record<
+    string,
+    Record<string, unknown>
+  >;
+  supplemental.raw!.status = "reviewed";
+  supplemental.raw!.case_ids = [];
+  supplemental.raw!.notes = ["Review the frozen raw snapshot."];
+  await writeFile(
+    reconstruction.path,
+    serializeWorkSpec(caseDocument),
+    "utf8",
+  );
+  const blocked = await inspectProjectReconstruction(
+    target,
+    reconstruction.id,
+  );
+  assert.ok(blocked.issues.some((issue) =>
+    /supplemental_inputs\.raw\.case_ids/.test(issue)
+  ));
+  assert.ok(blocked.issues.some((issue) =>
+    /raw\/idea\.md: frozen raw input remains unseen/.test(issue)
+  ));
+
+  const intake = await beginIntakeCase({
+    target,
+    slug: "raw-convergence",
+    title: "Review frozen raw idea",
+    paths: ["raw/idea.md"],
+    baseline: String(supplemental.raw!.baseline),
+    distributionRoot,
+    now: new Date("2026-07-28T12:40:00.000Z"),
+  });
+  await markIntakeSource({
+    target,
+    id: intake.id,
+    path: "raw/idea.md",
+    status: "no-relevant-claims",
+    note: "Read completely; the unsupported historical idea is not current truth.",
+    now: new Date("2026-07-28T12:45:00.000Z"),
+  });
+  const intakeDocument = parseWorkSpec(await readFile(intake.path, "utf8"));
+  intakeDocument.metadata.promotion = {
+    status: "not-needed",
+    concepts: [],
+    reason: "No independently authoritative claim was found.",
+    validation: "not-needed",
+  };
+  intakeDocument.metadata.omission_audit = {
+    result: "passed",
+    notes: ["The only frozen source was read completely."],
+  };
+  await writeFile(intake.path, serializeWorkSpec(intakeDocument), "utf8");
+  await closeIntakeCase({
+    target,
+    id: intake.id,
+    outcome: "completed",
+    now: new Date("2026-07-28T12:50:00.000Z"),
+  });
+
+  supplemental.raw!.case_ids = [intake.id];
+  await writeFile(
+    reconstruction.path,
+    serializeWorkSpec(caseDocument),
+    "utf8",
+  );
+  const converged = await inspectProjectReconstruction(
+    target,
+    reconstruction.id,
+  );
+  assert.equal(
+    converged.issues.some((issue) =>
+      /frozen raw input remains|raw-intake case|final raw review/.test(issue)
+    ),
+    false,
+  );
+});
+
 test("reconstructs a source-first baseline without raw input or durable checkout paths", async () => {
   const target = await initializedKnowledgeRepository("wfctl-reconstruction-");
   const leaf = await initializedLeafRepository(
@@ -205,12 +312,19 @@ test("reconstructs a source-first baseline without raw input or durable checkout
   const initial = await inspectProjectReconstruction(target, started.id);
   assert.ok(initial.issues.some((issue) => /dossier status must be reviewed/.test(issue)));
   assert.ok(initial.issues.some((issue) => /baseline reconstruction requires/.test(issue)));
+  assert.ok(initial.issues.some((issue) => /file coverage is pending/.test(issue)));
 
   const repository = started.repositories[0]!;
   const caseDocument = parseWorkSpec(caseText);
+  const rawBaseline = (
+    (
+      caseDocument.metadata.supplemental_inputs as Record<string, unknown>
+    ).raw as Record<string, unknown>
+  ).baseline;
   caseDocument.metadata.supplemental_inputs = {
     raw: {
       status: "not-available",
+      baseline: rawBaseline,
       candidate_ids: [],
       notes: ["No raw material exists; source-first reconstruction remains complete."],
     },
@@ -335,6 +449,54 @@ The capability is implemented and tested at the pinned revision.
     "farewell-capability",
   ];
   await writeFile(repository.dossier, serializeWorkSpec(dossierDocument), "utf8");
+
+  await markReconstructionFiles({
+    target,
+    id: started.id,
+    paths: ["**"],
+    category: "other",
+    status: "irrelevant",
+    reason: "Fixture support files are outside the reconstructed greeting behavior.",
+  });
+  const sourceRead = await readReconstructionSource({
+    target,
+    id: started.id,
+    path: "src/main.ts",
+    actor: "workflow-agent/test",
+    now: new Date("2026-07-28T13:30:00.000Z"),
+  });
+  assert.equal(sourceRead.complete, true);
+  await markReconstructionFiles({
+    target,
+    id: started.id,
+    paths: ["src/main.ts"],
+    category: "source",
+  });
+  await markReconstructionCommunity({
+    target,
+    id: started.id,
+    community: "1",
+    status: "inspected",
+    note: "Mapped the greeting implementation and its public entrypoint.",
+    queries: ["Trace the greeting entrypoint and implementation."],
+  });
+  await recordReconstructionSurface({
+    target,
+    id: started.id,
+    surface: "greeting-entrypoint",
+    kind: "entrypoint",
+    description: "Exported greeting function.",
+    paths: ["src/main.ts"],
+    status: "inspected",
+    note: "Read the complete pinned source file.",
+    candidateIds: ["greeting-capability"],
+  });
+  await reviewReconstructionSurfaces({
+    target,
+    id: started.id,
+    status: "reviewed",
+    note: "All fixture entrypoints and runtime surfaces were reconciled.",
+  });
 
   const capabilityDirectory = join(target, "knowledge/areas/core/capabilities");
   await mkdir(capabilityDirectory, { recursive: true });
@@ -1032,7 +1194,7 @@ function graphifyFixtureRunner(
   mkdirSync(graphDirectory, { recursive: true });
   writeFileSync(
     join(graphDirectory, "graph.json"),
-    '{"nodes":[{"id":"greet","label":"greet"}],"links":[]}\n',
+    '{"nodes":[{"id":"greet","label":"greet","source_file":"src/main.ts","community":1,"community_name":"Greeting"}],"links":[]}\n',
     "utf8",
   );
   return { status: 0, stdout: "updated", stderr: "" };

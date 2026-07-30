@@ -152,16 +152,18 @@ The agent-facing rules enforce the same gates.
 ## Agent-operated knowledge reference
 
 For an existing project, build the baseline from source repositories first.
-The command requires initialized clean leaves that point to this knowledge
-root. It updates Graphify in each exact checkout, records only durable
-repository/worktree identity in the case, and keeps absolute paths in ignored
-runtime state:
+The command requires an initial committed knowledge snapshot plus initialized
+clean leaves that point to this knowledge root. It updates Graphify in each
+exact checkout, freezes the complete pinned Git tree and every Graphify
+community, records only durable repository/worktree identity in the case, and
+keeps absolute paths in ignored runtime state:
 
 ```sh
 wfctl knowledge reconstruct start project-baseline \
   --title "Reconstruct the current project baseline" \
   --mode baseline
 
+wfctl knowledge reconstruct coverage <case-id>
 wfctl knowledge reconstruct check <case-id>
 wfctl knowledge reconstruct close <case-id> --outcome completed
 ```
@@ -173,12 +175,16 @@ project terms when several candidates are valid. The agent executes the
 corresponding `sources` commands itself. Baseline reconstruction includes
 every registered repository and fails when any repository has no available
 selected worktree. An explicit repeated `--leaf` scope may use known alternative
-worktrees without changing the saved selection. The agent completes one
-dossier per selected repository, then reconciles partial observations into whole-project
+worktrees without changing the saved selection. The agent accounts for every
+tracked file (including Graphify-unindexed formats), dispositions every
+Graphify community and runtime surface, and records gap-free pinned line
+receipts for inspected source and tests. It completes one dossier per selected
+repository, then reconciles partial observations into whole-project
 capabilities, flows, and contracts. Repository names, roles, and count are
 never predefined. It reviews Git history, optional documentation, changes, and
 raw-intake candidates, and separates accepted intent from observed delivery
-and alignment. Completed
+and alignment. The gate guarantees explicit accounting rather than perfect
+semantic understanding. Completed
 baseline reconstruction requires validated promotion and explicit maintainer
 review. It never edits leaf source.
 

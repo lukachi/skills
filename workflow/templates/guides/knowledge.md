@@ -55,10 +55,15 @@ case files, retrieval, and validation.
    names, roles, and count are project-defined; the workflow has no built-in
    frontend/backend/client/API topology.
 4. The CLI refreshes Graphify, pins each commit and worktree identity, writes
-   repository dossiers, and keeps absolute paths only in ignored local state.
-5. The agent traces purpose, Areas/capabilities, entrypoints, boundaries,
-   contracts, flows, invariants, failures, tests, and Git evolution through
-   Graphify followed by direct source inspection.
+   repository dossiers, freezes every tracked Git entry and Graphify
+   community into a coverage ledger, and keeps absolute paths only in ignored
+   local state.
+5. The agent accounts for every tracked file, including formats Graphify does
+   not understand. It traces purpose, Areas/capabilities, entrypoints,
+   boundaries, contracts, flows, invariants, failures, tests, and Git evolution
+   through Graphify, then reads the pinned source and test bodies in bounded
+   ranges. Exact read receipts prevent a header or search snippet from being
+   reported as full inspection.
 6. Optional docs, change records, and bounded raw-intake candidates are
    reconciled as separate source lanes.
 7. Repository dossiers keep traceable partial observations. The parent case
@@ -72,9 +77,12 @@ case files, retrieval, and validation.
    knowledge, obtains your baseline review, then closes the reconstruction.
 
 The agent's reconstruction gate fails on worktree or commit drift, dirty
-source, incomplete dossiers, unresolved claims, weak promotion, missing
-coverage audits, or absent maintainer approval. It reports the actual issue,
-not the underlying command for you to operate.
+source, an unaccounted file or Graphify community, unexplained runtime
+surfaces, incomplete source reads or dossiers, unresolved raw input or claims,
+weak promotion, missing coverage audits, or absent maintainer approval. This
+guarantees explicit accounting, not infallible understanding; your baseline
+review remains required. The agent reports the actual issue, not the
+underlying command for you to operate.
 
 ### Continuous raw intake
 

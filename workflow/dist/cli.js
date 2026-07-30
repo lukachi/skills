@@ -6913,10 +6913,10 @@ async function collectFiles(root) {
   const result = [];
   await visit3(root, "");
   return result.sort();
-  async function visit3(current, relative4) {
+  async function visit3(current, relative5) {
     const entries = await readdir(current, { withFileTypes: true });
     for (const entry of entries) {
-      const childRelative = relative4 ? join(relative4, entry.name) : entry.name;
+      const childRelative = relative5 ? join(relative5, entry.name) : entry.name;
       const child = join(current, entry.name);
       if (entry.isDirectory()) {
         await visit3(child, childRelative);
@@ -9932,10 +9932,10 @@ function resolveAll(constructs2, events, context) {
   const called = [];
   let index2 = -1;
   while (++index2 < constructs2.length) {
-    const resolve15 = constructs2[index2].resolveAll;
-    if (resolve15 && !called.includes(resolve15)) {
-      events = resolve15(events, context);
-      called.push(resolve15);
+    const resolve16 = constructs2[index2].resolveAll;
+    if (resolve16 && !called.includes(resolve16)) {
+      events = resolve16(events, context);
+      called.push(resolve16);
     }
   }
   return events;
@@ -15086,6 +15086,1644 @@ var init_knowledge_graph = __esm({
   }
 });
 
+// src/intake.ts
+import { spawnSync as spawnSync3 } from "node:child_process";
+import { constants as constants2 } from "node:fs";
+import {
+  access as access2,
+  mkdir as mkdir3,
+  readFile as readFile6,
+  readdir as readdir3,
+  rename as rename3,
+  rm as rm2,
+  writeFile as writeFile3
+} from "node:fs/promises";
+import { dirname as dirname4, join as join6, resolve as resolve7 } from "node:path";
+async function inventoryRaw(options) {
+  const target = await requireKnowledgeRepository2(options.target);
+  const baseline = resolveCommit(target, options.baseline ?? "HEAD");
+  const entries = readGitTree(target, baseline, ["raw"]);
+  const history = await readIntakeSourceHistory(target);
+  const byIdentity = /* @__PURE__ */ new Map();
+  const byPath = /* @__PURE__ */ new Map();
+  for (const source of history) {
+    const identity = `${source.path}\0${source.objectId}`;
+    byIdentity.set(identity, [...byIdentity.get(identity) ?? [], source]);
+    byPath.set(source.path, [...byPath.get(source.path) ?? [], source]);
+  }
+  return {
+    target,
+    baseline,
+    entries: entries.map((entry) => {
+      const exact = byIdentity.get(`${entry.path}\0${entry.objectId}`) ?? [];
+      return {
+        path: entry.path,
+        objectId: entry.objectId,
+        state: rawInventoryState(exact, byPath.get(entry.path) ?? []),
+        cases: exact.map(({ id, lifecycle, outcome, sourceStatus }) => ({
+          id,
+          lifecycle,
+          outcome,
+          sourceStatus
+        }))
+      };
+    }),
+    uncommitted: rawWorkingTreePaths(target)
+  };
+}
+async function beginIntakeCase(options) {
+  const target = await requireKnowledgeRepository2(options.target);
+  const pathspecs = normalizePathspecs(options.paths ?? ["raw"]);
+  assertScopeMatchesWorkingTree(target, options.baseline ?? "HEAD", pathspecs);
+  const baseline = resolveCommit(target, options.baseline ?? "HEAD");
+  const sources = readGitTree(target, baseline, pathspecs);
+  if (sources.length === 0) {
+    throw new Error(`Intake scope contains no Git-tracked files: ${pathspecs.join(", ")}`);
+  }
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug(options.slug)}`;
+  const activeRoot = join6(target, "intake/cases/active");
+  const id = await uniqueDirectoryId(activeRoot, base);
+  const directory = join6(activeRoot, id);
+  const path = join6(directory, "case.md");
+  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+  const template = await readFile6(
+    join6(
+      distributionRoot,
+      "skills/process-raw-intake/assets/intake-case.md"
+    ),
+    "utf8"
+  );
+  const document3 = parseCase(template);
+  const createdAt = now.toISOString();
+  document3.metadata = {
+    ...document3.metadata,
+    intake_case_version: INTAKE_CASE_VERSION,
+    id,
+    title: options.title,
+    status: "active",
+    created_at: createdAt,
+    updated_at: createdAt,
+    baseline: {
+      repository: readRepositoryMetadata(target).repository,
+      commit: baseline,
+      paths: pathspecs
+    },
+    sources: sources.map((source) => ({
+      path: source.path,
+      object_id: source.objectId,
+      object_type: source.objectType,
+      mode: source.mode,
+      status: "pending",
+      candidate_ids: [],
+      note: "",
+      reviewed_by: "",
+      reviewed_at: ""
+    }))
+  };
+  try {
+    await mkdir3(directory, { recursive: false });
+    await writeFile3(path, serializeCase(document3), { encoding: "utf8", flag: "wx" });
+  } catch (error2) {
+    await rm2(directory, { recursive: true, force: true });
+    throw error2;
+  }
+  return { id, path, baseline, files: sources.length };
+}
+async function markIntakeSource(options) {
+  const target = await requireKnowledgeRepository2(options.target);
+  if (!SOURCE_STATUSES.has(options.status) || options.status === "pending") {
+    throw new Error(
+      `Invalid final source status "${options.status}"; expected reviewed, no-relevant-claims, needs-maintainer, or unreadable`
+    );
+  }
+  const candidateIds = uniqueStrings(options.candidateIds ?? []);
+  if (options.status === "reviewed" && candidateIds.length === 0) {
+    throw new Error("reviewed status requires at least one --candidate <id>");
+  }
+  if (options.status !== "reviewed" && candidateIds.length > 0) {
+    throw new Error(`${options.status} status cannot record candidate IDs`);
+  }
+  if (!options.note.trim()) {
+    throw new Error(`${options.status} status requires --note <review result>`);
+  }
+  const casePath = intakeCasePath(target, "active", options.id);
+  const document3 = parseCase(await readFile6(casePath, "utf8"));
+  const sources = recordArray(document3.metadata.sources);
+  const matches = sources.filter((source2) => stringValue2(source2.path) === options.path);
+  if (matches.length !== 1) {
+    throw new Error(
+      matches.length === 0 ? `Intake source is outside the frozen case scope: ${options.path}` : `Intake source path is duplicated in the case: ${options.path}`
+    );
+  }
+  const source = matches[0];
+  source.status = options.status;
+  source.candidate_ids = candidateIds;
+  source.note = options.note.trim();
+  source.reviewed_by = options.reviewedBy?.trim() || "workflow-agent/1";
+  source.reviewed_at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+  document3.metadata.updated_at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+  await writeFile3(casePath, serializeCase(document3), "utf8");
+  return {
+    id: options.id,
+    path: options.path,
+    status: options.status,
+    candidateIds
+  };
+}
+async function inspectIntakeCase(targetInput, id) {
+  const target = await requireKnowledgeRepository2(targetInput);
+  const path = intakeCasePath(target, "active", id);
+  const document3 = parseCase(await readFile6(path, "utf8"));
+  const issues = caseMetadataIssues(document3.metadata);
+  const baseline = recordValue2(document3.metadata.baseline);
+  const commit = stringValue2(baseline?.commit);
+  const pathspecs = stringArray2(baseline?.paths);
+  const sources = recordArray(document3.metadata.sources);
+  if (commit && pathspecs.length > 0) {
+    try {
+      const expected = readGitTree(target, commit, normalizePathspecs(pathspecs));
+      issues.push(...compareTreeEntries(expected, sources));
+      try {
+        assertScopeMatchesWorkingTree(target, commit, pathspecs);
+      } catch (error2) {
+        issues.push(errorMessage(error2));
+      }
+    } catch (error2) {
+      issues.push(errorMessage(error2));
+    }
+  }
+  const candidateIds = new Set(
+    recordArray(document3.metadata.candidate_claims).map((candidate) => stringValue2(candidate.id)).filter(Boolean)
+  );
+  const referenced = /* @__PURE__ */ new Set();
+  for (const source of sources) {
+    for (const candidateId of stringArray2(source.candidate_ids)) {
+      referenced.add(candidateId);
+      if (!candidateIds.has(candidateId)) {
+        issues.push(`${stringValue2(source.path)} references undefined candidate ${candidateId}`);
+      }
+    }
+  }
+  for (const candidateId of candidateIds) {
+    if (!referenced.has(candidateId)) {
+      issues.push(`candidate ${candidateId} is not linked from any scoped source`);
+    }
+  }
+  const promotion = recordValue2(document3.metadata.promotion);
+  if (promotion?.status === "applied" && stringArray2(promotion.concepts).length > 0) {
+    const validation = await validateKnowledge(target, stringArray2(promotion.concepts));
+    issues.push(...validation.errors.map((issue2) => `${issue2.path}: ${issue2.message}`));
+  }
+  return {
+    id,
+    path,
+    ...commit ? { baseline: commit } : {},
+    files: sources.length,
+    reviewed: sources.filter(
+      (source) => source.status === "reviewed" || source.status === "no-relevant-claims"
+    ).length,
+    issues: [...new Set(issues)]
+  };
+}
+async function closeIntakeCase(options) {
+  const target = await requireKnowledgeRepository2(options.target);
+  const path = intakeCasePath(target, "active", options.id);
+  const directory = dirname4(path);
+  const document3 = parseCase(await readFile6(path, "utf8"));
+  if (options.outcome === "completed") {
+    const inspected = await inspectIntakeCase(target, options.id);
+    if (inspected.issues.length > 0) {
+      throw new Error(`Completed intake case is blocked: ${inspected.issues.join("; ")}`);
+    }
+  }
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const archivePath = join6(target, "intake/cases/archive", options.id);
+  await assertPathAbsent(archivePath, "intake case archive");
+  document3.metadata.status = options.outcome;
+  document3.metadata.outcome = options.outcome;
+  document3.metadata.closed_at = now.toISOString();
+  document3.metadata.updated_at = now.toISOString();
+  await mkdir3(dirname4(archivePath), { recursive: true });
+  await rename3(directory, archivePath);
+  try {
+    await writeFile3(join6(archivePath, "case.md"), serializeCase(document3), "utf8");
+  } catch (error2) {
+    await rename3(archivePath, directory);
+    throw error2;
+  }
+  return { id: options.id, outcome: options.outcome, archivePath };
+}
+function caseMetadataIssues(metadata) {
+  const issues = [];
+  const baseline = recordValue2(metadata.baseline);
+  const sources = recordArray(metadata.sources);
+  const candidates = recordArray(metadata.candidate_claims);
+  const promotion = recordValue2(metadata.promotion);
+  const omissionAudit = recordValue2(metadata.omission_audit);
+  if (metadata.intake_case_version !== INTAKE_CASE_VERSION) {
+    issues.push(`intake_case_version must be ${INTAKE_CASE_VERSION}`);
+  }
+  if (metadata.status !== "active") {
+    issues.push("status must remain active until wfctl archives the case");
+  }
+  if (!stringValue2(baseline?.repository)) {
+    issues.push("baseline.repository is required");
+  }
+  if (!/^[0-9a-f]{40,64}$/i.test(stringValue2(baseline?.commit))) {
+    issues.push("baseline.commit must be a full Git object ID");
+  }
+  if (stringArray2(baseline?.paths).length === 0) {
+    issues.push("baseline.paths must contain the bounded raw pathspecs");
+  }
+  if (sources.length === 0) {
+    issues.push("sources must contain every file from the frozen Git scope");
+  }
+  const seenPaths = /* @__PURE__ */ new Set();
+  for (const [index2, source] of sources.entries()) {
+    const prefix = `sources[${index2}]`;
+    const path = stringValue2(source.path);
+    const status = stringValue2(source.status);
+    const candidatesForSource = stringArray2(source.candidate_ids);
+    if (!path.startsWith("raw/")) {
+      issues.push(`${prefix}.path must be under raw/`);
+    } else if (seenPaths.has(path)) {
+      issues.push(`${prefix}.path is duplicated: ${path}`);
+    } else {
+      seenPaths.add(path);
+    }
+    if (!/^[0-9a-f]{40,64}$/i.test(stringValue2(source.object_id))) {
+      issues.push(`${prefix}.object_id must be a full Git object ID`);
+    }
+    if (!SOURCE_STATUSES.has(status)) {
+      issues.push(`${prefix}.status is unknown: ${status}`);
+    } else if (status === "pending") {
+      issues.push(`${path}: source review is pending`);
+    } else if (status === "needs-maintainer" || status === "unreadable") {
+      issues.push(`${path}: source review is blocked as ${status}`);
+    }
+    if (status === "reviewed" && candidatesForSource.length === 0) {
+      issues.push(`${path}: reviewed source requires candidate_ids`);
+    }
+    if (status !== "reviewed" && candidatesForSource.length > 0) {
+      issues.push(`${path}: only reviewed sources may reference candidate_ids`);
+    }
+    if (status !== "pending" && !stringValue2(source.note).trim()) {
+      issues.push(`${path}: final source status requires a review note`);
+    }
+    if (status !== "pending" && (!stringValue2(source.reviewed_by) || !isIsoDateTime(stringValue2(source.reviewed_at)))) {
+      issues.push(`${path}: final source status requires reviewer and ISO review time`);
+    }
+  }
+  const seenCandidates = /* @__PURE__ */ new Set();
+  const confirmedPromotions = /* @__PURE__ */ new Set();
+  for (const [index2, candidate] of candidates.entries()) {
+    const prefix = `candidate_claims[${index2}]`;
+    const id = stringValue2(candidate.id);
+    if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
+      issues.push(`${prefix}.id must be a stable lowercase identifier`);
+    } else if (seenCandidates.has(id)) {
+      issues.push(`${prefix}.id is duplicated: ${id}`);
+    } else {
+      seenCandidates.add(id);
+    }
+    if (!stringValue2(candidate.claim).trim()) {
+      issues.push(`${prefix}.claim is required`);
+    }
+    const authority = stringValue2(candidate.authority);
+    if (!CANDIDATE_AUTHORITIES.has(authority)) {
+      issues.push(`${prefix}.authority is unknown: ${authority}`);
+    }
+    const disposition = stringValue2(candidate.disposition);
+    if (!CANDIDATE_STATUSES.has(disposition)) {
+      issues.push(`${prefix}.disposition must be confirmed, rejected, or unresolved`);
+    } else if (disposition === "unresolved") {
+      issues.push(`${prefix}.disposition remains unresolved`);
+    }
+    if ((disposition === "rejected" || disposition === "unresolved") && !stringValue2(candidate.reason).trim()) {
+      issues.push(`${prefix}.reason must explain ${disposition || "the final disposition"}`);
+    }
+    const evidence = recordArray(candidate.evidence);
+    const evidenceKinds = /* @__PURE__ */ new Set();
+    for (const [evidenceIndex, item] of evidence.entries()) {
+      const itemPrefix = `${prefix}.evidence[${evidenceIndex}]`;
+      const kind = stringValue2(item.kind);
+      const resource = stringValue2(item.resource);
+      evidenceKinds.add(kind);
+      if (!["source-code", "runtime-check", "version-control", "external-primary"].includes(kind)) {
+        issues.push(`${itemPrefix}.kind is not an independent authority class`);
+      }
+      if (kind === "source-code" && !isPinnedCodeResource(resource)) {
+        issues.push(`${itemPrefix}.resource must pin repository, commit, and path`);
+      }
+      if (kind === "version-control" && !isVersionControlResource(resource)) {
+        issues.push(`${itemPrefix}.resource must pin Git history`);
+      }
+      if (kind === "external-primary" && !/^https?:\/\/\S+$/i.test(resource)) {
+        issues.push(`${itemPrefix}.resource must be an absolute primary-source URL`);
+      }
+      if (containsUntrustedResource(resource)) {
+        issues.push(`${itemPrefix}.resource must not cite raw or intake material`);
+      }
+    }
+    const normative = [
+      "intent",
+      "product-meaning",
+      "architecture-rationale",
+      "ownership",
+      "contract",
+      "operational-policy",
+      "decision"
+    ].includes(authority);
+    if (disposition === "confirmed" && normative) {
+      const decision = recordValue2(candidate.maintainer_decision);
+      if (decision?.status !== "approved" || !stringValue2(decision.by).startsWith("human:") || !isIsoDateTime(stringValue2(decision.at))) {
+        issues.push(`${prefix}.maintainer_decision must record explicit human approval`);
+      }
+    }
+    if (disposition === "confirmed" && authority === "implementation" && !evidenceKinds.has("source-code")) {
+      issues.push(`${prefix}: confirmed implementation requires pinned source-code evidence`);
+    }
+    if (disposition === "confirmed" && authority === "history" && !evidenceKinds.has("version-control")) {
+      issues.push(`${prefix}: confirmed history requires pinned version-control evidence`);
+    }
+    if (disposition === "confirmed" && authority === "external" && !evidenceKinds.has("external-primary")) {
+      issues.push(`${prefix}: confirmed external claims require a primary source`);
+    }
+    if (disposition === "confirmed" && !normative && evidence.length === 0) {
+      issues.push(`${prefix}.evidence is required for a confirmed factual claim`);
+    }
+    if (disposition === "confirmed") {
+      const promotedTo = stringArray2(candidate.promoted_to);
+      if (promotedTo.length === 0) {
+        issues.push(`${prefix}.promoted_to must identify every curated destination`);
+      }
+      for (const concept of promotedTo) {
+        if (!isConceptPath(concept)) {
+          issues.push(`${prefix}.promoted_to contains an invalid concept path: ${concept}`);
+        } else {
+          confirmedPromotions.add(concept);
+        }
+      }
+    }
+  }
+  const promotedConcepts = new Set(stringArray2(promotion?.concepts));
+  if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
+    issues.push("promotion.status must be applied or not-needed");
+  } else if (promotion.status === "applied" && stringArray2(promotion.concepts).length === 0) {
+    issues.push("promotion.concepts must list promoted concept files");
+  } else if (promotion.status === "applied" && stringArray2(promotion.concepts).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))) {
+    issues.push("promotion.concepts must list concept files, not index.md or log.md");
+  } else if (promotion.status === "not-needed" && !stringValue2(promotion.reason).trim()) {
+    issues.push("promotion.reason must explain why no concept was promoted");
+  }
+  if (promotion?.status === "applied" && promotion.validation !== "passed") {
+    issues.push("promotion.validation must be passed for applied promotion");
+  }
+  if (promotion?.status === "not-needed" && promotion.validation !== "not-needed") {
+    issues.push("promotion.validation must be not-needed when no concept was promoted");
+  }
+  if (promotion?.status === "not-needed" && candidates.some((candidate) => candidate.disposition === "confirmed")) {
+    issues.push("promotion cannot be not-needed while confirmed candidates exist");
+  }
+  if (promotion?.status === "applied") {
+    for (const concept of confirmedPromotions) {
+      if (!promotedConcepts.has(concept)) {
+        issues.push(`confirmed candidate destination is missing from promotion.concepts: ${concept}`);
+      }
+    }
+    for (const concept of promotedConcepts) {
+      if (!confirmedPromotions.has(concept)) {
+        issues.push(`promotion concept is not linked from a confirmed candidate: ${concept}`);
+      }
+    }
+  }
+  if (omissionAudit?.result !== "passed") {
+    issues.push("omission_audit.result must be passed");
+  }
+  if (!nonEmptyStringArray(omissionAudit?.notes)) {
+    issues.push("omission_audit.notes must record the explicit no-omission review");
+  }
+  return issues;
+}
+function compareTreeEntries(expected, declared) {
+  const issues = [];
+  const expectedByPath = new Map(expected.map((entry) => [entry.path, entry]));
+  const declaredByPath = new Map(
+    declared.map((entry) => [stringValue2(entry.path), entry])
+  );
+  for (const entry of expected) {
+    const source = declaredByPath.get(entry.path);
+    if (!source) {
+      issues.push(`frozen Git scope is missing source entry: ${entry.path}`);
+      continue;
+    }
+    if (source.object_id !== entry.objectId || source.object_type !== entry.objectType || source.mode !== entry.mode) {
+      issues.push(`frozen Git identity does not match baseline: ${entry.path}`);
+    }
+  }
+  for (const source of declared) {
+    const path = stringValue2(source.path);
+    if (!expectedByPath.has(path)) {
+      issues.push(`source is outside the frozen Git scope: ${path}`);
+    }
+  }
+  return issues;
+}
+async function readIntakeSourceHistory(target) {
+  const history = [];
+  for (const lifecycle of ["active", "archive"]) {
+    const root = join6(target, "intake/cases", lifecycle);
+    let entries;
+    try {
+      entries = await readdir3(root, { withFileTypes: true });
+    } catch (error2) {
+      if (isMissingFileError(error2)) {
+        continue;
+      }
+      throw error2;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const document3 = parseCase(
+        await readFile6(join6(root, entry.name, "case.md"), "utf8")
+      );
+      const outcome = stringValue2(document3.metadata.outcome) || stringValue2(document3.metadata.status);
+      for (const source of recordArray(document3.metadata.sources)) {
+        const path = stringValue2(source.path);
+        const objectId = stringValue2(source.object_id);
+        if (!path || !objectId) {
+          continue;
+        }
+        history.push({
+          id: entry.name,
+          lifecycle,
+          outcome,
+          sourceStatus: stringValue2(source.status),
+          path,
+          objectId
+        });
+      }
+    }
+  }
+  return history;
+}
+function rawInventoryState(exact, samePath) {
+  const completed = exact.filter(
+    (source) => source.lifecycle === "archive" && source.outcome === "completed"
+  );
+  if (completed.some((source) => source.sourceStatus === "reviewed")) {
+    return "reviewed";
+  }
+  if (completed.some((source) => source.sourceStatus === "no-relevant-claims")) {
+    return "no-relevant-claims";
+  }
+  if (exact.some((source) => source.lifecycle === "active")) {
+    return "active";
+  }
+  if (exact.some(
+    (source) => source.sourceStatus === "needs-maintainer" || source.sourceStatus === "unreadable"
+  )) {
+    return "blocked";
+  }
+  if (exact.length > 0) {
+    return "unresolved";
+  }
+  if (samePath.length > 0) {
+    return "changed";
+  }
+  return "unseen";
+}
+function rawWorkingTreePaths(target) {
+  const output = git2(target, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
+    "--",
+    "raw"
+  ]);
+  const records = output.split("\0");
+  const paths = [];
+  for (let index2 = 0; index2 < records.length; index2 += 1) {
+    const record2 = records[index2];
+    if (!record2) {
+      continue;
+    }
+    const status = record2.slice(0, 2);
+    const path = record2.slice(3);
+    if (path) {
+      paths.push(path);
+    }
+    if (status[0] === "R" || status[0] === "C") {
+      index2 += 1;
+    }
+  }
+  return uniqueStrings(paths).sort();
+}
+function readGitTree(target, commit, pathspecs) {
+  const output = git2(target, [
+    "ls-tree",
+    "-r",
+    "-z",
+    "--full-tree",
+    commit,
+    "--",
+    ...pathspecs
+  ]);
+  return output.split("\0").filter(Boolean).map((entry) => {
+    const separator = entry.indexOf("	");
+    if (separator < 0) {
+      throw new Error(`Cannot parse Git tree entry for intake scope: ${entry}`);
+    }
+    const [mode, objectType, objectId] = entry.slice(0, separator).split(" ");
+    const path = entry.slice(separator + 1);
+    if (!mode || !objectType || !objectId || !path) {
+      throw new Error(`Cannot parse Git tree entry for intake scope: ${entry}`);
+    }
+    return { mode, objectType, objectId, path };
+  }).sort((left, right) => left.path.localeCompare(right.path));
+}
+function assertScopeMatchesWorkingTree(target, baseline, pathspecs) {
+  const commit = resolveCommit(target, baseline);
+  const status = git2(target, [
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+    "--",
+    ...pathspecs
+  ]);
+  if (status) {
+    throw new Error(
+      "Selected raw scope has uncommitted changes; commit it before freezing an intake case"
+    );
+  }
+  const diff = spawnSync3(
+    "git",
+    ["-C", target, "diff", "--quiet", commit, "--", ...pathspecs],
+    { stdio: "ignore" }
+  );
+  if (diff.status === 1) {
+    throw new Error(
+      `Selected raw scope no longer matches baseline ${commit}; start from a matching revision`
+    );
+  }
+  if (diff.status !== 0) {
+    throw new Error("Git could not compare the selected raw scope with its baseline");
+  }
+}
+function resolveCommit(target, revision) {
+  const commit = git2(target, ["rev-parse", "--verify", `${revision}^{commit}`]);
+  if (!/^[0-9a-f]{40,64}$/i.test(commit)) {
+    throw new Error(`Git did not return a full commit ID for ${revision}`);
+  }
+  return commit;
+}
+function git2(target, args) {
+  const result = spawnSync3("git", ["-C", target, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 64 * 1024 * 1024
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `Git intake operation failed: ${result.stderr.trim() || args.join(" ")}`
+    );
+  }
+  return result.stdout.replace(/\n$/, "");
+}
+function normalizePathspecs(values) {
+  const normalized = uniqueStrings(values.map(
+    (value) => value.trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "")
+  ));
+  if (normalized.length === 0) {
+    throw new Error("At least one raw path is required");
+  }
+  for (const value of normalized) {
+    if (value !== "raw" && !value.startsWith("raw/") || value.startsWith("/") || value.split("/").includes("..")) {
+      throw new Error(`Intake paths must remain under raw/: ${value}`);
+    }
+  }
+  return normalized.sort();
+}
+async function requireKnowledgeRepository2(targetInput) {
+  const target = resolve7(targetInput);
+  const config = await readConfig(target);
+  if (config.profile !== "knowledge") {
+    throw new Error(`Knowledge command requires a knowledge repository: ${target}`);
+  }
+  return target;
+}
+function parseCase(content3) {
+  const lines = content3.split(/\r?\n/);
+  if (lines[0] !== "---") {
+    throw new Error("Intake case must start with YAML frontmatter");
+  }
+  const end = lines.indexOf("---", 1);
+  if (end < 0) {
+    throw new Error("Intake case frontmatter is not closed");
+  }
+  try {
+    const metadata = parse(lines.slice(1, end).join("\n"));
+    if (!isRecord2(metadata)) {
+      throw new Error("Intake case frontmatter must be a mapping");
+    }
+    return { metadata, body: lines.slice(end + 1).join("\n") };
+  } catch (error2) {
+    throw new Error(`Invalid intake case frontmatter: ${errorMessage(error2)}`);
+  }
+}
+function serializeCase(document3) {
+  return `---
+${stringify3(document3.metadata, { lineWidth: 0 }).trimEnd()}
+---
+
+${document3.body.trimStart()}`;
+}
+function intakeCasePath(target, state, id) {
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
+    throw new Error(`Invalid intake case id: ${id}`);
+  }
+  return join6(target, "intake/cases", state, id, "case.md");
+}
+async function uniqueDirectoryId(root, base) {
+  for (let index2 = 1; index2 < 1e3; index2 += 1) {
+    const candidate = index2 === 1 ? base : `${base}-${index2}`;
+    try {
+      await access2(join6(root, candidate), constants2.F_OK);
+    } catch (error2) {
+      if (isMissingFileError(error2)) {
+        return candidate;
+      }
+      throw error2;
+    }
+  }
+  throw new Error(`Cannot allocate a unique intake case id for ${base}`);
+}
+async function assertPathAbsent(path, label) {
+  try {
+    await access2(path, constants2.F_OK);
+    throw new Error(`${label} already exists: ${path}`);
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return;
+    }
+    throw error2;
+  }
+}
+function normalizeSlug(value) {
+  const slug = value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!slug) {
+    throw new Error("Intake case slug must contain ASCII letters or digits");
+  }
+  return slug.slice(0, 64);
+}
+function recordArray(value) {
+  return Array.isArray(value) ? value.filter(isRecord2) : [];
+}
+function recordValue2(value) {
+  return isRecord2(value) ? value : void 0;
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function stringValue2(value) {
+  return typeof value === "string" ? value : "";
+}
+function stringArray2(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+}
+function uniqueStrings(values) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+function nonEmptyStringArray(value) {
+  return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
+}
+function isConceptPath(value) {
+  return /^knowledge\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(value) && !/(?:^|\/)(?:index|log)\.md$/i.test(value);
+}
+function containsUntrustedResource(value) {
+  return /(?:^|[/:])(?:raw|intake)(?:[/:]|$)/i.test(value);
+}
+function isPinnedCodeResource(value) {
+  return /^git:.+@[0-9a-f]{40}#[^#\s]+$/i.test(value);
+}
+function isVersionControlResource(value) {
+  return /^git:.+@[0-9a-f]{40}(?:#[^#\s]+)?$/i.test(value) || /^https?:\/\/\S+\/(?:pull|merge_requests|commit|commits)\/\S+$/i.test(value);
+}
+function isIsoDateTime(value) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
+}
+var INTAKE_CASE_VERSION, SOURCE_STATUSES, CANDIDATE_STATUSES, CANDIDATE_AUTHORITIES;
+var init_intake = __esm({
+  "src/intake.ts"() {
+    "use strict";
+    init_browser();
+    init_assets();
+    init_config();
+    init_git();
+    init_knowledge();
+    INTAKE_CASE_VERSION = 3;
+    SOURCE_STATUSES = /* @__PURE__ */ new Set([
+      "pending",
+      "reviewed",
+      "no-relevant-claims",
+      "needs-maintainer",
+      "unreadable"
+    ]);
+    CANDIDATE_STATUSES = /* @__PURE__ */ new Set([
+      "confirmed",
+      "rejected",
+      "unresolved"
+    ]);
+    CANDIDATE_AUTHORITIES = /* @__PURE__ */ new Set([
+      "intent",
+      "product-meaning",
+      "implementation",
+      "architecture-rationale",
+      "ownership",
+      "contract",
+      "operational-policy",
+      "decision",
+      "history",
+      "external"
+    ]);
+  }
+});
+
+// src/reconstruction-coverage.ts
+import { createHash as createHash3 } from "node:crypto";
+import { spawnSync as spawnSync4 } from "node:child_process";
+import { readFile as readFile7, rename as rename4, writeFile as writeFile4 } from "node:fs/promises";
+import { isAbsolute as isAbsolute2, relative as relative3, resolve as resolve8 } from "node:path";
+async function createReconstructionCoverage(root, repository, commit, graphPath, now) {
+  const tree = readGitTree2(root, commit);
+  if (tree.length === 0) {
+    throw new Error(`${repository}: pinned Git tree contains no tracked entries`);
+  }
+  const graph = await readGraphSnapshot(root, graphPath, tree, commit);
+  const files = tree.map((entry) => {
+    const communities = graph.indexedFiles.get(entry.path) ?? [];
+    return {
+      path: entry.path,
+      mode: entry.mode,
+      objectType: entry.objectType,
+      objectId: entry.objectId,
+      size: entry.size,
+      category: classifyFile(entry),
+      graph: {
+        indexed: communities.length > 0,
+        communities
+      },
+      status: "pending",
+      reason: "",
+      receipts: []
+    };
+  });
+  return {
+    coverageVersion: RECONSTRUCTION_COVERAGE_VERSION,
+    repository,
+    commit,
+    generatedAt: now.toISOString(),
+    manifest: {
+      contentHash: treeContentHash(tree),
+      files
+    },
+    graphify: {
+      contentHash: graph.contentHash,
+      nodes: graph.nodes,
+      untrackedSources: graph.untrackedSources,
+      communities: graph.communities.map((community) => ({
+        ...community,
+        status: "pending",
+        note: "",
+        queries: []
+      }))
+    },
+    surfaceAudit: {
+      status: "pending",
+      note: ""
+    },
+    surfaces: []
+  };
+}
+async function readReconstructionCoverage(path) {
+  return parseCoverage(await readFile7(path, "utf8"));
+}
+async function writeReconstructionCoverage(path, ledger) {
+  const temporary = `${path}.tmp`;
+  await writeFile4(temporary, `${JSON.stringify(ledger, null, 2)}
+`, "utf8");
+  await rename4(temporary, path);
+}
+async function validateReconstructionCoverage(ledger, root, repository, commit, graphPath) {
+  const issues = validateReconstructionCoverageReceipt(
+    ledger,
+    repository,
+    commit
+  );
+  const expectedTree = readGitTree2(root, commit);
+  const expectedGraph = await readGraphSnapshot(
+    root,
+    graphPath,
+    expectedTree,
+    commit
+  );
+  if (ledger.manifest.contentHash !== treeContentHash(expectedTree)) {
+    issues.push("coverage Git manifest hash does not match the pinned tree");
+  }
+  if (ledger.graphify.contentHash !== expectedGraph.contentHash) {
+    issues.push("coverage Graphify hash does not match the bound graph");
+  }
+  if (ledger.graphify.nodes !== expectedGraph.nodes) {
+    issues.push("coverage Graphify node count does not match the bound graph");
+  }
+  if (JSON.stringify([...ledger.graphify.untrackedSources].sort()) !== JSON.stringify(expectedGraph.untrackedSources)) {
+    issues.push("coverage Graphify-only source list does not match the bound graph");
+  }
+  if (ledger.graphify.untrackedSources.length > 0) {
+    issues.push(
+      `Graphify contains ${ledger.graphify.untrackedSources.length} source path(s) outside the pinned Git tree`
+    );
+  }
+  issues.push(...validateFiles(ledger, expectedTree, expectedGraph));
+  issues.push(...validateCommunities(ledger, expectedGraph));
+  issues.push(...validateSurfaces(ledger));
+  return [...new Set(issues)];
+}
+function validateReconstructionCoverageReceipt(ledger, repository, commit) {
+  const issues = [];
+  if (ledger.coverageVersion !== RECONSTRUCTION_COVERAGE_VERSION) {
+    issues.push(`coverageVersion must be ${RECONSTRUCTION_COVERAGE_VERSION}`);
+  }
+  if (ledger.repository !== repository || ledger.commit !== commit) {
+    issues.push("coverage repository or commit does not match the reconstruction");
+  }
+  if (!isIsoDateTime2(ledger.generatedAt)) {
+    issues.push("coverage generatedAt must be an ISO date-time");
+  }
+  if (!/^[0-9a-f]{64}$/i.test(ledger.manifest.contentHash)) {
+    issues.push("coverage Git manifest content hash is invalid");
+  }
+  const receiptTree = ledger.manifest.files.map((file) => ({
+    mode: file.mode,
+    objectType: file.objectType,
+    objectId: file.objectId,
+    size: file.size,
+    path: file.path
+  })).sort((left, right) => left.path.localeCompare(right.path));
+  if (treeContentHash(receiptTree) !== ledger.manifest.contentHash) {
+    issues.push("coverage Git manifest receipt hash is invalid");
+  }
+  if (!/^[0-9a-f]{64}$/i.test(ledger.graphify.contentHash) || !Number.isInteger(ledger.graphify.nodes) || ledger.graphify.nodes < 1) {
+    issues.push("coverage Graphify receipt must pin a non-empty graph");
+  }
+  if (ledger.graphify.untrackedSources.length > 0) {
+    issues.push(
+      `Graphify contains ${ledger.graphify.untrackedSources.length} source path(s) outside the pinned Git tree`
+    );
+  }
+  const seenFiles = /* @__PURE__ */ new Set();
+  for (const file of ledger.manifest.files) {
+    if (!file.path || seenFiles.has(file.path)) {
+      issues.push(`coverage manifest has a missing or duplicated path: ${file.path}`);
+    }
+    seenFiles.add(file.path);
+    if (!/^[0-9a-f]{40,64}$/i.test(file.objectId)) {
+      issues.push(`${file.path}: pinned Git object ID is invalid`);
+    }
+    if (!FILE_CATEGORIES.includes(file.category)) {
+      issues.push(`${file.path}: unknown file category ${String(file.category)}`);
+    } else if (file.category === "unclassified") {
+      issues.push(`${file.path}: file category remains unclassified`);
+    }
+    if (!COVERAGE_STATES.includes(file.status)) {
+      issues.push(`${file.path}: unknown coverage status ${String(file.status)}`);
+      continue;
+    }
+    if (file.status === "pending") {
+      issues.push(`${file.path}: file coverage is pending`);
+    } else if (file.status === "blocked") {
+      issues.push(`${file.path}: file coverage is blocked`);
+    }
+    if (["structural-only", "irrelevant", "blocked"].includes(file.status) && !file.reason.trim()) {
+      issues.push(`${file.path}: ${file.status} status requires a reason`);
+    }
+    if (file.status === "structural-only" && FINAL_TEXT_CATEGORIES.has(file.category)) {
+      issues.push(`${file.path}: ${file.category} cannot finish as structural-only`);
+    }
+    if (file.status === "inspected") {
+      if (file.receipts.some(
+        (receipt) => receipt.objectId !== file.objectId || !Number.isInteger(receipt.totalLines) || receipt.totalLines < 0 || !Number.isInteger(receipt.startLine) || !Number.isInteger(receipt.endLine) || (receipt.totalLines === 0 ? receipt.startLine !== 0 || receipt.endLine !== 0 : receipt.startLine < 1 || receipt.endLine < receipt.startLine || receipt.endLine > receipt.totalLines) || !isIsoDateTime2(receipt.readAt) || !receipt.actor.trim()
+      )) {
+        issues.push(`${file.path}: read receipt identity or metadata is invalid`);
+      }
+      if (!receiptsCoverFile(file.receipts)) {
+        issues.push(`${file.path}: inspected file lacks gap-free full-read receipts`);
+      }
+    }
+  }
+  const seenCommunities = /* @__PURE__ */ new Set();
+  for (const community of ledger.graphify.communities) {
+    if (!community.id || seenCommunities.has(community.id)) {
+      issues.push(`Graphify community has a missing or duplicated ID: ${community.id}`);
+    }
+    seenCommunities.add(community.id);
+    if (!COVERAGE_STATES.includes(community.status)) {
+      issues.push(`Graphify community ${community.id} has an unknown status`);
+    } else if (community.status === "pending") {
+      issues.push(`Graphify community ${community.id} coverage is pending`);
+    } else if (community.status === "blocked") {
+      issues.push(`Graphify community ${community.id} coverage is blocked`);
+    }
+    if (community.status !== "pending" && !community.note.trim()) {
+      issues.push(`Graphify community ${community.id} requires a review note`);
+    }
+    if (community.status === "inspected" && community.queries.length === 0) {
+      issues.push(`Graphify community ${community.id} requires a recorded query`);
+    }
+    for (const path of community.files) {
+      if (!seenFiles.has(path)) {
+        issues.push(`Graphify community ${community.id} references unknown file: ${path}`);
+      }
+    }
+  }
+  issues.push(...validateSurfaces(ledger));
+  return [...new Set(issues)];
+}
+function summarizeReconstructionCoverage(ledger) {
+  const fileStates = countValues(COVERAGE_STATES, ledger.manifest.files, "status");
+  const categories = countValues(FILE_CATEGORIES, ledger.manifest.files, "category");
+  const communityStates = countValues(
+    COVERAGE_STATES,
+    ledger.graphify.communities,
+    "status"
+  );
+  const surfaceStates = countValues(COVERAGE_STATES, ledger.surfaces, "status");
+  const graphIndexedFiles = ledger.manifest.files.filter(
+    (file) => file.graph.indexed
+  ).length;
+  return {
+    repository: ledger.repository,
+    commit: ledger.commit,
+    files: ledger.manifest.files.length,
+    fileStates,
+    categories,
+    graphIndexedFiles,
+    graphUnindexedFiles: ledger.manifest.files.length - graphIndexedFiles,
+    communities: ledger.graphify.communities.length,
+    communityStates,
+    untrackedGraphSources: ledger.graphify.untrackedSources.length,
+    surfaces: ledger.surfaces.length,
+    surfaceStates,
+    surfaceAudit: ledger.surfaceAudit.status,
+    outstandingFiles: ledger.manifest.files.filter(
+      (file) => file.category === "unclassified" || file.status === "pending" || file.status === "blocked"
+    ).map((file) => ({
+      path: file.path,
+      category: file.category,
+      status: file.status,
+      graphIndexed: file.graph.indexed,
+      readRanges: file.receipts.map(
+        (receipt) => `${receipt.startLine}-${receipt.endLine}`
+      ),
+      totalLines: file.receipts[0]?.totalLines ?? null
+    })),
+    outstandingCommunities: ledger.graphify.communities.filter(
+      (community) => community.status === "pending" || community.status === "blocked"
+    ).map((community) => ({
+      id: community.id,
+      name: community.name,
+      status: community.status
+    })),
+    outstandingSurfaces: ledger.surfaces.filter(
+      (surface) => surface.status === "pending" || surface.status === "blocked"
+    ).map((surface) => ({
+      id: surface.id,
+      kind: surface.kind,
+      status: surface.status
+    })),
+    untrackedGraphSourcePaths: [...ledger.graphify.untrackedSources]
+  };
+}
+function markCoverageFiles(ledger, patterns, mutation) {
+  if (patterns.length === 0) {
+    throw new Error("At least one file pattern is required");
+  }
+  if (mutation.category === void 0 && mutation.status === void 0) {
+    throw new Error("File marking requires a category or status");
+  }
+  const matchers = patterns.map(filePatternMatcher);
+  const matches = ledger.manifest.files.filter(
+    (file) => matchers.some((matcher) => matcher(file.path))
+  );
+  if (matches.length === 0) {
+    throw new Error(`No manifest files match: ${patterns.join(", ")}`);
+  }
+  const reason = mutation.reason?.trim() ?? "";
+  if (mutation.status !== void 0 && ["structural-only", "irrelevant", "blocked"].includes(mutation.status) && !reason) {
+    throw new Error(`${mutation.status} file status requires --reason`);
+  }
+  for (const file of matches) {
+    if (mutation.category !== void 0) {
+      file.category = mutation.category;
+    }
+    if (mutation.status !== void 0) {
+      if (mutation.status === "inspected" && !receiptsCoverFile(file.receipts)) {
+        throw new Error(
+          `${file.path}: inspected status requires complete wfctl read receipts`
+        );
+      }
+      file.status = mutation.status;
+      file.reason = mutation.status === "inspected" || mutation.status === "pending" ? "" : reason;
+    }
+  }
+  return matches.length;
+}
+function markCoverageCommunity(ledger, communityId, status, note, queries) {
+  const community = ledger.graphify.communities.find(
+    (entry) => entry.id === communityId
+  );
+  if (!community) {
+    throw new Error(`Unknown Graphify community: ${communityId}`);
+  }
+  if (status === "pending") {
+    throw new Error("Community status must be final or blocked");
+  }
+  if (!note.trim()) {
+    throw new Error(`${status} community status requires --note`);
+  }
+  const normalizedQueries = uniqueStrings2(queries.map((query) => query.trim()));
+  if (status === "inspected" && normalizedQueries.length === 0) {
+    throw new Error("Inspected community requires at least one --query");
+  }
+  community.status = status;
+  community.note = note.trim();
+  community.queries = normalizedQueries;
+}
+function recordCoverageSurface(ledger, input) {
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(input.id)) {
+    throw new Error("Surface ID must be a stable lowercase identifier");
+  }
+  if (input.status === "pending") {
+    throw new Error("Surface status must be final or blocked");
+  }
+  if (!input.description.trim() || !input.note.trim()) {
+    throw new Error("Surface description and note are required");
+  }
+  const paths = uniqueStrings2(input.paths);
+  if (paths.length === 0) {
+    throw new Error("Surface must identify at least one manifest path");
+  }
+  const manifestPaths = new Set(ledger.manifest.files.map((file) => file.path));
+  for (const path of paths) {
+    if (!manifestPaths.has(path)) {
+      throw new Error(`Surface path is outside the pinned manifest: ${path}`);
+    }
+  }
+  const surface = {
+    id: input.id,
+    kind: input.kind,
+    description: input.description.trim(),
+    paths,
+    status: input.status,
+    note: input.note.trim(),
+    candidateIds: uniqueStrings2(input.candidateIds)
+  };
+  const index2 = ledger.surfaces.findIndex((entry) => entry.id === input.id);
+  if (index2 === -1) {
+    ledger.surfaces.push(surface);
+  } else {
+    ledger.surfaces[index2] = surface;
+  }
+  ledger.surfaces.sort((left, right) => left.id.localeCompare(right.id));
+}
+function markSurfaceAudit(ledger, status, note) {
+  if (!note.trim()) {
+    throw new Error(`${status} surface audit requires --note`);
+  }
+  ledger.surfaceAudit = { status, note: note.trim() };
+}
+function readPinnedSource(ledger, root, path, input = {}) {
+  const file = ledger.manifest.files.find((entry) => entry.path === path);
+  if (!file) {
+    throw new Error(`Source path is outside the pinned manifest: ${path}`);
+  }
+  if (file.objectType !== "blob") {
+    throw new Error(`Pinned entry is not a readable blob: ${path}`);
+  }
+  const content3 = readGitBlob(root, ledger.commit, path);
+  if (content3.includes("\0")) {
+    throw new Error(
+      `${path} appears binary; classify it explicitly instead of recording a text receipt`
+    );
+  }
+  const lines = splitLines2(content3);
+  const totalLines = lines.length;
+  const startLine = input.startLine ?? (totalLines === 0 ? 0 : 1);
+  const defaultEnd = totalLines === 0 ? 0 : Math.min(totalLines, Math.max(startLine, startLine + 199));
+  const endLine = input.endLine ?? defaultEnd;
+  if (totalLines === 0 ? startLine !== 0 || endLine !== 0 : !Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine || endLine > totalLines) {
+    throw new Error(
+      `${path}: requested line range ${startLine}-${endLine} is outside 1-${totalLines}`
+    );
+  }
+  if (totalLines > 0 && endLine - startLine + 1 > 400) {
+    throw new Error("A reconstruction read is limited to 400 lines; use bounded ranges");
+  }
+  const receipt = {
+    objectId: file.objectId,
+    startLine,
+    endLine,
+    totalLines,
+    actor: input.actor?.trim() || "workflow-agent/1",
+    readAt: (input.now ?? /* @__PURE__ */ new Date()).toISOString()
+  };
+  file.receipts = mergeReceipts([...file.receipts, receipt]);
+  if (receiptsCoverFile(file.receipts)) {
+    file.status = "inspected";
+    file.reason = "";
+  }
+  return {
+    repository: ledger.repository,
+    commit: ledger.commit,
+    path,
+    startLine,
+    endLine,
+    totalLines,
+    complete: receiptsCoverFile(file.receipts),
+    content: totalLines === 0 ? "" : lines.slice(startLine - 1, endLine).join("\n")
+  };
+}
+function evidencePathFromResource(resource, repository, commit, manifestPaths) {
+  const prefix = `git:${repository}@${commit}#`;
+  if (!resource.startsWith(prefix)) {
+    return void 0;
+  }
+  const fragment = resource.slice(prefix.length);
+  return [...manifestPaths].sort((left, right) => right.length - left.length).find((path) => fragment === path || fragment.startsWith(`${path}:`));
+}
+function validateFiles(ledger, expectedTree, expectedGraph) {
+  const issues = [];
+  const expectedByPath = new Map(expectedTree.map((entry) => [entry.path, entry]));
+  const declaredByPath = /* @__PURE__ */ new Map();
+  for (const file of ledger.manifest.files) {
+    if (declaredByPath.has(file.path)) {
+      issues.push(`coverage manifest duplicates file: ${file.path}`);
+    }
+    declaredByPath.set(file.path, file);
+  }
+  for (const entry of expectedTree) {
+    const file = declaredByPath.get(entry.path);
+    if (!file) {
+      issues.push(`coverage manifest is missing tracked file: ${entry.path}`);
+      continue;
+    }
+    const expectedCommunities = expectedGraph.indexedFiles.get(entry.path) ?? [];
+    if (file.mode !== entry.mode || file.objectType !== entry.objectType || file.objectId !== entry.objectId || file.size !== entry.size) {
+      issues.push(`${entry.path}: coverage Git identity does not match the pinned tree`);
+    }
+    if (file.graph.indexed !== expectedCommunities.length > 0 || JSON.stringify(file.graph.communities) !== JSON.stringify(expectedCommunities)) {
+      issues.push(`${entry.path}: Graphify coverage does not match the bound graph`);
+    }
+    if (!FILE_CATEGORIES.includes(file.category)) {
+      issues.push(`${entry.path}: unknown file category ${String(file.category)}`);
+    } else if (file.category === "unclassified") {
+      issues.push(`${entry.path}: file category remains unclassified`);
+    }
+    if (!COVERAGE_STATES.includes(file.status)) {
+      issues.push(`${entry.path}: unknown coverage status ${String(file.status)}`);
+      continue;
+    }
+    if (file.status === "pending") {
+      issues.push(`${entry.path}: file coverage is pending`);
+    }
+    if (file.status === "blocked") {
+      issues.push(`${entry.path}: file coverage is blocked`);
+    }
+    if (["structural-only", "irrelevant", "blocked"].includes(file.status) && !file.reason.trim()) {
+      issues.push(`${entry.path}: ${file.status} status requires a reason`);
+    }
+    if (file.status === "structural-only" && FINAL_TEXT_CATEGORIES.has(file.category)) {
+      issues.push(
+        `${entry.path}: ${file.category} cannot finish as structural-only`
+      );
+    }
+    if (file.status === "inspected") {
+      if (entry.objectType !== "blob") {
+        issues.push(`${entry.path}: non-blob entry cannot be text-inspected`);
+      }
+    }
+  }
+  for (const file of ledger.manifest.files) {
+    if (!expectedByPath.has(file.path)) {
+      issues.push(`coverage manifest contains a file outside the pinned tree: ${file.path}`);
+    }
+  }
+  return issues;
+}
+function validateCommunities(ledger, expectedGraph) {
+  const issues = [];
+  const expectedById = new Map(
+    expectedGraph.communities.map((community) => [community.id, community])
+  );
+  const declaredById = /* @__PURE__ */ new Map();
+  for (const community of ledger.graphify.communities) {
+    if (declaredById.has(community.id)) {
+      issues.push(`Graphify community is duplicated: ${community.id}`);
+    }
+    declaredById.set(community.id, community);
+  }
+  for (const expected of expectedGraph.communities) {
+    const community = declaredById.get(expected.id);
+    if (!community) {
+      issues.push(`Graphify community is missing from coverage: ${expected.id}`);
+      continue;
+    }
+    if (community.name !== expected.name || JSON.stringify(community.files) !== JSON.stringify(expected.files)) {
+      issues.push(`Graphify community ${expected.id} does not match the bound graph`);
+    }
+    if (!COVERAGE_STATES.includes(community.status)) {
+      issues.push(`Graphify community ${expected.id} has an unknown status`);
+    } else if (community.status === "pending") {
+      issues.push(`Graphify community ${expected.id} coverage is pending`);
+    } else if (community.status === "blocked") {
+      issues.push(`Graphify community ${expected.id} coverage is blocked`);
+    }
+    if (community.status !== "pending" && !community.note.trim()) {
+      issues.push(`Graphify community ${expected.id} requires a review note`);
+    }
+    if (community.status === "inspected" && community.queries.length === 0) {
+      issues.push(`Graphify community ${expected.id} requires a recorded query`);
+    }
+  }
+  for (const community of ledger.graphify.communities) {
+    if (!expectedById.has(community.id)) {
+      issues.push(`coverage contains an unknown Graphify community: ${community.id}`);
+    }
+  }
+  return issues;
+}
+function validateSurfaces(ledger) {
+  const issues = [];
+  if (!["reviewed", "not-relevant", "blocked"].includes(ledger.surfaceAudit.status)) {
+    issues.push("entrypoint/runtime surface audit is pending");
+  } else if (ledger.surfaceAudit.status === "blocked") {
+    issues.push("entrypoint/runtime surface audit is blocked");
+  }
+  if (ledger.surfaceAudit.status !== "pending" && !ledger.surfaceAudit.note.trim()) {
+    issues.push("entrypoint/runtime surface audit requires a note");
+  }
+  const manifestPaths = new Set(ledger.manifest.files.map((file) => file.path));
+  const seen = /* @__PURE__ */ new Set();
+  for (const surface of ledger.surfaces) {
+    if (seen.has(surface.id)) {
+      issues.push(`entrypoint/runtime surface is duplicated: ${surface.id}`);
+    }
+    seen.add(surface.id);
+    if (!SURFACE_KINDS.includes(surface.kind)) {
+      issues.push(`${surface.id}: unknown surface kind`);
+    }
+    if (!surface.description.trim() || !surface.note.trim()) {
+      issues.push(`${surface.id}: surface description and note are required`);
+    }
+    if (surface.paths.length === 0) {
+      issues.push(`${surface.id}: surface must identify manifest paths`);
+    }
+    for (const path of surface.paths) {
+      if (!manifestPaths.has(path)) {
+        issues.push(`${surface.id}: surface path is outside the manifest: ${path}`);
+      }
+    }
+    if (surface.status === "pending") {
+      issues.push(`${surface.id}: surface coverage is pending`);
+    } else if (surface.status === "blocked") {
+      issues.push(`${surface.id}: surface coverage is blocked`);
+    }
+  }
+  if (ledger.surfaceAudit.status === "not-relevant" && ledger.surfaces.length > 0) {
+    issues.push("surface audit cannot be not-relevant while surfaces are recorded");
+  }
+  return issues;
+}
+function parseCoverage(content3) {
+  const value = JSON.parse(content3);
+  if (value === null || typeof value !== "object" || value.coverageVersion !== RECONSTRUCTION_COVERAGE_VERSION || typeof value.repository !== "string" || typeof value.commit !== "string" || value.manifest === void 0 || !Array.isArray(value.manifest.files) || value.graphify === void 0 || !Array.isArray(value.graphify.communities) || value.surfaceAudit === void 0 || !Array.isArray(value.surfaces)) {
+    throw new Error("Invalid reconstruction coverage ledger");
+  }
+  return value;
+}
+function readGitTree2(root, commit) {
+  const output = gitBuffer(root, [
+    "ls-tree",
+    "-r",
+    "-z",
+    "--full-tree",
+    "-l",
+    commit
+  ]).toString("utf8");
+  const entries = [];
+  for (const record2 of output.split("\0")) {
+    if (!record2) {
+      continue;
+    }
+    const separator = record2.indexOf("	");
+    if (separator < 0) {
+      throw new Error(`Cannot parse Git tree entry: ${record2}`);
+    }
+    const header = record2.slice(0, separator).trim().split(/\s+/);
+    const mode = header[0];
+    const objectType = header[1];
+    const objectId = header[2];
+    const sizeText = header[3];
+    if (!mode || !objectType || !objectId || !sizeText) {
+      throw new Error(`Cannot parse Git tree entry: ${record2}`);
+    }
+    entries.push({
+      mode,
+      objectType,
+      objectId,
+      size: sizeText === "-" ? null : Number(sizeText),
+      path: record2.slice(separator + 1)
+    });
+  }
+  return entries.sort((left, right) => left.path.localeCompare(right.path));
+}
+async function readGraphSnapshot(root, graphPath, tree, commit) {
+  const content3 = await readFile7(graphPath);
+  const value = JSON.parse(content3.toString("utf8"));
+  if (!Array.isArray(value.nodes) || value.nodes.length === 0) {
+    throw new Error("Graphify graph contains no nodes");
+  }
+  if (typeof value.built_at_commit === "string" && value.built_at_commit && value.built_at_commit !== commit) {
+    throw new Error(
+      `Graphify graph pins ${value.built_at_commit}, expected ${commit}`
+    );
+  }
+  const treePaths = new Set(tree.map((entry) => entry.path));
+  const indexedFiles = /* @__PURE__ */ new Map();
+  const communityFiles = /* @__PURE__ */ new Map();
+  const communityNames = /* @__PURE__ */ new Map();
+  const untracked = /* @__PURE__ */ new Set();
+  for (const valueNode of value.nodes) {
+    if (!isRecord3(valueNode)) {
+      continue;
+    }
+    const communityId = valueNode.community === void 0 ? "unassigned" : String(valueNode.community);
+    const communityName = typeof valueNode.community_name === "string" && valueNode.community_name.trim() ? valueNode.community_name.trim() : communityId === "unassigned" ? "Unassigned" : `Community ${communityId}`;
+    if (!communityFiles.has(communityId)) {
+      communityFiles.set(communityId, /* @__PURE__ */ new Set());
+    }
+    if (!communityNames.has(communityId)) {
+      communityNames.set(communityId, communityName);
+    }
+    if (typeof valueNode.source_file !== "string") {
+      continue;
+    }
+    const path = normalizeGraphPath(root, valueNode.source_file);
+    if (!path) {
+      untracked.add(`external:${shortHash(valueNode.source_file)}`);
+      continue;
+    }
+    if (!treePaths.has(path)) {
+      untracked.add(path);
+      continue;
+    }
+    const fileCommunities = indexedFiles.get(path) ?? /* @__PURE__ */ new Set();
+    fileCommunities.add(communityId);
+    indexedFiles.set(path, fileCommunities);
+    const files = communityFiles.get(communityId);
+    files.add(path);
+  }
+  const normalizedIndexedFiles = /* @__PURE__ */ new Map();
+  for (const [path, communities2] of indexedFiles) {
+    normalizedIndexedFiles.set(path, [...communities2].sort(naturalCompare));
+  }
+  const communities = [...communityFiles].map(([id, files]) => ({
+    id,
+    name: communityNames.get(id) ?? `Community ${id}`,
+    files: [...files].sort()
+  })).sort((left, right) => naturalCompare(left.id, right.id));
+  return {
+    contentHash: createHash3("sha256").update(content3).digest("hex"),
+    nodes: value.nodes.length,
+    indexedFiles: normalizedIndexedFiles,
+    communities,
+    untrackedSources: [...untracked].sort()
+  };
+}
+function readGitBlob(root, commit, path) {
+  const content3 = gitBuffer(root, ["show", `${commit}:${path}`]);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(content3);
+  } catch {
+    throw new Error(`${path}: pinned blob is not valid UTF-8 text`);
+  }
+}
+function gitBuffer(root, args) {
+  const result = spawnSync4("git", ["-C", root, ...args], {
+    encoding: "buffer",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 256 * 1024 * 1024
+  });
+  if (result.status !== 0) {
+    const detail = result.stderr.toString("utf8").trim() || args.join(" ");
+    throw new Error(`Git coverage data unavailable: ${detail}`);
+  }
+  return result.stdout;
+}
+function treeContentHash(entries) {
+  const serialized = entries.map(
+    (entry) => `${entry.mode}\0${entry.objectType}\0${entry.objectId}\0${entry.size ?? "-"}\0${entry.path}\0`
+  ).join("");
+  return createHash3("sha256").update(serialized).digest("hex");
+}
+function classifyFile(entry) {
+  const path = entry.path.toLowerCase();
+  const name = path.split("/").at(-1) ?? path;
+  if (entry.objectType === "commit" || entry.mode === "160000") {
+    return "submodule";
+  }
+  if (/(^|\/)(?:node_modules|vendor|third[-_]party|external)\//.test(path)) {
+    return "vendor";
+  }
+  if (/(^|\/)(?:dist|build|coverage|target|generated|gen)(?:\/|$)/.test(path) || /(?:^|\/)(?:bun\.lockb?|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.ya?ml|yarn\.lock|cargo\.lock|composer\.lock|gemfile\.lock|poetry\.lock|uv\.lock|go\.sum)$/.test(path)) {
+    return "generated";
+  }
+  if (/(^|\/)(?:test|tests|spec|specs|__tests__|fixtures)(?:\/|$)/.test(path) || /\.(?:test|spec)\.[^.]+$/.test(path)) {
+    return "test";
+  }
+  if (/\.(?:proto|graphql|gql|avsc|wsdl|xsd|thrift)$/i.test(path) || /(?:^|\/)(?:openapi|asyncapi)(?:\.|\/)/.test(path)) {
+    return "contract";
+  }
+  if (/(^|\/)(?:data|content|catalogs?|registries|rules|assets\/data)(?:\/|$)/.test(path) && /\.(?:json|jsonc|ya?ml|toml|csv|tsv|xml)$/i.test(path)) {
+    return "product-data";
+  }
+  if (/\.(?:md|mdx|rst|adoc|txt)$/i.test(path)) {
+    return "documentation";
+  }
+  if (/\.(?:png|jpe?g|gif|webp|avif|ico|pdf|zip|gz|bz2|xz|7z|woff2?|ttf|otf|mp3|wav|ogg|mp4|mov|webm|wasm|bin)$/i.test(path)) {
+    return "binary-asset";
+  }
+  if (/\.(?:c|cc|cpp|cxx|h|hh|hpp|m|mm|swift|rs|go|java|kt|kts|scala|cs|fs|fsx|py|rb|php|lua|pl|pm|sh|bash|zsh|fish|ps1|js|jsx|mjs|cjs|ts|tsx|mts|cts|vue|svelte|astro|css|scss|sass|less|styl|html|htm|sql|r|dart|ex|exs|erl|hrl|clj|cljs|cljc|groovy|sol|zig)$/i.test(path)) {
+    return "source";
+  }
+  if (/\.(?:json|jsonc|ya?ml|toml|ini|cfg|conf|properties|env|xml)$/i.test(path) || /^\.(?:gitignore|gitattributes|gitmodules|dockerignore|graphifyignore|npmrc|editorconfig)$/.test(name) || /^(?:dockerfile|makefile|justfile|procfile|gemfile|rakefile)$/.test(name) || /(?:^|\/)(?:tsconfig|jsconfig|eslint|prettier|vite|webpack|rollup|babel|deno|biome|cargo|package)\.[^/]+$/.test(path)) {
+    return "configuration";
+  }
+  return "unclassified";
+}
+function filePatternMatcher(patternInput) {
+  const pattern = patternInput.replace(/^\.\//, "");
+  if (!pattern.trim()) {
+    throw new Error("File pattern must not be empty");
+  }
+  if (!/[*?]/.test(pattern)) {
+    const prefix = pattern.endsWith("/") ? pattern : `${pattern}/`;
+    return (path) => path === pattern || path.startsWith(prefix);
+  }
+  let expression = "^";
+  for (let index2 = 0; index2 < pattern.length; index2 += 1) {
+    const char = pattern[index2];
+    if (char === "*") {
+      if (pattern[index2 + 1] === "*") {
+        if (pattern[index2 + 2] === "/") {
+          expression += "(?:.*/)?";
+          index2 += 2;
+        } else {
+          expression += ".*";
+          index2 += 1;
+        }
+      } else {
+        expression += "[^/]*";
+      }
+    } else if (char === "?") {
+      expression += "[^/]";
+    } else {
+      expression += char.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+    }
+  }
+  expression += "$";
+  const regexp = new RegExp(expression);
+  return (path) => regexp.test(path);
+}
+function splitLines2(content3) {
+  if (content3.length === 0) {
+    return [];
+  }
+  const lines = content3.split(/\r?\n/);
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  return lines;
+}
+function mergeReceipts(receipts) {
+  const unique = /* @__PURE__ */ new Map();
+  for (const receipt of receipts) {
+    unique.set(
+      `${receipt.objectId}:${receipt.startLine}:${receipt.endLine}`,
+      receipt
+    );
+  }
+  return [...unique.values()].sort(
+    (left, right) => left.startLine - right.startLine || left.endLine - right.endLine
+  );
+}
+function receiptsCoverFile(receipts, expectedTotal) {
+  if (receipts.length === 0) {
+    return expectedTotal === 0;
+  }
+  const totalLines = expectedTotal ?? receipts[0].totalLines;
+  if (totalLines === 0) {
+    return receipts.some(
+      (receipt) => receipt.startLine === 0 && receipt.endLine === 0 && receipt.totalLines === 0
+    );
+  }
+  const ranges = receipts.filter((receipt) => receipt.totalLines === totalLines).map((receipt) => [receipt.startLine, receipt.endLine]).sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  let coveredThrough = 0;
+  for (const [start, end] of ranges) {
+    if (start > coveredThrough + 1) {
+      return false;
+    }
+    coveredThrough = Math.max(coveredThrough, end);
+  }
+  return coveredThrough >= totalLines;
+}
+function countValues(values, entries, property) {
+  const counts = Object.fromEntries(values.map((value) => [value, 0]));
+  for (const entry of entries) {
+    counts[entry[property]] += 1;
+  }
+  return counts;
+}
+function normalizeGraphPath(root, value) {
+  const normalized = value.replaceAll("\\", "/");
+  if (!isAbsolute2(value)) {
+    return normalized.replace(/^\.\//, "");
+  }
+  const rootPath = resolve8(root);
+  const relativePath = relative3(rootPath, resolve8(value)).replaceAll("\\", "/");
+  return relativePath === ".." || relativePath.startsWith("../") ? void 0 : relativePath;
+}
+function shortHash(value) {
+  return createHash3("sha256").update(value).digest("hex").slice(0, 16);
+}
+function naturalCompare(left, right) {
+  return left.localeCompare(right, void 0, { numeric: true });
+}
+function uniqueStrings2(values) {
+  return [...new Set(values.filter(Boolean))].sort();
+}
+function isRecord3(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isIsoDateTime2(value) {
+  return Boolean(value && !Number.isNaN(Date.parse(value)));
+}
+var RECONSTRUCTION_COVERAGE_VERSION, FILE_CATEGORIES, COVERAGE_STATES, SURFACE_KINDS, FINAL_TEXT_CATEGORIES;
+var init_reconstruction_coverage = __esm({
+  "src/reconstruction-coverage.ts"() {
+    "use strict";
+    RECONSTRUCTION_COVERAGE_VERSION = 1;
+    FILE_CATEGORIES = [
+      "unclassified",
+      "source",
+      "test",
+      "contract",
+      "configuration",
+      "product-data",
+      "documentation",
+      "generated",
+      "binary-asset",
+      "vendor",
+      "submodule",
+      "other"
+    ];
+    COVERAGE_STATES = [
+      "pending",
+      "inspected",
+      "structural-only",
+      "irrelevant",
+      "blocked"
+    ];
+    SURFACE_KINDS = [
+      "entrypoint",
+      "runtime",
+      "boundary"
+    ];
+    FINAL_TEXT_CATEGORIES = /* @__PURE__ */ new Set([
+      "source",
+      "test",
+      "contract",
+      "configuration",
+      "product-data",
+      "documentation"
+    ]);
+  }
+});
+
 // src/work-spec.ts
 function parseWorkSpec(content3) {
   const lines = content3.split(/\r?\n/);
@@ -15097,7 +16735,7 @@ function parseWorkSpec(content3) {
     throw new Error("Work spec frontmatter is not closed");
   }
   const metadata = parse(lines.slice(1, end).join("\n"));
-  if (!isRecord2(metadata)) {
+  if (!isRecord4(metadata)) {
     throw new Error("Work spec frontmatter must be a mapping");
   }
   return {
@@ -15115,12 +16753,12 @@ ${document3.body.trimStart()}`;
 function completionIssues(document3, requireCompleted) {
   const issues = [];
   const metadata = document3.metadata;
-  const verification = recordValue2(metadata.verification);
-  const alignment = recordValue2(metadata.knowledge_alignment);
-  const graph = recordValue2(metadata.graph_evidence);
-  const maintainerReview = recordValue2(metadata.maintainer_review);
-  const promotion = recordValue2(metadata.knowledge_promotion);
-  const scope = stringValue2(metadata.scope) || "leaf";
+  const verification = recordValue3(metadata.verification);
+  const alignment = recordValue3(metadata.knowledge_alignment);
+  const graph = recordValue3(metadata.graph_evidence);
+  const maintainerReview = recordValue3(metadata.maintainer_review);
+  const promotion = recordValue3(metadata.knowledge_promotion);
+  const scope = stringValue3(metadata.scope) || "leaf";
   const projectOnly = scope === "project";
   if (metadata.workflow_version !== 2) {
     issues.push("workflow_version must be 2");
@@ -15155,10 +16793,10 @@ function completionIssues(document3, requireCompleted) {
   if (!projectOnly && !nonEmptyArray(graph?.queries)) {
     issues.push("graph_evidence.queries must contain at least one query");
   }
-  if (scope === "leaf" && !/^[0-9a-f]{40}$/i.test(stringValue2(verification?.revision))) {
+  if (scope === "leaf" && !/^[0-9a-f]{40}$/i.test(stringValue3(verification?.revision))) {
     issues.push("verification.revision must pin the verified Git commit");
   }
-  if (scope === "leaf" && !stringValue2(verification?.worktree_id).trim()) {
+  if (scope === "leaf" && !stringValue3(verification?.worktree_id).trim()) {
     issues.push("verification.worktree_id must identify the verified checkout");
   }
   if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
@@ -15168,11 +16806,11 @@ function completionIssues(document3, requireCompleted) {
   reviewIssues("completion", maintainerReview, issues);
   if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
     issues.push("knowledge_promotion.status must be applied or not-needed");
-  } else if (promotion.status === "applied" && !nonEmptyStringArray(promotion.concepts)) {
+  } else if (promotion.status === "applied" && !nonEmptyStringArray2(promotion.concepts)) {
     issues.push("knowledge_promotion.concepts must list every updated concept");
   } else if (promotion.status === "applied" && promotion.concepts.some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))) {
     issues.push("knowledge_promotion.concepts must list concept files, not index.md or log.md");
-  } else if (promotion.status === "not-needed" && !stringValue2(promotion.reason).trim()) {
+  } else if (promotion.status === "not-needed" && !stringValue3(promotion.reason).trim()) {
     issues.push("knowledge_promotion.reason must explain why no current knowledge changed");
   }
   if (containsUntrustedIntakePath(document3.body) || containsUntrustedIntakePath(JSON.stringify(document3.metadata))) {
@@ -15180,38 +16818,38 @@ function completionIssues(document3, requireCompleted) {
   }
   return issues;
 }
-function isRecord2(value) {
+function isRecord4(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function recordValue2(value) {
-  return isRecord2(value) ? value : void 0;
+function recordValue3(value) {
+  return isRecord4(value) ? value : void 0;
 }
 function nonEmptyArray(value) {
   return Array.isArray(value) && value.length > 0;
 }
-function nonEmptyStringArray(value) {
+function nonEmptyStringArray2(value) {
   return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
 }
-function stringValue2(value) {
+function stringValue3(value) {
   return typeof value === "string" ? value : "";
 }
 function containsUntrustedIntakePath(content3) {
   return /(?:^|[\s("'`:=])(?:(?:\.\.\/|\.\/|\/)*(?:raw|intake)\/|(?:raw|intake):)[^\s)"'`]*/im.test(content3);
 }
 function reviewIssues(stage, review, issues) {
-  const entry = recordValue2(review?.[stage]);
+  const entry = recordValue3(review?.[stage]);
   const prefix = `maintainer_review.${stage}`;
   if (entry?.status !== "approved") {
     issues.push(`${prefix}.status must be approved`);
   }
-  if (!stringValue2(entry?.by).startsWith("human:")) {
+  if (!stringValue3(entry?.by).startsWith("human:")) {
     issues.push(`${prefix}.by must identify a human actor`);
   }
-  if (!isIsoDateTime(stringValue2(entry?.at))) {
+  if (!isIsoDateTime3(stringValue3(entry?.at))) {
     issues.push(`${prefix}.at must be an ISO 8601 datetime`);
   }
 }
-function isIsoDateTime(value) {
+function isIsoDateTime3(value) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
 var init_work_spec = __esm({
@@ -15224,15 +16862,15 @@ var init_work_spec = __esm({
 // src/repository-registry.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 import {
-  mkdir as mkdir3,
-  readFile as readFile6,
+  mkdir as mkdir4,
+  readFile as readFile8,
   realpath,
-  rename as rename3,
-  writeFile as writeFile3
+  rename as rename5,
+  writeFile as writeFile5
 } from "node:fs/promises";
-import { dirname as dirname4, join as join6, resolve as resolve7 } from "node:path";
+import { dirname as dirname5, join as join7, resolve as resolve9 } from "node:path";
 async function ensureRepositoryRegistry(knowledgeInput) {
-  const knowledgeRoot = await requireKnowledgeRepository2(knowledgeInput);
+  const knowledgeRoot = await requireKnowledgeRepository3(knowledgeInput);
   const durablePath = durableRegistryPath(knowledgeRoot);
   try {
     await readDurableRegistry(knowledgeRoot);
@@ -15244,7 +16882,7 @@ async function ensureRepositoryRegistry(knowledgeInput) {
   }
 }
 async function addLeafRepository(knowledgeInput, leafInput, now = /* @__PURE__ */ new Date()) {
-  const knowledgeRoot = await requireKnowledgeRepository2(knowledgeInput);
+  const knowledgeRoot = await requireKnowledgeRepository3(knowledgeInput);
   const { leafRoot, metadata } = await inspectLeaf(knowledgeRoot, leafInput);
   const at = now.toISOString();
   const durable = await readDurableRegistryOrEmpty(knowledgeRoot);
@@ -15298,7 +16936,7 @@ async function addLeafRepository(knowledgeInput, leafInput, now = /* @__PURE__ *
   };
 }
 async function selectLeafRepository(knowledgeInput, leafInput, now = /* @__PURE__ */ new Date()) {
-  const knowledgeRoot = await requireKnowledgeRepository2(knowledgeInput);
+  const knowledgeRoot = await requireKnowledgeRepository3(knowledgeInput);
   const { leafRoot, metadata } = await inspectLeaf(knowledgeRoot, leafInput);
   const durable = await readDurableRegistryOrEmpty(knowledgeRoot);
   assertRegistered([metadata.repository], durable.repositories);
@@ -15331,7 +16969,7 @@ async function selectLeafRepository(knowledgeInput, leafInput, now = /* @__PURE_
   };
 }
 async function listRepositoryConnections(knowledgeInput) {
-  const knowledgeRoot = await requireKnowledgeRepository2(knowledgeInput);
+  const knowledgeRoot = await requireKnowledgeRepository3(knowledgeInput);
   const durable = await readDurableRegistryOrEmpty(knowledgeRoot);
   const local = await readLocalRegistryOrEmpty(knowledgeRoot);
   return durable.repositories.map((entry) => {
@@ -15357,7 +16995,7 @@ async function listRepositoryConnections(knowledgeInput) {
   });
 }
 async function resolveReconstructionLeaves(knowledgeInput, explicitLeaves, mode) {
-  const knowledgeRoot = await requireKnowledgeRepository2(knowledgeInput);
+  const knowledgeRoot = await requireKnowledgeRepository3(knowledgeInput);
   const durable = await readDurableRegistryOrEmpty(knowledgeRoot);
   if (durable.repositories.length === 0) {
     throw new Error(
@@ -15400,7 +17038,7 @@ async function resolveReconstructionLeaves(knowledgeInput, explicitLeaves, mode)
   return roots;
 }
 async function repositoryRegistryIssues(knowledgeInput) {
-  const knowledgeRoot = await requireKnowledgeRepository2(knowledgeInput);
+  const knowledgeRoot = await requireKnowledgeRepository3(knowledgeInput);
   const issues = [];
   let durable;
   let local;
@@ -15450,13 +17088,13 @@ async function repositoryRegistryIssues(knowledgeInput) {
   return issues;
 }
 function durableRegistryPath(knowledgeRoot) {
-  return join6(knowledgeRoot, ".workflow/repositories.json");
+  return join7(knowledgeRoot, ".workflow/repositories.json");
 }
 function localRegistryPath(knowledgeRoot) {
-  return join6(knowledgeRoot, ".workflow/current/repositories.json");
+  return join7(knowledgeRoot, ".workflow/current/repositories.json");
 }
-async function requireKnowledgeRepository2(input) {
-  const root = await realpath(resolve7(input));
+async function requireKnowledgeRepository3(input) {
+  const root = await realpath(resolve9(input));
   const config = await readConfig(root);
   if (config.profile !== "knowledge") {
     throw new Error(`Repository registry requires a knowledge repository: ${root}`);
@@ -15464,7 +17102,7 @@ async function requireKnowledgeRepository2(input) {
   return root;
 }
 async function inspectLeaf(knowledgeRoot, leafInput) {
-  const leafRoot = await realpath(resolve7(leafInput));
+  const leafRoot = await realpath(resolve9(leafInput));
   const config = await readConfig(leafRoot);
   if (config.profile !== "leaf") {
     throw new Error(`Repository connection requires an initialized leaf: ${leafRoot}`);
@@ -15479,9 +17117,9 @@ async function inspectLeaf(knowledgeRoot, leafInput) {
 }
 async function readDurableRegistry(knowledgeRoot) {
   const value = JSON.parse(
-    await readFile6(durableRegistryPath(knowledgeRoot), "utf8")
+    await readFile8(durableRegistryPath(knowledgeRoot), "utf8")
   );
-  if (!isRecord2(value) || value.schemaVersion !== DURABLE_REGISTRY_SCHEMA_VERSION || !Array.isArray(value.repositories) || !value.repositories.every(isDurableEntry)) {
+  if (!isRecord4(value) || value.schemaVersion !== DURABLE_REGISTRY_SCHEMA_VERSION || !Array.isArray(value.repositories) || !value.repositories.every(isDurableEntry)) {
     throw new Error("invalid .workflow/repositories.json");
   }
   return value;
@@ -15499,7 +17137,7 @@ async function readDurableRegistryOrEmpty(knowledgeRoot) {
 async function readLocalRegistryOrEmpty(knowledgeRoot) {
   try {
     const value = JSON.parse(
-      await readFile6(localRegistryPath(knowledgeRoot), "utf8")
+      await readFile8(localRegistryPath(knowledgeRoot), "utf8")
     );
     if (isLocalRegistryV2(value)) {
       return value;
@@ -15538,19 +17176,19 @@ function emptyDurableRegistry() {
   };
 }
 function isDurableEntry(value) {
-  return isRecord2(value) && typeof value.repository === "string" && typeof value.remote === "string" && typeof value.registered_at === "string" && typeof value.updated_at === "string";
+  return isRecord4(value) && typeof value.repository === "string" && typeof value.remote === "string" && typeof value.registered_at === "string" && typeof value.updated_at === "string";
 }
 function isLocalBinding(value) {
-  return isRecord2(value) && typeof value.repository === "string" && typeof value.root === "string" && typeof value.worktree_id === "string" && typeof value.connected_at === "string";
+  return isRecord4(value) && typeof value.repository === "string" && typeof value.root === "string" && typeof value.worktree_id === "string" && typeof value.connected_at === "string";
 }
 function isLocalRegistryV2(value) {
-  return isRecord2(value) && value.schemaVersion === LOCAL_REGISTRY_SCHEMA_VERSION && Array.isArray(value.checkouts) && value.checkouts.every(isLocalBinding) && isStringRecord(value.selections);
+  return isRecord4(value) && value.schemaVersion === LOCAL_REGISTRY_SCHEMA_VERSION && Array.isArray(value.checkouts) && value.checkouts.every(isLocalBinding) && isStringRecord(value.selections);
 }
 function isLocalRegistryV1(value) {
-  return isRecord2(value) && value.schemaVersion === 1 && Array.isArray(value.bindings) && value.bindings.every(isLocalBinding);
+  return isRecord4(value) && value.schemaVersion === 1 && Array.isArray(value.bindings) && value.bindings.every(isLocalBinding);
 }
 function isStringRecord(value) {
-  return isRecord2(value) && Object.values(value).every((entry) => typeof entry === "string");
+  return isRecord4(value) && Object.values(value).every((entry) => typeof entry === "string");
 }
 function inspectKnownCheckout(binding, selection) {
   const active = selection === "selected";
@@ -15596,7 +17234,7 @@ function durableRemote(metadata) {
 async function normalizeRoots(values) {
   const result = [];
   for (const value of values) {
-    const root = await realpath(resolve7(value));
+    const root = await realpath(resolve9(value));
     if (!result.includes(root)) {
       result.push(root);
     }
@@ -15648,15 +17286,15 @@ async function updateRegistries(knowledgeRoot, durable, local) {
   }
 }
 async function writeJsonAtomic(path, value) {
-  await mkdir3(dirname4(path), { recursive: true });
-  const temporary = join6(dirname4(path), `.wfctl-${randomUUID2()}.tmp`);
-  await writeFile3(temporary, `${JSON.stringify(value, null, 2)}
+  await mkdir4(dirname5(path), { recursive: true });
+  const temporary = join7(dirname5(path), `.wfctl-${randomUUID2()}.tmp`);
+  await writeFile5(temporary, `${JSON.stringify(value, null, 2)}
 `, "utf8");
-  await rename3(temporary, path);
+  await rename5(temporary, path);
 }
 async function optionalText(path) {
   try {
-    return await readFile6(path, "utf8");
+    return await readFile8(path, "utf8");
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return void 0;
@@ -15691,22 +17329,22 @@ var init_repository_registry = __esm({
 });
 
 // src/reconstruction.ts
-import { createHash as createHash3 } from "node:crypto";
-import { constants as constants2 } from "node:fs";
+import { createHash as createHash4 } from "node:crypto";
+import { constants as constants3 } from "node:fs";
 import {
-  access as access2,
-  mkdir as mkdir4,
-  readFile as readFile7,
-  readdir as readdir3,
+  access as access3,
+  mkdir as mkdir5,
+  readFile as readFile9,
+  readdir as readdir4,
   realpath as realpath2,
-  rename as rename4,
-  rm as rm2,
+  rename as rename6,
+  rm as rm3,
   unlink as unlink2,
-  writeFile as writeFile4
+  writeFile as writeFile6
 } from "node:fs/promises";
-import { dirname as dirname5, join as join7, resolve as resolve8, sep as sep4 } from "node:path";
+import { dirname as dirname6, join as join8, resolve as resolve10, sep as sep4 } from "node:path";
 async function beginProjectReconstruction(options) {
-  const target = await requireKnowledgeRepository3(options.target);
+  const target = await requireKnowledgeRepository4(options.target);
   const mode = options.mode ?? "baseline";
   if (mode !== "baseline" && mode !== "audit") {
     throw new Error(`Invalid reconstruction mode: ${mode}`);
@@ -15714,6 +17352,12 @@ async function beginProjectReconstruction(options) {
   const title = options.title.trim();
   if (!title) {
     throw new Error("Reconstruction title must not be empty");
+  }
+  const knowledgeMetadata = readRepositoryMetadata(target);
+  if (!/^[0-9a-f]{40}$/i.test(knowledgeMetadata.commit)) {
+    throw new Error(
+      "Reconstruction requires an initial knowledge-repository commit so optional inputs can be frozen"
+    );
   }
   const leafRoots = await normalizeLeafRoots(
     await resolveReconstructionLeaves(target, options.leaves, mode)
@@ -15760,21 +17404,21 @@ async function beginProjectReconstruction(options) {
     graphResults.push(await graphSummary(input.root));
   }
   const now = options.now ?? /* @__PURE__ */ new Date();
-  const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug(options.slug)}`;
-  const activeRoot = join7(target, "reconstruction/active");
-  const id = await uniqueDirectoryId(activeRoot, base);
-  const directory = join7(activeRoot, id);
-  const casePath = join7(directory, "case.md");
+  const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug2(options.slug)}`;
+  const activeRoot = join8(target, "reconstruction/active");
+  const id = await uniqueDirectoryId2(activeRoot, base);
+  const directory = join8(activeRoot, id);
+  const casePath = join8(directory, "case.md");
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const caseTemplate = await readFile7(
-    join7(
+  const caseTemplate = await readFile9(
+    join8(
       distributionRoot,
       "skills/reconstruct-project-knowledge/assets/reconstruction-case.md"
     ),
     "utf8"
   );
-  const dossierTemplate = await readFile7(
-    join7(
+  const dossierTemplate = await readFile9(
+    join8(
       distributionRoot,
       "skills/reconstruct-project-knowledge/assets/repository-dossier.md"
     ),
@@ -15782,11 +17426,19 @@ async function beginProjectReconstruction(options) {
   );
   const document3 = parseWorkSpec(caseTemplate);
   const createdAt = now.toISOString();
+  const supplementalInputs = recordValue4(document3.metadata.supplemental_inputs) ?? {};
+  const rawInput = recordValue4(supplementalInputs.raw) ?? {};
+  supplementalInputs.raw = {
+    ...rawInput,
+    baseline: knowledgeMetadata.commit
+  };
   const durableRepositories = repositoryInputs.map((input, index2) => {
-    const dossier = `repositories/${uniqueDossierName(
+    const repositorySlug = uniqueDossierName(
       input.metadata.repository,
       index2
-    )}.md`;
+    );
+    const dossier = `repositories/${repositorySlug}.md`;
+    const coverage = `repositories/${repositorySlug}.coverage.json`;
     return {
       repository: input.metadata.repository,
       branch: input.metadata.branch,
@@ -15799,9 +17451,28 @@ async function beginProjectReconstruction(options) {
         nodes: graphResults[index2].nodes,
         content_hash: graphResults[index2].contentHash
       },
-      dossier
+      dossier,
+      coverage
     };
   });
+  const coverageLedgers = await Promise.all(
+    repositoryInputs.map(
+      (input, index2) => createReconstructionCoverage(
+        input.root,
+        input.metadata.repository,
+        input.metadata.commit,
+        join8(input.root, "graphify-out/graph.json"),
+        now
+      ).then((ledger) => {
+        if (ledger.graphify.contentHash !== graphResults[index2].contentHash) {
+          throw new Error(
+            `${input.metadata.repository}: Graphify changed while reconstruction coverage was frozen`
+          );
+        }
+        return ledger;
+      })
+    )
+  );
   document3.metadata = {
     ...document3.metadata,
     reconstruction_version: RECONSTRUCTION_VERSION,
@@ -15811,7 +17482,8 @@ async function beginProjectReconstruction(options) {
     status: "active",
     created_at: createdAt,
     updated_at: createdAt,
-    repositories: durableRepositories
+    repositories: durableRepositories,
+    supplemental_inputs: supplementalInputs
   };
   const binding = {
     schemaVersion: 1,
@@ -15826,8 +17498,8 @@ async function beginProjectReconstruction(options) {
   };
   const bindingPath = reconstructionBindingPath(target, id);
   try {
-    await mkdir4(join7(directory, "repositories"), { recursive: true });
-    await writeFile4(casePath, serializeWorkSpec(document3), {
+    await mkdir5(join8(directory, "repositories"), { recursive: true });
+    await writeFile6(casePath, serializeWorkSpec(document3), {
       encoding: "utf8",
       flag: "wx"
     });
@@ -15840,20 +17512,26 @@ async function beginProjectReconstruction(options) {
         commit: repository.commit,
         status: "pending"
       };
-      await writeFile4(
-        join7(directory, repository.dossier),
+      await writeFile6(
+        join8(directory, repository.dossier),
         serializeWorkSpec(dossier),
         { encoding: "utf8", flag: "wx" }
       );
+      await writeFile6(
+        join8(directory, repository.coverage),
+        `${JSON.stringify(coverageLedgers[index2], null, 2)}
+`,
+        { encoding: "utf8", flag: "wx" }
+      );
     }
-    await mkdir4(dirname5(bindingPath), { recursive: true });
-    await writeFile4(bindingPath, `${JSON.stringify(binding, null, 2)}
+    await mkdir5(dirname6(bindingPath), { recursive: true });
+    await writeFile6(bindingPath, `${JSON.stringify(binding, null, 2)}
 `, {
       encoding: "utf8",
       flag: "wx"
     });
   } catch (error2) {
-    await rm2(directory, { recursive: true, force: true });
+    await rm3(directory, { recursive: true, force: true });
     try {
       await unlink2(bindingPath);
     } catch (cleanupError) {
@@ -15870,9 +17548,121 @@ async function beginProjectReconstruction(options) {
     repositories: durableRepositories.map((repository, index2) => ({
       repository: repository.repository,
       commit: repository.commit,
-      dossier: join7(directory, repository.dossier),
-      graphNodes: graphResults[index2].nodes
+      dossier: join8(directory, repository.dossier),
+      coverage: join8(directory, repository.coverage),
+      graphNodes: graphResults[index2].nodes,
+      trackedFiles: coverageLedgers[index2].manifest.files.length
     }))
+  };
+}
+async function inspectReconstructionCoverage(targetInput, id, repository) {
+  const contexts = await coverageContexts(targetInput, id, repository);
+  return {
+    id,
+    repositories: contexts.map(
+      ({ ledger }) => summarizeReconstructionCoverage(ledger)
+    )
+  };
+}
+async function markReconstructionFiles(options) {
+  if (options.category !== void 0 && !FILE_CATEGORIES.includes(options.category)) {
+    throw new Error(`Unknown file category: ${options.category}`);
+  }
+  if (options.status !== void 0 && !COVERAGE_STATES.includes(options.status)) {
+    throw new Error(`Unknown file coverage status: ${options.status}`);
+  }
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository
+  );
+  const matched = markCoverageFiles(context.ledger, options.paths, {
+    ...options.category === void 0 ? {} : { category: options.category },
+    ...options.status === void 0 ? {} : { status: options.status },
+    ...options.reason === void 0 ? {} : { reason: options.reason }
+  });
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return {
+    repository: context.repositoryId,
+    matched,
+    summary: summarizeReconstructionCoverage(context.ledger)
+  };
+}
+async function readReconstructionSource(options) {
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository
+  );
+  const result = readPinnedSource(context.ledger, context.root, options.path, {
+    ...options.startLine === void 0 ? {} : { startLine: options.startLine },
+    ...options.endLine === void 0 ? {} : { endLine: options.endLine },
+    ...options.actor === void 0 ? {} : { actor: options.actor },
+    ...options.now === void 0 ? {} : { now: options.now }
+  });
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return result;
+}
+async function markReconstructionCommunity(options) {
+  if (!COVERAGE_STATES.includes(options.status)) {
+    throw new Error(`Unknown community coverage status: ${options.status}`);
+  }
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository
+  );
+  markCoverageCommunity(
+    context.ledger,
+    options.community,
+    options.status,
+    options.note,
+    options.queries ?? []
+  );
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return {
+    repository: context.repositoryId,
+    summary: summarizeReconstructionCoverage(context.ledger)
+  };
+}
+async function recordReconstructionSurface(options) {
+  if (!SURFACE_KINDS.includes(options.kind)) {
+    throw new Error(`Unknown reconstruction surface kind: ${options.kind}`);
+  }
+  if (!COVERAGE_STATES.includes(options.status)) {
+    throw new Error(`Unknown surface coverage status: ${options.status}`);
+  }
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository
+  );
+  recordCoverageSurface(context.ledger, {
+    id: options.surface,
+    kind: options.kind,
+    description: options.description,
+    paths: options.paths,
+    status: options.status,
+    note: options.note,
+    candidateIds: options.candidateIds ?? []
+  });
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return {
+    repository: context.repositoryId,
+    summary: summarizeReconstructionCoverage(context.ledger)
+  };
+}
+async function reviewReconstructionSurfaces(options) {
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository
+  );
+  markSurfaceAudit(context.ledger, options.status, options.note);
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return {
+    repository: context.repositoryId,
+    summary: summarizeReconstructionCoverage(context.ledger)
   };
 }
 async function inspectProjectReconstruction(targetInput, id) {
@@ -15881,13 +17671,13 @@ async function inspectProjectReconstruction(targetInput, id) {
     id,
     "active"
   );
-  const target = await requireKnowledgeRepository3(targetInput);
-  const document3 = parseWorkSpec(await readFile7(receipt.path, "utf8"));
+  const target = await requireKnowledgeRepository4(targetInput);
+  const document3 = parseWorkSpec(await readFile9(receipt.path, "utf8"));
   const issues = [...receipt.issues];
-  const promotion = recordValue3(document3.metadata.promotion);
-  if (promotion?.status === "applied" && stringArray2(promotion.concepts).length > 0) {
+  const promotion = recordValue4(document3.metadata.promotion);
+  if (promotion?.status === "applied" && stringArray3(promotion.concepts).length > 0) {
     const { validateKnowledge: validateKnowledge2 } = await Promise.resolve().then(() => (init_knowledge(), knowledge_exports));
-    const validation = await validateKnowledge2(target, stringArray2(promotion.concepts));
+    const validation = await validateKnowledge2(target, stringArray3(promotion.concepts));
     issues.push(...validation.errors.map((issue2) => `${issue2.path}: ${issue2.message}`));
   }
   return {
@@ -15896,20 +17686,23 @@ async function inspectProjectReconstruction(targetInput, id) {
   };
 }
 async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = "active", allowPendingPromotionValidation = false) {
-  const target = await requireKnowledgeRepository3(targetInput);
+  const target = await requireKnowledgeRepository4(targetInput);
   const path = reconstructionCasePath(target, lifecycle, id);
-  const document3 = parseWorkSpec(await readFile7(path, "utf8"));
+  const document3 = parseWorkSpec(await readFile9(path, "utf8"));
   const issues = reconstructionMetadataIssues(
     document3.metadata,
     lifecycle,
     allowPendingPromotionValidation
   );
-  issues.push(...await supplementalInputIssues(target, document3.metadata));
-  const repositories = recordArray(document3.metadata.repositories);
-  const candidates = recordArray(document3.metadata.candidate_claims);
+  issues.push(
+    ...await supplementalInputIssues(target, document3.metadata, lifecycle)
+  );
+  const repositories = recordArray2(document3.metadata.repositories);
+  const candidates = recordArray2(document3.metadata.candidate_claims);
   const binding = lifecycle === "active" ? await readBinding(target, id, issues) : void 0;
-  const inspectedTexts = [await readFile7(path, "utf8")];
+  const inspectedTexts = [await readFile9(path, "utf8")];
   const linkedCandidateIds = /* @__PURE__ */ new Set();
+  const coverageByRepository = /* @__PURE__ */ new Map();
   if (binding) {
     if (binding.caseId !== id || binding.knowledgeRoot !== target) {
       issues.push("local reconstruction binding does not match this knowledge checkout");
@@ -15918,7 +17711,7 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
       binding.repositories.map((entry) => [entry.repository, entry])
     );
     for (const repository of repositories) {
-      const repositoryId2 = stringValue3(repository.repository);
+      const repositoryId2 = stringValue4(repository.repository);
       const local = byRepository.get(repositoryId2);
       if (!local) {
         issues.push(`${repositoryId2}: local checkout binding is missing`);
@@ -15926,7 +17719,7 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
       }
       try {
         const current = readRepositoryMetadata(local.root);
-        if (current.repository !== repositoryId2 || current.commit !== stringValue3(repository.commit) || current.commit !== local.commit || current.worktreeId !== stringValue3(repository.worktree_id) || current.worktreeId !== local.worktreeId) {
+        if (current.repository !== repositoryId2 || current.commit !== stringValue4(repository.commit) || current.commit !== local.commit || current.worktreeId !== stringValue4(repository.worktree_id) || current.worktreeId !== local.worktreeId) {
           issues.push(`${repositoryId2}: checkout, worktree, or revision binding drifted`);
         }
         if (current.dirty) {
@@ -15936,9 +17729,25 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
         if (graph.nodes === 0) {
           issues.push(`${repositoryId2}: Graphify graph contains no nodes`);
         }
-        if (graph.contentHash !== stringValue3(recordValue3(repository.graphify)?.content_hash)) {
+        if (graph.contentHash !== stringValue4(recordValue4(repository.graphify)?.content_hash)) {
           issues.push(`${repositoryId2}: Graphify graph changed after the case was bound`);
         }
+        const coveragePath = resolveCaseJson(
+          dirname6(path),
+          stringValue4(repository.coverage)
+        );
+        const coverage = await readReconstructionCoverage(coveragePath);
+        coverageByRepository.set(repositoryId2, coverage);
+        inspectedTexts.push(JSON.stringify(coverage));
+        issues.push(
+          ...(await validateReconstructionCoverage(
+            coverage,
+            local.root,
+            repositoryId2,
+            stringValue4(repository.commit),
+            join8(local.root, "graphify-out/graph.json")
+          )).map((issue2) => `${repositoryId2}: ${issue2}`)
+        );
       } catch (error2) {
         issues.push(`${repositoryId2}: ${errorMessage(error2)}`);
       }
@@ -15949,42 +17758,109 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
       }
     }
   }
+  if (!binding) {
+    for (const repository of repositories) {
+      const repositoryId2 = stringValue4(repository.repository);
+      try {
+        const coverage = await readReconstructionCoverage(
+          resolveCaseJson(dirname6(path), stringValue4(repository.coverage))
+        );
+        coverageByRepository.set(repositoryId2, coverage);
+        inspectedTexts.push(JSON.stringify(coverage));
+        issues.push(
+          ...validateReconstructionCoverageReceipt(
+            coverage,
+            repositoryId2,
+            stringValue4(repository.commit)
+          ).map((issue2) => `${repositoryId2}: ${issue2}`)
+        );
+      } catch (error2) {
+        issues.push(
+          `${repositoryId2}: cannot inspect coverage receipt: ${errorMessage(error2)}`
+        );
+      }
+    }
+  }
   for (const repository of repositories) {
-    const dossierRelative = stringValue3(repository.dossier);
+    const dossierRelative = stringValue4(repository.dossier);
     try {
-      const dossierPath = resolveCaseFile(dirname5(path), dossierRelative);
-      const dossierText = await readFile7(dossierPath, "utf8");
+      const dossierPath = resolveCaseFile(dirname6(path), dossierRelative);
+      const dossierText = await readFile9(dossierPath, "utf8");
       inspectedTexts.push(dossierText);
       const dossier = parseWorkSpec(dossierText);
       issues.push(...dossierIssues(repository, dossier.metadata, dossier.body));
-      for (const candidateId of stringArray2(dossier.metadata.candidate_ids)) {
+      for (const candidateId of stringArray3(dossier.metadata.candidate_ids)) {
         linkedCandidateIds.add(candidateId);
       }
     } catch (error2) {
       issues.push(
-        `${stringValue3(repository.repository)}: cannot inspect dossier: ${errorMessage(error2)}`
+        `${stringValue4(repository.repository)}: cannot inspect dossier: ${errorMessage(error2)}`
       );
     }
   }
-  const supplemental = recordValue3(document3.metadata.supplemental_inputs);
+  const supplemental = recordValue4(document3.metadata.supplemental_inputs);
   for (const input of ["raw", "documentation", "change_records"]) {
-    for (const candidateId of stringArray2(recordValue3(supplemental?.[input])?.candidate_ids)) {
+    for (const candidateId of stringArray3(recordValue4(supplemental?.[input])?.candidate_ids)) {
       linkedCandidateIds.add(candidateId);
     }
   }
+  for (const coverage of coverageByRepository.values()) {
+    for (const surface of coverage.surfaces) {
+      for (const candidateId of surface.candidateIds) {
+        linkedCandidateIds.add(candidateId);
+      }
+    }
+  }
   const candidateIds = new Set(
-    candidates.map((candidate) => stringValue3(candidate.id)).filter(Boolean)
+    candidates.map((candidate) => stringValue4(candidate.id)).filter(Boolean)
   );
   for (const candidateId of candidateIds) {
     if (!linkedCandidateIds.has(candidateId)) {
       issues.push(
-        `candidate ${candidateId} is not linked from a repository dossier or supplemental input`
+        `candidate ${candidateId} is not linked from a dossier, surface, or supplemental input`
       );
     }
   }
   for (const candidateId of linkedCandidateIds) {
     if (!candidateIds.has(candidateId)) {
       issues.push(`source coverage references undefined candidate ${candidateId}`);
+    }
+  }
+  for (const candidate of candidates) {
+    for (const evidence of recordArray2(candidate.evidence)) {
+      if (evidence.kind !== "source-code") {
+        continue;
+      }
+      const resource = stringValue4(evidence.resource);
+      const matching = [...coverageByRepository.entries()].filter(
+        ([repositoryId3, coverage2]) => evidencePathFromResource(
+          resource,
+          repositoryId3,
+          coverage2.commit,
+          coverage2.manifest.files.map((file2) => file2.path)
+        ) !== void 0
+      );
+      if (matching.length !== 1) {
+        issues.push(
+          `candidate ${stringValue4(candidate.id)} source evidence is outside the inspected reconstruction manifests: ${resource}`
+        );
+        continue;
+      }
+      const [repositoryId2, coverage] = matching[0];
+      const evidencePath = evidencePathFromResource(
+        resource,
+        repositoryId2,
+        coverage.commit,
+        coverage.manifest.files.map((file2) => file2.path)
+      );
+      const file = coverage.manifest.files.find(
+        (entry) => entry.path === evidencePath
+      );
+      if (file?.status !== "inspected") {
+        issues.push(
+          `candidate ${stringValue4(candidate.id)} source evidence lacks a complete read receipt: ${repositoryId2}#${evidencePath}`
+        );
+      }
     }
   }
   for (const text3 of inspectedTexts) {
@@ -16002,9 +17878,9 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
     path,
     repositories: repositories.length,
     reviewed: repositories.filter((repository) => {
-      const dossier = stringValue3(repository.dossier);
+      const dossier = stringValue4(repository.dossier);
       return dossier && !issues.some(
-        (issue2) => issue2.startsWith(`${stringValue3(repository.repository)}:`)
+        (issue2) => issue2.startsWith(`${stringValue4(repository.repository)}:`)
       );
     }).length,
     candidates: candidates.length,
@@ -16012,10 +17888,10 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
   };
 }
 async function closeProjectReconstruction(options) {
-  const target = await requireKnowledgeRepository3(options.target);
+  const target = await requireKnowledgeRepository4(options.target);
   const path = reconstructionCasePath(target, "active", options.id);
-  const directory = dirname5(path);
-  const document3 = parseWorkSpec(await readFile7(path, "utf8"));
+  const directory = dirname6(path);
+  const document3 = parseWorkSpec(await readFile9(path, "utf8"));
   if (options.outcome === "completed") {
     const inspected = await inspectProjectReconstruction(target, options.id);
     if (inspected.issues.length > 0) {
@@ -16025,22 +17901,22 @@ async function closeProjectReconstruction(options) {
     }
   }
   const now = options.now ?? /* @__PURE__ */ new Date();
-  const archivePath = join7(target, "reconstruction/archive", options.id);
-  await assertPathAbsent(archivePath, "reconstruction archive");
+  const archivePath = join8(target, "reconstruction/archive", options.id);
+  await assertPathAbsent2(archivePath, "reconstruction archive");
   document3.metadata.status = options.outcome;
   document3.metadata.outcome = options.outcome;
   document3.metadata.closed_at = now.toISOString();
   document3.metadata.updated_at = now.toISOString();
-  await mkdir4(dirname5(archivePath), { recursive: true });
-  await rename4(directory, archivePath);
+  await mkdir5(dirname6(archivePath), { recursive: true });
+  await rename6(directory, archivePath);
   try {
-    await writeFile4(
-      join7(archivePath, "case.md"),
+    await writeFile6(
+      join8(archivePath, "case.md"),
       serializeWorkSpec(document3),
       "utf8"
     );
   } catch (error2) {
-    await rename4(archivePath, directory);
+    await rename6(archivePath, directory);
     throw error2;
   }
   try {
@@ -16054,24 +17930,24 @@ async function closeProjectReconstruction(options) {
 }
 function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotionValidation) {
   const issues = [];
-  const mode = stringValue3(metadata.mode);
-  const repositories = recordArray(metadata.repositories);
-  const candidates = recordArray(metadata.candidate_claims);
-  const promotion = recordValue3(metadata.promotion);
-  const coverage = recordValue3(metadata.coverage_audit);
-  const reconciliation = recordValue3(metadata.reconciliation_audit);
-  const crossRepository = recordValue3(metadata.cross_repository_analysis);
-  const maintainerReview = recordValue3(metadata.maintainer_review);
+  const mode = stringValue4(metadata.mode);
+  const repositories = recordArray2(metadata.repositories);
+  const candidates = recordArray2(metadata.candidate_claims);
+  const promotion = recordValue4(metadata.promotion);
+  const coverage = recordValue4(metadata.coverage_audit);
+  const reconciliation = recordValue4(metadata.reconciliation_audit);
+  const crossRepository = recordValue4(metadata.cross_repository_analysis);
+  const maintainerReview = recordValue4(metadata.maintainer_review);
   if (metadata.reconstruction_version !== RECONSTRUCTION_VERSION) {
     issues.push(`reconstruction_version must be ${RECONSTRUCTION_VERSION}`);
   }
-  if (!stringValue3(metadata.title).trim()) {
+  if (!stringValue4(metadata.title).trim()) {
     issues.push("title is required");
   }
   if (lifecycle === "active" && metadata.status !== "active") {
     issues.push("status must remain active until wfctl archives the reconstruction");
   }
-  if (lifecycle === "archive" && (metadata.status !== "completed" || metadata.outcome !== "completed" || !isIsoDateTime2(stringValue3(metadata.closed_at)))) {
+  if (lifecycle === "archive" && (metadata.status !== "completed" || metadata.outcome !== "completed" || !isIsoDateTime4(stringValue4(metadata.closed_at)))) {
     issues.push("archived reconstruction receipt must be completed with a close time");
   }
   if (mode !== "baseline" && mode !== "audit") {
@@ -16083,7 +17959,7 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
   const seenRepositories = /* @__PURE__ */ new Set();
   for (const [index2, repository] of repositories.entries()) {
     const prefix = `repositories[${index2}]`;
-    const id = stringValue3(repository.repository);
+    const id = stringValue4(repository.repository);
     if (!id) {
       issues.push(`${prefix}.repository is required`);
     } else if (seenRepositories.has(id)) {
@@ -16091,42 +17967,48 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
     } else {
       seenRepositories.add(id);
     }
-    if (!/^[0-9a-f]{40}$/i.test(stringValue3(repository.commit))) {
+    if (!/^[0-9a-f]{40}$/i.test(stringValue4(repository.commit))) {
       issues.push(`${prefix}.commit must pin a full Git commit`);
     }
-    if (!stringValue3(repository.worktree_id)) {
+    if (!stringValue4(repository.worktree_id)) {
       issues.push(`${prefix}.worktree_id is required`);
     }
-    if (!isCaseRelativeMarkdown(stringValue3(repository.dossier))) {
+    if (!isCaseRelativeMarkdown(stringValue4(repository.dossier))) {
       issues.push(`${prefix}.dossier must be a case-relative Markdown path`);
     }
-    const graphify = recordValue3(repository.graphify);
-    if (graphify?.status !== "ready" || typeof graphify.nodes !== "number" || graphify.nodes < 1 || !/^[0-9a-f]{64}$/i.test(stringValue3(graphify.content_hash))) {
+    if (!isCaseRelativeJson(stringValue4(repository.coverage))) {
+      issues.push(`${prefix}.coverage must be a case-relative JSON path`);
+    }
+    const graphify = recordValue4(repository.graphify);
+    if (graphify?.status !== "ready" || typeof graphify.nodes !== "number" || graphify.nodes < 1 || !/^[0-9a-f]{64}$/i.test(stringValue4(graphify.content_hash))) {
       issues.push(`${prefix}.graphify must record a non-empty ready graph and content hash`);
     }
   }
-  const supplemental = recordValue3(metadata.supplemental_inputs);
+  const supplemental = recordValue4(metadata.supplemental_inputs);
   for (const input of ["raw", "documentation", "change_records"]) {
-    const entry = recordValue3(supplemental?.[input]);
-    const status = stringValue3(entry?.status);
+    const entry = recordValue4(supplemental?.[input]);
+    const status = stringValue4(entry?.status);
     if (!FINAL_REVIEW_STATES.has(status)) {
       issues.push(`supplemental_inputs.${input}.status must be reviewed, not-available, or not-relevant`);
     }
-    if (status !== "reviewed" && !nonEmptyStringArray2(entry?.notes)) {
+    if (status !== "reviewed" && !nonEmptyStringArray3(entry?.notes)) {
       issues.push(`supplemental_inputs.${input}.notes must explain ${status || "its final state"}`);
     }
   }
-  const rawInput = recordValue3(supplemental?.raw);
-  if (rawInput?.status === "reviewed" && !nonEmptyStringArray2(rawInput.case_ids)) {
+  const rawInput = recordValue4(supplemental?.raw);
+  if (!/^[0-9a-f]{40,64}$/i.test(stringValue4(rawInput?.baseline))) {
+    issues.push("supplemental_inputs.raw.baseline must pin the reconstruction-start Git snapshot");
+  }
+  if (rawInput?.status === "reviewed" && !nonEmptyStringArray3(rawInput.case_ids)) {
     issues.push("supplemental_inputs.raw.case_ids must list completed raw-intake cases");
   }
   if (repositories.length > 1 && crossRepository?.status !== "reviewed") {
     issues.push("cross_repository_analysis.status must be reviewed for multiple leaves");
   }
-  if (repositories.length === 1 && !["reviewed", "not-relevant"].includes(stringValue3(crossRepository?.status))) {
+  if (repositories.length === 1 && !["reviewed", "not-relevant"].includes(stringValue4(crossRepository?.status))) {
     issues.push("cross_repository_analysis.status must be reviewed or not-relevant");
   }
-  if (!nonEmptyStringArray2(crossRepository?.notes)) {
+  if (!nonEmptyStringArray3(crossRepository?.notes)) {
     issues.push("cross_repository_analysis.notes must record boundary findings");
   }
   if (candidates.length === 0) {
@@ -16136,10 +18018,10 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
   const confirmedPromotions = /* @__PURE__ */ new Set();
   for (const [index2, candidate] of candidates.entries()) {
     const prefix = `candidate_claims[${index2}]`;
-    const id = stringValue3(candidate.id);
-    const claimClass = stringValue3(candidate.claim_class);
-    const disposition = stringValue3(candidate.disposition);
-    const evidence = recordArray(candidate.evidence);
+    const id = stringValue4(candidate.id);
+    const claimClass = stringValue4(candidate.claim_class);
+    const disposition = stringValue4(candidate.disposition);
+    const evidence = recordArray2(candidate.evidence);
     const normativeClaim = [
       "product-intent",
       "product-meaning",
@@ -16154,19 +18036,19 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
     } else {
       seenCandidates.add(id);
     }
-    if (!stringValue3(candidate.claim).trim()) {
+    if (!stringValue4(candidate.claim).trim()) {
       issues.push(`${prefix}.claim is required`);
     }
     if (!CLAIM_CLASSES.has(claimClass)) {
       issues.push(`${prefix}.claim_class is unknown: ${claimClass}`);
     }
-    if (!INTENT_STATES.has(stringValue3(candidate.intent_state))) {
+    if (!INTENT_STATES.has(stringValue4(candidate.intent_state))) {
       issues.push(`${prefix}.intent_state is invalid`);
     }
-    if (!DELIVERY_STATES.has(stringValue3(candidate.delivery_state))) {
+    if (!DELIVERY_STATES.has(stringValue4(candidate.delivery_state))) {
       issues.push(`${prefix}.delivery_state is invalid`);
     }
-    if (!ALIGNMENT_STATES.has(stringValue3(candidate.alignment))) {
+    if (!ALIGNMENT_STATES.has(stringValue4(candidate.alignment))) {
       issues.push(`${prefix}.alignment is invalid`);
     }
     if (!CANDIDATE_DISPOSITIONS.has(disposition)) {
@@ -16174,10 +18056,10 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
     } else if (disposition === "unresolved") {
       issues.push(`${prefix}.disposition remains unresolved`);
     }
-    if (["rejected", "deferred", "unresolved"].includes(disposition) && !stringValue3(candidate.reason).trim()) {
+    if (["rejected", "deferred", "unresolved"].includes(disposition) && !stringValue4(candidate.reason).trim()) {
       issues.push(`${prefix}.reason must explain ${disposition || "the disposition"}`);
     }
-    if (stringValue3(candidate.intent_state) === "proposed" && disposition === "confirmed") {
+    if (stringValue4(candidate.intent_state) === "proposed" && disposition === "confirmed") {
       issues.push(`${prefix}: proposed intent cannot be confirmed as current knowledge`);
     }
     if (disposition === "confirmed" && evidence.length === 0 && !normativeClaim) {
@@ -16186,16 +18068,16 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
     const evidenceKinds = /* @__PURE__ */ new Set();
     for (const [evidenceIndex, item] of evidence.entries()) {
       const itemPrefix = `${prefix}.evidence[${evidenceIndex}]`;
-      const kind = stringValue3(item.kind);
-      const resource = stringValue3(item.resource);
+      const kind = stringValue4(item.kind);
+      const resource = stringValue4(item.resource);
       evidenceKinds.add(kind);
       if (!["source-code", "runtime-check", "version-control", "external-primary"].includes(kind)) {
         issues.push(`${itemPrefix}.kind is not an independent evidence class`);
       }
-      if (kind === "source-code" && !isPinnedCodeResource(resource)) {
+      if (kind === "source-code" && !isPinnedCodeResource2(resource)) {
         issues.push(`${itemPrefix}.resource must pin repository, commit, and path`);
       }
-      if (kind === "version-control" && !isVersionControlResource(resource)) {
+      if (kind === "version-control" && !isVersionControlResource2(resource)) {
         issues.push(`${itemPrefix}.resource must pin Git history`);
       }
       if (kind === "external-primary" && !/^https?:\/\/\S+$/i.test(resource)) {
@@ -16204,7 +18086,7 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
       if (kind === "runtime-check" && !/^project-change:[a-z0-9][a-z0-9-]{0,95}#[A-Za-z0-9_./-]+$/.test(resource)) {
         issues.push(`${itemPrefix}.resource must identify a project-change receipt`);
       }
-      if (containsUntrustedResource(resource)) {
+      if (containsUntrustedResource2(resource)) {
         issues.push(`${itemPrefix}.resource must not cite raw or intake material`);
       }
     }
@@ -16215,13 +18097,13 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
       issues.push(`${prefix}: confirmed history requires pinned version-control evidence`);
     }
     if (disposition === "confirmed" && normativeClaim) {
-      const decision = recordValue3(candidate.maintainer_decision);
-      if (decision?.status !== "approved" || !stringValue3(decision.by).startsWith("human:") || !isIsoDateTime2(stringValue3(decision.at))) {
+      const decision = recordValue4(candidate.maintainer_decision);
+      if (decision?.status !== "approved" || !stringValue4(decision.by).startsWith("human:") || !isIsoDateTime4(stringValue4(decision.at))) {
         issues.push(`${prefix}.maintainer_decision must record explicit human approval`);
       }
     }
     if (disposition === "confirmed") {
-      const promotedTo = stringArray2(candidate.promoted_to);
+      const promotedTo = stringArray3(candidate.promoted_to);
       if (promotedTo.length === 0) {
         issues.push(`${prefix}.promoted_to must identify the curated concepts`);
       }
@@ -16234,22 +18116,22 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
       }
     }
   }
-  const promotedConcepts = new Set(stringArray2(promotion?.concepts));
+  const promotedConcepts = new Set(stringArray3(promotion?.concepts));
   if (mode === "baseline" && promotion?.status !== "applied") {
     issues.push("baseline reconstruction requires an applied knowledge promotion");
   } else if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
     issues.push("promotion.status must be applied or not-needed");
   }
-  if (promotion?.status === "applied" && !nonEmptyStringArray2(promotion.concepts)) {
+  if (promotion?.status === "applied" && !nonEmptyStringArray3(promotion.concepts)) {
     issues.push("promotion.concepts must list promoted concept files");
   }
-  if (promotion?.status === "applied" && stringArray2(promotion.concepts).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))) {
+  if (promotion?.status === "applied" && stringArray3(promotion.concepts).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))) {
     issues.push("promotion.concepts must list concept files, not index.md or log.md");
   }
   if (promotion?.status === "applied" && promotion.validation !== "passed" && !allowPendingPromotionValidation) {
     issues.push("promotion.validation must be passed");
   }
-  if (promotion?.status === "not-needed" && (!stringValue3(promotion.reason).trim() || promotion.validation !== "not-needed")) {
+  if (promotion?.status === "not-needed" && (!stringValue4(promotion.reason).trim() || promotion.validation !== "not-needed")) {
     issues.push("not-needed promotion requires a reason and validation: not-needed");
   }
   if (promotion?.status === "not-needed" && candidates.some((candidate) => candidate.disposition === "confirmed")) {
@@ -16267,33 +18149,36 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
       }
     }
   }
-  if (coverage?.result !== "passed" || !nonEmptyStringArray2(coverage.notes)) {
+  if (coverage?.result !== "passed" || !nonEmptyStringArray3(coverage.notes)) {
     issues.push("coverage_audit must pass with notes");
   }
-  if (reconciliation?.result !== "passed" || !nonEmptyStringArray2(reconciliation.notes)) {
+  if (reconciliation?.result !== "passed" || !nonEmptyStringArray3(reconciliation.notes)) {
     issues.push("reconciliation_audit must pass with notes");
   }
-  if (maintainerReview?.status !== "approved" || !stringValue3(maintainerReview.by).startsWith("human:") || !isIsoDateTime2(stringValue3(maintainerReview.at))) {
+  if (maintainerReview?.status !== "approved" || !stringValue4(maintainerReview.by).startsWith("human:") || !isIsoDateTime4(stringValue4(maintainerReview.at))) {
     issues.push("maintainer_review must record explicit human approval");
   }
   return issues;
 }
 function dossierIssues(repository, metadata, body) {
-  const id = stringValue3(repository.repository);
+  const id = stringValue4(repository.repository);
   const issues = [];
+  if (metadata.reconstruction_repository_version !== 2) {
+    issues.push(`${id}: reconstruction_repository_version must be 2`);
+  }
   if (metadata.status !== "reviewed") {
     issues.push(`${id}: dossier status must be reviewed`);
   }
   if (metadata.repository !== repository.repository || metadata.commit !== repository.commit) {
     issues.push(`${id}: dossier repository or commit does not match the case`);
   }
-  if (!nonEmptyStringArray2(metadata.graphify_queries)) {
+  if (!nonEmptyStringArray3(metadata.graphify_queries)) {
     issues.push(`${id}: dossier must record Graphify queries`);
   }
   if (!Array.isArray(metadata.candidate_ids)) {
     issues.push(`${id}: dossier candidate_ids must be a list`);
   }
-  const coverage = recordValue3(metadata.coverage);
+  const coverage = recordValue4(metadata.coverage);
   for (const dimension of [
     "purpose",
     "areas_capabilities",
@@ -16304,15 +18189,15 @@ function dossierIssues(repository, metadata, body) {
     "tests_runtime",
     "unknowns"
   ]) {
-    if (!["reviewed", "not-relevant"].includes(stringValue3(coverage?.[dimension]))) {
+    if (!["reviewed", "not-relevant"].includes(stringValue4(coverage?.[dimension]))) {
       issues.push(`${id}: dossier coverage.${dimension} must be reviewed or not-relevant`);
     }
   }
-  const history = recordValue3(metadata.history);
-  if (!FINAL_REVIEW_STATES.has(stringValue3(history?.status))) {
+  const history = recordValue4(metadata.history);
+  if (!FINAL_REVIEW_STATES.has(stringValue4(history?.status))) {
     issues.push(`${id}: dossier history.status must be reviewed, not-available, or not-relevant`);
   }
-  if (history?.status !== "reviewed" && !nonEmptyStringArray2(history?.notes)) {
+  if (history?.status !== "reviewed" && !nonEmptyStringArray3(history?.notes)) {
     issues.push(`${id}: dossier history.notes must explain its final state`);
   }
   if (/<[^>\n]+>/.test(body)) {
@@ -16320,24 +18205,25 @@ function dossierIssues(repository, metadata, body) {
   }
   return issues;
 }
-async function supplementalInputIssues(target, metadata) {
+async function supplementalInputIssues(target, metadata, lifecycle) {
   const issues = [];
-  const raw = recordValue3(recordValue3(metadata.supplemental_inputs)?.raw);
-  if (raw?.status === "not-available" && await containsFiles(join7(target, "raw"))) {
+  const raw = recordValue4(recordValue4(metadata.supplemental_inputs)?.raw);
+  if (raw?.status === "not-available" && await containsFiles(join8(target, "raw"))) {
     issues.push(
       "supplemental_inputs.raw is not-available but raw/ contains files; review or mark them not-relevant"
     );
   }
   if (raw?.status === "reviewed") {
-    for (const id of stringArray2(raw.case_ids)) {
+    const caseIds = new Set(stringArray3(raw.case_ids));
+    for (const id of stringArray3(raw.case_ids)) {
       if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
         issues.push(`supplemental_inputs.raw.case_ids contains an invalid id: ${id}`);
         continue;
       }
       try {
         const intake = parseWorkSpec(
-          await readFile7(
-            join7(target, "intake/cases/archive", id, "case.md"),
+          await readFile9(
+            join8(target, "intake/cases/archive", id, "case.md"),
             "utf8"
           )
         );
@@ -16348,16 +18234,46 @@ async function supplementalInputIssues(target, metadata) {
         issues.push(`cannot verify completed raw-intake case ${id}: ${errorMessage(error2)}`);
       }
     }
+    try {
+      const inventory = await inventoryRaw({
+        target,
+        baseline: stringValue4(raw.baseline)
+      });
+      const baselinePaths = new Set(inventory.entries.map((entry) => entry.path));
+      const changedFrozenPaths = lifecycle === "active" ? inventory.uncommitted.filter((path) => baselinePaths.has(path)) : [];
+      if (changedFrozenPaths.length > 0) {
+        issues.push(
+          `frozen raw snapshot has uncommitted path changes: ${changedFrozenPaths.join(", ")}`
+        );
+      }
+      for (const entry of inventory.entries) {
+        if (!["reviewed", "no-relevant-claims"].includes(entry.state)) {
+          issues.push(
+            `${entry.path}: frozen raw input remains ${entry.state}`
+          );
+          continue;
+        }
+        if (!entry.cases.some(
+          (reference) => caseIds.has(reference.id) && reference.lifecycle === "archive" && reference.outcome === "completed"
+        )) {
+          issues.push(
+            `${entry.path}: final raw review is not linked through supplemental_inputs.raw.case_ids`
+          );
+        }
+      }
+    } catch (error2) {
+      issues.push(`cannot verify frozen raw inventory: ${errorMessage(error2)}`);
+    }
   }
   return issues;
 }
 async function containsFiles(root) {
   try {
-    for (const entry of await readdir3(root, { withFileTypes: true })) {
+    for (const entry of await readdir4(root, { withFileTypes: true })) {
       if (entry.isFile() || entry.isSymbolicLink()) {
         return true;
       }
-      if (entry.isDirectory() && await containsFiles(join7(root, entry.name))) {
+      if (entry.isDirectory() && await containsFiles(join8(root, entry.name))) {
         return true;
       }
     }
@@ -16373,7 +18289,7 @@ async function normalizeLeafRoots(values) {
   const roots = [];
   const seen = /* @__PURE__ */ new Set();
   for (const value of values) {
-    const root = await realpath2(resolve8(value));
+    const root = await realpath2(resolve10(value));
     if (!seen.has(root)) {
       seen.add(root);
       roots.push(root);
@@ -16382,16 +18298,16 @@ async function normalizeLeafRoots(values) {
   return roots;
 }
 async function graphSummary(root) {
-  const path = join7(root, "graphify-out/graph.json");
+  const path = join8(root, "graphify-out/graph.json");
   try {
-    const content3 = await readFile7(path);
+    const content3 = await readFile9(path);
     const graph = JSON.parse(content3.toString("utf8"));
     if (!Array.isArray(graph.nodes) || graph.nodes.length === 0) {
       throw new Error("Graphify graph exists but contains no nodes");
     }
     return {
       nodes: graph.nodes.length,
-      contentHash: createHash3("sha256").update(content3).digest("hex")
+      contentHash: createHash4("sha256").update(content3).digest("hex")
     };
   } catch (error2) {
     throw new Error(`Invalid Graphify graph in ${root}: ${errorMessage(error2)}`);
@@ -16400,7 +18316,7 @@ async function graphSummary(root) {
 async function readBinding(target, id, issues) {
   try {
     const value = JSON.parse(
-      await readFile7(reconstructionBindingPath(target, id), "utf8")
+      await readFile9(reconstructionBindingPath(target, id), "utf8")
     );
     if (!isLocalBinding2(value)) {
       issues.push("local reconstruction binding is invalid");
@@ -16414,47 +18330,131 @@ async function readBinding(target, id, issues) {
     return void 0;
   }
 }
+async function coverageContexts(targetInput, id, repository) {
+  const target = await requireKnowledgeRepository4(targetInput);
+  const casePath = reconstructionCasePath(target, "active", id);
+  const document3 = parseWorkSpec(await readFile9(casePath, "utf8"));
+  const bindingIssues = [];
+  const binding = await readBinding(target, id, bindingIssues);
+  if (!binding || bindingIssues.length > 0) {
+    throw new Error(
+      bindingIssues.join("; ") || "local reconstruction binding is missing"
+    );
+  }
+  const durable = recordArray2(document3.metadata.repositories);
+  const selected = repository ? durable.filter((entry) => entry.repository === repository) : durable;
+  if (selected.length === 0) {
+    throw new Error(
+      `Reconstruction repository is not in case ${id}: ${repository ?? ""}`
+    );
+  }
+  const contexts = [];
+  for (const entry of selected) {
+    const repositoryId2 = stringValue4(entry.repository);
+    const local = binding.repositories.find(
+      (candidate) => candidate.repository === repositoryId2
+    );
+    if (!local) {
+      throw new Error(`${repositoryId2}: local checkout binding is missing`);
+    }
+    const coveragePath = resolveCaseJson(
+      dirname6(casePath),
+      stringValue4(entry.coverage)
+    );
+    contexts.push({
+      repositoryId: repositoryId2,
+      root: local.root,
+      commit: stringValue4(entry.commit),
+      worktreeId: local.worktreeId,
+      graphHash: stringValue4(recordValue4(entry.graphify)?.content_hash),
+      coveragePath,
+      ledger: await readReconstructionCoverage(coveragePath)
+    });
+  }
+  return contexts;
+}
+async function oneCoverageContext(target, id, repository) {
+  const contexts = await coverageContexts(target, id, repository);
+  if (contexts.length !== 1) {
+    throw new Error(
+      `Reconstruction ${id} contains ${contexts.length} repositories; specify --repository`
+    );
+  }
+  const context = contexts[0];
+  await assertCoverageBindingCurrent(context);
+  return context;
+}
+async function assertCoverageBindingCurrent(context) {
+  const current = readRepositoryMetadata(context.root);
+  if (current.repository !== context.repositoryId || current.commit !== context.commit || current.worktreeId !== context.worktreeId) {
+    throw new Error(
+      `${context.repositoryId}: checkout, worktree, or revision binding drifted`
+    );
+  }
+  if (current.dirty) {
+    throw new Error(
+      `${context.repositoryId}: bound checkout has uncommitted changes`
+    );
+  }
+  const graph = await graphSummary(context.root);
+  if (graph.contentHash !== context.graphHash) {
+    throw new Error(
+      `${context.repositoryId}: Graphify graph changed after the case was bound`
+    );
+  }
+}
 function isLocalBinding2(value) {
-  return isRecord2(value) && value.schemaVersion === 1 && typeof value.caseId === "string" && typeof value.knowledgeRoot === "string" && Array.isArray(value.repositories) && value.repositories.every(
-    (entry) => isRecord2(entry) && typeof entry.repository === "string" && typeof entry.root === "string" && typeof entry.commit === "string" && typeof entry.worktreeId === "string"
+  return isRecord4(value) && value.schemaVersion === 1 && typeof value.caseId === "string" && typeof value.knowledgeRoot === "string" && Array.isArray(value.repositories) && value.repositories.every(
+    (entry) => isRecord4(entry) && typeof entry.repository === "string" && typeof entry.root === "string" && typeof entry.commit === "string" && typeof entry.worktreeId === "string"
   );
 }
 function reconstructionCasePath(target, state, id) {
   assertCaseId(id);
-  return join7(target, "reconstruction", state, id, "case.md");
+  return join8(target, "reconstruction", state, id, "case.md");
 }
 function reconstructionBindingPath(target, id) {
   assertCaseId(id);
-  return join7(target, ".workflow/current/reconstruction", `${id}.json`);
+  return join8(target, ".workflow/current/reconstruction", `${id}.json`);
 }
 function resolveCaseFile(caseDirectory, input) {
-  const absolute = resolve8(caseDirectory, input);
-  const boundary = `${resolve8(caseDirectory)}${sep4}`;
+  const absolute = resolve10(caseDirectory, input);
+  const boundary = `${resolve10(caseDirectory)}${sep4}`;
   if (!absolute.startsWith(boundary) || !absolute.endsWith(".md")) {
     throw new Error(`case-relative Markdown path escapes reconstruction: ${input}`);
+  }
+  return absolute;
+}
+function resolveCaseJson(caseDirectory, input) {
+  const absolute = resolve10(caseDirectory, input);
+  const boundary = `${resolve10(caseDirectory)}${sep4}`;
+  if (!absolute.startsWith(boundary) || !absolute.endsWith(".json")) {
+    throw new Error(`case-relative JSON path escapes reconstruction: ${input}`);
   }
   return absolute;
 }
 function isCaseRelativeMarkdown(value) {
   return value.endsWith(".md") && !value.startsWith("/") && !value.split("/").includes("..");
 }
+function isCaseRelativeJson(value) {
+  return value.endsWith(".json") && !value.startsWith("/") && !value.split("/").includes("..");
+}
 function isKnowledgeConceptPath(value) {
   return /^knowledge\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(value) && !/(?:^|\/)(?:index|log)\.md$/i.test(value);
 }
-async function requireKnowledgeRepository3(targetInput) {
-  const target = await realpath2(resolve8(targetInput));
+async function requireKnowledgeRepository4(targetInput) {
+  const target = await realpath2(resolve10(targetInput));
   const config = await readConfig(target);
   if (config.profile !== "knowledge") {
     throw new Error(`Reconstruction requires a knowledge repository: ${target}`);
   }
   return target;
 }
-async function uniqueDirectoryId(root, base) {
-  await mkdir4(root, { recursive: true });
+async function uniqueDirectoryId2(root, base) {
+  await mkdir5(root, { recursive: true });
   for (let index2 = 1; index2 < 1e3; index2 += 1) {
     const candidate = index2 === 1 ? base : `${base}-${index2}`;
     try {
-      await access2(join7(root, candidate), constants2.F_OK);
+      await access3(join8(root, candidate), constants3.F_OK);
     } catch (error2) {
       if (isMissingFileError(error2)) {
         return candidate;
@@ -16464,9 +18464,9 @@ async function uniqueDirectoryId(root, base) {
   }
   throw new Error(`Cannot allocate a unique reconstruction id for ${base}`);
 }
-async function assertPathAbsent(path, label) {
+async function assertPathAbsent2(path, label) {
   try {
-    await access2(path, constants2.F_OK);
+    await access3(path, constants3.F_OK);
     throw new Error(`${label} already exists: ${path}`);
   } catch (error2) {
     if (isMissingFileError(error2)) {
@@ -16475,7 +18475,7 @@ async function assertPathAbsent(path, label) {
     throw error2;
   }
 }
-function normalizeSlug(value) {
+function normalizeSlug2(value) {
   const slug = value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   if (!slug) {
     throw new Error("Reconstruction slug must contain ASCII letters or digits");
@@ -16494,31 +18494,31 @@ function assertCaseId(id) {
 function containsLocalAbsolutePath(value) {
   return /(?:^|[\s("'`:=])(?:\/(?:Users|home|private|Volumes|var\/folders)\/|[A-Za-z]:\\)/m.test(value);
 }
-function containsUntrustedResource(value) {
+function containsUntrustedResource2(value) {
   return /(?:^|[/:])(?:raw|intake)(?:[/:]|$)/i.test(value);
 }
-function isPinnedCodeResource(value) {
+function isPinnedCodeResource2(value) {
   return /^git:.+@[0-9a-f]{40}#[^#\s]+$/i.test(value);
 }
-function isVersionControlResource(value) {
+function isVersionControlResource2(value) {
   return /^git:.+@[0-9a-f]{40}(?:#[^#\s]+)?$/i.test(value) || /^https?:\/\/\S+\/(?:pull|merge_requests|commit|commits)\/\S+$/i.test(value);
 }
-function recordArray(value) {
-  return Array.isArray(value) ? value.filter(isRecord2) : [];
+function recordArray2(value) {
+  return Array.isArray(value) ? value.filter(isRecord4) : [];
 }
-function recordValue3(value) {
-  return isRecord2(value) ? value : void 0;
+function recordValue4(value) {
+  return isRecord4(value) ? value : void 0;
 }
-function stringValue3(value) {
+function stringValue4(value) {
   return typeof value === "string" ? value : "";
 }
-function stringArray2(value) {
+function stringArray3(value) {
   return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
 }
-function nonEmptyStringArray2(value) {
+function nonEmptyStringArray3(value) {
   return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
 }
-function isIsoDateTime2(value) {
+function isIsoDateTime4(value) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
 var RECONSTRUCTION_VERSION, FINAL_REVIEW_STATES, CANDIDATE_DISPOSITIONS, CLAIM_CLASSES, INTENT_STATES, DELIVERY_STATES, ALIGNMENT_STATES;
@@ -16529,9 +18529,11 @@ var init_reconstruction = __esm({
     init_dependencies();
     init_config();
     init_git();
+    init_intake();
+    init_reconstruction_coverage();
     init_repository_registry();
     init_work_spec();
-    RECONSTRUCTION_VERSION = 2;
+    RECONSTRUCTION_VERSION = 3;
     FINAL_REVIEW_STATES = /* @__PURE__ */ new Set(["reviewed", "not-available", "not-relevant"]);
     CANDIDATE_DISPOSITIONS = /* @__PURE__ */ new Set([
       "confirmed",
@@ -16581,30 +18583,30 @@ __export(knowledge_exports, {
   hashKnowledgeConcept: () => hashKnowledgeConcept,
   validateKnowledge: () => validateKnowledge
 });
-import { createHash as createHash4 } from "node:crypto";
+import { createHash as createHash5 } from "node:crypto";
 import {
   lstat as lstat4,
-  readFile as readFile8,
-  readdir as readdir4
+  readFile as readFile10,
+  readdir as readdir5
 } from "node:fs/promises";
-import { basename as basename2, dirname as dirname6, join as join8, relative as relative3, resolve as resolve9, sep as sep5 } from "node:path";
+import { basename as basename2, dirname as dirname7, join as join9, relative as relative4, resolve as resolve11, sep as sep5 } from "node:path";
 async function validateKnowledge(targetInput, conceptPaths) {
-  const target = await requireKnowledgeRepository4(targetInput);
-  const knowledgeRoot = join8(target, "knowledge");
+  const target = await requireKnowledgeRepository5(targetInput);
+  const knowledgeRoot = join9(target, "knowledge");
   const inventory = await collectKnowledgeTree(knowledgeRoot);
-  const selected = conceptPaths ? conceptPaths.map((path) => resolveConceptPath(target, knowledgeRoot, path)) : inventory.markdown.map((path) => join8(knowledgeRoot, path));
+  const selected = conceptPaths ? conceptPaths.map((path) => resolveConceptPath(target, knowledgeRoot, path)) : inventory.markdown.map((path) => join9(knowledgeRoot, path));
   const errors = [];
   const warnings = [];
   const changeIndex = await readProjectChangeIndex(target);
   const reconstructionIndex = await readProjectReconstructionIndex(target);
   for (const path of inventory.symlinks) {
     errors.push({
-      path: portable2(join8("knowledge", path)),
+      path: portable2(join9("knowledge", path)),
       message: "curated knowledge tree must not contain symlinks"
     });
   }
   for (const absolute of selected.sort()) {
-    const displayPath = portable2(relative3(target, absolute));
+    const displayPath = portable2(relative4(target, absolute));
     try {
       const stat = await lstat4(absolute);
       if (stat.isSymbolicLink()) {
@@ -16617,7 +18619,7 @@ async function validateKnowledge(targetInput, conceptPaths) {
     }
     let content3;
     try {
-      content3 = decodeUtf8(await readFile8(absolute));
+      content3 = decodeUtf8(await readFile10(absolute));
     } catch (error2) {
       errors.push({ path: displayPath, message: `cannot read UTF-8 Markdown: ${errorMessage(error2)}` });
       continue;
@@ -16630,7 +18632,7 @@ async function validateKnowledge(targetInput, conceptPaths) {
     }
     const reserved = basename2(absolute) === "index.md" || basename2(absolute) === "log.md";
     if (reserved) {
-      if (basename2(absolute) === "index.md" && dirname6(absolute) === knowledgeRoot) {
+      if (basename2(absolute) === "index.md" && dirname7(absolute) === knowledgeRoot) {
         const parsed2 = parseFrontmatter2(content3, false);
         if (!parsed2.metadata || parsed2.metadata.okf_version !== "0.2") {
           errors.push({ path: displayPath, message: 'root index.md must declare okf_version: "0.2"' });
@@ -16658,7 +18660,7 @@ async function validateKnowledge(targetInput, conceptPaths) {
   const graph = await compileKnowledgeGraph(
     target,
     conceptPaths ? {
-      issueSources: new Set(selected.map((path) => portable2(relative3(target, path)))),
+      issueSources: new Set(selected.map((path) => portable2(relative4(target, path)))),
       checkReachability: false
     } : {}
   );
@@ -16673,14 +18675,14 @@ async function validateKnowledge(targetInput, conceptPaths) {
   };
 }
 function validateConcept(path, metadata, body, changeIndex, reconstructionIndex, errors, warnings) {
-  const type = stringValue4(metadata.type);
-  const status = stringValue4(metadata.status);
-  const generated = recordValue4(metadata.generated);
-  const generatedAt = stringValue4(generated?.at);
+  const type = stringValue5(metadata.type);
+  const status = stringValue5(metadata.status);
+  const generated = recordValue5(metadata.generated);
+  const generatedAt = stringValue5(generated?.at);
   const sources = Array.isArray(metadata.sources) ? metadata.sources : [];
-  const authority = stringArray3(metadata.authority);
+  const authority = stringArray4(metadata.authority);
   const verifications = normalizeVerifications(metadata.verified);
-  const realization = recordValue4(metadata.realization);
+  const realization = recordValue5(metadata.realization);
   const expectedContentHash = conceptDocumentHash(metadata, body);
   if (!type) {
     errors.push({ path, message: "type is required by OKF v0.2" });
@@ -16688,10 +18690,10 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
   if (!["draft", "stable", "deprecated"].includes(status)) {
     errors.push({ path, message: "status must be explicit: draft, stable, or deprecated" });
   }
-  if (!isActor(stringValue4(generated?.by))) {
+  if (!isActor(stringValue5(generated?.by))) {
     errors.push({ path, message: "generated.by must follow the OKF actor convention" });
   }
-  if (!isIsoDateTime3(generatedAt)) {
+  if (!isIsoDateTime5(generatedAt)) {
     errors.push({ path, message: "generated.at must be an ISO 8601 datetime" });
   }
   if (sources.length === 0) {
@@ -16722,11 +18724,11 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
   let hasPinnedCode = false;
   let hasReconstructionReview = false;
   for (const [index2, value] of sources.entries()) {
-    const source = recordValue4(value);
+    const source = recordValue5(value);
     const prefix = `sources[${index2}]`;
-    const id = stringValue4(source?.id);
-    const resource = stringValue4(source?.resource);
-    const kind = stringValue4(source?.kind);
+    const id = stringValue5(source?.id);
+    const resource = stringValue5(source?.resource);
+    const kind = stringValue5(source?.kind);
     if (!id) {
       errors.push({ path, message: `${prefix}.id is required for claim-level attribution` });
     } else if (!/^[A-Za-z0-9_-]+$/.test(id)) {
@@ -16754,7 +18756,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
     }
     if (kind === "maintainer-decision") {
       hasHumanAuthority = true;
-      if (!stringValue4(source?.author).startsWith("human:")) {
+      if (!stringValue5(source?.author).startsWith("human:")) {
         errors.push({ path, message: `${prefix}.author must identify the approving human` });
       }
       if (isProjectChangeResource(resource)) {
@@ -16764,7 +18766,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
         } else if (!hasApprovedHumanReview(
           change,
           void 0,
-          stringValue4(source?.author)
+          stringValue5(source?.author)
         )) {
           errors.push({ path, message: `${prefix}.resource has no recorded human approval` });
         }
@@ -16781,7 +18783,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
         } else if (!hasApprovedReconstructionReview(
           reconstruction.record,
           reconstruction.candidate,
-          stringValue4(source?.author)
+          stringValue5(source?.author)
         )) {
           errors.push({
             path,
@@ -16796,7 +18798,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
       }
     }
     if (kind === "source-code") {
-      if (!isPinnedCodeResource2(resource)) {
+      if (!isPinnedCodeResource3(resource)) {
         errors.push({
           path,
           message: `${prefix}.resource must pin repository, full commit, path, and optional symbol`
@@ -16828,7 +18830,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
       errors.push({ path, message: `${prefix}.resource must point to a project-change receipt` });
     } else if (kind === "runtime-check" && !projectChangeRecord(resource, changeIndex, false)) {
       errors.push({ path, message: `${prefix}.resource points to a missing project change` });
-    } else if (kind === "runtime-check" && recordValue4(projectChangeRecord(resource, changeIndex, false)?.verification)?.result !== "passed") {
+    } else if (kind === "runtime-check" && recordValue5(projectChangeRecord(resource, changeIndex, false)?.verification)?.result !== "passed") {
       errors.push({ path, message: `${prefix}.resource has no passed verification receipt` });
     } else if (kind === "archived-change" && !projectChangeRecord(resource, changeIndex, true)) {
       errors.push({ path, message: `${prefix}.resource must point to an archived project change` });
@@ -16844,7 +18846,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
     if (kind === "external-primary" && !/^https?:\/\/\S+$/i.test(resource)) {
       errors.push({ path, message: `${prefix}.resource must be an absolute primary-source URL` });
     }
-    if (kind === "version-control" && !isVersionControlResource2(resource)) {
+    if (kind === "version-control" && !isVersionControlResource3(resource)) {
       errors.push({ path, message: `${prefix}.resource must pin a commit or review artifact` });
     }
   }
@@ -16879,7 +18881,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
       message: "normative authority requires a maintainer-decision source"
     });
   }
-  if (authority.includes("implementation") && !hasPinnedCode && !(stringValue4(realization?.delivery) === "absent" && hasReconstructionReview)) {
+  if (authority.includes("implementation") && !hasPinnedCode && !(stringValue5(realization?.delivery) === "absent" && hasReconstructionReview)) {
     errors.push({
       path,
       message: "implementation authority requires pinned source code, or a reviewed reconstruction receipt for absent delivery"
@@ -16892,17 +18894,17 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
     });
   }
   if (authority.includes("history") && !sources.some(
-    (value) => recordValue4(value)?.kind === "archived-change" || recordValue4(value)?.kind === "reconstruction-review" || recordValue4(value)?.kind === "maintainer-decision" && isProjectReconstructionResource(stringValue4(recordValue4(value)?.resource))
+    (value) => recordValue5(value)?.kind === "archived-change" || recordValue5(value)?.kind === "reconstruction-review" || recordValue5(value)?.kind === "maintainer-decision" && isProjectReconstructionResource(stringValue5(recordValue5(value)?.resource))
   )) {
     errors.push({
       path,
       message: "history authority requires an archived change or reviewed reconstruction decision"
     });
   }
-  if (authority.includes("history") && !sources.some((value) => recordValue4(value)?.kind === "version-control")) {
+  if (authority.includes("history") && !sources.some((value) => recordValue5(value)?.kind === "version-control")) {
     errors.push({ path, message: "history authority requires pinned version-control history" });
   }
-  if (authority.includes("external") && !sources.some((value) => recordValue4(value)?.kind === "external-primary")) {
+  if (authority.includes("external") && !sources.some((value) => recordValue5(value)?.kind === "external-primary")) {
     errors.push({ path, message: "external authority requires an external-primary source" });
   }
   validateRealization(path, authority, realization, errors);
@@ -16911,7 +18913,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
       errors.push({ path, message: "stable concepts require a verification event" });
     }
     const fresh = verifications.some(
-      (verification) => isIsoDateTime3(stringValue4(verification.at)) && Date.parse(stringValue4(verification.at)) >= Date.parse(generatedAt) && stringValue4(verification.content_hash) === expectedContentHash
+      (verification) => isIsoDateTime5(stringValue5(verification.at)) && Date.parse(stringValue5(verification.at)) >= Date.parse(generatedAt) && stringValue5(verification.content_hash) === expectedContentHash
     );
     if (!fresh) {
       errors.push({
@@ -16920,7 +18922,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
       });
     }
     if (normativeAuthority && !verifications.some(
-      (verification) => stringValue4(verification.by).startsWith("human:")
+      (verification) => stringValue5(verification.by).startsWith("human:")
     )) {
       errors.push({
         path,
@@ -16929,13 +18931,13 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
     }
   }
   for (const [index2, verification] of verifications.entries()) {
-    if (!isActor(stringValue4(verification.by))) {
+    if (!isActor(stringValue5(verification.by))) {
       errors.push({ path, message: `verified[${index2}].by must follow the OKF actor convention` });
     }
-    if (!isIsoDateTime3(stringValue4(verification.at))) {
+    if (!isIsoDateTime5(stringValue5(verification.at))) {
       errors.push({ path, message: `verified[${index2}].at must be an ISO 8601 datetime` });
     }
-    if (!/^[0-9a-f]{64}$/i.test(stringValue4(verification.content_hash))) {
+    if (!/^[0-9a-f]{64}$/i.test(stringValue5(verification.content_hash))) {
       errors.push({
         path,
         message: `verified[${index2}].content_hash must be a SHA-256 knowledge content hash`
@@ -16943,14 +18945,14 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
     }
   }
   if (status === "deprecated") {
-    if (!stringValue4(metadata.superseded_by) && !stringValue4(metadata.deprecation_reason)) {
+    if (!stringValue5(metadata.superseded_by) && !stringValue5(metadata.deprecation_reason)) {
       errors.push({
         path,
         message: "deprecated concepts require superseded_by or deprecation_reason"
       });
     }
   }
-  if (!hasPinnedCode && sources.some((value) => recordValue4(value)?.kind === "runtime-check")) {
+  if (!hasPinnedCode && sources.some((value) => recordValue5(value)?.kind === "runtime-check")) {
     warnings.push({
       path,
       message: "runtime evidence is present without a pinned source-code reference"
@@ -16963,19 +18965,19 @@ async function readDecisionNodes(target, knowledgeRoot, markdown) {
     if (/(?:^|\/)(?:index|log)\.md$/i.test(relativePath)) {
       continue;
     }
-    const absolute = join8(knowledgeRoot, relativePath);
+    const absolute = join9(knowledgeRoot, relativePath);
     try {
-      const parsed = parseFrontmatter2(decodeUtf8(await readFile8(absolute)), true);
-      if (!parsed.metadata || !stringArray3(parsed.metadata.authority).includes("decision")) {
+      const parsed = parseFrontmatter2(decodeUtf8(await readFile10(absolute)), true);
+      if (!parsed.metadata || !stringArray4(parsed.metadata.authority).includes("decision")) {
         continue;
       }
       decisions.push({
-        path: portable2(relative3(target, absolute)),
-        id: stringValue4(parsed.metadata.decision_id),
-        effectiveAt: stringValue4(parsed.metadata.effective_at),
-        status: stringValue4(parsed.metadata.status),
-        supersedes: stringArray3(parsed.metadata.supersedes),
-        supersededBy: stringValue4(parsed.metadata.superseded_by),
+        path: portable2(relative4(target, absolute)),
+        id: stringValue5(parsed.metadata.decision_id),
+        effectiveAt: stringValue5(parsed.metadata.effective_at),
+        status: stringValue5(parsed.metadata.status),
+        supersedes: stringArray4(parsed.metadata.supersedes),
+        supersededBy: stringValue5(parsed.metadata.superseded_by),
         hasSupersedes: Array.isArray(parsed.metadata.supersedes),
         hasSupersededBy: Object.hasOwn(parsed.metadata, "superseded_by") && typeof parsed.metadata.superseded_by === "string"
       });
@@ -17001,7 +19003,7 @@ function validateDecisionLineage(decisions, errors) {
     } else {
       ids.set(decision.id, decision.path);
     }
-    if (!isIsoDateTime3(decision.effectiveAt)) {
+    if (!isIsoDateTime5(decision.effectiveAt)) {
       errors.push({
         path: decision.path,
         message: "decision authority requires effective_at as an ISO 8601 datetime"
@@ -17133,14 +19135,14 @@ async function collectKnowledgeTree(root) {
   const markdown = [];
   const symlinks = [];
   async function walk(directory) {
-    for (const entry of await readdir4(directory, { withFileTypes: true })) {
-      const absolute = join8(directory, entry.name);
+    for (const entry of await readdir5(directory, { withFileTypes: true })) {
+      const absolute = join9(directory, entry.name);
       if (entry.isDirectory()) {
         await walk(absolute);
       } else if (entry.isSymbolicLink()) {
-        symlinks.push(portable2(relative3(root, absolute)));
+        symlinks.push(portable2(relative4(root, absolute)));
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
-        markdown.push(portable2(relative3(root, absolute)));
+        markdown.push(portable2(relative4(root, absolute)));
       }
     }
   }
@@ -17152,8 +19154,8 @@ async function collectKnowledgeTree(root) {
 }
 async function readProjectChangeIndex(target) {
   return {
-    active: await projectChangeRecords(join8(target, "changes/active")),
-    archive: await projectChangeRecords(join8(target, "changes/archive"))
+    active: await projectChangeRecords(join9(target, "changes/active")),
+    archive: await projectChangeRecords(join9(target, "changes/archive"))
   };
 }
 async function readProjectReconstructionIndex(target) {
@@ -17163,15 +19165,15 @@ async function readProjectReconstructionIndex(target) {
   };
 }
 async function projectReconstructionRecords(target, lifecycle) {
-  const root = join8(target, "reconstruction", lifecycle);
+  const root = join9(target, "reconstruction", lifecycle);
   try {
     const result = /* @__PURE__ */ new Map();
-    for (const entry of await readdir4(root, { withFileTypes: true })) {
+    for (const entry of await readdir5(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) {
         continue;
       }
       try {
-        const content3 = await readFile8(join8(root, entry.name, "case.md"), "utf8");
+        const content3 = await readFile10(join9(root, entry.name, "case.md"), "utf8");
         const parsed = parseFrontmatter2(content3, true);
         if (parsed.metadata) {
           const receipt = await inspectProjectReconstructionReceipt(
@@ -17202,12 +19204,12 @@ async function projectReconstructionRecords(target, lifecycle) {
 async function projectChangeRecords(root) {
   try {
     const result = /* @__PURE__ */ new Map();
-    for (const entry of await readdir4(root, { withFileTypes: true })) {
+    for (const entry of await readdir5(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) {
         continue;
       }
       try {
-        const content3 = await readFile8(join8(root, entry.name, "change.md"), "utf8");
+        const content3 = await readFile10(join9(root, entry.name, "change.md"), "utf8");
         const document3 = parseWorkSpec(content3);
         if (document3.metadata) {
           result.set(entry.name, {
@@ -17232,15 +19234,15 @@ async function projectChangeRecords(root) {
 }
 function resolveConceptPath(target, knowledgeRoot, input) {
   const normalized = input.replace(/^\/+/, "");
-  const absolute = resolve9(target, normalized.startsWith("knowledge/") ? normalized : join8("knowledge", normalized));
-  const boundary = `${resolve9(knowledgeRoot)}${sep5}`;
+  const absolute = resolve11(target, normalized.startsWith("knowledge/") ? normalized : join9("knowledge", normalized));
+  const boundary = `${resolve11(knowledgeRoot)}${sep5}`;
   if (!absolute.startsWith(boundary) || !absolute.toLowerCase().endsWith(".md")) {
     throw new Error(`Knowledge concept path escapes knowledge/: ${input}`);
   }
   return absolute;
 }
-async function requireKnowledgeRepository4(targetInput) {
-  const target = resolve9(targetInput);
+async function requireKnowledgeRepository5(targetInput) {
+  const target = resolve11(targetInput);
   const config = await readConfig(target);
   if (config.profile !== "knowledge") {
     throw new Error(`Knowledge command requires a knowledge repository: ${target}`);
@@ -17261,7 +19263,7 @@ function parseFrontmatter2(content3, required) {
   }
   try {
     const metadata = parse(lines.slice(1, end).join("\n"));
-    if (!isRecord3(metadata)) {
+    if (!isRecord5(metadata)) {
       return { body: lines.slice(end + 1).join("\n"), error: "frontmatter must be a mapping" };
     }
     return { metadata, body: lines.slice(end + 1).join("\n") };
@@ -17271,9 +19273,9 @@ function parseFrontmatter2(content3, required) {
 }
 function normalizeVerifications(value) {
   if (Array.isArray(value)) {
-    return value.filter(isRecord3);
+    return value.filter(isRecord5);
   }
-  return isRecord3(value) ? [value] : [];
+  return isRecord5(value) ? [value] : [];
 }
 function footnoteData(body) {
   const definitions = new Set(
@@ -17292,10 +19294,10 @@ function footnoteData(body) {
 function containsUntrustedIntakePath2(content3) {
   return /(?:^|[\s("'`:=])(?:(?:\.\.\/|\.\/|\/)*(?:raw|intake)\/|(?:raw|intake):)[^\s)"'`]*/im.test(content3);
 }
-function isPinnedCodeResource2(value) {
+function isPinnedCodeResource3(value) {
   return /^git:.+@[0-9a-f]{40}#[^#\s]+$/i.test(value);
 }
-function isVersionControlResource2(value) {
+function isVersionControlResource3(value) {
   return /^git:.+@[0-9a-f]{40}(?:#[^#\s]+)?$/i.test(value) || /^https?:\/\/\S+\/(?:pull|merge_requests|commit|commits)\/\S+$/i.test(value);
 }
 function isProjectChangeResource(value) {
@@ -17326,30 +19328,30 @@ function projectReconstructionDecision(resource, index2) {
   const archived = index2.archive.get(id);
   const active = index2.active.get(id);
   const record2 = archived?.outcome === "completed" ? archived : active;
-  if (!record2 || record2.__receiptReady !== true || !["active", "completed"].includes(stringValue4(record2.status))) {
+  if (!record2 || record2.__receiptReady !== true || !["active", "completed"].includes(stringValue5(record2.status))) {
     return void 0;
   }
-  const candidate = (Array.isArray(record2.candidate_claims) ? record2.candidate_claims.filter(isRecord3) : []).find(
+  const candidate = (Array.isArray(record2.candidate_claims) ? record2.candidate_claims.filter(isRecord5) : []).find(
     (entry) => entry.id === candidateId && entry.disposition === "confirmed"
   );
   return candidate ? { record: record2, candidate } : void 0;
 }
 function hasApprovedHumanReview(metadata, requiredStage, actor) {
-  const review = recordValue4(metadata.maintainer_review);
+  const review = recordValue5(metadata.maintainer_review);
   const stages = requiredStage ? [requiredStage] : ["framing", "completion"];
   return stages.some((stage) => {
-    const entry = recordValue4(review?.[stage]);
-    return entry?.status === "approved" && stringValue4(entry.by).startsWith("human:") && (!actor || entry.by === actor) && isIsoDateTime3(stringValue4(entry.at));
+    const entry = recordValue5(review?.[stage]);
+    return entry?.status === "approved" && stringValue5(entry.by).startsWith("human:") && (!actor || entry.by === actor) && isIsoDateTime5(stringValue5(entry.at));
   });
 }
 function hasApprovedReconstructionReview(record2, candidate, actor) {
-  const review = recordValue4(record2.maintainer_review);
-  const decision = recordValue4(candidate.maintainer_decision);
-  return review?.status === "approved" && review.by === actor && isIsoDateTime3(stringValue4(review.at)) && decision?.status === "approved" && decision.by === actor && isIsoDateTime3(stringValue4(decision.at));
+  const review = recordValue5(record2.maintainer_review);
+  const decision = recordValue5(candidate.maintainer_decision);
+  return review?.status === "approved" && review.by === actor && isIsoDateTime5(stringValue5(review.at)) && decision?.status === "approved" && decision.by === actor && isIsoDateTime5(stringValue5(decision.at));
 }
 function hasApprovedReconstructionCaseReview(record2) {
-  const review = recordValue4(record2.maintainer_review);
-  return review?.status === "approved" && stringValue4(review.by).startsWith("human:") && isIsoDateTime3(stringValue4(review.at));
+  const review = recordValue5(record2.maintainer_review);
+  return review?.status === "approved" && stringValue5(review.by).startsWith("human:") && isIsoDateTime5(stringValue5(review.at));
 }
 function validateRealization(path, authority, realization, errors) {
   const productBearing = authority.includes("intent") || authority.includes("product-meaning");
@@ -17363,9 +19365,9 @@ function validateRealization(path, authority, realization, errors) {
   if (!realization) {
     return;
   }
-  const intent = stringValue4(realization.intent);
-  const delivery = stringValue4(realization.delivery);
-  const alignment = stringValue4(realization.alignment);
+  const intent = stringValue5(realization.intent);
+  const delivery = stringValue5(realization.delivery);
+  const alignment = stringValue5(realization.alignment);
   if (!["accepted", "superseded", "not-applicable"].includes(intent)) {
     errors.push({
       path,
@@ -17386,7 +19388,7 @@ function validateRealization(path, authority, realization, errors) {
   if (!["aligned", "drifted", "unknown", "not-applicable"].includes(alignment)) {
     errors.push({ path, message: "realization.alignment is invalid" });
   }
-  if (!isIsoDateTime3(stringValue4(realization.assessed_at))) {
+  if (!isIsoDateTime5(stringValue5(realization.assessed_at))) {
     errors.push({ path, message: "realization.assessed_at must be an ISO 8601 datetime" });
   }
   if (productBearing && intent === "not-applicable") {
@@ -17418,29 +19420,29 @@ function isActor(value) {
   return /^(?:human:[^\s:]+|process:[^\s:]+|[^/\s]+\/[^/\s]+)$/.test(value);
 }
 async function hashKnowledgeConcept(targetInput, conceptPath) {
-  const target = await requireKnowledgeRepository4(targetInput);
-  const knowledgeRoot = join8(target, "knowledge");
+  const target = await requireKnowledgeRepository5(targetInput);
+  const knowledgeRoot = join9(target, "knowledge");
   const absolute = resolveConceptPath(target, knowledgeRoot, conceptPath);
-  const content3 = decodeUtf8(await readFile8(absolute));
+  const content3 = decodeUtf8(await readFile10(absolute));
   const parsed = parseFrontmatter2(content3, true);
   if (!parsed.metadata) {
     throw new Error(parsed.error ?? "concept frontmatter is missing");
   }
   return {
-    path: portable2(relative3(target, absolute)),
+    path: portable2(relative4(target, absolute)),
     contentHash: conceptDocumentHash(parsed.metadata, parsed.body)
   };
 }
 function conceptDocumentHash(metadata, body) {
   const material = { ...metadata };
   delete material.verified;
-  return createHash4("sha256").update(JSON.stringify(canonicalValue(material))).update("\n").update(body.replace(/\r\n/g, "\n").trimEnd()).digest("hex");
+  return createHash5("sha256").update(JSON.stringify(canonicalValue(material))).update("\n").update(body.replace(/\r\n/g, "\n").trimEnd()).digest("hex");
 }
 function canonicalValue(value) {
   if (Array.isArray(value)) {
     return value.map(canonicalValue);
   }
-  if (isRecord3(value)) {
+  if (isRecord5(value)) {
     return Object.fromEntries(
       Object.keys(value).sort().map((key) => [key, canonicalValue(value[key])])
     );
@@ -17454,19 +19456,19 @@ function decodeUtf8(content3) {
 function portable2(path) {
   return path.split(sep5).join("/");
 }
-function recordValue4(value) {
-  return isRecord3(value) ? value : void 0;
+function recordValue5(value) {
+  return isRecord5(value) ? value : void 0;
 }
-function isRecord3(value) {
+function isRecord5(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function stringValue4(value) {
+function stringValue5(value) {
   return typeof value === "string" ? value : "";
 }
-function stringArray3(value) {
+function stringArray4(value) {
   return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
 }
-function isIsoDateTime3(value) {
+function isIsoDateTime5(value) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
 var init_knowledge = __esm({
@@ -25516,7 +27518,7 @@ function ora(options) {
 
 // src/cli.ts
 import { createInterface } from "node:readline/promises";
-import { resolve as resolve14 } from "node:path";
+import { resolve as resolve15 } from "node:path";
 
 // src/applier.ts
 import { randomUUID } from "node:crypto";
@@ -26441,15 +28443,15 @@ init_dependencies();
 init_git();
 init_knowledge();
 init_knowledge_graph();
-import { access as access3, readFile as readFile9, realpath as realpath3 } from "node:fs/promises";
-import { constants as constants3 } from "node:fs";
-import { join as join10, resolve as resolve11 } from "node:path";
+import { access as access4, readFile as readFile11, realpath as realpath3 } from "node:fs/promises";
+import { constants as constants4 } from "node:fs";
+import { join as join11, resolve as resolve13 } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 init_repository_registry();
 
 // src/skill-installer.ts
 init_dependencies();
-import { spawnSync as spawnSync3 } from "node:child_process";
+import { spawnSync as spawnSync5 } from "node:child_process";
 import { createRequire } from "node:module";
 import {
   cpSync,
@@ -26463,7 +28465,7 @@ import {
   symlinkSync
 } from "node:fs";
 import { homedir, tmpdir as tmpdir2 } from "node:os";
-import { dirname as dirname7, join as join9, resolve as resolve10 } from "node:path";
+import { dirname as dirname8, join as join10, resolve as resolve12 } from "node:path";
 function installSkillsTransactional(options) {
   const transaction = snapshotSkillInstall(options);
   try {
@@ -26473,7 +28475,7 @@ function installSkillsTransactional(options) {
       const qmdSkillSource = resolveQmdSkillSource();
       installSkillSource(
         cli,
-        resolve10(options.distributionRoot),
+        resolve12(options.distributionRoot),
         workflowSkillsForProfile(options.profile),
         options
       );
@@ -26500,8 +28502,8 @@ function installSkillSource(cli, source, skills, options) {
     ...options.yes ? ["--yes"] : []
   ];
   const runtime = runtimeCommand(cli, args.slice(1));
-  const result = spawnSync3(runtime.command, runtime.args, {
-    cwd: resolve10(options.target),
+  const result = spawnSync5(runtime.command, runtime.args, {
+    cwd: resolve12(options.target),
     encoding: "utf8",
     stdio: options.yes ? ["ignore", "pipe", "pipe"] : "inherit"
   });
@@ -26517,8 +28519,8 @@ function listInstalledSkills(target, global2) {
   const cli = resolveSkillsCli();
   const args = [cli, "list", "--json", ...global2 ? ["--global"] : []];
   const runtime = runtimeCommand(cli, args.slice(1));
-  const result = spawnSync3(runtime.command, runtime.args, {
-    cwd: resolve10(target),
+  const result = spawnSync5(runtime.command, runtime.args, {
+    cwd: resolve12(target),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -26538,10 +28540,10 @@ function listInstalledSkills(target, global2) {
 function resolveSkillsCli() {
   const require2 = createRequire(import.meta.url);
   const packagePath = require2.resolve("skills/package.json");
-  return join9(dirname7(packagePath), "bin/cli.mjs");
+  return join10(dirname8(packagePath), "bin/cli.mjs");
 }
 function reconcileProjectWorkflowSkills(options) {
-  const lockPath = join9(options.target, "skills-lock.json");
+  const lockPath = join10(options.target, "skills-lock.json");
   if (!existsSync2(lockPath)) {
     return;
   }
@@ -26551,10 +28553,10 @@ function reconcileProjectWorkflowSkills(options) {
   } catch {
     return;
   }
-  const distributionRoot = resolve10(options.distributionRoot);
+  const distributionRoot = resolve12(options.distributionRoot);
   const owned = allWorkflowSkills().filter((skill) => {
     const entry = lock.skills?.[skill];
-    return entry?.sourceType === "local" && entry.source && resolve10(entry.source) === distributionRoot;
+    return entry?.sourceType === "local" && entry.source && resolve12(entry.source) === distributionRoot;
   });
   if (owned.length === 0) {
     return;
@@ -26564,7 +28566,7 @@ function reconcileProjectWorkflowSkills(options) {
   const cli = resolveSkillsCli();
   for (const skill of owned) {
     for (const agent of ["codex", "claude"]) {
-      const path = agent === "codex" ? join9(options.target, ".agents/skills", skill) : join9(options.target, ".claude/skills", skill);
+      const path = agent === "codex" ? join10(options.target, ".agents/skills", skill) : join10(options.target, ".claude/skills", skill);
       if (!existsSync2(path) || desired.has(skill) && selectedAgents.has(agent)) {
         continue;
       }
@@ -26577,8 +28579,8 @@ function reconcileProjectWorkflowSkills(options) {
         "--yes"
       ];
       const runtime = runtimeCommand(cli, args.slice(1));
-      const result = spawnSync3(runtime.command, runtime.args, {
-        cwd: resolve10(options.target),
+      const result = spawnSync5(runtime.command, runtime.args, {
+        cwd: resolve12(options.target),
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"]
       });
@@ -26597,20 +28599,20 @@ function runtimeCommand(cli, args) {
   return { command: process.execPath, args: [cli, ...args] };
 }
 function snapshotSkillInstall(options) {
-  const root = mkdtempSync(join9(tmpdir2(), "wfctl-skills-"));
+  const root = mkdtempSync(join10(tmpdir2(), "wfctl-skills-"));
   const names = [.../* @__PURE__ */ new Set([...allWorkflowSkills(), "qmd"])];
   const paths = /* @__PURE__ */ new Set();
   for (const agent of options.agents) {
-    const base = options.scope === "user" ? globalSkillRoot(agent) : join9(
-      resolve10(options.target),
+    const base = options.scope === "user" ? globalSkillRoot(agent) : join10(
+      resolve12(options.target),
       agent === "codex" ? ".agents/skills" : ".claude/skills"
     );
     for (const name of names) {
-      paths.add(join9(base, name));
+      paths.add(join10(base, name));
     }
   }
   if (options.scope === "project") {
-    paths.add(join9(resolve10(options.target), "skills-lock.json"));
+    paths.add(join10(resolve12(options.target), "skills-lock.json"));
   }
   const snapshots = [...paths].map(
     (path, index2) => snapshotSkillPath(path, root, index2)
@@ -26648,7 +28650,7 @@ function snapshotSkillPath(path, root, index2) {
   if (stat.isSymbolicLink()) {
     return { path, kind: "symlink", linkTarget: readlinkSync(path) };
   }
-  const backup = join9(root, String(index2));
+  const backup = join10(root, String(index2));
   if (stat.isDirectory()) {
     cpSync(path, backup, { recursive: true, verbatimSymlinks: true });
     return { path, kind: "directory", backup };
@@ -26661,7 +28663,7 @@ function restoreSkillPath(snapshot) {
   if (snapshot.kind === "absent") {
     return;
   }
-  mkdirSync(dirname7(snapshot.path), { recursive: true });
+  mkdirSync(dirname8(snapshot.path), { recursive: true });
   if (snapshot.kind === "symlink") {
     symlinkSync(snapshot.linkTarget, snapshot.path);
     return;
@@ -26673,17 +28675,17 @@ function restoreSkillPath(snapshot) {
 }
 function globalSkillRoot(agent) {
   if (agent === "codex") {
-    return join9(process.env.CODEX_HOME?.trim() || join9(homedir(), ".codex"), "skills");
+    return join10(process.env.CODEX_HOME?.trim() || join10(homedir(), ".codex"), "skills");
   }
-  return join9(
-    process.env.CLAUDE_CONFIG_DIR?.trim() || join9(homedir(), ".claude"),
+  return join10(
+    process.env.CLAUDE_CONFIG_DIR?.trim() || join10(homedir(), ".claude"),
     "skills"
   );
 }
 
 // src/doctor.ts
 async function runDoctor(targetInput, options = {}) {
-  const target = resolve11(targetInput);
+  const target = resolve13(targetInput);
   const checks = [];
   const runner = options.runner ?? runTool;
   let config;
@@ -26707,8 +28709,8 @@ async function runDoctor(targetInput, options = {}) {
       status: graphify.status === 0 ? "pass" : "fail",
       message: graphify.status === 0 ? `Graphify is available${versionSuffix(graphify.stdout)}` : `Graphify is not available: ${commandFailure(graphify)}`
     });
-    checks.push(await graphifyGraphCheck(join10(target, "graphify-out/graph.json")));
-    checks.push(await graphifyScopeCheck(join10(target, ".graphifyignore")));
+    checks.push(await graphifyGraphCheck(join11(target, "graphify-out/graph.json")));
+    checks.push(await graphifyScopeCheck(join11(target, ".graphifyignore")));
     const ignored = runner(
       "git",
       ["check-ignore", "-q", "graphify-out/graph.json"],
@@ -26725,7 +28727,7 @@ async function runDoctor(targetInput, options = {}) {
       if (config.skills.agents.includes("codex")) {
         checks.push(await pathCheck(
           `codex-skill-${skill}`,
-          join10(target, ".agents/skills", skill, "SKILL.md"),
+          join11(target, ".agents/skills", skill, "SKILL.md"),
           "fail",
           `Codex skill ${skill} is installed`,
           `Codex skill ${skill} is missing`
@@ -26734,7 +28736,7 @@ async function runDoctor(targetInput, options = {}) {
       if (config.skills.agents.includes("claude")) {
         checks.push(await pathCheck(
           `claude-skill-${skill}`,
-          join10(target, ".claude/skills", skill, "SKILL.md"),
+          join11(target, ".claude/skills", skill, "SKILL.md"),
           "fail",
           `Claude skill ${skill} is installed`,
           `Claude skill ${skill} is missing`
@@ -26771,7 +28773,7 @@ async function runDoctor(targetInput, options = {}) {
   checks.push(qmdVersion);
   const qmdConfig = await pathCheck(
     "qmd-index-config",
-    join10(knowledgeRoot, ".qmd/index.yml"),
+    join11(knowledgeRoot, ".qmd/index.yml"),
     "fail",
     `Project-local QMD collections found at ${knowledgeRoot}`,
     `Project-local QMD configuration is missing at ${knowledgeRoot}`
@@ -26782,14 +28784,14 @@ async function runDoctor(targetInput, options = {}) {
   }
   checks.push(await pathCheck(
     "knowledge",
-    join10(knowledgeRoot, "knowledge/index.md"),
+    join11(knowledgeRoot, "knowledge/index.md"),
     "fail",
     `Knowledge bundle found at ${knowledgeRoot}`,
     `Knowledge bundle is missing at ${knowledgeRoot}`
   ));
   checks.push(await pathCheck(
     "maintainer-guide",
-    join10(target, "PROJECT_WORKFLOW.md"),
+    join11(target, "PROJECT_WORKFLOW.md"),
     "fail",
     "Maintainer guide is present",
     "PROJECT_WORKFLOW.md is missing"
@@ -26828,7 +28830,7 @@ async function runDoctor(targetInput, options = {}) {
     ]) {
       checks.push(await pathCheck(
         `knowledge-${directory}`,
-        join10(target, directory),
+        join11(target, directory),
         "fail",
         `${directory} exists`,
         `${directory} is missing`
@@ -26859,10 +28861,10 @@ async function runDoctor(targetInput, options = {}) {
       const connections = await listRepositoryConnections(knowledgeRoot);
       const currentRoot = await realpath3(target);
       const connection = connections.find(
-        (entry) => entry.checkouts.some((checkout2) => resolve11(checkout2.root) === currentRoot)
+        (entry) => entry.checkouts.some((checkout2) => resolve13(checkout2.root) === currentRoot)
       );
       const checkout = connection?.checkouts.find(
-        (entry) => resolve11(entry.root) === currentRoot
+        (entry) => resolve13(entry.root) === currentRoot
       );
       checks.push({
         name: "repository-connection",
@@ -26923,7 +28925,7 @@ function repositoryConnectionMessage(repository, selection) {
 }
 async function graphifyScopeCheck(path) {
   try {
-    const content3 = await readFile9(path, "utf8");
+    const content3 = await readFile11(path, "utf8");
     const required = [
       ".agents/",
       ".claude/",
@@ -26946,9 +28948,9 @@ async function graphifyScopeCheck(path) {
   }
 }
 async function knowledgeGraphCheck(target, expectedGraph) {
-  const path = join10(target, ".workflow/current/knowledge-graph.json");
+  const path = join11(target, ".workflow/current/knowledge-graph.json");
   try {
-    const value = JSON.parse(await readFile9(path, "utf8"));
+    const value = JSON.parse(await readFile11(path, "utf8"));
     if (!isDeepStrictEqual(value, expectedGraph)) {
       return {
         name: "knowledge-graph",
@@ -26974,7 +28976,7 @@ function doctorPassed(report) {
 }
 async function pathCheck(name, path, missingStatus, presentMessage, missingMessage) {
   try {
-    await access3(path, constants3.F_OK);
+    await access4(path, constants4.F_OK);
     return { name, status: "pass", message: presentMessage };
   } catch {
     return { name, status: missingStatus, message: missingMessage };
@@ -27099,7 +29101,7 @@ function isEtagOnlyModelCacheWarning(line) {
 }
 async function graphifyGraphCheck(path) {
   try {
-    const graph = JSON.parse(await readFile9(path, "utf8"));
+    const graph = JSON.parse(await readFile11(path, "utf8"));
     if (!Array.isArray(graph.nodes) || graph.nodes.length === 0) {
       return {
         name: "graphify-graph",
@@ -27135,768 +29137,8 @@ function versionSuffix(output) {
   return version ? ` (${version})` : "";
 }
 
-// src/intake.ts
-init_browser();
-init_assets();
-init_config();
-init_git();
-init_knowledge();
-import { spawnSync as spawnSync4 } from "node:child_process";
-import { constants as constants4 } from "node:fs";
-import {
-  access as access4,
-  mkdir as mkdir5,
-  readFile as readFile10,
-  readdir as readdir5,
-  rename as rename5,
-  rm as rm3,
-  writeFile as writeFile5
-} from "node:fs/promises";
-import { dirname as dirname8, join as join11, resolve as resolve12 } from "node:path";
-var INTAKE_CASE_VERSION = 3;
-var SOURCE_STATUSES = /* @__PURE__ */ new Set([
-  "pending",
-  "reviewed",
-  "no-relevant-claims",
-  "needs-maintainer",
-  "unreadable"
-]);
-var CANDIDATE_STATUSES = /* @__PURE__ */ new Set([
-  "confirmed",
-  "rejected",
-  "unresolved"
-]);
-var CANDIDATE_AUTHORITIES = /* @__PURE__ */ new Set([
-  "intent",
-  "product-meaning",
-  "implementation",
-  "architecture-rationale",
-  "ownership",
-  "contract",
-  "operational-policy",
-  "decision",
-  "history",
-  "external"
-]);
-async function inventoryRaw(options) {
-  const target = await requireKnowledgeRepository5(options.target);
-  const baseline = resolveCommit(target, options.baseline ?? "HEAD");
-  const entries = readGitTree(target, baseline, ["raw"]);
-  const history = await readIntakeSourceHistory(target);
-  const byIdentity = /* @__PURE__ */ new Map();
-  const byPath = /* @__PURE__ */ new Map();
-  for (const source of history) {
-    const identity = `${source.path}\0${source.objectId}`;
-    byIdentity.set(identity, [...byIdentity.get(identity) ?? [], source]);
-    byPath.set(source.path, [...byPath.get(source.path) ?? [], source]);
-  }
-  return {
-    target,
-    baseline,
-    entries: entries.map((entry) => {
-      const exact = byIdentity.get(`${entry.path}\0${entry.objectId}`) ?? [];
-      return {
-        path: entry.path,
-        objectId: entry.objectId,
-        state: rawInventoryState(exact, byPath.get(entry.path) ?? []),
-        cases: exact.map(({ id, lifecycle, outcome, sourceStatus }) => ({
-          id,
-          lifecycle,
-          outcome,
-          sourceStatus
-        }))
-      };
-    }),
-    uncommitted: rawWorkingTreePaths(target)
-  };
-}
-async function beginIntakeCase(options) {
-  const target = await requireKnowledgeRepository5(options.target);
-  const pathspecs = normalizePathspecs(options.paths ?? ["raw"]);
-  assertScopeMatchesWorkingTree(target, options.baseline ?? "HEAD", pathspecs);
-  const baseline = resolveCommit(target, options.baseline ?? "HEAD");
-  const sources = readGitTree(target, baseline, pathspecs);
-  if (sources.length === 0) {
-    throw new Error(`Intake scope contains no Git-tracked files: ${pathspecs.join(", ")}`);
-  }
-  const now = options.now ?? /* @__PURE__ */ new Date();
-  const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug2(options.slug)}`;
-  const activeRoot = join11(target, "intake/cases/active");
-  const id = await uniqueDirectoryId2(activeRoot, base);
-  const directory = join11(activeRoot, id);
-  const path = join11(directory, "case.md");
-  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = await readFile10(
-    join11(
-      distributionRoot,
-      "skills/process-raw-intake/assets/intake-case.md"
-    ),
-    "utf8"
-  );
-  const document3 = parseCase(template);
-  const createdAt = now.toISOString();
-  document3.metadata = {
-    ...document3.metadata,
-    intake_case_version: INTAKE_CASE_VERSION,
-    id,
-    title: options.title,
-    status: "active",
-    created_at: createdAt,
-    updated_at: createdAt,
-    baseline: {
-      repository: readRepositoryMetadata(target).repository,
-      commit: baseline,
-      paths: pathspecs
-    },
-    sources: sources.map((source) => ({
-      path: source.path,
-      object_id: source.objectId,
-      object_type: source.objectType,
-      mode: source.mode,
-      status: "pending",
-      candidate_ids: [],
-      note: "",
-      reviewed_by: "",
-      reviewed_at: ""
-    }))
-  };
-  try {
-    await mkdir5(directory, { recursive: false });
-    await writeFile5(path, serializeCase(document3), { encoding: "utf8", flag: "wx" });
-  } catch (error2) {
-    await rm3(directory, { recursive: true, force: true });
-    throw error2;
-  }
-  return { id, path, baseline, files: sources.length };
-}
-async function markIntakeSource(options) {
-  const target = await requireKnowledgeRepository5(options.target);
-  if (!SOURCE_STATUSES.has(options.status) || options.status === "pending") {
-    throw new Error(
-      `Invalid final source status "${options.status}"; expected reviewed, no-relevant-claims, needs-maintainer, or unreadable`
-    );
-  }
-  const candidateIds = uniqueStrings(options.candidateIds ?? []);
-  if (options.status === "reviewed" && candidateIds.length === 0) {
-    throw new Error("reviewed status requires at least one --candidate <id>");
-  }
-  if (options.status !== "reviewed" && candidateIds.length > 0) {
-    throw new Error(`${options.status} status cannot record candidate IDs`);
-  }
-  if (!options.note.trim()) {
-    throw new Error(`${options.status} status requires --note <review result>`);
-  }
-  const casePath = intakeCasePath(target, "active", options.id);
-  const document3 = parseCase(await readFile10(casePath, "utf8"));
-  const sources = recordArray2(document3.metadata.sources);
-  const matches = sources.filter((source2) => stringValue5(source2.path) === options.path);
-  if (matches.length !== 1) {
-    throw new Error(
-      matches.length === 0 ? `Intake source is outside the frozen case scope: ${options.path}` : `Intake source path is duplicated in the case: ${options.path}`
-    );
-  }
-  const source = matches[0];
-  source.status = options.status;
-  source.candidate_ids = candidateIds;
-  source.note = options.note.trim();
-  source.reviewed_by = options.reviewedBy?.trim() || "workflow-agent/1";
-  source.reviewed_at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
-  document3.metadata.updated_at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
-  await writeFile5(casePath, serializeCase(document3), "utf8");
-  return {
-    id: options.id,
-    path: options.path,
-    status: options.status,
-    candidateIds
-  };
-}
-async function inspectIntakeCase(targetInput, id) {
-  const target = await requireKnowledgeRepository5(targetInput);
-  const path = intakeCasePath(target, "active", id);
-  const document3 = parseCase(await readFile10(path, "utf8"));
-  const issues = caseMetadataIssues(document3.metadata);
-  const baseline = recordValue5(document3.metadata.baseline);
-  const commit = stringValue5(baseline?.commit);
-  const pathspecs = stringArray4(baseline?.paths);
-  const sources = recordArray2(document3.metadata.sources);
-  if (commit && pathspecs.length > 0) {
-    try {
-      const expected = readGitTree(target, commit, normalizePathspecs(pathspecs));
-      issues.push(...compareTreeEntries(expected, sources));
-      try {
-        assertScopeMatchesWorkingTree(target, commit, pathspecs);
-      } catch (error2) {
-        issues.push(errorMessage(error2));
-      }
-    } catch (error2) {
-      issues.push(errorMessage(error2));
-    }
-  }
-  const candidateIds = new Set(
-    recordArray2(document3.metadata.candidate_claims).map((candidate) => stringValue5(candidate.id)).filter(Boolean)
-  );
-  const referenced = /* @__PURE__ */ new Set();
-  for (const source of sources) {
-    for (const candidateId of stringArray4(source.candidate_ids)) {
-      referenced.add(candidateId);
-      if (!candidateIds.has(candidateId)) {
-        issues.push(`${stringValue5(source.path)} references undefined candidate ${candidateId}`);
-      }
-    }
-  }
-  for (const candidateId of candidateIds) {
-    if (!referenced.has(candidateId)) {
-      issues.push(`candidate ${candidateId} is not linked from any scoped source`);
-    }
-  }
-  const promotion = recordValue5(document3.metadata.promotion);
-  if (promotion?.status === "applied" && stringArray4(promotion.concepts).length > 0) {
-    const validation = await validateKnowledge(target, stringArray4(promotion.concepts));
-    issues.push(...validation.errors.map((issue2) => `${issue2.path}: ${issue2.message}`));
-  }
-  return {
-    id,
-    path,
-    ...commit ? { baseline: commit } : {},
-    files: sources.length,
-    reviewed: sources.filter(
-      (source) => source.status === "reviewed" || source.status === "no-relevant-claims"
-    ).length,
-    issues: [...new Set(issues)]
-  };
-}
-async function closeIntakeCase(options) {
-  const target = await requireKnowledgeRepository5(options.target);
-  const path = intakeCasePath(target, "active", options.id);
-  const directory = dirname8(path);
-  const document3 = parseCase(await readFile10(path, "utf8"));
-  if (options.outcome === "completed") {
-    const inspected = await inspectIntakeCase(target, options.id);
-    if (inspected.issues.length > 0) {
-      throw new Error(`Completed intake case is blocked: ${inspected.issues.join("; ")}`);
-    }
-  }
-  const now = options.now ?? /* @__PURE__ */ new Date();
-  const archivePath = join11(target, "intake/cases/archive", options.id);
-  await assertPathAbsent2(archivePath, "intake case archive");
-  document3.metadata.status = options.outcome;
-  document3.metadata.outcome = options.outcome;
-  document3.metadata.closed_at = now.toISOString();
-  document3.metadata.updated_at = now.toISOString();
-  await mkdir5(dirname8(archivePath), { recursive: true });
-  await rename5(directory, archivePath);
-  try {
-    await writeFile5(join11(archivePath, "case.md"), serializeCase(document3), "utf8");
-  } catch (error2) {
-    await rename5(archivePath, directory);
-    throw error2;
-  }
-  return { id: options.id, outcome: options.outcome, archivePath };
-}
-function caseMetadataIssues(metadata) {
-  const issues = [];
-  const baseline = recordValue5(metadata.baseline);
-  const sources = recordArray2(metadata.sources);
-  const candidates = recordArray2(metadata.candidate_claims);
-  const promotion = recordValue5(metadata.promotion);
-  const omissionAudit = recordValue5(metadata.omission_audit);
-  if (metadata.intake_case_version !== INTAKE_CASE_VERSION) {
-    issues.push(`intake_case_version must be ${INTAKE_CASE_VERSION}`);
-  }
-  if (metadata.status !== "active") {
-    issues.push("status must remain active until wfctl archives the case");
-  }
-  if (!stringValue5(baseline?.repository)) {
-    issues.push("baseline.repository is required");
-  }
-  if (!/^[0-9a-f]{40,64}$/i.test(stringValue5(baseline?.commit))) {
-    issues.push("baseline.commit must be a full Git object ID");
-  }
-  if (stringArray4(baseline?.paths).length === 0) {
-    issues.push("baseline.paths must contain the bounded raw pathspecs");
-  }
-  if (sources.length === 0) {
-    issues.push("sources must contain every file from the frozen Git scope");
-  }
-  const seenPaths = /* @__PURE__ */ new Set();
-  for (const [index2, source] of sources.entries()) {
-    const prefix = `sources[${index2}]`;
-    const path = stringValue5(source.path);
-    const status = stringValue5(source.status);
-    const candidatesForSource = stringArray4(source.candidate_ids);
-    if (!path.startsWith("raw/")) {
-      issues.push(`${prefix}.path must be under raw/`);
-    } else if (seenPaths.has(path)) {
-      issues.push(`${prefix}.path is duplicated: ${path}`);
-    } else {
-      seenPaths.add(path);
-    }
-    if (!/^[0-9a-f]{40,64}$/i.test(stringValue5(source.object_id))) {
-      issues.push(`${prefix}.object_id must be a full Git object ID`);
-    }
-    if (!SOURCE_STATUSES.has(status)) {
-      issues.push(`${prefix}.status is unknown: ${status}`);
-    } else if (status === "pending") {
-      issues.push(`${path}: source review is pending`);
-    } else if (status === "needs-maintainer" || status === "unreadable") {
-      issues.push(`${path}: source review is blocked as ${status}`);
-    }
-    if (status === "reviewed" && candidatesForSource.length === 0) {
-      issues.push(`${path}: reviewed source requires candidate_ids`);
-    }
-    if (status !== "reviewed" && candidatesForSource.length > 0) {
-      issues.push(`${path}: only reviewed sources may reference candidate_ids`);
-    }
-    if (status !== "pending" && !stringValue5(source.note).trim()) {
-      issues.push(`${path}: final source status requires a review note`);
-    }
-    if (status !== "pending" && (!stringValue5(source.reviewed_by) || !isIsoDateTime4(stringValue5(source.reviewed_at)))) {
-      issues.push(`${path}: final source status requires reviewer and ISO review time`);
-    }
-  }
-  const seenCandidates = /* @__PURE__ */ new Set();
-  const confirmedPromotions = /* @__PURE__ */ new Set();
-  for (const [index2, candidate] of candidates.entries()) {
-    const prefix = `candidate_claims[${index2}]`;
-    const id = stringValue5(candidate.id);
-    if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
-      issues.push(`${prefix}.id must be a stable lowercase identifier`);
-    } else if (seenCandidates.has(id)) {
-      issues.push(`${prefix}.id is duplicated: ${id}`);
-    } else {
-      seenCandidates.add(id);
-    }
-    if (!stringValue5(candidate.claim).trim()) {
-      issues.push(`${prefix}.claim is required`);
-    }
-    const authority = stringValue5(candidate.authority);
-    if (!CANDIDATE_AUTHORITIES.has(authority)) {
-      issues.push(`${prefix}.authority is unknown: ${authority}`);
-    }
-    const disposition = stringValue5(candidate.disposition);
-    if (!CANDIDATE_STATUSES.has(disposition)) {
-      issues.push(`${prefix}.disposition must be confirmed, rejected, or unresolved`);
-    } else if (disposition === "unresolved") {
-      issues.push(`${prefix}.disposition remains unresolved`);
-    }
-    if ((disposition === "rejected" || disposition === "unresolved") && !stringValue5(candidate.reason).trim()) {
-      issues.push(`${prefix}.reason must explain ${disposition || "the final disposition"}`);
-    }
-    const evidence = recordArray2(candidate.evidence);
-    const evidenceKinds = /* @__PURE__ */ new Set();
-    for (const [evidenceIndex, item] of evidence.entries()) {
-      const itemPrefix = `${prefix}.evidence[${evidenceIndex}]`;
-      const kind = stringValue5(item.kind);
-      const resource = stringValue5(item.resource);
-      evidenceKinds.add(kind);
-      if (!["source-code", "runtime-check", "version-control", "external-primary"].includes(kind)) {
-        issues.push(`${itemPrefix}.kind is not an independent authority class`);
-      }
-      if (kind === "source-code" && !isPinnedCodeResource3(resource)) {
-        issues.push(`${itemPrefix}.resource must pin repository, commit, and path`);
-      }
-      if (kind === "version-control" && !isVersionControlResource3(resource)) {
-        issues.push(`${itemPrefix}.resource must pin Git history`);
-      }
-      if (kind === "external-primary" && !/^https?:\/\/\S+$/i.test(resource)) {
-        issues.push(`${itemPrefix}.resource must be an absolute primary-source URL`);
-      }
-      if (containsUntrustedResource2(resource)) {
-        issues.push(`${itemPrefix}.resource must not cite raw or intake material`);
-      }
-    }
-    const normative = [
-      "intent",
-      "product-meaning",
-      "architecture-rationale",
-      "ownership",
-      "contract",
-      "operational-policy",
-      "decision"
-    ].includes(authority);
-    if (disposition === "confirmed" && normative) {
-      const decision = recordValue5(candidate.maintainer_decision);
-      if (decision?.status !== "approved" || !stringValue5(decision.by).startsWith("human:") || !isIsoDateTime4(stringValue5(decision.at))) {
-        issues.push(`${prefix}.maintainer_decision must record explicit human approval`);
-      }
-    }
-    if (disposition === "confirmed" && authority === "implementation" && !evidenceKinds.has("source-code")) {
-      issues.push(`${prefix}: confirmed implementation requires pinned source-code evidence`);
-    }
-    if (disposition === "confirmed" && authority === "history" && !evidenceKinds.has("version-control")) {
-      issues.push(`${prefix}: confirmed history requires pinned version-control evidence`);
-    }
-    if (disposition === "confirmed" && authority === "external" && !evidenceKinds.has("external-primary")) {
-      issues.push(`${prefix}: confirmed external claims require a primary source`);
-    }
-    if (disposition === "confirmed" && !normative && evidence.length === 0) {
-      issues.push(`${prefix}.evidence is required for a confirmed factual claim`);
-    }
-    if (disposition === "confirmed") {
-      const promotedTo = stringArray4(candidate.promoted_to);
-      if (promotedTo.length === 0) {
-        issues.push(`${prefix}.promoted_to must identify every curated destination`);
-      }
-      for (const concept of promotedTo) {
-        if (!isConceptPath(concept)) {
-          issues.push(`${prefix}.promoted_to contains an invalid concept path: ${concept}`);
-        } else {
-          confirmedPromotions.add(concept);
-        }
-      }
-    }
-  }
-  const promotedConcepts = new Set(stringArray4(promotion?.concepts));
-  if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
-    issues.push("promotion.status must be applied or not-needed");
-  } else if (promotion.status === "applied" && stringArray4(promotion.concepts).length === 0) {
-    issues.push("promotion.concepts must list promoted concept files");
-  } else if (promotion.status === "applied" && stringArray4(promotion.concepts).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))) {
-    issues.push("promotion.concepts must list concept files, not index.md or log.md");
-  } else if (promotion.status === "not-needed" && !stringValue5(promotion.reason).trim()) {
-    issues.push("promotion.reason must explain why no concept was promoted");
-  }
-  if (promotion?.status === "applied" && promotion.validation !== "passed") {
-    issues.push("promotion.validation must be passed for applied promotion");
-  }
-  if (promotion?.status === "not-needed" && promotion.validation !== "not-needed") {
-    issues.push("promotion.validation must be not-needed when no concept was promoted");
-  }
-  if (promotion?.status === "not-needed" && candidates.some((candidate) => candidate.disposition === "confirmed")) {
-    issues.push("promotion cannot be not-needed while confirmed candidates exist");
-  }
-  if (promotion?.status === "applied") {
-    for (const concept of confirmedPromotions) {
-      if (!promotedConcepts.has(concept)) {
-        issues.push(`confirmed candidate destination is missing from promotion.concepts: ${concept}`);
-      }
-    }
-    for (const concept of promotedConcepts) {
-      if (!confirmedPromotions.has(concept)) {
-        issues.push(`promotion concept is not linked from a confirmed candidate: ${concept}`);
-      }
-    }
-  }
-  if (omissionAudit?.result !== "passed") {
-    issues.push("omission_audit.result must be passed");
-  }
-  if (!nonEmptyStringArray3(omissionAudit?.notes)) {
-    issues.push("omission_audit.notes must record the explicit no-omission review");
-  }
-  return issues;
-}
-function compareTreeEntries(expected, declared) {
-  const issues = [];
-  const expectedByPath = new Map(expected.map((entry) => [entry.path, entry]));
-  const declaredByPath = new Map(
-    declared.map((entry) => [stringValue5(entry.path), entry])
-  );
-  for (const entry of expected) {
-    const source = declaredByPath.get(entry.path);
-    if (!source) {
-      issues.push(`frozen Git scope is missing source entry: ${entry.path}`);
-      continue;
-    }
-    if (source.object_id !== entry.objectId || source.object_type !== entry.objectType || source.mode !== entry.mode) {
-      issues.push(`frozen Git identity does not match baseline: ${entry.path}`);
-    }
-  }
-  for (const source of declared) {
-    const path = stringValue5(source.path);
-    if (!expectedByPath.has(path)) {
-      issues.push(`source is outside the frozen Git scope: ${path}`);
-    }
-  }
-  return issues;
-}
-async function readIntakeSourceHistory(target) {
-  const history = [];
-  for (const lifecycle of ["active", "archive"]) {
-    const root = join11(target, "intake/cases", lifecycle);
-    let entries;
-    try {
-      entries = await readdir5(root, { withFileTypes: true });
-    } catch (error2) {
-      if (isMissingFileError(error2)) {
-        continue;
-      }
-      throw error2;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-      const document3 = parseCase(
-        await readFile10(join11(root, entry.name, "case.md"), "utf8")
-      );
-      const outcome = stringValue5(document3.metadata.outcome) || stringValue5(document3.metadata.status);
-      for (const source of recordArray2(document3.metadata.sources)) {
-        const path = stringValue5(source.path);
-        const objectId = stringValue5(source.object_id);
-        if (!path || !objectId) {
-          continue;
-        }
-        history.push({
-          id: entry.name,
-          lifecycle,
-          outcome,
-          sourceStatus: stringValue5(source.status),
-          path,
-          objectId
-        });
-      }
-    }
-  }
-  return history;
-}
-function rawInventoryState(exact, samePath) {
-  const completed = exact.filter(
-    (source) => source.lifecycle === "archive" && source.outcome === "completed"
-  );
-  if (completed.some((source) => source.sourceStatus === "reviewed")) {
-    return "reviewed";
-  }
-  if (completed.some((source) => source.sourceStatus === "no-relevant-claims")) {
-    return "no-relevant-claims";
-  }
-  if (exact.some((source) => source.lifecycle === "active")) {
-    return "active";
-  }
-  if (exact.some(
-    (source) => source.sourceStatus === "needs-maintainer" || source.sourceStatus === "unreadable"
-  )) {
-    return "blocked";
-  }
-  if (exact.length > 0) {
-    return "unresolved";
-  }
-  if (samePath.length > 0) {
-    return "changed";
-  }
-  return "unseen";
-}
-function rawWorkingTreePaths(target) {
-  const output = git2(target, [
-    "status",
-    "--porcelain=v1",
-    "-z",
-    "--untracked-files=all",
-    "--",
-    "raw"
-  ]);
-  const records = output.split("\0");
-  const paths = [];
-  for (let index2 = 0; index2 < records.length; index2 += 1) {
-    const record2 = records[index2];
-    if (!record2) {
-      continue;
-    }
-    const status = record2.slice(0, 2);
-    const path = record2.slice(3);
-    if (path) {
-      paths.push(path);
-    }
-    if (status[0] === "R" || status[0] === "C") {
-      index2 += 1;
-    }
-  }
-  return uniqueStrings(paths).sort();
-}
-function readGitTree(target, commit, pathspecs) {
-  const output = git2(target, [
-    "ls-tree",
-    "-r",
-    "-z",
-    "--full-tree",
-    commit,
-    "--",
-    ...pathspecs
-  ]);
-  return output.split("\0").filter(Boolean).map((entry) => {
-    const separator = entry.indexOf("	");
-    if (separator < 0) {
-      throw new Error(`Cannot parse Git tree entry for intake scope: ${entry}`);
-    }
-    const [mode, objectType, objectId] = entry.slice(0, separator).split(" ");
-    const path = entry.slice(separator + 1);
-    if (!mode || !objectType || !objectId || !path) {
-      throw new Error(`Cannot parse Git tree entry for intake scope: ${entry}`);
-    }
-    return { mode, objectType, objectId, path };
-  }).sort((left, right) => left.path.localeCompare(right.path));
-}
-function assertScopeMatchesWorkingTree(target, baseline, pathspecs) {
-  const commit = resolveCommit(target, baseline);
-  const status = git2(target, [
-    "status",
-    "--porcelain=v1",
-    "--untracked-files=all",
-    "--",
-    ...pathspecs
-  ]);
-  if (status) {
-    throw new Error(
-      "Selected raw scope has uncommitted changes; commit it before freezing an intake case"
-    );
-  }
-  const diff = spawnSync4(
-    "git",
-    ["-C", target, "diff", "--quiet", commit, "--", ...pathspecs],
-    { stdio: "ignore" }
-  );
-  if (diff.status === 1) {
-    throw new Error(
-      `Selected raw scope no longer matches baseline ${commit}; start from a matching revision`
-    );
-  }
-  if (diff.status !== 0) {
-    throw new Error("Git could not compare the selected raw scope with its baseline");
-  }
-}
-function resolveCommit(target, revision) {
-  const commit = git2(target, ["rev-parse", "--verify", `${revision}^{commit}`]);
-  if (!/^[0-9a-f]{40,64}$/i.test(commit)) {
-    throw new Error(`Git did not return a full commit ID for ${revision}`);
-  }
-  return commit;
-}
-function git2(target, args) {
-  const result = spawnSync4("git", ["-C", target, ...args], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: 64 * 1024 * 1024
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      `Git intake operation failed: ${result.stderr.trim() || args.join(" ")}`
-    );
-  }
-  return result.stdout.replace(/\n$/, "");
-}
-function normalizePathspecs(values) {
-  const normalized = uniqueStrings(values.map(
-    (value) => value.trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "")
-  ));
-  if (normalized.length === 0) {
-    throw new Error("At least one raw path is required");
-  }
-  for (const value of normalized) {
-    if (value !== "raw" && !value.startsWith("raw/") || value.startsWith("/") || value.split("/").includes("..")) {
-      throw new Error(`Intake paths must remain under raw/: ${value}`);
-    }
-  }
-  return normalized.sort();
-}
-async function requireKnowledgeRepository5(targetInput) {
-  const target = resolve12(targetInput);
-  const config = await readConfig(target);
-  if (config.profile !== "knowledge") {
-    throw new Error(`Knowledge command requires a knowledge repository: ${target}`);
-  }
-  return target;
-}
-function parseCase(content3) {
-  const lines = content3.split(/\r?\n/);
-  if (lines[0] !== "---") {
-    throw new Error("Intake case must start with YAML frontmatter");
-  }
-  const end = lines.indexOf("---", 1);
-  if (end < 0) {
-    throw new Error("Intake case frontmatter is not closed");
-  }
-  try {
-    const metadata = parse(lines.slice(1, end).join("\n"));
-    if (!isRecord4(metadata)) {
-      throw new Error("Intake case frontmatter must be a mapping");
-    }
-    return { metadata, body: lines.slice(end + 1).join("\n") };
-  } catch (error2) {
-    throw new Error(`Invalid intake case frontmatter: ${errorMessage(error2)}`);
-  }
-}
-function serializeCase(document3) {
-  return `---
-${stringify3(document3.metadata, { lineWidth: 0 }).trimEnd()}
----
-
-${document3.body.trimStart()}`;
-}
-function intakeCasePath(target, state, id) {
-  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
-    throw new Error(`Invalid intake case id: ${id}`);
-  }
-  return join11(target, "intake/cases", state, id, "case.md");
-}
-async function uniqueDirectoryId2(root, base) {
-  for (let index2 = 1; index2 < 1e3; index2 += 1) {
-    const candidate = index2 === 1 ? base : `${base}-${index2}`;
-    try {
-      await access4(join11(root, candidate), constants4.F_OK);
-    } catch (error2) {
-      if (isMissingFileError(error2)) {
-        return candidate;
-      }
-      throw error2;
-    }
-  }
-  throw new Error(`Cannot allocate a unique intake case id for ${base}`);
-}
-async function assertPathAbsent2(path, label) {
-  try {
-    await access4(path, constants4.F_OK);
-    throw new Error(`${label} already exists: ${path}`);
-  } catch (error2) {
-    if (isMissingFileError(error2)) {
-      return;
-    }
-    throw error2;
-  }
-}
-function normalizeSlug2(value) {
-  const slug = value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  if (!slug) {
-    throw new Error("Intake case slug must contain ASCII letters or digits");
-  }
-  return slug.slice(0, 64);
-}
-function recordArray2(value) {
-  return Array.isArray(value) ? value.filter(isRecord4) : [];
-}
-function recordValue5(value) {
-  return isRecord4(value) ? value : void 0;
-}
-function isRecord4(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function stringValue5(value) {
-  return typeof value === "string" ? value : "";
-}
-function stringArray4(value) {
-  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
-}
-function uniqueStrings(values) {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-function nonEmptyStringArray3(value) {
-  return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
-}
-function isConceptPath(value) {
-  return /^knowledge\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(value) && !/(?:^|\/)(?:index|log)\.md$/i.test(value);
-}
-function containsUntrustedResource2(value) {
-  return /(?:^|[/:])(?:raw|intake)(?:[/:]|$)/i.test(value);
-}
-function isPinnedCodeResource3(value) {
-  return /^git:.+@[0-9a-f]{40}#[^#\s]+$/i.test(value);
-}
-function isVersionControlResource3(value) {
-  return /^git:.+@[0-9a-f]{40}(?:#[^#\s]+)?$/i.test(value) || /^https?:\/\/\S+\/(?:pull|merge_requests|commit|commits)\/\S+$/i.test(value);
-}
-function isIsoDateTime4(value) {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
-}
-
 // src/cli.ts
+init_intake();
 init_knowledge();
 init_knowledge_graph();
 init_repository_registry();
@@ -27915,16 +29157,16 @@ import { constants as constants5 } from "node:fs";
 import {
   access as access5,
   mkdir as mkdir6,
-  readFile as readFile11,
+  readFile as readFile12,
   readdir as readdir6,
   realpath as realpath4,
-  rename as rename6,
+  rename as rename7,
   rm as rm4,
-  writeFile as writeFile6
+  writeFile as writeFile7
 } from "node:fs/promises";
-import { dirname as dirname9, join as join12, resolve as resolve13, sep as sep6 } from "node:path";
+import { dirname as dirname9, join as join12, resolve as resolve14, sep as sep6 } from "node:path";
 async function beginWork(options) {
-  const target = await realpath4(resolve13(options.target));
+  const target = await realpath4(resolve14(options.target));
   const config = await readConfig(target);
   let knowledgeRoot;
   let codeRoots;
@@ -27974,7 +29216,7 @@ async function beginWork(options) {
     `${date}-${normalizeSlug3(options.slug)}`
   );
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile11(
+  const template = parseWorkSpec(await readFile12(
     join12(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
     "utf8"
   ));
@@ -28020,7 +29262,7 @@ async function beginWork(options) {
   };
   try {
     await mkdir6(activeDirectory, { recursive: false });
-    await writeFile6(specPath, serializeWorkSpec(template), {
+    await writeFile7(specPath, serializeWorkSpec(template), {
       encoding: "utf8",
       flag: "wx"
     });
@@ -28048,7 +29290,7 @@ async function beginWork(options) {
   };
 }
 async function createHandoff(options) {
-  const source = readRepositoryMetadata(resolve13(options.target));
+  const source = readRepositoryMetadata(resolve14(options.target));
   const target = source.root;
   const config = await readConfig(target);
   if (config.profile !== "leaf") {
@@ -28062,7 +29304,7 @@ async function createHandoff(options) {
   const id = await uniqueFileId(inboxRoot, base);
   const path = join12(inboxRoot, `${id}.md`);
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile11(
+  const template = parseWorkSpec(await readFile12(
     join12(distributionRoot, "skills/manage-project-work/assets/handoff.md"),
     "utf8"
   ));
@@ -28074,7 +29316,7 @@ async function createHandoff(options) {
     created_at: now.toISOString(),
     source: durableRepository(source)
   };
-  await writeFile6(path, serializeWorkSpec(template), {
+  await writeFile7(path, serializeWorkSpec(template), {
     encoding: "utf8",
     flag: "wx"
   });
@@ -28082,7 +29324,7 @@ async function createHandoff(options) {
 }
 async function verifyWork(targetInput, id) {
   const context = await requireWorkContext(targetInput, id);
-  const document3 = parseWorkSpec(await readFile11(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile12(context.specPath, "utf8"));
   const issues = completionIssues(document3, false);
   issues.push(...repositoryVerificationIssues(document3, context.currentSources));
   return {
@@ -28094,7 +29336,7 @@ async function verifyWork(targetInput, id) {
 async function closeWork(options) {
   const context = await requireWorkContext(options.target, options.id);
   const activeDirectory = dirname9(context.specPath);
-  const document3 = parseWorkSpec(await readFile11(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile12(context.specPath, "utf8"));
   if (options.outcome === "completed") {
     const issues = [
       ...completionIssues(document3, true),
@@ -28125,15 +29367,15 @@ async function closeWork(options) {
   document3.metadata.updated_at = now.toISOString();
   document3.metadata.sources_at_close = context.currentSources.map(durableRepository);
   await mkdir6(dirname9(archivePath), { recursive: true });
-  await rename6(activeDirectory, archivePath);
+  await rename7(activeDirectory, archivePath);
   try {
-    await writeFile6(
+    await writeFile7(
       join12(archivePath, "change.md"),
       serializeWorkSpec(document3),
       "utf8"
     );
   } catch (error2) {
-    await rename6(archivePath, activeDirectory);
+    await rename7(archivePath, activeDirectory);
     throw error2;
   }
   for (const pointerPath of context.pointerPaths) {
@@ -28142,7 +29384,7 @@ async function closeWork(options) {
   return { id: options.id, outcome: options.outcome, archivePath };
 }
 async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
-  const target = await realpath4(resolve13(targetInput));
+  const target = await realpath4(resolve14(targetInput));
   const config = await readConfig(target);
   if (config.profile !== "leaf") {
     throw new Error("Work rebind must target the replacement leaf checkout");
@@ -28161,8 +29403,8 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   }
   const previous2 = binding.repositories[index2];
   binding.repositories[index2] = { root: target, source: current };
-  const specPath = resolve13(knowledgeRoot, binding.spec);
-  const document3 = parseWorkSpec(await readFile11(specPath, "utf8"));
+  const specPath = resolve14(knowledgeRoot, binding.spec);
+  const document3 = parseWorkSpec(await readFile12(specPath, "utf8"));
   const repositories = recordArray3(document3.metadata.repositories);
   const durableIndex = repositories.findIndex(
     (entry) => entry.repository === current.repository
@@ -28186,7 +29428,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   ];
   const previousPointer = leafPointerPath(previous2.root, id);
   const currentPointer = leafPointerPath(target, id);
-  await writeFile6(specPath, serializeWorkSpec(document3), "utf8");
+  await writeFile7(specPath, serializeWorkSpec(document3), "utf8");
   await writeBinding(bindingPath, binding, true);
   await writeBinding(currentPointer, binding, true);
   if (previousPointer !== currentPointer) {
@@ -28202,7 +29444,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   };
 }
 async function workStatus(targetInput, id) {
-  const target = await realpath4(resolve13(targetInput));
+  const target = await realpath4(resolve14(targetInput));
   const config = await readConfig(target);
   const pointerRoot = config.profile === "knowledge" ? join12(target, ".workflow/current/work") : join12(target, ".workflow/current");
   const ids = id ? [id] : await pointerIds(pointerRoot);
@@ -28275,13 +29517,13 @@ async function inspectWorkContext(target, profile, id) {
       issues.push(`${entry.source.repository}: ${errorMessage(error2)}`);
     }
   }
-  const specPath = resolve13(knowledgeRoot, binding.spec);
+  const specPath = resolve14(knowledgeRoot, binding.spec);
   const activeRoot = join12(knowledgeRoot, "changes/active");
   if (!inside(activeRoot, specPath)) {
     issues.push(`spec path is outside the active work root: ${specPath}`);
   }
   try {
-    const document3 = parseWorkSpec(await readFile11(specPath, "utf8"));
+    const document3 = parseWorkSpec(await readFile12(specPath, "utf8"));
     if (document3.metadata.scope !== binding.scope) {
       issues.push("spec scope does not match the local binding");
     }
@@ -28297,7 +29539,7 @@ async function inspectWorkContext(target, profile, id) {
         issues.push(`${entry.source.repository}: durable repository binding is inconsistent`);
       }
     }
-    const serialized = await readFile11(specPath, "utf8");
+    const serialized = await readFile12(specPath, "utf8");
     for (const entry of binding.repositories) {
       if (serialized.includes(entry.root)) {
         issues.push("durable work record leaks a local checkout path");
@@ -28387,7 +29629,7 @@ async function assertKnowledgeRoot(root) {
 }
 async function assertKnowledgeReference(root, reference) {
   const normalized = reference.replace(/^\/+/, "");
-  const absolute = resolve13(root, normalized);
+  const absolute = resolve14(root, normalized);
   const knowledgeRoot = join12(root, "knowledge");
   if (!inside(knowledgeRoot, absolute) || !absolute.toLowerCase().endsWith(".md")) {
     throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
@@ -28408,25 +29650,25 @@ function leafPointerPath(root, id) {
 }
 async function writeBinding(path, binding, replace = false) {
   await mkdir6(dirname9(path), { recursive: true });
-  await writeFile6(path, `${JSON.stringify(binding, null, 2)}
+  await writeFile7(path, `${JSON.stringify(binding, null, 2)}
 `, {
     encoding: "utf8",
     flag: replace ? "w" : "wx"
   });
 }
 async function readBinding2(path) {
-  const raw = JSON.parse(await readFile11(path, "utf8"));
-  if (!isRecord5(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
-    (entry) => isRecord5(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
+  const raw = JSON.parse(await readFile12(path, "utf8"));
+  if (!isRecord6(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
+    (entry) => isRecord6(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
   )) {
     throw new Error(`Unsupported or malformed active work binding: ${path}`);
   }
   return raw;
 }
 function isRepositoryMetadata(value) {
-  return isRecord5(value) && typeof value.repository === "string" && typeof value.root === "string" && typeof value.checkout === "string" && typeof value.branch === "string" && typeof value.commit === "string" && typeof value.remote === "string" && typeof value.dirty === "boolean" && typeof value.worktree === "boolean" && typeof value.worktreeId === "string";
+  return isRecord6(value) && typeof value.repository === "string" && typeof value.root === "string" && typeof value.checkout === "string" && typeof value.branch === "string" && typeof value.commit === "string" && typeof value.remote === "string" && typeof value.dirty === "boolean" && typeof value.worktree === "boolean" && typeof value.worktreeId === "string";
 }
-function isRecord5(value) {
+function isRecord6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function pointerIds(root) {
@@ -28446,8 +29688,8 @@ function relativeSpec(knowledgeRoot, specPath) {
   return value.split(sep6).join("/");
 }
 function inside(parent, child) {
-  const boundary = `${resolve13(parent)}${sep6}`;
-  return resolve13(child).startsWith(boundary);
+  const boundary = `${resolve14(parent)}${sep6}`;
+  return resolve14(child).startsWith(boundary);
 }
 function record(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
@@ -28545,17 +29787,17 @@ function initCommand() {
     "--init-git",
     "Initialize Git when creating a knowledge repository."
   ).option("-y, --yes", "Accept defaults and safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options, profileValue) => {
-    const target = resolve14(options.target);
+    const target = resolve15(options.target);
     const promptOptions = {
       yes: options.yes === true,
       json: options.json === true
     };
     const profile = await resolveProfile(profileValue, target, promptOptions);
-    let knowledge = options.knowledge ? resolve14(options.knowledge) : await installedKnowledgePath(target, profile);
+    let knowledge = options.knowledge ? resolve15(options.knowledge) : await installedKnowledgePath(target, profile);
     if (profile === "leaf" && !knowledge && !promptOptions.yes && !promptOptions.json && interactive()) {
       const answer = await ask("Knowledge repository path: ");
       if (answer) {
-        knowledge = resolve14(answer);
+        knowledge = resolve15(answer);
       }
     }
     if (options.printInstructions) {
@@ -28593,7 +29835,7 @@ function initCommand() {
 }
 function upgradeCommand() {
   return new Command().description("Preview dependencies and upgrade an existing workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-s, --skills <scope:string>", "Change skill scope: project, user, or none.").option("-a, --agents <agents:string>", "Change skill targets: codex, claude, or both.").option("--dry-run", "Preview files and dependency checks without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
-    const target = resolve14(options.target);
+    const target = resolve15(options.target);
     const config = await readConfig(target);
     const scope = options.skills ? parseSkillScope(options.skills) : config.skills?.scope ?? "project";
     const agents = options.agents ? parseAgentTargets(options.agents) : config.skills?.agents ?? ["codex", "claude"];
@@ -28727,7 +29969,7 @@ async function installWorkflow(input) {
 ${green("\u2713")} ${bold("Workflow installed")}
   ${dim("Target")}  ${resolved.target}
   ${dim("Changes")} ${applied.changed}
-  ${dim("Guide")}   ${resolve14(resolved.target, "PROJECT_WORKFLOW.md")}
+  ${dim("Guide")}   ${resolve15(resolved.target, "PROJECT_WORKFLOW.md")}
 `
     );
     if (repositoryCheckout) {
@@ -29067,7 +30309,7 @@ function knowledgeReconstructCommand() {
   ).command(
     "start",
     new Command().description(
-      "Bind clean leaf checkouts, refresh Graphify, and create repository dossiers."
+      "Bind clean leaves, refresh Graphify, and freeze dossiers plus complete coverage ledgers."
     ).arguments("<slug:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--title <title:string>", "Human-readable reconstruction question.", {
       required: true
     }).option("--mode <mode:string>", "baseline or audit.", { default: "baseline" }).option(
@@ -29099,17 +30341,203 @@ Repositories: ${result.repositories.length}
         );
         for (const repository of result.repositories) {
           process.stdout.write(
-            `- ${repository.repository}@${repository.commit} (${repository.graphNodes} graph nodes)
+            `- ${repository.repository}@${repository.commit} (${repository.trackedFiles} tracked files; ${repository.graphNodes} graph nodes)
   Dossier: ${repository.dossier}
+  Coverage: ${repository.coverage}
 `
           );
         }
       }
     })
   ).command(
+    "coverage",
+    new Command().description(
+      "Show complete Git-file, Graphify-community, and runtime-surface coverage."
+    ).arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--repository <id:string>", "Repository identity; omit to show all.").option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+      const result = await inspectReconstructionCoverage(
+        options.target,
+        id,
+        options.repository
+      );
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(`Reconstruction coverage ${result.id}
+`);
+        for (const repository of result.repositories) {
+          printCoverageSummary(repository, true);
+        }
+      }
+    })
+  ).command(
+    "read",
+    new Command().description(
+      "Read a bounded range from an exact pinned Git blob and record the receipt."
+    ).arguments("<id:string> <path:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--repository <id:string>", "Repository identity.").option("--start <line:string>", "First one-based line.").option("--end <line:string>", "Last one-based line; at most 400 lines per read.").option("--by <actor:string>", "Reading agent actor.", {
+      default: "workflow-agent/1"
+    }).option("--json", "Print machine-readable JSON.").action(async (options, id, path) => {
+      const result = await readReconstructionSource({
+        target: options.target,
+        id,
+        path,
+        ...options.repository === void 0 ? {} : { repository: options.repository },
+        ...options.start === void 0 ? {} : { startLine: parseLineNumber(options.start, "--start") },
+        ...options.end === void 0 ? {} : { endLine: parseLineNumber(options.end, "--end") },
+        actor: options.by
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `${result.repository}@${result.commit} ${result.path} lines ${result.startLine}-${result.endLine}/${result.totalLines} [${result.complete ? "complete" : "more remains"}]
+`
+        );
+        if (result.content) {
+          const width = String(result.endLine).length;
+          for (const [offset, line] of result.content.split("\n").entries()) {
+            process.stdout.write(
+              `${String(result.startLine + offset).padStart(width)} | ${line}
+`
+            );
+          }
+        }
+      }
+    })
+  ).command(
+    "files",
+    new Command().description(
+      "Classify or disposition manifest files by exact path, directory, or wildcard glob."
+    ).arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--repository <id:string>", "Repository identity.").option("--path <pattern:string>", "Manifest path pattern; repeat as needed.", {
+      collect: true,
+      required: true
+    }).option(
+      "--category <category:string>",
+      "source, test, contract, configuration, product-data, documentation, generated, binary-asset, vendor, submodule, other."
+    ).option(
+      "--status <status:string>",
+      "pending, inspected, structural-only, irrelevant, or blocked."
+    ).option("--reason <text:string>", "Required for non-inspected final states.").option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+      const paths = collectedStrings(options.path);
+      const result = await markReconstructionFiles({
+        target: options.target,
+        id,
+        paths,
+        ...options.repository === void 0 ? {} : { repository: options.repository },
+        ...options.category === void 0 ? {} : { category: options.category },
+        ...options.status === void 0 ? {} : { status: options.status },
+        ...options.reason === void 0 ? {} : { reason: options.reason }
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Updated ${result.matched} manifest file(s) in ${result.repository}
+`
+        );
+        printCoverageSummary(result.summary);
+      }
+    })
+  ).command(
+    "community",
+    new Command().description("Record the disposition of one Graphify community.").arguments("<id:string> <community:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--repository <id:string>", "Repository identity.").option("--status <status:string>", "inspected, structural-only, irrelevant, or blocked.", {
+      required: true
+    }).option("--note <text:string>", "Finding or explicit no-product-mapping reason.", {
+      required: true
+    }).option("--query <text:string>", "Material Graphify query; repeat.", {
+      collect: true
+    }).option("--json", "Print machine-readable JSON.").action(async (options, id, community) => {
+      const result = await markReconstructionCommunity({
+        target: options.target,
+        id,
+        community,
+        status: options.status,
+        note: options.note,
+        queries: collectedStrings(options.query),
+        ...options.repository === void 0 ? {} : { repository: options.repository }
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Updated Graphify community ${community} in ${result.repository}
+`
+        );
+        printCoverageSummary(result.summary);
+      }
+    })
+  ).command(
+    "surface",
+    new Command().description(
+      "Record one discovered entrypoint, runtime surface, or boundary."
+    ).arguments("<id:string> <surface:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--repository <id:string>", "Repository identity.").option("--kind <kind:string>", "entrypoint, runtime, or boundary.", {
+      required: true
+    }).option("--description <text:string>", "What the surface exposes.", {
+      required: true
+    }).option("--path <path:string>", "Exact manifest path; repeat.", {
+      collect: true,
+      required: true
+    }).option("--status <status:string>", "inspected, structural-only, irrelevant, or blocked.", {
+      required: true
+    }).option("--note <text:string>", "Inspection result.", { required: true }).option("--candidate <id:string>", "Linked candidate claim ID; repeat.", {
+      collect: true
+    }).option("--json", "Print machine-readable JSON.").action(async (options, id, surface) => {
+      const result = await recordReconstructionSurface({
+        target: options.target,
+        id,
+        surface,
+        kind: options.kind,
+        description: options.description,
+        paths: collectedStrings(options.path),
+        status: options.status,
+        note: options.note,
+        candidateIds: collectedStrings(options.candidate),
+        ...options.repository === void 0 ? {} : { repository: options.repository }
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Recorded ${options.kind} ${surface} in ${result.repository}
+`
+        );
+        printCoverageSummary(result.summary);
+      }
+    })
+  ).command(
+    "surfaces",
+    new Command().description(
+      "Finalize the repository-wide entrypoint and runtime-surface audit."
+    ).arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--repository <id:string>", "Repository identity.").option("--status <status:string>", "reviewed, not-relevant, or blocked.", {
+      required: true
+    }).option("--note <text:string>", "Whole-repository surface audit result.", {
+      required: true
+    }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+      if (!["reviewed", "not-relevant", "blocked"].includes(options.status)) {
+        throw new Error(
+          `Invalid surface audit status "${options.status}"`
+        );
+      }
+      const result = await reviewReconstructionSurfaces({
+        target: options.target,
+        id,
+        status: options.status,
+        note: options.note,
+        ...options.repository === void 0 ? {} : { repository: options.repository }
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Finalized surface audit as ${options.status} in ${result.repository}
+`
+        );
+        printCoverageSummary(result.summary);
+      }
+    })
+  ).command(
     "check",
     new Command().description(
-      "Verify checkout bindings, dossier coverage, claim disposition, promotion, and review."
+      "Verify bindings, complete coverage, claims, raw convergence, promotion, and review."
     ).arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
       const result = await inspectProjectReconstruction(options.target, id);
       if (options.json) {
@@ -29491,6 +30919,71 @@ function parseOutcome(value) {
     throw new Error(`Invalid outcome "${value}"; expected completed, partial, or abandoned`);
   }
   return value;
+}
+function parseLineNumber(value, option) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${option} must be a positive integer`);
+  }
+  return parsed;
+}
+function collectedStrings(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return value === void 0 ? [] : [value];
+}
+function printCoverageSummary(summary, includeOutstanding = false) {
+  process.stdout.write(
+    `  ${summary.repository}@${summary.commit}
+    Files: ${summary.files}; inspected ${summary.fileStates.inspected}; pending ${summary.fileStates.pending}; blocked ${summary.fileStates.blocked}; structural-only ${summary.fileStates["structural-only"]}; irrelevant ${summary.fileStates.irrelevant}
+    Graphify: ${summary.graphIndexedFiles} indexed files; ${summary.graphUnindexedFiles} unindexed; ${summary.communities} communities (${summary.communityStates.pending} pending, ${summary.communityStates.blocked} blocked)
+    Surfaces: ${summary.surfaces}; audit ${summary.surfaceAudit}; ${summary.surfaceStates.pending} pending, ${summary.surfaceStates.blocked} blocked
+`
+  );
+  if (!includeOutstanding) {
+    return;
+  }
+  printCoverageItems(
+    "Outstanding files",
+    summary.outstandingFiles.map(
+      (file) => `${file.status.padEnd(14)} ${file.category.padEnd(14)} ${file.graphIndexed ? "graph" : "no-graph"} ${file.path}` + (file.readRanges.length > 0 ? ` [read ${file.readRanges.join(",")}/${file.totalLines}]` : "")
+    )
+  );
+  printCoverageItems(
+    "Outstanding communities",
+    summary.outstandingCommunities.map(
+      (community) => `${community.status.padEnd(14)} ${community.id} ${community.name}`
+    )
+  );
+  printCoverageItems(
+    "Outstanding surfaces",
+    summary.outstandingSurfaces.map(
+      (surface) => `${surface.status.padEnd(14)} ${surface.kind} ${surface.id}`
+    )
+  );
+  printCoverageItems(
+    "Graphify-only sources",
+    summary.untrackedGraphSourcePaths
+  );
+}
+function printCoverageItems(title, items) {
+  if (items.length === 0) {
+    return;
+  }
+  const limit = 20;
+  process.stdout.write(`    ${title} (${items.length}):
+`);
+  for (const item of items.slice(0, limit)) {
+    process.stdout.write(`      - ${item}
+`);
+  }
+  if (items.length > limit) {
+    process.stdout.write(
+      `      ... ${items.length - limit} more; use --json for the complete list
+`
+    );
+  }
 }
 function printPlan(plan) {
   const summary = summarizePlan(plan);

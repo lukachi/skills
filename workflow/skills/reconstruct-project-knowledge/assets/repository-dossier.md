@@ -1,5 +1,5 @@
 ---
-reconstruction_repository_version: 1
+reconstruction_repository_version: 2
 case_id: "<case-id>"
 repository: "<repository>"
 commit: "<full-git-commit>"
@@ -33,7 +33,8 @@ product intent merely because code exists.>
 # Entrypoints and flows
 
 <Trace the principal entrypoints, data/state/control flows, and externally
-observable behavior.>
+observable behavior. Reconcile this prose with the structured surface ledger;
+do not leave an entrypoint or runtime surface only in narrative text.>
 
 # Boundaries and contracts
 
@@ -47,7 +48,8 @@ boundaries, runtime configuration, and important negative behavior.>
 
 # Tests and runtime evidence
 
-<Explain what tests or fresh runtime checks establish and what they do not.>
+<List the pinned source and test paths actually read through wfctl receipts.
+Explain what tests or fresh runtime checks establish and what they do not.>
 
 # Git evolution
 

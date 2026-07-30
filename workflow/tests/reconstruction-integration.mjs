@@ -29,6 +29,8 @@ try {
       skills: { scope: "none", agents: [] },
     }, null, 2)}\n`,
   );
+  run("git", ["-C", knowledge, "add", "."]);
+  run("git", ["-C", knowledge, "commit", "-q", "-m", "initialize knowledge"]);
 
   mkdirSync(join(leaf, ".workflow"), { recursive: true });
   mkdirSync(join(leaf, "src"), { recursive: true });
@@ -78,7 +80,39 @@ try {
   const result = JSON.parse(started.stdout);
   assert.equal(result.repositories.length, 1);
   assert.ok(result.repositories[0].graphNodes > 0);
+  assert.ok(result.repositories[0].trackedFiles > 0);
+  assert.equal(existsSync(result.repositories[0].coverage), true);
   assert.equal(existsSync(join(leaf, "graphify-out/graph.json")), true);
+
+  const coverage = JSON.parse(run("node", [
+    join(packageRoot, "dist/cli.js"),
+    "knowledge",
+    "reconstruct",
+    "coverage",
+    result.id,
+    "--target",
+    knowledge,
+    "--json",
+  ]).stdout);
+  assert.equal(
+    coverage.repositories[0].outstandingFiles.length,
+    result.repositories[0].trackedFiles,
+  );
+  const pinnedRead = JSON.parse(run("node", [
+    join(packageRoot, "dist/cli.js"),
+    "knowledge",
+    "reconstruct",
+    "read",
+    result.id,
+    "src/main.ts",
+    "--target",
+    knowledge,
+    "--repository",
+    result.repositories[0].repository,
+    "--json",
+  ]).stdout);
+  assert.equal(pinnedRead.complete, true);
+  assert.match(pinnedRead.content, /export function greet/);
 
   const caseText = readFileSync(result.path, "utf8");
   assert.doesNotMatch(caseText, new RegExp(escapeRegExp(leaf)));

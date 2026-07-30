@@ -48,7 +48,19 @@ import {
   beginProjectReconstruction,
   closeProjectReconstruction,
   inspectProjectReconstruction,
+  inspectReconstructionCoverage,
+  markReconstructionCommunity,
+  markReconstructionFiles,
+  readReconstructionSource,
+  recordReconstructionSurface,
+  reviewReconstructionSurfaces,
 } from "./reconstruction.js";
+import type {
+  CoverageState,
+  CoverageSummary,
+  FileCategory,
+  SurfaceKind,
+} from "./reconstruction-coverage.js";
 import type {
   AgentTarget,
   DoctorCheck,
@@ -787,7 +799,7 @@ function knowledgeReconstructCommand() {
       "start",
       new Command()
         .description(
-          "Bind clean leaf checkouts, refresh Graphify, and create repository dossiers.",
+          "Bind clean leaves, refresh Graphify, and freeze dossiers plus complete coverage ledgers.",
         )
         .arguments("<slug:string>")
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
@@ -830,10 +842,272 @@ function knowledgeReconstructCommand() {
             for (const repository of result.repositories) {
               process.stdout.write(
                 `- ${repository.repository}@${repository.commit} `
-                  + `(${repository.graphNodes} graph nodes)\n`
-                  + `  Dossier: ${repository.dossier}\n`,
+                  + `(${repository.trackedFiles} tracked files; `
+                  + `${repository.graphNodes} graph nodes)\n`
+                  + `  Dossier: ${repository.dossier}\n`
+                  + `  Coverage: ${repository.coverage}\n`,
               );
             }
+          }
+        }),
+    )
+    .command(
+      "coverage",
+      new Command()
+        .description(
+          "Show complete Git-file, Graphify-community, and runtime-surface coverage.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--repository <id:string>", "Repository identity; omit to show all.")
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await inspectReconstructionCoverage(
+            options.target,
+            id,
+            options.repository,
+          );
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(`Reconstruction coverage ${result.id}\n`);
+            for (const repository of result.repositories) {
+              printCoverageSummary(repository, true);
+            }
+          }
+        }),
+    )
+    .command(
+      "read",
+      new Command()
+        .description(
+          "Read a bounded range from an exact pinned Git blob and record the receipt.",
+        )
+        .arguments("<id:string> <path:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--repository <id:string>", "Repository identity.")
+        .option("--start <line:string>", "First one-based line.")
+        .option("--end <line:string>", "Last one-based line; at most 400 lines per read.")
+        .option("--by <actor:string>", "Reading agent actor.", {
+          default: "workflow-agent/1",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, path) => {
+          const result = await readReconstructionSource({
+            target: options.target,
+            id,
+            path,
+            ...(options.repository === undefined
+              ? {}
+              : { repository: options.repository }),
+            ...(options.start === undefined
+              ? {}
+              : { startLine: parseLineNumber(options.start, "--start") }),
+            ...(options.end === undefined
+              ? {}
+              : { endLine: parseLineNumber(options.end, "--end") }),
+            actor: options.by,
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `${result.repository}@${result.commit} ${result.path} `
+                + `lines ${result.startLine}-${result.endLine}/${result.totalLines} `
+                + `[${result.complete ? "complete" : "more remains"}]\n`,
+            );
+            if (result.content) {
+              const width = String(result.endLine).length;
+              for (
+                const [offset, line] of result.content.split("\n").entries()
+              ) {
+                process.stdout.write(
+                  `${String(result.startLine + offset).padStart(width)} | ${line}\n`,
+                );
+              }
+            }
+          }
+        }),
+    )
+    .command(
+      "files",
+      new Command()
+        .description(
+          "Classify or disposition manifest files by exact path, directory, or wildcard glob.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--repository <id:string>", "Repository identity.")
+        .option("--path <pattern:string>", "Manifest path pattern; repeat as needed.", {
+          collect: true,
+          required: true,
+        })
+        .option(
+          "--category <category:string>",
+          "source, test, contract, configuration, product-data, documentation, generated, binary-asset, vendor, submodule, other.",
+        )
+        .option(
+          "--status <status:string>",
+          "pending, inspected, structural-only, irrelevant, or blocked.",
+        )
+        .option("--reason <text:string>", "Required for non-inspected final states.")
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const paths = collectedStrings(options.path);
+          const result = await markReconstructionFiles({
+            target: options.target,
+            id,
+            paths,
+            ...(options.repository === undefined
+              ? {}
+              : { repository: options.repository }),
+            ...(options.category === undefined
+              ? {}
+              : { category: options.category as FileCategory }),
+            ...(options.status === undefined
+              ? {}
+              : { status: options.status as CoverageState }),
+            ...(options.reason === undefined ? {} : { reason: options.reason }),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Updated ${result.matched} manifest file(s) in ${result.repository}\n`,
+            );
+            printCoverageSummary(result.summary);
+          }
+        }),
+    )
+    .command(
+      "community",
+      new Command()
+        .description("Record the disposition of one Graphify community.")
+        .arguments("<id:string> <community:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--repository <id:string>", "Repository identity.")
+        .option("--status <status:string>", "inspected, structural-only, irrelevant, or blocked.", {
+          required: true,
+        })
+        .option("--note <text:string>", "Finding or explicit no-product-mapping reason.", {
+          required: true,
+        })
+        .option("--query <text:string>", "Material Graphify query; repeat.", {
+          collect: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, community) => {
+          const result = await markReconstructionCommunity({
+            target: options.target,
+            id,
+            community,
+            status: options.status as CoverageState,
+            note: options.note,
+            queries: collectedStrings(options.query),
+            ...(options.repository === undefined
+              ? {}
+              : { repository: options.repository }),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Updated Graphify community ${community} in ${result.repository}\n`,
+            );
+            printCoverageSummary(result.summary);
+          }
+        }),
+    )
+    .command(
+      "surface",
+      new Command()
+        .description(
+          "Record one discovered entrypoint, runtime surface, or boundary.",
+        )
+        .arguments("<id:string> <surface:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--repository <id:string>", "Repository identity.")
+        .option("--kind <kind:string>", "entrypoint, runtime, or boundary.", {
+          required: true,
+        })
+        .option("--description <text:string>", "What the surface exposes.", {
+          required: true,
+        })
+        .option("--path <path:string>", "Exact manifest path; repeat.", {
+          collect: true,
+          required: true,
+        })
+        .option("--status <status:string>", "inspected, structural-only, irrelevant, or blocked.", {
+          required: true,
+        })
+        .option("--note <text:string>", "Inspection result.", { required: true })
+        .option("--candidate <id:string>", "Linked candidate claim ID; repeat.", {
+          collect: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, surface) => {
+          const result = await recordReconstructionSurface({
+            target: options.target,
+            id,
+            surface,
+            kind: options.kind as SurfaceKind,
+            description: options.description,
+            paths: collectedStrings(options.path),
+            status: options.status as CoverageState,
+            note: options.note,
+            candidateIds: collectedStrings(options.candidate),
+            ...(options.repository === undefined
+              ? {}
+              : { repository: options.repository }),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Recorded ${options.kind} ${surface} in ${result.repository}\n`,
+            );
+            printCoverageSummary(result.summary);
+          }
+        }),
+    )
+    .command(
+      "surfaces",
+      new Command()
+        .description(
+          "Finalize the repository-wide entrypoint and runtime-surface audit.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--repository <id:string>", "Repository identity.")
+        .option("--status <status:string>", "reviewed, not-relevant, or blocked.", {
+          required: true,
+        })
+        .option("--note <text:string>", "Whole-repository surface audit result.", {
+          required: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          if (!["reviewed", "not-relevant", "blocked"].includes(options.status)) {
+            throw new Error(
+              `Invalid surface audit status "${options.status}"`,
+            );
+          }
+          const result = await reviewReconstructionSurfaces({
+            target: options.target,
+            id,
+            status: options.status as "reviewed" | "not-relevant" | "blocked",
+            note: options.note,
+            ...(options.repository === undefined
+              ? {}
+              : { repository: options.repository }),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Finalized surface audit as ${options.status} in ${result.repository}\n`,
+            );
+            printCoverageSummary(result.summary);
           }
         }),
     )
@@ -841,7 +1115,7 @@ function knowledgeReconstructCommand() {
       "check",
       new Command()
         .description(
-          "Verify checkout bindings, dossier coverage, claim disposition, promotion, and review.",
+          "Verify bindings, complete coverage, claims, raw convergence, promotion, and review.",
         )
         .arguments("<id:string>")
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
@@ -1339,6 +1613,87 @@ function parseOutcome(value: string): WorkOutcome {
     throw new Error(`Invalid outcome "${value}"; expected completed, partial, or abandoned`);
   }
   return value;
+}
+
+function parseLineNumber(value: string, option: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${option} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function collectedStrings(value: string | string[] | undefined): string[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return value === undefined ? [] : [value];
+}
+
+function printCoverageSummary(
+  summary: CoverageSummary,
+  includeOutstanding = false,
+): void {
+  process.stdout.write(
+    `  ${summary.repository}@${summary.commit}\n`
+      + `    Files: ${summary.files}; inspected ${summary.fileStates.inspected}; `
+      + `pending ${summary.fileStates.pending}; blocked ${summary.fileStates.blocked}; `
+      + `structural-only ${summary.fileStates["structural-only"]}; `
+      + `irrelevant ${summary.fileStates.irrelevant}\n`
+      + `    Graphify: ${summary.graphIndexedFiles} indexed files; `
+      + `${summary.graphUnindexedFiles} unindexed; `
+      + `${summary.communities} communities `
+      + `(${summary.communityStates.pending} pending, `
+      + `${summary.communityStates.blocked} blocked)\n`
+      + `    Surfaces: ${summary.surfaces}; audit ${summary.surfaceAudit}; `
+      + `${summary.surfaceStates.pending} pending, `
+      + `${summary.surfaceStates.blocked} blocked\n`,
+  );
+  if (!includeOutstanding) {
+    return;
+  }
+  printCoverageItems(
+    "Outstanding files",
+    summary.outstandingFiles.map((file) =>
+      `${file.status.padEnd(14)} ${file.category.padEnd(14)} `
+        + `${file.graphIndexed ? "graph" : "no-graph"} ${file.path}`
+        + (file.readRanges.length > 0
+          ? ` [read ${file.readRanges.join(",")}/${file.totalLines}]`
+          : "")
+    ),
+  );
+  printCoverageItems(
+    "Outstanding communities",
+    summary.outstandingCommunities.map((community) =>
+      `${community.status.padEnd(14)} ${community.id} ${community.name}`
+    ),
+  );
+  printCoverageItems(
+    "Outstanding surfaces",
+    summary.outstandingSurfaces.map((surface) =>
+      `${surface.status.padEnd(14)} ${surface.kind} ${surface.id}`
+    ),
+  );
+  printCoverageItems(
+    "Graphify-only sources",
+    summary.untrackedGraphSourcePaths,
+  );
+}
+
+function printCoverageItems(title: string, items: string[]): void {
+  if (items.length === 0) {
+    return;
+  }
+  const limit = 20;
+  process.stdout.write(`    ${title} (${items.length}):\n`);
+  for (const item of items.slice(0, limit)) {
+    process.stdout.write(`      - ${item}\n`);
+  }
+  if (items.length > limit) {
+    process.stdout.write(
+      `      ... ${items.length - limit} more; use --json for the complete list\n`,
+    );
+  }
 }
 
 function printPlan(plan: InstallPlan): void {

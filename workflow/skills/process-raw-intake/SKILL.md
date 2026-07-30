@@ -41,6 +41,10 @@ establish.
 - **Initial historical dump:** map topics with QMD, sample enough to propose
   bounded batches, then process one accepted batch at a time. Never claim to
   understand the whole archive from retrieval alone.
+- **Reconstruction snapshot:** use the exact raw baseline recorded by the
+  parent reconstruction. Process bounded cases against that commit until its
+  inventory contains zero unseen, changed, active, blocked, or unresolved
+  blobs. Raw committed later belongs to the next intake generation.
 - **A file changed at the same path:** treat its new Git blob as new input.
   Preserve the earlier case and compare versions only when chronology matters.
 - **Topic-focused request:** retrieve broadly enough to find aliases and
@@ -70,7 +74,9 @@ establish.
    setup skill, request install authority, and perform the installation
    yourself. Do not replace it with a new indexer.
 4. Run `wfctl knowledge raw inventory`. It compares committed `raw/` blobs with
-   active and archived cases. It does not interpret Markdown.
+   active and archived cases. It does not interpret Markdown. When a parent
+   reconstruction supplies a frozen raw baseline, pass `--baseline
+   <full-commit>` on every inventory and case-start command for that run.
 5. Report uncommitted paths and ask the maintainer for normal authorization to
    preserve them in Git. Intake cannot freeze untracked or dirty files.
 6. Run `qmd update` and, when semantic retrieval is needed, ask for model
@@ -165,6 +171,10 @@ answer or keep the candidate unresolved outside `knowledge/`.
 8. Run `wfctl knowledge raw inventory` again. A later change to the same raw
    path has a different blob ID and returns as `changed`; never mutate the
    earlier case or mark a path permanently processed.
+
+For a reconstruction snapshot, repeat bounded cases until the frozen-baseline
+inventory reports only `reviewed` or `no-relevant-claims` entries. Do not widen
+the current reconstruction to raw blobs added after its recorded baseline.
 
 Do not promote unresolved candidates into `knowledge/uncertainties/`.
 Uncertainties in current knowledge are questions supported by trusted current

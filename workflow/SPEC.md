@@ -22,6 +22,11 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   selected leaf is pinned to a clean commit and worktree identity, analyzed
   through Graphify and direct source, and represented by a repository dossier.
   Local absolute checkout paths live only in ignored runtime bindings.
+- Every reconstruction repository owns a deterministic coverage ledger built
+  from its complete pinned Git tree. The ledger reconciles every tracked file
+  with Graphify indexing, every Graphify community, declared entrypoints and
+  runtime surfaces, and exact source-reading receipts. Graphify remains a
+  navigation aid; it never replaces the Git inventory or direct evidence.
 - `.workflow/repositories.json` durably registers the full project source set
   without local paths. `.workflow/current/repositories.json` stores any number
   of known local worktrees per repository plus one explicit active selection
@@ -99,10 +104,18 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - `wfctl knowledge reconstruct start`: bind every registered repository's
   active clean worktree for a default baseline, or bind explicit known
   worktrees for a reviewed baseline/audit scope, refresh Graphify, and create a
-  bounded case plus repository dossiers without durable absolute paths.
+  bounded case, repository dossiers, complete pinned Git manifests, and
+  Graphify-community ledgers without durable absolute paths.
+- `wfctl knowledge reconstruct coverage|read|files|community|surface|surfaces`:
+  let the installed agent inspect outstanding coverage, read exact line ranges
+  from pinned blobs, classify and disposition files, account for every
+  Graphify community, and record entrypoint/runtime-surface review. These are
+  agent-facing operations; maintainers are not expected to drive the ledger.
 - `wfctl knowledge reconstruct check|close`: enforce exact checkout bindings,
-  repository coverage, candidate classification, optional-input disposition,
-  cross-repository reconciliation, validated promotion, and maintainer review.
+  complete file/community/surface accounting, direct-reading receipts for
+  inspected text, candidate classification and evidence linkage,
+  optional-input convergence, cross-repository reconciliation, validated
+  promotion, and maintainer review.
 - `wfctl knowledge validate`: enforce the strict curated-knowledge profile.
 - `wfctl knowledge build`: validate and compile the deterministic knowledge
   relationship graph into `.workflow/current/knowledge-graph.json`.
@@ -155,6 +168,50 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
   and adds its exact worktree to ignored local state without changing the
   active reconstruction selection. Selection is a separate maintainer-visible
   operation.
+
+## Reconstruction completeness contract
+
+The workflow guarantees complete accounting, not perfect understanding:
+
+- Git is the enumeration authority. At case start, `wfctl` freezes every
+  tracked tree entry for every selected leaf at its full commit, including
+  files unsupported by Graphify. A completed case rejects missing, added,
+  duplicated, or identity-mismatched manifest entries.
+- Graphify is the structural lane. Every indexed source file is reconciled
+  against the Git manifest, and every derived Graphify community receives an
+  explicit final disposition. Graph-only files that cannot be pinned to the
+  Git tree block completion.
+- Direct pinned blobs are the reading lane. `wfctl` emits bounded source
+  ranges and records the exact blob, line range, total lines, actor, and time.
+  An `inspected` text file is complete only when its receipts cover the whole
+  file without gaps. Confirmed source-code evidence must point to such an
+  inspected file.
+- Every file has a semantic category and one review state: `pending`,
+  `inspected`, `structural-only`, `irrelevant`, or `blocked`. `pending` and
+  `blocked` prevent completion. `structural-only` and `irrelevant` require an
+  explanation. Product-bearing text such as source, tests, contracts,
+  configuration, product data, and documentation cannot finish as
+  `structural-only`.
+- Every Graphify community has the same explicit review state and a note.
+  Communities are technical clusters, not product Areas or capabilities; the
+  dossier must map them to product concepts or explain why no such mapping
+  exists.
+- Every discovered entrypoint, runtime surface, and boundary is recorded with
+  paths and a final disposition. Each repository also carries a final surface
+  audit; an empty surface list is valid only with an explicit reviewed
+  explanation.
+- A coverage summary may guide work, but absence from Graphify, QMD, grep, or a
+  community never proves absence from the project. Negative product claims
+  require a completed coverage ledger plus maintainer review.
+- Raw remains optional. When a reconstruction declares raw `reviewed`, its
+  frozen Git snapshot must converge to zero `unseen`, `changed`, `active`,
+  `blocked`, and `unresolved` entries, with no uncommitted changes to a path in
+  that snapshot. Raw added after that snapshot starts a later intake case; it
+  does not rewrite or invalidate a closed receipt.
+- Completion fails closed on any unexplained file, community, runtime surface,
+  graph/tree mismatch, incomplete reading receipt, unresolved raw input,
+  evidence outside the inspected pinned baseline, or missing maintainer
+  approval. `partial` and `abandoned` remain honest escape paths.
 
 ## Verification criteria
 
@@ -212,9 +269,14 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - [x] Any number of worktrees may be known for one repository; adding or
   initializing one never silently changes that repository's explicit active
   reconstruction selection.
-- [x] Completed reconstruction rejects incomplete repository coverage,
-  unresolved claims, unreviewed optional inputs, missing promotion, and absent
-  maintainer approval.
+- [x] Completed reconstruction rejects incomplete Git-file, Graphify-community,
+  and entrypoint/runtime-surface coverage.
+- [x] Inspected source and test files require gap-free pinned line receipts,
+  and confirmed source-code evidence resolves to those receipts.
+- [x] Reviewed raw input converges to zero unseen, changed, active, blocked, or
+  unresolved committed blobs and zero uncommitted changes to frozen paths.
+- [x] Completed reconstruction rejects unresolved claims, unreviewed optional
+  inputs, missing promotion, and absent maintainer approval.
 - [x] Curated product concepts distinguish accepted intent, observed delivery,
   and alignment without treating code as automatic product truth.
 
@@ -230,7 +292,7 @@ Ship a deterministic `wfctl` package that bootstraps and maintains a shared proj
 - [x] Dry-run against the named DnD repositories.
 - [x] Define maintainer review boundaries without conflating OKF trust and
   lifecycle.
-- [x] Implement and verify source-first existing-project reconstruction.
+- [x] Implement and verify complete-accounting source-first reconstruction.
 
 ## Out of scope for v2
 

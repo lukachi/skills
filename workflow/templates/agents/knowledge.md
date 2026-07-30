@@ -29,8 +29,10 @@ intent, or current truth cannot be established from trusted sources.
 Use `reconstruct-project-knowledge` when current knowledge must be built or
 audited from one or more existing leaf repositories. Bind exact clean
 checkouts with `wfctl knowledge reconstruct start`, keep local paths only in
-the ignored runtime binding, inspect each repository through Graphify and
-direct source, and separate observed implementation from accepted intent.
+the ignored runtime binding, account for the complete pinned Git manifest,
+every Graphify community, and every declared runtime surface, and read direct
+pinned source through CLI receipts. Separate observed implementation from
+accepted intent. Never edit the machine-owned coverage JSON manually.
 Optional raw, documentation, and change records supplement this process but
 are never assumed to exist or promoted without their own authority.
 

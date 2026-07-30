@@ -1,5 +1,5 @@
 ---
-reconstruction_version: 2
+reconstruction_version: 3
 id: "<case-id>"
 title: "<title>"
 mode: baseline
@@ -10,6 +10,7 @@ repositories: []
 supplemental_inputs:
   raw:
     status: pending
+    baseline: "<full-knowledge-git-commit>"
     case_ids: []
     candidate_ids: []
     notes: []
@@ -95,9 +96,11 @@ audit produced no durable update. Proposed ideas never enter current knowledge.
 
 # Coverage audit
 
-Reconcile every repository dossier, cross-repository boundary, supplemental
-input class, candidate, and promoted concept. Look explicitly for missing
-conditions, negative behavior, unowned capabilities, stale intent, accidental
+Reconcile every repository's complete Git manifest, Graphify communities,
+declared entrypoints/runtime surfaces, direct-reading receipts, dossier,
+cross-repository boundary, supplemental input class, candidate, and promoted
+concept. Look explicitly for Graphify-unindexed source, missing conditions,
+negative behavior, unowned capabilities, stale intent, accidental
 implementation, and knowledge that claims more than the evidence proves.
 
 # Maintainer review

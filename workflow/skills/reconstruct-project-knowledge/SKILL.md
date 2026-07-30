@@ -70,7 +70,8 @@ authority, review, or a source choice that cannot be resolved safely.
    worktree and binds its own exact code root in the work spec.
 6. Start only after selection is explicit. A baseline with no `--leaf` includes
    every registered repository's active worktree and fails closed if any
-   selection is missing or unavailable:
+   selection is missing or unavailable. The knowledge repository must already
+   have an initial Git commit so optional inputs can be frozen:
 
    ```sh
    wfctl knowledge reconstruct start <slug> \
@@ -83,7 +84,9 @@ authority, review, or a source choice that cannot be resolved safely.
    override must still include every registered repository. An `audit` may
    deliberately select a subset, but its title and scope must say so.
 7. Run `wfctl knowledge reconstruct check <case-id>` and read the complete
-   `case.md` plus every generated repository dossier.
+   `case.md` plus every generated repository dossier. Run `wfctl knowledge
+   reconstruct coverage <case-id>` for the complete machine-owned coverage
+   summary; do not manually edit `*.coverage.json`.
 8. Treat `.workflow/current/reconstruction/<case-id>.json` as the local
    checkout binding. Never copy its absolute paths into the durable case,
    dossiers, or curated knowledge.
@@ -92,8 +95,10 @@ authority, review, or a source choice that cannot be resolved safely.
    inspect.
 
 The CLI updates and validates Graphify in each exact checkout before creating
-the case. The durable case stores repository identity, branch, commit,
-checkout label, and worktree ID, but not a machine-local path.
+the case. It also freezes every tracked Git tree entry and every derived
+Graphify community into a durable coverage ledger. The durable case stores
+repository identity, branch, commit, checkout label, and worktree ID, but not
+a machine-local path.
 
 ## Analyze every repository
 
@@ -101,19 +106,91 @@ For each dossier:
 
 1. Invoke `analyze-with-graphify`, which must load the official native
    `graphify` skill in the current session.
-2. Query the graph for repository purpose, entrypoints, major communities,
-   boundaries, integrations, data/state/control flow, persistence, contracts,
-   invariants, failures, tests, and runtime surfaces.
-3. Record every material Graphify query in `graphify_queries`.
-4. Open the actual source and tests reached through the graph at the pinned
-   commit. Use text search only as supplementary exact-token coverage.
-5. Complete every dossier coverage dimension. Use `not-relevant` only with an
+2. Run `wfctl knowledge reconstruct coverage <case-id> --repository
+   <repository-id>`. Treat its Git manifest as the enumeration authority:
+   every tracked file is present even when Graphify cannot parse it. When the
+   human view truncates a long outstanding list, rerun with `--json`; it
+   returns every pending or blocked file, community, and surface.
+3. Query the graph for repository purpose, entrypoints, every listed
+   community, boundaries, integrations, data/state/control flow, persistence,
+   contracts, invariants, failures, tests, and runtime surfaces. A Graphify
+   community is a technical cluster, not automatically an Area or capability.
+4. Record every material Graphify query in `graphify_queries`, then disposition
+   each community through the CLI:
+
+   ```sh
+   wfctl knowledge reconstruct community <case-id> <community-id> \
+     --repository <repository-id> \
+     --status inspected \
+     --query "<material Graphify query>" \
+     --note "<product mapping, technical role, or explicit no-mapping result>"
+   ```
+
+   `structural-only` and `irrelevant` require an explanation. `pending` and
+   `blocked` prevent completed close.
+5. Open actual source, tests, contracts, configuration, product data, and
+   repository documentation from the pinned commit through bounded reads:
+
+   ```sh
+   wfctl knowledge reconstruct read <case-id> <path> \
+     --repository <repository-id> \
+     --start <first-line> --end <last-line>
+   ```
+
+   Continue until the command reports `complete`. This command records the
+   exact blob and line ranges; a Graphify result, search snippet, editor open,
+   or dossier statement does not create a read receipt. Read every material
+   condition, branch, exception, and test body rather than only headers.
+6. Classify or disposition remaining manifest entries in explicit batches:
+
+   ```sh
+   wfctl knowledge reconstruct files <case-id> \
+     --repository <repository-id> \
+     --path "<exact path, directory, or glob>" \
+     --category generated \
+     --status structural-only \
+     --reason "<why byte-level semantic reading is not required>"
+   ```
+
+   Every file needs a category and final status. Textual product-bearing
+   categories (`source`, `test`, `contract`, `configuration`, `product-data`,
+   and `documentation`) cannot finish as `structural-only`. `irrelevant`
+   remains available only with a scoped reason. Never bulk-disposition an
+   unfamiliar directory merely to clear the gate.
+7. Record every discovered entrypoint, runtime surface, and boundary:
+
+   ```sh
+   wfctl knowledge reconstruct surface <case-id> <stable-surface-id> \
+     --repository <repository-id> \
+     --kind entrypoint \
+     --description "<externally meaningful surface>" \
+     --path <manifest-path> \
+     --status inspected \
+     --note "<what direct inspection established>"
+
+   wfctl knowledge reconstruct surfaces <case-id> \
+     --repository <repository-id> \
+     --status reviewed \
+     --note "<whole-repository surface omission audit>"
+   ```
+
+   An empty surface list is valid only after an explicit reviewed or
+   `not-relevant` explanation. Do not leave a surface only in dossier prose.
+8. Complete every dossier coverage dimension. Use `not-relevant` only with an
    explanation; never convert a missing graph edge into proof of absence.
-6. Inspect Git history for meaningful evolution. Record `not-available` when
+9. Inspect Git history for meaningful evolution. Record `not-available` when
    the clone is shallow or history is insufficient. Do not invent chronology
    or rationale from commit order.
-7. Add atomic candidates to the parent case and link each dossier to those
+10. Add atomic candidates to the parent case and link each dossier or
+   structured surface to those
    candidate IDs through its structured `candidate_ids` field.
+
+Before leaving a repository, rerun `coverage`. Explain every Graphify-unindexed
+text file and every `unclassified`, `pending`, or `blocked` entry. A confirmed
+`source-code` candidate must cite a path whose full pinned read is complete.
+The ledger guarantees accounting and delivery of bytes to the agent; it does
+not prove correct semantic understanding, so the dossier and maintainer review
+remain mandatory.
 
 Do not edit source code from the knowledge repository. If analysis discovers a
 needed change, identify the owning leaf and open normal significant work there.
@@ -123,7 +200,11 @@ needed change, identify the owning leaf and open normal significant work there.
 1. Use QMD against `knowledge` to read the current project map, if any.
 2. Review optional inputs explicitly:
    - `raw`: process relevant material through bounded raw-intake cases first
-     and record every completed case ID;
+     and record every completed case ID. When marked `reviewed`, process the
+     reconstruction-start raw snapshot until inventory contains no `unseen`,
+     `changed`, `active`, `blocked`, or `unresolved` blob and no uncommitted raw
+     change to a path in that snapshot. New raw added after that snapshot
+     belongs to a later case;
    - `documentation`: treat prose as a claim until its authority is known;
    - `change_records`: qualify each claim by outcome, verification, and review.
 3. Never cite a raw or intake path as evidence. Raw agreement does not make a
@@ -156,8 +237,10 @@ After compaction or interruption:
 
 1. run `wfctl knowledge reconstruct check <case-id>`;
 2. read the entire case and all dossiers;
-3. confirm the exact bound checkouts;
-4. resume from recorded unresolved candidates and next actions, not chat
+3. run `wfctl knowledge reconstruct coverage <case-id>` and resume from its
+   exact pending communities, files, read ranges, and surfaces;
+4. confirm the exact bound checkouts;
+5. resume from recorded unresolved candidates and next actions, not chat
    memory.
 
 ## Promote and close
@@ -173,8 +256,8 @@ After compaction or interruption:
    maintainer decision recorded by candidate ID in this case.
 5. Put every confirmed candidate in `promoted_to`, reconcile it with
    `promotion.concepts`, and leave no unresolved candidate. Link every
-   candidate from at least one dossier `candidate_ids` list or one
-   supplemental input `candidate_ids` list.
+   candidate from at least one dossier, structured surface, or supplemental
+   input.
 6. Draft the concepts, record the complete promotion map and maintainer
    approval, then compute a fresh content hash for each stable concept:
 

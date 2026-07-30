@@ -26,6 +26,30 @@ import {
   resolveKnowledgeRoot,
 } from "./config.js";
 import { readRepositoryMetadata } from "./git.js";
+import { inventoryRaw } from "./intake.js";
+import {
+  COVERAGE_STATES,
+  FILE_CATEGORIES,
+  SURFACE_KINDS,
+  createReconstructionCoverage,
+  evidencePathFromResource,
+  markCoverageCommunity,
+  markCoverageFiles,
+  markSurfaceAudit,
+  readPinnedSource,
+  readReconstructionCoverage,
+  recordCoverageSurface,
+  summarizeReconstructionCoverage,
+  validateReconstructionCoverage,
+  validateReconstructionCoverageReceipt,
+  writeReconstructionCoverage,
+  type CoverageState,
+  type CoverageSummary,
+  type FileCategory,
+  type ReadPinnedSourceResult,
+  type ReconstructionCoverageLedger,
+  type SurfaceKind,
+} from "./reconstruction-coverage.js";
 import { resolveReconstructionLeaves } from "./repository-registry.js";
 import type { WorkOutcome } from "./types.js";
 import {
@@ -34,7 +58,7 @@ import {
   serializeWorkSpec,
 } from "./work-spec.js";
 
-const RECONSTRUCTION_VERSION = 2;
+const RECONSTRUCTION_VERSION = 3;
 const FINAL_REVIEW_STATES = new Set(["reviewed", "not-available", "not-relevant"]);
 const CANDIDATE_DISPOSITIONS = new Set([
   "confirmed",
@@ -107,7 +131,9 @@ export interface BeginReconstructionResult {
     repository: string;
     commit: string;
     dossier: string;
+    coverage: string;
     graphNodes: number;
+    trackedFiles: number;
   }>;
 }
 
@@ -133,6 +159,63 @@ export interface CloseReconstructionResult {
   archivePath: string;
 }
 
+export interface ReconstructionCoverageInspection {
+  id: string;
+  repositories: CoverageSummary[];
+}
+
+export interface MarkReconstructionFilesOptions {
+  target: string;
+  id: string;
+  repository?: string;
+  paths: string[];
+  category?: FileCategory;
+  status?: CoverageState;
+  reason?: string;
+}
+
+export interface MarkReconstructionCommunityOptions {
+  target: string;
+  id: string;
+  repository?: string;
+  community: string;
+  status: CoverageState;
+  note: string;
+  queries?: string[];
+}
+
+export interface RecordReconstructionSurfaceOptions {
+  target: string;
+  id: string;
+  repository?: string;
+  surface: string;
+  kind: SurfaceKind;
+  description: string;
+  paths: string[];
+  status: CoverageState;
+  note: string;
+  candidateIds?: string[];
+}
+
+export interface ReviewReconstructionSurfacesOptions {
+  target: string;
+  id: string;
+  repository?: string;
+  status: "reviewed" | "not-relevant" | "blocked";
+  note: string;
+}
+
+export interface ReadReconstructionSourceOptions {
+  target: string;
+  id: string;
+  repository?: string;
+  path: string;
+  startLine?: number;
+  endLine?: number;
+  actor?: string;
+  now?: Date;
+}
+
 export async function beginProjectReconstruction(
   options: BeginReconstructionOptions,
 ): Promise<BeginReconstructionResult> {
@@ -144,6 +227,12 @@ export async function beginProjectReconstruction(
   const title = options.title.trim();
   if (!title) {
     throw new Error("Reconstruction title must not be empty");
+  }
+  const knowledgeMetadata = readRepositoryMetadata(target);
+  if (!/^[0-9a-f]{40}$/i.test(knowledgeMetadata.commit)) {
+    throw new Error(
+      "Reconstruction requires an initial knowledge-repository commit so optional inputs can be frozen",
+    );
   }
   const leafRoots = await normalizeLeafRoots(
     await resolveReconstructionLeaves(target, options.leaves, mode),
@@ -215,11 +304,19 @@ export async function beginProjectReconstruction(
   );
   const document = parseWorkSpec(caseTemplate);
   const createdAt = now.toISOString();
+  const supplementalInputs = recordValue(document.metadata.supplemental_inputs) ?? {};
+  const rawInput = recordValue(supplementalInputs.raw) ?? {};
+  supplementalInputs.raw = {
+    ...rawInput,
+    baseline: knowledgeMetadata.commit,
+  };
   const durableRepositories = repositoryInputs.map((input, index) => {
-    const dossier = `repositories/${uniqueDossierName(
+    const repositorySlug = uniqueDossierName(
       input.metadata.repository,
       index,
-    )}.md`;
+    );
+    const dossier = `repositories/${repositorySlug}.md`;
+    const coverage = `repositories/${repositorySlug}.coverage.json`;
     return {
       repository: input.metadata.repository,
       branch: input.metadata.branch,
@@ -233,8 +330,27 @@ export async function beginProjectReconstruction(
         content_hash: graphResults[index]!.contentHash,
       },
       dossier,
+      coverage,
     };
   });
+  const coverageLedgers = await Promise.all(
+    repositoryInputs.map((input, index) =>
+      createReconstructionCoverage(
+        input.root,
+        input.metadata.repository,
+        input.metadata.commit,
+        join(input.root, "graphify-out/graph.json"),
+        now,
+      ).then((ledger) => {
+        if (ledger.graphify.contentHash !== graphResults[index]!.contentHash) {
+          throw new Error(
+            `${input.metadata.repository}: Graphify changed while reconstruction coverage was frozen`,
+          );
+        }
+        return ledger;
+      })
+    ),
+  );
   document.metadata = {
     ...document.metadata,
     reconstruction_version: RECONSTRUCTION_VERSION,
@@ -245,6 +361,7 @@ export async function beginProjectReconstruction(
     created_at: createdAt,
     updated_at: createdAt,
     repositories: durableRepositories,
+    supplemental_inputs: supplementalInputs,
   };
 
   const binding: LocalBinding = {
@@ -279,6 +396,11 @@ export async function beginProjectReconstruction(
         serializeWorkSpec(dossier),
         { encoding: "utf8", flag: "wx" },
       );
+      await writeFile(
+        join(directory, repository.coverage),
+        `${JSON.stringify(coverageLedgers[index], null, 2)}\n`,
+        { encoding: "utf8", flag: "wx" },
+      );
     }
     await mkdir(dirname(bindingPath), { recursive: true });
     await writeFile(bindingPath, `${JSON.stringify(binding, null, 2)}\n`, {
@@ -305,8 +427,146 @@ export async function beginProjectReconstruction(
       repository: repository.repository,
       commit: repository.commit,
       dossier: join(directory, repository.dossier),
+      coverage: join(directory, repository.coverage),
       graphNodes: graphResults[index]!.nodes,
+      trackedFiles: coverageLedgers[index]!.manifest.files.length,
     })),
+  };
+}
+
+export async function inspectReconstructionCoverage(
+  targetInput: string,
+  id: string,
+  repository?: string,
+): Promise<ReconstructionCoverageInspection> {
+  const contexts = await coverageContexts(targetInput, id, repository);
+  return {
+    id,
+    repositories: contexts.map(({ ledger }) =>
+      summarizeReconstructionCoverage(ledger)
+    ),
+  };
+}
+
+export async function markReconstructionFiles(
+  options: MarkReconstructionFilesOptions,
+): Promise<{ repository: string; matched: number; summary: CoverageSummary }> {
+  if (
+    options.category !== undefined
+    && !FILE_CATEGORIES.includes(options.category)
+  ) {
+    throw new Error(`Unknown file category: ${options.category}`);
+  }
+  if (
+    options.status !== undefined
+    && !COVERAGE_STATES.includes(options.status)
+  ) {
+    throw new Error(`Unknown file coverage status: ${options.status}`);
+  }
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository,
+  );
+  const matched = markCoverageFiles(context.ledger, options.paths, {
+    ...(options.category === undefined ? {} : { category: options.category }),
+    ...(options.status === undefined ? {} : { status: options.status }),
+    ...(options.reason === undefined ? {} : { reason: options.reason }),
+  });
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return {
+    repository: context.repositoryId,
+    matched,
+    summary: summarizeReconstructionCoverage(context.ledger),
+  };
+}
+
+export async function readReconstructionSource(
+  options: ReadReconstructionSourceOptions,
+): Promise<ReadPinnedSourceResult> {
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository,
+  );
+  const result = readPinnedSource(context.ledger, context.root, options.path, {
+    ...(options.startLine === undefined ? {} : { startLine: options.startLine }),
+    ...(options.endLine === undefined ? {} : { endLine: options.endLine }),
+    ...(options.actor === undefined ? {} : { actor: options.actor }),
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return result;
+}
+
+export async function markReconstructionCommunity(
+  options: MarkReconstructionCommunityOptions,
+): Promise<{ repository: string; summary: CoverageSummary }> {
+  if (!COVERAGE_STATES.includes(options.status)) {
+    throw new Error(`Unknown community coverage status: ${options.status}`);
+  }
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository,
+  );
+  markCoverageCommunity(
+    context.ledger,
+    options.community,
+    options.status,
+    options.note,
+    options.queries ?? [],
+  );
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return {
+    repository: context.repositoryId,
+    summary: summarizeReconstructionCoverage(context.ledger),
+  };
+}
+
+export async function recordReconstructionSurface(
+  options: RecordReconstructionSurfaceOptions,
+): Promise<{ repository: string; summary: CoverageSummary }> {
+  if (!SURFACE_KINDS.includes(options.kind)) {
+    throw new Error(`Unknown reconstruction surface kind: ${options.kind}`);
+  }
+  if (!COVERAGE_STATES.includes(options.status)) {
+    throw new Error(`Unknown surface coverage status: ${options.status}`);
+  }
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository,
+  );
+  recordCoverageSurface(context.ledger, {
+    id: options.surface,
+    kind: options.kind,
+    description: options.description,
+    paths: options.paths,
+    status: options.status,
+    note: options.note,
+    candidateIds: options.candidateIds ?? [],
+  });
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return {
+    repository: context.repositoryId,
+    summary: summarizeReconstructionCoverage(context.ledger),
+  };
+}
+
+export async function reviewReconstructionSurfaces(
+  options: ReviewReconstructionSurfacesOptions,
+): Promise<{ repository: string; summary: CoverageSummary }> {
+  const context = await oneCoverageContext(
+    options.target,
+    options.id,
+    options.repository,
+  );
+  markSurfaceAudit(context.ledger, options.status, options.note);
+  await writeReconstructionCoverage(context.coveragePath, context.ledger);
+  return {
+    repository: context.repositoryId,
+    summary: summarizeReconstructionCoverage(context.ledger),
   };
 }
 
@@ -349,7 +609,9 @@ export async function inspectProjectReconstructionReceipt(
     lifecycle,
     allowPendingPromotionValidation,
   );
-  issues.push(...await supplementalInputIssues(target, document.metadata));
+  issues.push(
+    ...await supplementalInputIssues(target, document.metadata, lifecycle),
+  );
   const repositories = recordArray(document.metadata.repositories);
   const candidates = recordArray(document.metadata.candidate_claims);
   const binding = lifecycle === "active"
@@ -357,6 +619,7 @@ export async function inspectProjectReconstructionReceipt(
     : undefined;
   const inspectedTexts = [await readFile(path, "utf8")];
   const linkedCandidateIds = new Set<string>();
+  const coverageByRepository = new Map<string, ReconstructionCoverageLedger>();
 
   if (binding) {
     if (binding.caseId !== id || binding.knowledgeRoot !== target) {
@@ -396,6 +659,22 @@ export async function inspectProjectReconstructionReceipt(
         ) {
           issues.push(`${repositoryId}: Graphify graph changed after the case was bound`);
         }
+        const coveragePath = resolveCaseJson(
+          dirname(path),
+          stringValue(repository.coverage),
+        );
+        const coverage = await readReconstructionCoverage(coveragePath);
+        coverageByRepository.set(repositoryId, coverage);
+        inspectedTexts.push(JSON.stringify(coverage));
+        issues.push(
+          ...(await validateReconstructionCoverage(
+            coverage,
+            local.root,
+            repositoryId,
+            stringValue(repository.commit),
+            join(local.root, "graphify-out/graph.json"),
+          )).map((issue) => `${repositoryId}: ${issue}`),
+        );
       } catch (error) {
         issues.push(`${repositoryId}: ${errorMessage(error)}`);
       }
@@ -403,6 +682,30 @@ export async function inspectProjectReconstructionReceipt(
     for (const local of binding.repositories) {
       if (!repositories.some((entry) => entry.repository === local.repository)) {
         issues.push(`${local.repository}: local binding is outside the durable case scope`);
+      }
+    }
+  }
+
+  if (!binding) {
+    for (const repository of repositories) {
+      const repositoryId = stringValue(repository.repository);
+      try {
+        const coverage = await readReconstructionCoverage(
+          resolveCaseJson(dirname(path), stringValue(repository.coverage)),
+        );
+        coverageByRepository.set(repositoryId, coverage);
+        inspectedTexts.push(JSON.stringify(coverage));
+        issues.push(
+          ...validateReconstructionCoverageReceipt(
+            coverage,
+            repositoryId,
+            stringValue(repository.commit),
+          ).map((issue) => `${repositoryId}: ${issue}`),
+        );
+      } catch (error) {
+        issues.push(
+          `${repositoryId}: cannot inspect coverage receipt: ${errorMessage(error)}`,
+        );
       }
     }
   }
@@ -431,19 +734,65 @@ export async function inspectProjectReconstructionReceipt(
       linkedCandidateIds.add(candidateId);
     }
   }
+  for (const coverage of coverageByRepository.values()) {
+    for (const surface of coverage.surfaces) {
+      for (const candidateId of surface.candidateIds) {
+        linkedCandidateIds.add(candidateId);
+      }
+    }
+  }
   const candidateIds = new Set(
     candidates.map((candidate) => stringValue(candidate.id)).filter(Boolean),
   );
   for (const candidateId of candidateIds) {
     if (!linkedCandidateIds.has(candidateId)) {
       issues.push(
-        `candidate ${candidateId} is not linked from a repository dossier or supplemental input`,
+        `candidate ${candidateId} is not linked from a dossier, surface, or supplemental input`,
       );
     }
   }
   for (const candidateId of linkedCandidateIds) {
     if (!candidateIds.has(candidateId)) {
       issues.push(`source coverage references undefined candidate ${candidateId}`);
+    }
+  }
+
+  for (const candidate of candidates) {
+    for (const evidence of recordArray(candidate.evidence)) {
+      if (evidence.kind !== "source-code") {
+        continue;
+      }
+      const resource = stringValue(evidence.resource);
+      const matching = [...coverageByRepository.entries()].filter(
+        ([repositoryId, coverage]) =>
+          evidencePathFromResource(
+            resource,
+            repositoryId,
+            coverage.commit,
+            coverage.manifest.files.map((file) => file.path),
+          ) !== undefined,
+      );
+      if (matching.length !== 1) {
+        issues.push(
+          `candidate ${stringValue(candidate.id)} source evidence is outside the inspected reconstruction manifests: ${resource}`,
+        );
+        continue;
+      }
+      const [repositoryId, coverage] = matching[0]!;
+      const evidencePath = evidencePathFromResource(
+        resource,
+        repositoryId,
+        coverage.commit,
+        coverage.manifest.files.map((file) => file.path),
+      )!;
+      const file = coverage.manifest.files.find(
+        (entry) => entry.path === evidencePath,
+      );
+      if (file?.status !== "inspected") {
+        issues.push(
+          `candidate ${stringValue(candidate.id)} source evidence lacks a complete read receipt: ${repositoryId}#${evidencePath}`,
+        );
+      }
     }
   }
 
@@ -579,6 +928,9 @@ function reconstructionMetadataIssues(
     if (!isCaseRelativeMarkdown(stringValue(repository.dossier))) {
       issues.push(`${prefix}.dossier must be a case-relative Markdown path`);
     }
+    if (!isCaseRelativeJson(stringValue(repository.coverage))) {
+      issues.push(`${prefix}.coverage must be a case-relative JSON path`);
+    }
     const graphify = recordValue(repository.graphify);
     if (
       graphify?.status !== "ready"
@@ -602,6 +954,9 @@ function reconstructionMetadataIssues(
     }
   }
   const rawInput = recordValue(supplemental?.raw);
+  if (!/^[0-9a-f]{40,64}$/i.test(stringValue(rawInput?.baseline))) {
+    issues.push("supplemental_inputs.raw.baseline must pin the reconstruction-start Git snapshot");
+  }
   if (
     rawInput?.status === "reviewed"
     && !nonEmptyStringArray(rawInput.case_ids)
@@ -814,6 +1169,9 @@ function dossierIssues(
 ): string[] {
   const id = stringValue(repository.repository);
   const issues: string[] = [];
+  if (metadata.reconstruction_repository_version !== 2) {
+    issues.push(`${id}: reconstruction_repository_version must be 2`);
+  }
   if (metadata.status !== "reviewed") {
     issues.push(`${id}: dossier status must be reviewed`);
   }
@@ -865,6 +1223,7 @@ function dossierIssues(
 async function supplementalInputIssues(
   target: string,
   metadata: Record<string, unknown>,
+  lifecycle: "active" | "archive",
 ): Promise<string[]> {
   const issues: string[] = [];
   const raw = recordValue(recordValue(metadata.supplemental_inputs)?.raw);
@@ -874,6 +1233,7 @@ async function supplementalInputIssues(
     );
   }
   if (raw?.status === "reviewed") {
+    const caseIds = new Set(stringArray(raw.case_ids));
     for (const id of stringArray(raw.case_ids)) {
       if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
         issues.push(`supplemental_inputs.raw.case_ids contains an invalid id: ${id}`);
@@ -895,6 +1255,42 @@ async function supplementalInputIssues(
       } catch (error) {
         issues.push(`cannot verify completed raw-intake case ${id}: ${errorMessage(error)}`);
       }
+    }
+    try {
+      const inventory = await inventoryRaw({
+        target,
+        baseline: stringValue(raw.baseline),
+      });
+      const baselinePaths = new Set(inventory.entries.map((entry) => entry.path));
+      const changedFrozenPaths = lifecycle === "active"
+        ? inventory.uncommitted.filter((path) => baselinePaths.has(path))
+        : [];
+      if (changedFrozenPaths.length > 0) {
+        issues.push(
+          `frozen raw snapshot has uncommitted path changes: ${changedFrozenPaths.join(", ")}`,
+        );
+      }
+      for (const entry of inventory.entries) {
+        if (!["reviewed", "no-relevant-claims"].includes(entry.state)) {
+          issues.push(
+            `${entry.path}: frozen raw input remains ${entry.state}`,
+          );
+          continue;
+        }
+        if (
+          !entry.cases.some((reference) =>
+            caseIds.has(reference.id)
+            && reference.lifecycle === "archive"
+            && reference.outcome === "completed"
+          )
+        ) {
+          issues.push(
+            `${entry.path}: final raw review is not linked through supplemental_inputs.raw.case_ids`,
+          );
+        }
+      }
+    } catch (error) {
+      issues.push(`cannot verify frozen raw inventory: ${errorMessage(error)}`);
     }
   }
   return issues;
@@ -975,6 +1371,108 @@ async function readBinding(
   }
 }
 
+interface ReconstructionCoverageContext {
+  repositoryId: string;
+  root: string;
+  commit: string;
+  worktreeId: string;
+  graphHash: string;
+  coveragePath: string;
+  ledger: ReconstructionCoverageLedger;
+}
+
+async function coverageContexts(
+  targetInput: string,
+  id: string,
+  repository?: string,
+): Promise<ReconstructionCoverageContext[]> {
+  const target = await requireKnowledgeRepository(targetInput);
+  const casePath = reconstructionCasePath(target, "active", id);
+  const document = parseWorkSpec(await readFile(casePath, "utf8"));
+  const bindingIssues: string[] = [];
+  const binding = await readBinding(target, id, bindingIssues);
+  if (!binding || bindingIssues.length > 0) {
+    throw new Error(
+      bindingIssues.join("; ") || "local reconstruction binding is missing",
+    );
+  }
+  const durable = recordArray(document.metadata.repositories);
+  const selected = repository
+    ? durable.filter((entry) => entry.repository === repository)
+    : durable;
+  if (selected.length === 0) {
+    throw new Error(
+      `Reconstruction repository is not in case ${id}: ${repository ?? ""}`,
+    );
+  }
+  const contexts: ReconstructionCoverageContext[] = [];
+  for (const entry of selected) {
+    const repositoryId = stringValue(entry.repository);
+    const local = binding.repositories.find(
+      (candidate) => candidate.repository === repositoryId,
+    );
+    if (!local) {
+      throw new Error(`${repositoryId}: local checkout binding is missing`);
+    }
+    const coveragePath = resolveCaseJson(
+      dirname(casePath),
+      stringValue(entry.coverage),
+    );
+    contexts.push({
+      repositoryId,
+      root: local.root,
+      commit: stringValue(entry.commit),
+      worktreeId: local.worktreeId,
+      graphHash: stringValue(recordValue(entry.graphify)?.content_hash),
+      coveragePath,
+      ledger: await readReconstructionCoverage(coveragePath),
+    });
+  }
+  return contexts;
+}
+
+async function oneCoverageContext(
+  target: string,
+  id: string,
+  repository?: string,
+): Promise<ReconstructionCoverageContext> {
+  const contexts = await coverageContexts(target, id, repository);
+  if (contexts.length !== 1) {
+    throw new Error(
+      `Reconstruction ${id} contains ${contexts.length} repositories; specify --repository`,
+    );
+  }
+  const context = contexts[0]!;
+  await assertCoverageBindingCurrent(context);
+  return context;
+}
+
+async function assertCoverageBindingCurrent(
+  context: ReconstructionCoverageContext,
+): Promise<void> {
+  const current = readRepositoryMetadata(context.root);
+  if (
+    current.repository !== context.repositoryId
+    || current.commit !== context.commit
+    || current.worktreeId !== context.worktreeId
+  ) {
+    throw new Error(
+      `${context.repositoryId}: checkout, worktree, or revision binding drifted`,
+    );
+  }
+  if (current.dirty) {
+    throw new Error(
+      `${context.repositoryId}: bound checkout has uncommitted changes`,
+    );
+  }
+  const graph = await graphSummary(context.root);
+  if (graph.contentHash !== context.graphHash) {
+    throw new Error(
+      `${context.repositoryId}: Graphify graph changed after the case was bound`,
+    );
+  }
+}
+
 function isLocalBinding(value: unknown): value is LocalBinding {
   return isRecord(value)
     && value.schemaVersion === 1
@@ -1013,8 +1511,23 @@ function resolveCaseFile(caseDirectory: string, input: string): string {
   return absolute;
 }
 
+function resolveCaseJson(caseDirectory: string, input: string): string {
+  const absolute = resolve(caseDirectory, input);
+  const boundary = `${resolve(caseDirectory)}${sep}`;
+  if (!absolute.startsWith(boundary) || !absolute.endsWith(".json")) {
+    throw new Error(`case-relative JSON path escapes reconstruction: ${input}`);
+  }
+  return absolute;
+}
+
 function isCaseRelativeMarkdown(value: string): boolean {
   return value.endsWith(".md")
+    && !value.startsWith("/")
+    && !value.split("/").includes("..");
+}
+
+function isCaseRelativeJson(value: string): boolean {
+  return value.endsWith(".json")
     && !value.startsWith("/")
     && !value.split("/").includes("..");
 }

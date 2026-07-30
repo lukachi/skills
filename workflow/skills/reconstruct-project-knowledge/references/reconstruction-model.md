@@ -61,15 +61,34 @@ a completed reconstruction.
 
 ## Coverage without false certainty
 
-Graphify provides the initial structural map and relationship traversal. Direct
-source, tests, and runtime evidence establish claims. Text search helps detect
-exact tokens and gaps after graph traversal. No tool proves semantic
-completeness.
+The pinned Git tree provides complete file enumeration. Graphify provides the
+initial structural map and relationship traversal. Direct pinned source,
+tests, and runtime evidence establish claims. Text search helps detect exact
+tokens and gaps after graph traversal. No tool proves semantic completeness.
+
+The coverage ledger keeps three independent accounts:
+
+- every Git-tracked entry, including formats Graphify does not parse;
+- every Graphify community and its product mapping or explicit no-mapping
+  result;
+- every declared entrypoint, runtime surface, and boundary.
+
+Pinned `wfctl` reads add blob-and-line receipts. An inspected text file is
+complete only when those receipts cover every line. `structural-only` is for
+non-product-bearing structure and always needs a reason; it cannot close
+source, tests, contracts, configuration, product data, or documentation.
+`irrelevant` also needs a scoped reason. Pending and blocked entries prevent a
+completed baseline.
 
 The coverage audit must reconcile:
 
 - every repository durably registered for a baseline, not merely the checkout
   paths remembered by the current agent;
+- every tracked file, Graphify-indexed or not;
+- every Graphify community without confusing a technical cluster for a product
+  Area or capability;
+- every discovered entrypoint, runtime surface, and boundary;
+- exact direct-reading receipts behind source-code evidence;
 - each selected repository and dossier dimension;
 - cross-repository inputs and outputs;
 - optional source-lane dispositions;
@@ -81,6 +100,10 @@ The coverage audit must reconcile:
 
 The maintainer review remains essential because a deterministic gate cannot
 prove that an agent understood the whole project.
+
+When raw is reviewed as part of reconstruction, its reconstruction-start Git
+snapshot must converge through completed intake cases. Later raw blobs are a
+new intake generation and do not invalidate an already frozen baseline.
 
 ## Project-wide convergence
 

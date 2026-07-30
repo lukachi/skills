@@ -61,6 +61,23 @@ code proves observed implementation, not intended meaning or correctness.
 Record optional raw, documentation, and change inputs explicitly without
 assuming any of them exist.
 
+Reconstruction uses the complete pinned Git tree as its enumeration authority.
+After start, operate the CLI-owned coverage ledger through `wfctl knowledge
+reconstruct coverage|read|files|community|surface|surfaces`; never edit its
+JSON manually. Account for every tracked file, including Graphify-unindexed
+formats, every Graphify community, and every discovered entrypoint/runtime
+surface. Only `wfctl ... reconstruct read` creates the exact blob-and-line
+receipt required by an inspected text file and source-code evidence. Pending,
+blocked, unclassified, unexplained structural-only or irrelevant entries, and
+incomplete reads block completed reconstruction. Technical communities are
+not product Areas by default; map or explicitly explain them.
+
+If reconstruction marks raw as reviewed, every blob in its frozen
+reconstruction-start raw snapshot must reach a completed intake disposition
+with no unseen, changed, active, blocked, or unresolved entry. Later raw is a
+new intake generation, not a reason to rewrite or invalidate the frozen
+receipt.
+
 Use `wfctl knowledge build` to validate and compile explicit Markdown links,
 typed `x-wf.relations`, Area ownership, and decision lineage into
 `.workflow/current/knowledge-graph.json`. The graph is disposable navigation,

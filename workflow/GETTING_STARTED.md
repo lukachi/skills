@@ -50,10 +50,11 @@ open the agent in the knowledge repository and ask:
 
 > Reconstruct the project knowledge baseline from all linked source repositories.
 
-The agent binds one clean checkout per repository, analyzes each through
-Graphify and direct source, reviews available Git history, and treats existing
-docs, change records, and raw dumps as optional separate inputs. It then shows
-you:
+The agent binds one clean checkout per repository, freezes every tracked Git
+entry, reconciles all Graphify communities, records entrypoints/runtime
+surfaces, reads pinned source and tests with exact range receipts, reviews
+available Git history, and treats existing docs, change records, and raw dumps
+as optional separate inputs. It then shows you:
 
 - accepted product intent;
 - observed implementation and delivery gaps;
@@ -64,7 +65,9 @@ you:
 
 You approve or correct that baseline before it becomes curated current
 knowledge. Source code does not automatically become product intent, and raw
-material never becomes evidence.
+material never becomes evidence. The mechanical gate proves that nothing in
+the selected revisions was silently omitted; it cannot prove that an agent
+understood every meaning, so your review is still authoritative.
 
 Leaf initialization registers each repository and remembers that exact
 worktree. It does not make the worktree active for reconstruction. You do not
