@@ -62,8 +62,10 @@ and update the owning skill when practice exposes a missing case.
 
 The [`workflow/`](workflow/) package is the canonical source for `wfctl`, shared
 project-work rules, consumer skills, and knowledge/leaf bootstrap templates.
-It installs versioned assets without replacing existing agent instructions and
-keeps active work specifications in a configured central knowledge repository.
+It keeps maintainers and coding agents aligned through linked product and
+engineering knowledge, installs versioned assets without replacing existing
+agent instructions, and keeps active work specifications in a configured
+central knowledge repository.
 
 Start with [`workflow/README.md`](workflow/README.md), then read the
 [project idea](workflow/IDEA.md) and the numbered

@@ -63,6 +63,9 @@ try {
     packageReadme.split("\n").length <= 120,
     "README.md must remain a short introduction",
   );
+  assert.match(packageReadme, /project collaboration and knowledge workflow/i);
+  assert.match(packageReadme, /maintainer\/product road/i);
+  assert.match(packageReadme, /engineering road/i);
   for (const guide of userGuides) {
     const content = readFileSync(join(packaged, "docs", guide), "utf8");
     assert.match(content, /## Use this when/);

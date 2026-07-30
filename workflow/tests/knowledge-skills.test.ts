@@ -111,6 +111,33 @@ test("knowledge view templates encode separate audiences and required sections",
   assert.match(engineering, /# Product knowledge/);
 });
 
+test("workflow keeps maintainer-product and engineering roads first-class", async () => {
+  const readme = await readFile(join(root, "README.md"), "utf8");
+  const idea = await readFile(join(root, "IDEA.md"), "utf8");
+  const engine = await readFile(join(root, "spec/ENGINE.md"), "utf8");
+  const knowledge = await readFile(join(root, "spec/KNOWLEDGE.md"), "utf8");
+  const maintainerGuide = await readFile(
+    join(root, "templates/guides/common.md"),
+    "utf8",
+  );
+  const agentGuide = await readFile(
+    join(root, "templates/agents/common.md"),
+    "utf8",
+  );
+
+  for (const content of [readme, idea, engine, knowledge, maintainerGuide]) {
+    assert.match(content, /maintainer\/product road/i);
+    assert.match(content, /engineering road/i);
+    assert.match(content, /first-class/i);
+  }
+  assert.match(readme, /project collaboration and knowledge workflow/i);
+  assert.match(idea, /Both humans and agents can follow both roads/);
+  assert.match(engine, /Curated Markdown remains a direct human interface/);
+  assert.match(knowledge, /Neither road is subordinate or\s+derived/);
+  assert.match(agentGuide, /never one derived\s+from the other/i);
+  assert.match(agentGuide, /Decision lineage connects both roads/);
+});
+
 test("direction shaping and project research are deliberate bounded modes", async () => {
   const shape = await readFile(
     join(root, "skills/shape-project-direction/SKILL.md"),

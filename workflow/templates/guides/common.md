@@ -5,9 +5,22 @@ This is the maintainer-facing operating guide installed by `wfctl`.
 - Profile: `{{PROFILE}}`
 - Project knowledge: `{{KNOWLEDGE_PATH}}`
 
-The workflow is a collaboration protocol. The agent inventories and verifies
-evidence, maintains records, and presents bounded decisions. The maintainer
-supplies product intent, resolves authority conflicts, and approves material
+The workflow is a project partnership system. It keeps the maintainer and agent
+inside one shared project model from product intent to verified delivery. The
+maintainer can recover and navigate that model directly; the agent uses the
+same model to investigate, implement, verify, and maintain continuity.
+
+It provides two linked, first-class roads:
+
+- the **maintainer/product road** explains purpose, capabilities, behavior,
+  rules, delivery, and evolution in human language;
+- the **engineering road** explains architecture, ownership, source
+  realization, contracts, operations, and verification.
+
+Neither road is derived from the other. Shared Areas, changes, and decision
+history keep them aligned. The agent inventories and verifies evidence,
+maintains records, and presents bounded decisions. The maintainer supplies
+product intent, resolves authority conflicts, and approves material
 commitments.
 
 ## What the maintainer operates

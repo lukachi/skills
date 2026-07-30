@@ -52,20 +52,26 @@ Project-level vision, cross-Area flows, architecture, decisions, repositories,
 uncertainties, and references are allowed only when no Area is the honest
 primary owner.
 
-## Linked views
+## Two first-class knowledge roads
 
-Knowledge separates:
+Knowledge exposes two linked ways through the same project:
 
-- **product concepts** — current behavior, audience, capabilities, rules,
-  exceptions, examples, delivery, and evolution in stakeholder language;
-- **engineering concepts** — implementation, ownership, source boundaries,
-  contracts, failures, operations, and verification;
-- **decision records** — rationale and durable evolution.
+- the **maintainer/product road** uses product concepts to explain current
+  behavior, audience, capabilities, rules, exceptions, examples, delivery, and
+  evolution in stakeholder language;
+- the **engineering road** uses engineering concepts to explain
+  implementation, ownership, source boundaries, contracts, failures,
+  operations, and verification.
+
+Both humans and agents may navigate either road. Neither road is subordinate or
+derived from the other. They share Area ownership, capabilities, changes, and
+decision lineages. Decision records and evolution provide rationale and durable
+history to both roads rather than forming a third flat document stream.
 
 Every concept declares `view`, `purpose`, and `audience`. Product concepts must
 not contain code, identifiers, endpoints, schemas, source paths, or
-implementation walkthroughs. Engineering concepts establish product meaning
-before explaining realization and do not infer intent from code.
+implementation walkthroughs. Engineering concepts link established product
+meaning before explaining realization and do not infer intent from code.
 
 Product-bearing concepts keep document lifecycle separate from:
 

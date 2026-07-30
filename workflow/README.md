@@ -1,55 +1,71 @@
 # wfctl
 
-`wfctl` gives a project durable memory that coding agents can actually use.
+`wfctl` is a project collaboration and knowledge workflow that keeps
+maintainers and coding agents aligned from product intent to verified delivery.
 
-It connects product intent, source code, decisions, active work, and project
-history without pretending that code, old notes, or generated indexes are
-automatically true.
+It gives both people and agents a durable, navigable project model without
+pretending that code, old notes, or generated indexes are automatically true.
 
 ## Why use it?
 
-Agents are useful at implementing a task, but a long-lived project needs more:
+A long-lived project becomes hard to steer when product meaning and engineering
+reality drift apart:
 
-- important decisions must survive chat compaction and team changes;
+- a maintainer should not have to reconstruct the product from source code,
+  chats, and disconnected specifications;
 - an agent must understand the product before changing its implementation;
+- product intent and delivered behavior must remain comparable;
+- important decisions must survive chat compaction and team changes;
 - work across several repositories must still describe one coherent project;
-- current behavior, future intent, and historical ideas must not be flattened
-  into the same document;
 - “done” must be supported by evidence, not by the agent's confidence.
 
-`wfctl` turns those needs into an installed workflow for Codex and Claude Code.
-The workflow teaches the agent how to investigate, discuss, record, verify, and
-curate work while leaving product authority with the maintainer.
+`wfctl` turns those needs into an installed, vendor-neutral agent workflow.
+It creates two linked, first-class roads through the same project:
+
+- the **maintainer/product road** explains purpose, capabilities, behavior,
+  rules, delivery, and evolution in human language;
+- the **engineering road** explains architecture, ownership, source
+  realization, contracts, operations, and verification.
+
+Both maintainers and agents may follow either road. Neither is a derivative of
+the other, and shared Areas, changes, and decision history keep them aligned.
 
 ## What you get
 
+- A human-readable project road that lets maintainers, product people, and new
+  team members recover the current project without reverse-engineering code.
+- A linked engineering road that lets agents and engineers trace product
+  meaning to exact implementation and evidence.
 - A living work record that survives interruptions and evolves from discussion
   through implementation and verification.
-- A shared knowledge repository with separate product, engineering, and
-  decision-history views.
 - Source-first reconstruction for projects that already contain working code.
 - Safe intake for raw notes, ideas, research, and legacy specifications.
-- Graphify-first source navigation, QMD retrieval, Git-pinned evidence, and
-  deterministic validation.
+- Graphify-first source navigation, QMD retrieval, and Git-pinned evidence.
+- Mechanical checks that reject broken knowledge links, invalid decision
+  history, stale review receipts, incomplete work records, and unaccounted raw
+  intake or source reconstruction scope.
 - One workflow across a single repository, a monorepo, or many independent
   repositories and worktrees.
 
-## The project model
+## How the pieces work together
 
-A project has two kinds of repositories:
+| Place | What belongs there |
+| --- | --- |
+| Knowledge repository | Shared product and engineering knowledge, work records, decision history, and unreviewed intake |
+| Leaf repository | Source code, tests, implementation, and verification evidence |
 
-```text
-knowledge repository
-├── curated project knowledge
-├── decisions and active work
-└── raw and reconstruction intake
+Work moves between them in two ways:
 
-leaf repositories
-└── source code and implementation evidence
-```
+- **Ongoing change:** shared context and maintainer intent → living work record
+  → implementation and verification in a leaf → maintainer review → updated
+  curated knowledge and decision history.
+- **Existing project or raw material:** raw material and selected leaves →
+  intake or reconstruction → evidence checks and maintainer review → curated
+  knowledge.
 
 There is one knowledge repository and any number of leaf repositories. A leaf
-may be a normal checkout or a Git worktree.
+may be a normal checkout or a Git worktree. Raw material and reconstruction
+results remain evidence, not project truth, until they are reviewed and curated.
 
 ## Start in five minutes
 
@@ -67,17 +83,17 @@ cd /path/to/source-repository
 wfctl init leaf --knowledge /path/to/project-knowledge
 ```
 
-Restart Codex or Claude Code so it loads the installed skills. After that, use
-plain language:
+Restart your coding agent. The repository you open determines its role:
 
-> Help me understand this project and what it can do today.
-
-> Implement account recovery.
-
-> Process the new raw material.
+- **Knowledge repository:** “Help me understand this project” or “Process the
+  new raw material.” It may inspect leaves for evidence, but never implements
+  source changes.
+- **Leaf repository:** “Implement account recovery.” It writes code only in
+  that exact checkout while using the central knowledge and work record.
 
 The agent owns routine `wfctl`, Graphify, QMD, and validation commands. You own
-product intent, corrections, approvals, and completion decisions.
+product intent, corrections, approvals, and completion decisions. The shared
+knowledge remains directly readable without an agent.
 
 ## Read next
 
@@ -97,6 +113,6 @@ Workflow authors can continue with the
 
 ## Current scope
 
-The current implementation targets Codex and Claude Code. `wfctl` runs on
-Node.js, Bun, or Deno; QMD and Graphify remain external tools with their own
-native skills.
+`wfctl` distributes instructions and skills through `AGENTS.md`/`.agents` and
+`CLAUDE.md`/`.claude`; any compatible agent can use the workflow. It runs on
+Node.js, Bun, or Deno; QMD and Graphify remain external tools with native skills.

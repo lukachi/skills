@@ -8,6 +8,11 @@ This directory is the curated, current knowledge surface. Read indexes
 progressively and follow links to relevant concepts. It must not cite the
 repository's untrusted raw intake.
 
+It exposes two linked, first-class roads through the same project:
+maintainer/product knowledge in human language and engineering knowledge tied
+to exact realization. Neither road is derived from the other. Areas,
+capabilities, changes, and decision history connect them.
+
 ## Start here
 
 - [Vision](vision/) - project purpose, intended outcomes, principles, and non-goals.
@@ -26,5 +31,6 @@ their alignment; implemented code is not treated as intended product behavior
 unless the project has explicitly accepted it.
 
 Product pages are written for stakeholders and contain no implementation
-walkthroughs. Follow their Engineering details links only when you need source,
-architecture, contracts, runtime, or operations.
+walkthroughs. Engineering pages are a separate first-class road for source,
+architecture, contracts, runtime, and operations, and link back to the product
+meaning they realize.

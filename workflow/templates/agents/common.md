@@ -32,9 +32,11 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
 - For significant multi-turn work, create the shaping spec early, update it
   after every material maintainer turn, and resume from the full file rather
   than conversation memory.
-- Treat product-facing and engineering knowledge as linked views, never one
-  blended document. Product pages explain current behavior to stakeholders;
+- Treat the maintainer/product and engineering roads as linked, first-class
+  views of the same project, never one blended document and never one derived
+  from the other. Product pages explain current behavior to stakeholders;
   engineering pages explain implementation to engineers and operators.
+  Decision lineage connects both roads rather than forming a third flat view.
 - Route broad project discovery, newcomer onboarding, Area exploration, and
   focused product-understanding questions to `explore-project-knowledge`.
   Exploration is read-only: answer progressively from curated knowledge

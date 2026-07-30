@@ -9,19 +9,24 @@ partially delivered capabilities, architectural constraints, and the reasons
 behind earlier decisions. Those facts are normally scattered across chats,
 issues, old specifications, people's memory, and several repositories.
 
-An agent joining one task sees only a narrow slice. It can inspect code, but
-code proves implementation—not product intent. It can read notes, but notes may
-be obsolete, speculative, or wrong. It can remember the conversation, but that
-memory may disappear after compaction or a new session.
+A maintainer faces the same fragmentation as an agent. Without a human road
+through the project, they must repeatedly reconstruct current behavior,
+delivery, and rationale from code, chats, and whoever happens to remember.
 
-The result is predictable: agents guess, repeat old discussions, silently
-change direction, or report desired work as completed work.
+An agent joining one task sees only a narrow slice. Code can establish observed
+implementation at a revision, but not product intent or complete runtime
+behavior. Notes may be obsolete, speculative, or wrong. Conversation memory may
+disappear after compaction or a new session.
+
+The result is predictable: maintainers lose a clear view of their own product,
+agents guess, discussions repeat, direction changes silently, and desired work
+is reported as delivered work.
 
 ## The purpose
 
-`wfctl` is a long-term collaboration system for maintainers and coding agents.
-Its purpose is to keep a project understandable and governable from its first
-idea through years of implementation and change.
+`wfctl` is a long-term project partnership system for maintainers and coding
+agents. Its purpose is to let both recover, understand, discuss, and govern the
+same project from its first idea through years of implementation and change.
 
 It must work when the workflow starts with the project and when it joins an
 existing codebase later. Existing notes are useful but optional. Source code is
@@ -29,7 +34,24 @@ essential evidence but never the complete product story.
 
 ## How the workflow reaches that purpose
 
-### 1. Separate inputs from accepted knowledge
+### 1. Keep one project accessible through two first-class roads
+
+The workflow maintains two linked ways to understand the same project:
+
+- the **maintainer/product road** explains purpose, audience, capabilities,
+  behavior, rules, delivery, and meaningful evolution in human language;
+- the **engineering road** explains implementation, architecture, ownership,
+  contracts, failures, operations, and verification.
+
+Both humans and agents can follow both roads. The product road is not a
+simplified rendering of technical documentation, and the engineering road
+cannot redefine product meaning to match code. Areas, capabilities, changes,
+and decision lineages connect them.
+
+Decision history is shared connective context, not a third flat road. It lets a
+reader move from current product meaning or implementation to why it changed.
+
+### 2. Separate inputs from accepted knowledge
 
 The workflow keeps different kinds of information in different trust lanes:
 
@@ -41,20 +63,6 @@ The workflow keeps different kinds of information in different trust lanes:
 
 Nothing becomes accepted knowledge merely because it is newer, implemented,
 well written, or easy to retrieve.
-
-### 2. Preserve product meaning and engineering reality separately
-
-Project knowledge has linked views:
-
-- the **product view** explains what the project provides, for whom, under
-  which rules, and with what delivery state;
-- the **engineering view** explains ownership, architecture, source
-  realization, contracts, failures, operations, and verification;
-- the **decision view** explains why the current state exists and how it
-  evolved.
-
-This lets a stakeholder understand the project without reading code while
-letting an engineer trace the same concept to exact implementation evidence.
 
 ### 3. Organize by durable responsibility
 
@@ -128,33 +136,39 @@ No one tool is treated as universal authority.
 
 `wfctl` aims to:
 
+- let a maintainer or product stakeholder recover the current project,
+  delivery, and rationale without reverse-engineering source code;
 - help an agent understand the whole project before changing one part;
+- keep the product and engineering roads aligned without collapsing them;
 - keep decisions and project language durable across sessions and people;
 - expose current behavior, intended behavior, delivery, and drift honestly;
 - reconstruct a trustworthy baseline for an existing multi-repository project;
 - turn ongoing raw dumps into reviewed candidates without losing information;
 - make incomplete, partial, blocked, and abandoned outcomes explicit;
-- support Codex and Claude Code from the same canonical templates.
+- distribute one canonical workflow through both the `AGENTS.md`/`.agents` and
+  `CLAUDE.md`/`.claude` conventions.
 
 ## Non-goals
 
 `wfctl` does not aim to:
 
-- infer product intent automatically from source code;
-- treat raw notes, search results, or generated graphs as truth;
-- prove semantic correctness without agent and maintainer review;
-- replace Git, Graphify, QMD, or the coding agent with custom substitutes;
-- reconcile every contradiction automatically;
-- force a heavyweight specification process onto trivial work;
-- make one knowledge document serve every audience;
-- hide uncertainty behind a successful command or green validator.
+- prescribe a universal specification-driven development methodology. A living
+  specification is required for consequential work, not made the center of
+  every task;
+- build its own search, source-code indexing, or knowledge-graph engine. The
+  workflow coordinates specialized tools and defines how their outputs are
+  used;
+- minimize token consumption as a primary objective. Lower token use may be a
+  useful outcome, but never at the expense of coverage, shared understanding,
+  or trustworthy project knowledge.
 
 ## What success looks like
 
-A new person can ask what the project is and receive a clear current map. An
-agent can trace that map to exact code and decision history. A maintainer can
-correct intent before implementation, resume work after a lost session, and
-see what changed, why, and whether it was actually delivered.
+A maintainer can read the project directly and recover what it is, how it
+behaves, what is delivered, and why it changed. An agent can recover that same
+meaning, trace it to exact engineering realization, and continue work without
+inventing context. Both can discuss one shared model, correct intent before
+implementation, and see whether the accepted outcome was actually delivered.
 
 The project remains understandable as it grows instead of accumulating another
 unsearchable pile of code, chats, and specifications.

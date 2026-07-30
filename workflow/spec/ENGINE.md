@@ -12,8 +12,9 @@ and safety. More specific contracts own their domains:
 
 ## Destination
 
-Ship a deterministic `wfctl` package that bootstraps and maintains one shared
-project workflow for Codex and Claude Code across:
+Ship a deterministic `wfctl` package that keeps maintainers and coding agents
+working from one shared project model, from intent through verified delivery,
+across:
 
 - one project knowledge repository;
 - any number of leaf source repositories;
@@ -54,7 +55,19 @@ Both profiles receive:
 
 `wfctl` must not create cross-agent skill symlinks.
 
-## User and agent boundary
+## Maintainer-agent partnership
+
+The workflow serves both participants directly:
+
+- the maintainer/product road lets people recover purpose, behavior, delivery,
+  decisions, and evolution without reconstructing them from source code;
+- the engineering road lets people and agents trace that meaning to
+  architecture, ownership, exact source realization, operations, and evidence.
+
+Both are first-class views of the same Areas, capabilities, changes, and
+decision lineages. Neither may be generated from, reduced to, or silently
+redefined by the other. Decision history connects both roads instead of
+becoming a third flat view.
 
 The normal maintainer CLI surface is:
 
@@ -73,7 +86,8 @@ outcomes in project language and are asked only for:
 - permission for external state changes.
 
 CLI details remain available for automation, recovery, and workflow
-development.
+development. Curated Markdown remains a direct human interface even when no
+agent is present.
 
 ## Work routing
 

@@ -14,8 +14,10 @@ Answering them from one checkout produces a partial picture.
 
 ## Outcome
 
-The knowledge agent gives a project-wide answer, routes deliberate operations
-to the correct workflow, and keeps source implementation in its owning leaves.
+The repository gives you a directly readable project-wide map and gives the
+agent the same durable context for investigation and work. Product meaning and
+engineering realization remain linked, while source implementation stays in
+its owning leaves.
 
 ## What to ask
 

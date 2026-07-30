@@ -13,8 +13,9 @@ second repository can destroy the real plan.
 
 ## Outcome
 
-Every consequential task has one durable record that follows it from early
-discussion through implementation, verification, and honest closure.
+You and the agent share one durable record that follows consequential work from
+early discussion through implementation, verification, and honest closure.
+Either of you can recover what was decided, why, what changed, and what remains.
 
 ## Start with the desired outcome
 

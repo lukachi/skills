@@ -13,9 +13,9 @@ list.
 
 ## Outcome
 
-You can move from the project's purpose to one functional Area, then choose
-product behavior, engineering realization, or decision history without reading
-the entire repository.
+You can move from project purpose to one functional Area, then follow either
+the maintainer/product road or the engineering road. Shared decision history
+explains how either road reached its current state.
 
 ## Start at the human road
 
@@ -35,9 +35,9 @@ An Area index is a map, not a full specification. It introduces the
 responsibility and links the capabilities, rules, implementation, current
 decisions, and evolution that matter.
 
-## Choose a view
+## Choose a road
 
-### Product view
+### Maintainer/product road
 
 Read capabilities, use cases, domain concepts, rules, and product flows when
 you need to understand:
@@ -51,7 +51,7 @@ This view is written for maintainers, product managers, clients, and domain
 experts. It contains no code walkthroughs, source paths, endpoints, schemas, or
 implementation identifiers.
 
-### Engineering view
+### Engineering road
 
 Read implementation, architecture, repositories, contracts, runtime, and
 operations when you need to change, verify, or operate the software.
@@ -60,14 +60,10 @@ Engineering pages establish product meaning first, then explain source
 ownership, data or control flow, failures, operations, and exact evidence. Code
 may prove delivery; it does not prove intended product behavior.
 
-### Decision view
-
-Read decisions and Area evolution when you need to know why the current state
-exists, which tradeoff was resolved, or what replaced an earlier rule.
-
-Only durable, hard-to-reverse, surprising, or genuinely contested choices need
-standalone decision records. Routine choices stay with the owning concept and
-Area evolution.
+Neither road is generated from or subordinate to the other. Product meaning
+does not have to be reverse-engineered from code, and engineering reality is
+not hidden behind a simplified product summary. Both link the same Areas,
+capabilities, changes, and decision lineages.
 
 ## Inside one Area
 
@@ -107,6 +103,10 @@ the current decision and its predecessors when you need rationale and history.
 
 ## Follow change over time
 
+Decision history connects both roads. Read it when you need to know why current
+product behavior or engineering realization exists, which tradeoff was
+resolved, or what replaced an earlier rule.
+
 The Area index links the current stable decision in each active lineage. The
 current decision links its deprecated predecessors. The Area's `Evolution`
 section explains meaningful changes in plain language, and `log.md` provides
@@ -114,6 +114,10 @@ local chronology.
 
 Old decisions are preserved rather than silently rewritten. Whole Areas are not
 cloned into version folders for each change.
+
+Only durable, hard-to-reverse, surprising, or genuinely contested choices need
+standalone decision records. Routine choices stay with the owning concept and
+Area evolution.
 
 ## Material outside an Area
 
