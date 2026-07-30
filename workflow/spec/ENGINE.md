@@ -1,0 +1,179 @@
+# Workflow engine contract
+
+## Status
+
+This document is normative for workflow ownership, installation, work routing,
+and safety. More specific contracts own their domains:
+
+- [KNOWLEDGE.md](KNOWLEDGE.md) — trust, curation, intake, and retrieval;
+- [RECONSTRUCTION.md](RECONSTRUCTION.md) — source-first completeness;
+- [CLI.md](CLI.md) — command behavior and operator surface;
+- [VERIFICATION.md](VERIFICATION.md) — package and agent-behavior evaluation.
+
+## Destination
+
+Ship a deterministic `wfctl` package that bootstraps and maintains one shared
+project workflow for Codex and Claude Code across:
+
+- one project knowledge repository;
+- any number of leaf source repositories;
+- normal Git checkouts and worktrees;
+- project-only, single-repository, and multi-repository work.
+
+## Canonical ownership
+
+- The `workflow/` source directory owns the CLI, rules, skills, templates, and
+  contracts.
+- Package releases distribute immutable canonical assets. Consumers may pin an
+  exact `wfctl` version.
+- Installed consumer files are managed through `.workflow/state.json`.
+- Existing `AGENTS.md`, `CLAUDE.md`, and maintainer content outside marked
+  blocks is preserved.
+- Consumer repositories never become an independent source for workflow
+  templates.
+
+## Repository profiles
+
+The knowledge profile owns shared project understanding and central work
+records. It installs knowledge operation, exploration, reconstruction, raw
+intake, project research, direction shaping, curation, work management, and
+verification skills.
+
+The leaf profile owns source implementation. It installs Graphify-first
+analysis, knowledge alignment, exploration, direction shaping, curation,
+project work, and verification skills, but not knowledge-only operations.
+
+Both profiles receive:
+
+- a managed `PROJECT_WORKFLOW.md`;
+- workflow routing rules;
+- the setup skill;
+- the workflow Graphify routing skill;
+- QMD's version-matched official skill;
+- agent-native independent skill copies.
+
+`wfctl` must not create cross-agent skill symlinks.
+
+## User and agent boundary
+
+The normal maintainer CLI surface is:
+
+- `wfctl init knowledge`;
+- `wfctl init leaf`;
+- `wfctl upgrade` when the maintainer chooses to run it directly.
+
+After initialization, installed agents own routine `wfctl`, QMD, Graphify,
+validation, registry, case, and work-record operations. Users express desired
+outcomes in project language and are asked only for:
+
+- product authority;
+- corrections and scope choices;
+- approvals;
+- genuinely missing paths or checkout choices;
+- permission for external state changes.
+
+CLI details remain available for automation, recovery, and workflow
+development.
+
+## Work routing
+
+### Significant work
+
+Work is significant when it may change behavior, product meaning, contracts,
+data or control flow, persistent state, security, operations, architecture, or
+coordination.
+
+It must pass through:
+
+1. one early shaping/spec/progress record;
+2. exact project-only or source-checkout bindings;
+3. Graphify-first source analysis when code is involved;
+4. alignment with curated project knowledge;
+5. explicit maintainer framing approval;
+6. implementation in bound leaves only;
+7. evidence-based semantic and structural verification;
+8. knowledge promotion or an explicit no-update reason;
+9. explicit completion review and honest archival.
+
+Fixtures, mocks, demonstrations, and fakes must be identified during
+verification and cannot establish production delivery unless they are the
+explicit accepted scope.
+
+The agent updates the record after every material discussion turn. After
+compaction or interruption, it resumes from that record and workflow status,
+not conversation memory.
+
+### Lightweight work
+
+Clearly local mechanical work that preserves behavior and contracts may bypass
+the full gate. If impact is ambiguous, the agent explains the risk and asks the
+maintainer to choose. Useful durable findings may enter `changes/inbox/` as a
+non-authoritative handoff.
+
+### Broad uncertain work
+
+A consequential initiative with unresolved dependent choices enters direction
+shaping only after explicit user intent or confirmation. It uses the same
+canonical record as later execution and captures:
+
+- destination and affected Areas;
+- domain language;
+- decision frontier;
+- uncertainty and tradeoffs;
+- non-goals;
+- the next bounded change.
+
+The agent asks one evidence-backed question at a time and records each material
+answer before continuing. It must not create a parallel strategy source.
+
+### External research
+
+External research uses current primary sources where possible. Its synthesis is
+a candidate in the owning active record or inbox until normal project authority
+and curation gates accept it. External sources cannot establish project intent,
+architecture choice, or implementation state.
+
+## Worktree and repository safety
+
+- A work record binds exact repository identity, revision, branch, checkout,
+  and worktree identity.
+- Local absolute paths live only in ignored runtime bindings.
+- Durable records retain portable repository and revision metadata.
+- A checkout mismatch stops work until an explicit rebind is reviewed.
+- A completed outcome requires a clean bound checkout whose commit contains the
+  verified implementation.
+- Multi-repository work keeps one central record and one final receipt per
+  repository.
+- `wfctl` never commits product or knowledge changes automatically.
+
+## Installation safety
+
+`wfctl` must:
+
+- preview mutations and request confirmation in interactive use;
+- complete dependency preflight before workflow or skill writes;
+- preserve unowned files and text;
+- require a per-file decision and backup before replacing a conflicting owned
+  file;
+- stop on structural, symlink, marker, or path-type conflicts;
+- update an owned file only when its current hash matches installed state;
+- support non-interactive and JSON output for agents and CI;
+- default skills to project scope while allowing explicit user scope or none;
+- remove only obsolete project skills still attributable to this package;
+- keep generated caches and machine-local bindings out of Git.
+
+Knowledge initialization may offer interactive `git init`; automation must use
+an explicit opt-in. Leaf initialization requires an existing Git repository.
+
+## Non-goals
+
+The engine does not:
+
+- infer product intent from implementation;
+- perform automatic semantic reconciliation;
+- prove implementation correctness without semantic review;
+- replace QMD or Graphify with custom retrieval or source-indexing systems;
+- auto-discover sibling repositories;
+- persist machine-local leaf paths in tracked state;
+- treat successful structural validation as proof of truth;
+- force significant-work ceremony onto clearly lightweight changes.

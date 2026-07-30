@@ -235,14 +235,14 @@ test("routing evals distinguish read-only, deliberate, and mandatory modes", asy
 });
 
 test("verification guide separates natural discovery from authoring conformance", async () => {
-  const guide = await readFile(join(root, "VERIFY_KNOWLEDGE_VIEWS.md"), "utf8");
+  const guide = await readFile(join(root, "spec/VERIFICATION.md"), "utf8");
   assert.match(guide, /## 3\. Test newcomer discovery/);
   assert.match(
     guide,
     /> I am new to this project\. Help me understand what it is for and what it can/,
   );
-  assert.match(guide, /Keep the assertions hidden from the tested agent/);
+  assert.match(guide, /Keep these assertions hidden from the tested agent/);
   assert.match(guide, /## 4\. Test progressive follow-ups/);
-  assert.match(guide, /## 5\. Test authoring conformance separately/);
-  assert.match(guide, /This is a controlled conformance test, not a normal onboarding prompt/);
+  assert.match(guide, /## 5\. Test authoring separately/);
+  assert.match(guide, /This is a conformance test, not an onboarding prompt/);
 });

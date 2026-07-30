@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
 } from "node:fs";
@@ -33,8 +34,45 @@ try {
   assert.equal(extracted.status, 0, extracted.stderr || extracted.stdout);
 
   const packaged = join(sandbox, "package");
-  assert.equal(existsSync(join(packaged, "GETTING_STARTED.md")), true);
-  assert.equal(existsSync(join(packaged, "VERIFY_KNOWLEDGE_VIEWS.md")), true);
+  assert.equal(existsSync(join(packaged, "README.md")), true);
+  assert.equal(existsSync(join(packaged, "IDEA.md")), true);
+  assert.equal(existsSync(join(packaged, "docs/01-installation.md")), true);
+  assert.equal(existsSync(join(packaged, "docs/07-maintainer-control.md")), true);
+  assert.equal(existsSync(join(packaged, "spec/ENGINE.md")), true);
+  assert.equal(existsSync(join(packaged, "spec/KNOWLEDGE.md")), true);
+  assert.equal(existsSync(join(packaged, "spec/RECONSTRUCTION.md")), true);
+  assert.equal(existsSync(join(packaged, "spec/CLI.md")), true);
+  assert.equal(existsSync(join(packaged, "spec/DEVELOPMENT.md")), true);
+  assert.equal(existsSync(join(packaged, "spec/VERIFICATION.md")), true);
+
+  const userGuides = readdirSync(join(packaged, "docs"))
+    .filter((entry) => entry.endsWith(".md"))
+    .sort();
+  assert.deepEqual(userGuides, [
+    "01-installation.md",
+    "02-daily-work.md",
+    "03-knowledge-repository.md",
+    "04-reading-project-knowledge.md",
+    "05-existing-project.md",
+    "06-raw-material.md",
+    "07-maintainer-control.md",
+  ]);
+
+  const packageReadme = readFileSync(join(packaged, "README.md"), "utf8");
+  assert.ok(
+    packageReadme.split("\n").length <= 120,
+    "README.md must remain a short introduction",
+  );
+  for (const guide of userGuides) {
+    const content = readFileSync(join(packaged, "docs", guide), "utf8");
+    assert.match(content, /## Use this when/);
+    assert.match(content, /## Problem/);
+    assert.match(content, /## Outcome/);
+    assert.ok(
+      content.split("\n").length <= 180,
+      `${guide} must remain a focused user guide`,
+    );
+  }
   assert.equal(
     existsSync(join(packaged, "evals/knowledge-views/trigger-evals.json")),
     true,

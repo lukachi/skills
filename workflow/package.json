@@ -9,8 +9,10 @@
     "wfctl": "dist/cli.js"
   },
   "files": [
-    "GETTING_STARTED.md",
-    "VERIFY_KNOWLEDGE_VIEWS.md",
+    "README.md",
+    "IDEA.md",
+    "docs",
+    "spec",
     "dist",
     "evals",
     "rules",
