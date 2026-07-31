@@ -10,6 +10,7 @@ import {
 } from "./config.js";
 import {
   commandFailure,
+  graphifyCliCheck,
   qmdVersionCheck,
   runTool,
   type ToolRunner,
@@ -61,14 +62,11 @@ export async function runDoctor(
   });
 
   if (config.profile === "leaf") {
-    const graphify = runner("graphify", ["--version"], { cwd: target });
-    checks.push({
-      name: "graphify-cli",
-      status: graphify.status === 0 ? "pass" : "fail",
-      message: graphify.status === 0
-        ? `Graphify is available${versionSuffix(graphify.stdout)}`
-        : `Graphify is not available: ${commandFailure(graphify)}`,
-    });
+    checks.push(graphifyCliCheck({
+      target,
+      agents: config.skills?.agents ?? [],
+      runner,
+    }));
     checks.push(await graphifyGraphCheck(join(target, "graphify-out/graph.json")));
     checks.push(await graphifyScopeCheck(join(target, ".graphifyignore")));
     const ignored = runner(
@@ -619,9 +617,4 @@ async function graphifyGraphCheck(path: string): Promise<DoctorCheck> {
 
 function stripAnsi(value: string): string {
   return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
-}
-
-function versionSuffix(output: string): string {
-  const version = output.trim();
-  return version ? ` (${version})` : "";
 }

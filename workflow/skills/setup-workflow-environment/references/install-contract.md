@@ -54,8 +54,12 @@ copy of Graphify's native skill. Require the `graphify` CLI and the official
 native `graphify` skill supplied by that tool whenever source code must be
 analyzed. Verify native-skill availability against the current session
 catalog; an on-disk file alone does not prove the running agent loaded it.
-Install it with
-`graphify install --platform <codex|claude>` and restart the session when absent.
+When the CLI is absent, ask for user-level installation authority and run
+`uv tool install graphifyy`. Install the native skill with `graphify install
+--platform <agent>` for every selected platform, then restart the session.
+`graphify install --help` is the authority for currently supported platform
+names. Do not report setup success until the restarted session exposes the
+native skill.
 Do not require Graphify for Markdown intake or OKF curation that does not inspect
 source code.
 

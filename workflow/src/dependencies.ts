@@ -2,7 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isGitRepository } from "./git.js";
-import type { DoctorCheck, Profile } from "./types.js";
+import type { AgentTarget, DoctorCheck, Profile } from "./types.js";
 
 export const MIN_QMD_VERSION = "2.5.3";
 
@@ -83,6 +83,7 @@ export function runInstallPreflight(input: {
   knowledge?: string;
   initializeGit?: boolean;
   requireQmdSkill: boolean;
+  agents: AgentTarget[];
   runner?: ToolRunner;
 }): DoctorCheck[] {
   const target = resolve(input.target);
@@ -121,14 +122,7 @@ export function runInstallPreflight(input: {
   }
 
   if (input.profile === "leaf") {
-    const graphify = runner("graphify", ["--version"], { cwd: target });
-    checks.push({
-      name: "graphify-cli",
-      status: graphify.status === 0 ? "pass" : "fail",
-      message: graphify.status === 0
-        ? `Graphify is available${toolVersionSuffix(graphify.stdout)}`
-        : "Graphify is required for a leaf repository; install it before initialization",
-    });
+    checks.push(graphifyCliCheck({ target, agents: input.agents, runner }));
 
     const knowledge = input.knowledge ? resolve(input.knowledge) : undefined;
     const configured = knowledge
@@ -146,6 +140,52 @@ export function runInstallPreflight(input: {
   }
 
   return checks;
+}
+
+export function graphifyCliCheck(input: {
+  target: string;
+  agents: AgentTarget[];
+  runner?: ToolRunner;
+}): DoctorCheck {
+  const runner = input.runner ?? runTool;
+  const graphify = runner("graphify", ["--version"], {
+    cwd: resolve(input.target),
+  });
+  if (graphify.status === 0) {
+    return {
+      name: "graphify-cli",
+      status: "pass",
+      message: `Graphify is available${toolVersionSuffix(graphify.stdout)}`,
+    };
+  }
+
+  const platforms = [...new Set(input.agents)];
+  return {
+    name: "graphify-cli",
+    status: "fail",
+    message: "Graphify is not installed; leaf initialization cannot continue",
+    remediation: {
+      title: "Install Graphify",
+      steps: [
+        {
+          command: "uv tool install graphifyy",
+          detail: "Install the Graphify CLI",
+        },
+        ...platforms.map((platform) => ({
+          command: `graphify install --platform ${platform}`,
+          detail: `Install the official native skill for ${platform}`,
+        })),
+        ...(platforms.length > 0
+          ? [{
+            detail: "Restart the coding agent so it discovers the native skill",
+          }]
+          : []),
+        {
+          detail: "Run the same wfctl command again",
+        },
+      ],
+    },
+  };
 }
 
 export function qmdVersionCheck(runner: ToolRunner = runTool): DoctorCheck {

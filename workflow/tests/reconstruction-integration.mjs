@@ -25,7 +25,7 @@ try {
     `${JSON.stringify({
       schemaVersion: 1,
       profile: "knowledge",
-      installedVersion: "0.7.1",
+      installedVersion: "0.7.2",
       skills: { scope: "none", agents: [] },
     }, null, 2)}\n`,
   );
@@ -39,7 +39,7 @@ try {
     `${JSON.stringify({
       schemaVersion: 1,
       profile: "leaf",
-      installedVersion: "0.7.1",
+      installedVersion: "0.7.2",
       skills: { scope: "none", agents: [] },
       knowledge: { path: knowledge },
     }, null, 2)}\n`,

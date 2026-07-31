@@ -1,4 +1,4 @@
-export const WORKFLOW_VERSION = "0.7.1";
+export const WORKFLOW_VERSION = "0.7.2";
 export const CONFIG_SCHEMA_VERSION = 1;
 export const STATE_SCHEMA_VERSION = 1;
 
@@ -66,6 +66,13 @@ export interface DoctorCheck {
   name: string;
   status: "pass" | "warn" | "fail";
   message: string;
+  remediation?: {
+    title: string;
+    steps: Array<{
+      command?: string;
+      detail: string;
+    }>;
+  };
 }
 
 export interface DoctorReport {

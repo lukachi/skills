@@ -278,6 +278,7 @@ async function installWorkflow(input: {
     ...(input.knowledge ? { knowledge: input.knowledge } : {}),
     initializeGit: input.initializeGit === true,
     requireQmdSkill: input.scope !== "none",
+    agents: input.agents,
   });
   const preflightPassed = preflight.every((check) => check.status !== "fail");
 
@@ -2332,6 +2333,7 @@ function printDependencyChecks(checks: DoctorCheck[]): void {
   for (const check of checks) {
     printCheckLine(check);
   }
+  printRemediations(checks);
 }
 
 function printCheck(report: DoctorReport): void {
@@ -2345,8 +2347,25 @@ function printCheck(report: DoctorReport): void {
       printCheckLine(check);
     }
   }
+  printRemediations(report.checks);
   printQmdSetup(report.checks);
   printCheckSummary(report.checks);
+}
+
+function printRemediations(checks: DoctorCheck[]): void {
+  for (const check of checks) {
+    if (check.status === "pass" || !check.remediation) {
+      continue;
+    }
+    process.stdout.write(
+      `\n${yellow(bold(`Next step · ${check.remediation.title}`))}\n`,
+    );
+    for (const [index, step] of check.remediation.steps.entries()) {
+      const action = step.command ? cyan(step.command) : step.detail;
+      const detail = step.command ? ` ${dim(step.detail)}` : "";
+      process.stdout.write(`  ${index + 1}. ${action}${detail}\n`);
+    }
+  }
 }
 
 function compactChecks(checks: DoctorCheck[]): DoctorCheck[] {

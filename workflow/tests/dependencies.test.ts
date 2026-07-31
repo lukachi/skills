@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   commandFailure,
   compareVersions,
+  graphifyCliCheck,
   parseQmdVersion,
   qmdVersionCheck,
   resolveQmdSkillSource,
@@ -45,6 +46,54 @@ test("reports the first useful command failure detail", () => {
   assert.equal(
     commandFailure({ status: 7, stdout: "", stderr: "" }),
     "exit status 7",
+  );
+});
+
+test("guides Graphify CLI and native skill installation", () => {
+  const missing = graphifyCliCheck({
+    target: resolve("fixtures/leaf"),
+    agents: ["codex", "claude"],
+    runner: result(1, "", "not found"),
+  });
+  assert.equal(missing.status, "fail");
+  assert.equal(missing.remediation?.title, "Install Graphify");
+  assert.deepEqual(
+    missing.remediation?.steps.flatMap((step) =>
+      step.command ? [step.command] : []
+    ),
+    [
+      "uv tool install graphifyy",
+      "graphify install --platform codex",
+      "graphify install --platform claude",
+    ],
+  );
+  assert.match(
+    missing.remediation?.steps.at(-2)?.detail ?? "",
+    /Restart the coding agent/,
+  );
+
+  const available = graphifyCliCheck({
+    target: resolve("fixtures/leaf"),
+    agents: ["codex"],
+    runner: result(0, "graphify 0.9.26\n", ""),
+  });
+  assert.equal(available.status, "pass");
+  assert.equal(available.remediation, undefined);
+
+  const cliOnly = graphifyCliCheck({
+    target: resolve("fixtures/leaf"),
+    agents: [],
+    runner: result(1, "", "not found"),
+  });
+  assert.deepEqual(
+    cliOnly.remediation?.steps.flatMap((step) =>
+      step.command ? [step.command] : []
+    ),
+    ["uv tool install graphifyy"],
+  );
+  assert.equal(
+    cliOnly.remediation?.steps.some((step) => /Restart/.test(step.detail)),
+    false,
   );
 });
 

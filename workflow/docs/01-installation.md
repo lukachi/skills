@@ -47,6 +47,19 @@ dependency is missing, follow the displayed setup instructions and repeat the
 command. QMD semantic models are optional; lexical search works without the
 roughly 2 GB model download.
 
+For a manual Graphify setup, install the CLI and its official native skill for
+every agent platform you use:
+
+```sh
+uv tool install graphifyy
+graphify install --platform <agent>
+```
+
+Run `graphify install --help` to see the platform names supported by your
+installed version. Restart the coding agent after skill installation. `wfctl`
+will not install this external user-level tool without your approval; a failed
+leaf preflight prints these recovery steps and writes nothing.
+
 ### Optional: let the setup agent install the workflow
 
 From the cloned source, you may install only the setup skill first:

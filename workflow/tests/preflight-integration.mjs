@@ -126,6 +126,87 @@ try {
   assert.match(humanCheck.stdout, /Summary/);
   assert.doesNotMatch(humanCheck.stdout, /model cache: missing/);
 
+  const graphify = join(bin, "graphify");
+  writeFileSync(graphify, "#!/bin/sh\nexit 127\n");
+  chmodSync(graphify, 0o755);
+  writeFileSync(
+    qmd,
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then\n  printf 'qmd 2.5.3\\n'\nelse\n  printf '%s\\n' '${join(packageRoot, "skills/setup-workflow-environment")}'\nfi\n`,
+  );
+  const knowledge = join(sandbox, "knowledge");
+  const graphifyLeaf = join(sandbox, "graphify-leaf");
+  mkdirSync(knowledge);
+  mkdirSync(join(knowledge, ".qmd"));
+  mkdirSync(join(knowledge, "knowledge"));
+  writeFileSync(join(knowledge, ".qmd/index.yml"), "collections: {}\n");
+  writeFileSync(join(knowledge, "knowledge/index.md"), "# Knowledge\n");
+  run("git", ["init", "-q", knowledge]);
+  mkdirSync(graphifyLeaf);
+  run("git", ["init", "-q", graphifyLeaf]);
+
+  const missingGraphifyJson = wfctl([
+    "init",
+    "leaf",
+    "--target",
+    graphifyLeaf,
+    "--knowledge",
+    knowledge,
+    "--skills",
+    "project",
+    "--agents",
+    "both",
+    "--yes",
+    "--json",
+  ]);
+  assert.equal(
+    missingGraphifyJson.status,
+    2,
+    missingGraphifyJson.stderr || missingGraphifyJson.stdout,
+  );
+  const missingGraphifyReport = JSON.parse(missingGraphifyJson.stdout);
+  const graphifyCheck = missingGraphifyReport.preflight.find((check) =>
+    check.name === "graphify-cli"
+  );
+  assert.equal(graphifyCheck.status, "fail");
+  assert.deepEqual(
+    graphifyCheck.remediation.steps.flatMap((step) =>
+      step.command ? [step.command] : []
+    ),
+    [
+      "uv tool install graphifyy",
+      "graphify install --platform codex",
+      "graphify install --platform claude",
+    ],
+  );
+  assert.equal(existsSync(join(graphifyLeaf, ".workflow")), false);
+
+  const missingGraphifyHuman = wfctl([
+    "init",
+    "leaf",
+    "--target",
+    graphifyLeaf,
+    "--knowledge",
+    knowledge,
+    "--skills",
+    "project",
+    "--agents",
+    "codex",
+    "--dry-run",
+  ]);
+  assert.equal(
+    missingGraphifyHuman.status,
+    2,
+    missingGraphifyHuman.stderr || missingGraphifyHuman.stdout,
+  );
+  assert.match(missingGraphifyHuman.stdout, /Next step · Install Graphify/);
+  assert.match(missingGraphifyHuman.stdout, /uv tool install graphifyy/);
+  assert.match(
+    missingGraphifyHuman.stdout,
+    /graphify install --platform codex/,
+  );
+  assert.match(missingGraphifyHuman.stdout, /Restart the coding agent/);
+  assert.match(missingGraphifyHuman.stdout, /Run the same wfctl command again/);
+
   const leafTarget = join(sandbox, "leaf");
   mkdirSync(leafTarget);
   const leaf = wfctl([

@@ -6945,7 +6945,7 @@ var WORKFLOW_VERSION, CONFIG_SCHEMA_VERSION, STATE_SCHEMA_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    WORKFLOW_VERSION = "0.7.1";
+    WORKFLOW_VERSION = "0.7.2";
     CONFIG_SCHEMA_VERSION = 1;
     STATE_SCHEMA_VERSION = 1;
   }
@@ -7152,12 +7152,7 @@ function runInstallPreflight(input) {
     }
   }
   if (input.profile === "leaf") {
-    const graphify = runner("graphify", ["--version"], { cwd: target });
-    checks.push({
-      name: "graphify-cli",
-      status: graphify.status === 0 ? "pass" : "fail",
-      message: graphify.status === 0 ? `Graphify is available${toolVersionSuffix(graphify.stdout)}` : "Graphify is required for a leaf repository; install it before initialization"
-    });
+    checks.push(graphifyCliCheck({ target, agents: input.agents, runner }));
     const knowledge = input.knowledge ? resolve5(input.knowledge) : void 0;
     const configured = knowledge ? isGitRepository(knowledge) && existsSync(join4(knowledge, ".qmd/index.yml")) && existsSync(join4(knowledge, "knowledge/index.md")) : false;
     checks.push({
@@ -7167,6 +7162,44 @@ function runInstallPreflight(input) {
     });
   }
   return checks;
+}
+function graphifyCliCheck(input) {
+  const runner = input.runner ?? runTool;
+  const graphify = runner("graphify", ["--version"], {
+    cwd: resolve5(input.target)
+  });
+  if (graphify.status === 0) {
+    return {
+      name: "graphify-cli",
+      status: "pass",
+      message: `Graphify is available${toolVersionSuffix(graphify.stdout)}`
+    };
+  }
+  const platforms = [...new Set(input.agents)];
+  return {
+    name: "graphify-cli",
+    status: "fail",
+    message: "Graphify is not installed; leaf initialization cannot continue",
+    remediation: {
+      title: "Install Graphify",
+      steps: [
+        {
+          command: "uv tool install graphifyy",
+          detail: "Install the Graphify CLI"
+        },
+        ...platforms.map((platform) => ({
+          command: `graphify install --platform ${platform}`,
+          detail: `Install the official native skill for ${platform}`
+        })),
+        ...platforms.length > 0 ? [{
+          detail: "Restart the coding agent so it discovers the native skill"
+        }] : [],
+        {
+          detail: "Run the same wfctl command again"
+        }
+      ]
+    }
+  };
 }
 function qmdVersionCheck(runner = runTool) {
   const result = runner("qmd", ["--version"]);
@@ -31143,12 +31176,11 @@ async function runDoctor(targetInput, options = {}) {
     message: gitRepository ? "Git repository detected" : "Target is not a Git repository"
   });
   if (config.profile === "leaf") {
-    const graphify = runner("graphify", ["--version"], { cwd: target });
-    checks.push({
-      name: "graphify-cli",
-      status: graphify.status === 0 ? "pass" : "fail",
-      message: graphify.status === 0 ? `Graphify is available${versionSuffix(graphify.stdout)}` : `Graphify is not available: ${commandFailure(graphify)}`
-    });
+    checks.push(graphifyCliCheck({
+      target,
+      agents: config.skills?.agents ?? [],
+      runner
+    }));
     checks.push(await graphifyGraphCheck(join13(target, "graphify-out/graph.json")));
     checks.push(await graphifyScopeCheck(join13(target, ".graphifyignore")));
     const ignored = runner(
@@ -31613,10 +31645,6 @@ async function graphifyGraphCheck(path) {
 }
 function stripAnsi2(value) {
   return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
-}
-function versionSuffix(output) {
-  const version = output.trim();
-  return version ? ` (${version})` : "";
 }
 
 // src/cli.ts
@@ -32461,7 +32489,8 @@ async function installWorkflow(input) {
     profile: input.profile,
     ...input.knowledge ? { knowledge: input.knowledge } : {},
     initializeGit: input.initializeGit === true,
-    requireQmdSkill: input.scope !== "none"
+    requireQmdSkill: input.scope !== "none",
+    agents: input.agents
   });
   const preflightPassed = preflight.every((check) => check.status !== "fail");
   if (input.dryRun) {
@@ -34063,6 +34092,7 @@ ${bold("Dependency preflight")}
   for (const check of checks) {
     printCheckLine(check);
   }
+  printRemediations(checks);
 }
 function printCheck(report) {
   process.stdout.write(
@@ -34079,8 +34109,27 @@ ${cyan(bold(section.title))}
       printCheckLine(check);
     }
   }
+  printRemediations(report.checks);
   printQmdSetup(report.checks);
   printCheckSummary(report.checks);
+}
+function printRemediations(checks) {
+  for (const check of checks) {
+    if (check.status === "pass" || !check.remediation) {
+      continue;
+    }
+    process.stdout.write(
+      `
+${yellow(bold(`Next step \xB7 ${check.remediation.title}`))}
+`
+    );
+    for (const [index2, step] of check.remediation.steps.entries()) {
+      const action = step.command ? cyan(step.command) : step.detail;
+      const detail = step.command ? ` ${dim(step.detail)}` : "";
+      process.stdout.write(`  ${index2 + 1}. ${action}${detail}
+`);
+    }
+  }
 }
 function compactChecks(checks) {
   const skillChecks = checks.filter((check) => isSkillCheck(check));

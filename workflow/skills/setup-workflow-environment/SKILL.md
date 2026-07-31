@@ -29,11 +29,16 @@ requests manual or automation-oriented instructions.
    ask for installation authority and run
    `bun install -g @tobilu/qmd@2.5.3`. QMD is the supported knowledge
    retrieval engine; do not substitute a custom indexer.
-3. Require the `graphify` CLI before leaf initialization so every source
-   checkout is ready for code analysis. Do not require it for a knowledge
-   repository that is not inspecting source. For any later code task, the
-   installed `analyze-with-graphify` gate also requires the official native
-   session skill. Knowledge retrieval and raw intake use QMD, not Graphify.
+3. Before leaf initialization, require both the `graphify` CLI and the official
+   native Graphify skill in the current session. Do not require either for a
+   knowledge repository that is not inspecting source. If the CLI is absent,
+   ask for user-level installation authority and run `uv tool install
+   graphifyy`. If the native skill is absent, ask for authority and run
+   `graphify install --platform <agent>` once for every selected agent
+   platform. Then tell the maintainer to restart the agent and stop: an on-disk
+   skill is not active in the current session. After restart, verify both
+   requirements and repeat `wfctl init leaf`. Knowledge retrieval and raw
+   intake use QMD, not Graphify.
 4. Identify whether the target is a `knowledge` or `leaf` repository.
    A knowledge target may be a new directory without Git: ask the maintainer
    for authority to initialize it and pass `--init-git`. In an interactive

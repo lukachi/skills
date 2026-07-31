@@ -41,11 +41,12 @@ If the native skill is absent, stop repository analysis:
 
   ```sh
   uv tool install graphifyy
-  graphify install --platform <codex|claude>
+  graphify install --platform <agent>
   ```
 
 - If the CLI exists, offer only the matching
-  `graphify install --platform <codex|claude>` command.
+  `graphify install --platform <agent>` command. Use `graphify install --help`
+  to resolve the current platform name instead of guessing it.
 - Tell the maintainer to restart the agent session after installation.
 - Do not install user-level tooling without authority and do not silently fall
   back to a partial hand-written Graphify procedure.

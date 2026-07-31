@@ -42,6 +42,14 @@ native Graphify skill. It installs assets, refreshes the checkout-local
 Graphify graph, registers the repository and local checkout with knowledge, and
 adds generated graph output to `.gitignore`.
 
+When the Graphify CLI is absent, preflight fails before writes and returns a
+structured remediation in JSON. Human output renders the same steps: install
+`graphifyy`, install Graphify's native skill for every selected agent platform,
+restart the agent, and repeat the command. `wfctl` must not silently install
+external user-level tooling. Native-skill availability is verified by the
+setup and source-analysis skills against the current session catalog because a
+standalone CLI cannot prove that a running agent loaded an on-disk skill.
+
 ### Upgrade
 
 From an initialized repository:
