@@ -46,7 +46,7 @@
     ]
   },
   {
-    "id": "direction-handoff",
+    "id": "direction-to-spec",
     "prompt": "The direction is now approved and the next bounded change is clear.",
     "required": [
       "records approval and deferred questions",
@@ -57,6 +57,36 @@
       "copies the direction into a second spec",
       "promotes proposals as current truth",
       "loses rejected or superseded decisions"
+    ]
+  },
+  {
+    "id": "active-checkpoint-not-capture",
+    "prompt": "We changed one acceptance rule during an active implementation session; preserve it before the session compacts.",
+    "required": [
+      "updates the owning change or claimed issue instead of creating an inbox record",
+      "records the semantic change and rationale before refreshing the checkpoint",
+      "refreshes the checkpoint last with current state, last action, next action, blockers, and actor",
+      "still requires complete record reads after resume"
+    ],
+    "forbidden": [
+      "copies active progress into changes/inbox",
+      "treats the checkpoint as a replacement for the specification",
+      "relies on conversation memory after compaction"
+    ]
+  },
+  {
+    "id": "pending-capture-lifecycle",
+    "prompt": "A lightweight investigation found a reusable constraint, but no active change or knowledge concept owns it yet.",
+    "required": [
+      "creates one pending non-authoritative capture",
+      "retains exact source identity and evidence",
+      "leaves it pending while authority or destination is missing",
+      "creates real destinations before resolving it as routed or discards it with a reason"
+    ],
+    "forbidden": [
+      "presents the capture as current truth",
+      "leaves a routed copy in changes/inbox",
+      "creates a capture when an active owner already exists"
     ]
   },
   {
@@ -126,7 +156,7 @@
       "bounds the decision and freshness scope",
       "prefers and directly reads primary sources",
       "records a claim-to-source matrix, conflicts, applicability, and limits",
-      "stores the synthesis in the owning record or a non-authoritative handoff",
+      "stores the synthesis in the owning record or a pending non-authoritative capture",
       "requires normal authority before project conclusions become current knowledge"
     ],
     "forbidden": [

@@ -1,4 +1,4 @@
 interface:
   display_name: "Manage Project Work"
-  short_description: "Persist one project, leaf, or multi-repo spec"
-  default_prompt: "Use $manage-project-work for a significant bounded change: maintain one central spec, bind exact checkouts, ask one material question at a time, and persist discussion, progress, verification, and knowledge promotion."
+  short_description: "Route work, captures, and checkpoints"
+  default_prompt: "Use $manage-project-work to classify this request, preserve unowned material as a pending capture only when needed, and keep the owning active checkpoint current."

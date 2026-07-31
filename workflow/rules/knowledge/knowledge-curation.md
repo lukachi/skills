@@ -48,7 +48,8 @@ strategy source or implement the destination from the knowledge checkout.
 
 Use `research-project-context` for a material external evidence gap. Prefer
 primary sources and keep the synthesis in the owning active record or a
-non-authoritative handoff until normal authority and curation gates pass.
+pending non-authoritative capture until normal authority and curation gates
+pass. Resolve a capture only after its real destinations exist.
 
 Use `process-raw-intake` for raw intake and
 `curate-project-knowledge` for promotion. Never copy, link, footnote, or cite a

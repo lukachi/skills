@@ -41,7 +41,7 @@ Update `change.md` with:
 - stable acceptance entries `AC-01`, `AC-02`, ... in frontmatter;
 - the highest practical test seams and what behavior each seam proves;
 - unresolved authority or facts, without guessing them away;
-- the current ledger, progress, and resumable handoff.
+- the current ledger and structured resumable checkpoint.
 
 Acceptance criteria describe observable outcomes and boundary behavior, not a
 file-by-file implementation plan. Preserve an ID when wording improves without
@@ -49,9 +49,11 @@ changing meaning. Retire or supersede changed meaning explicitly.
 
 Ask at most one blocking question at a time. Include verified facts, the
 decision it unlocks, viable choices, and a recommendation. Persist the answer
-before continuing.
+before continuing. After each material edit or maintainer answer, refresh the
+bundle checkpoint with `wfctl work checkpoint <id>`; run it last so its hash
+binds the current `change.md` rather than an earlier draft.
 
-## Review and hand off
+## Review and continue
 
 Present a compact framing packet: outcome, scope, exclusions, decisions,
 acceptance IDs, test seams, risks, and unresolved work. Record only explicit

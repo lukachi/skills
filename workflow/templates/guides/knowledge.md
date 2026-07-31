@@ -20,7 +20,7 @@ Typical requests include:
 - audit stale, missing, duplicated, or weakly sourced knowledge;
 - improve Area indexes and human navigation without inventing truth;
 - curate verified results from completed changes;
-- triage `changes/inbox/` and active intake cases.
+- triage pending captures in `changes/inbox/` and active intake cases.
 
 The agent may inspect multiple leaf repositories through Graphify to verify
 implementation claims, but it never edits their source code from this
@@ -161,7 +161,7 @@ bounded topics rather than asking an agent to summarize the entire dump.
 12. Confirmed knowledge claims pass through `curate-project-knowledge`;
     unresolved raw claims stay outside current knowledge.
 
-At each handoff the agent shows the raw frontier: input generation, accounting
+After each completed or blocked batch the agent shows the raw frontier: input generation, accounting
 counts, active themes, blockers, decisions needed, next recommended batch, and
 the remaining completion condition.
 

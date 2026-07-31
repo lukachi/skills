@@ -31,6 +31,24 @@ export type WorkIssueStatus =
   | "completed"
   | "dropped";
 export type BundleReviewStatus = "reviewed" | "irrelevant";
+export type WorkCheckpointStatus = "ready" | "active" | "blocked" | "complete";
+export type WorkCheckpointStage = "shape" | "wayfind" | "implement" | "review" | "complete";
+
+export interface WorkCheckpointSummary {
+  owner: "change" | "issue";
+  path: string;
+  issue?: string;
+  status: WorkCheckpointStatus;
+  stage: WorkCheckpointStage;
+  actor: string;
+  currentState: string;
+  lastCompleted: string;
+  nextAction: string;
+  blockers: string[];
+  updatedAt: string;
+  valid: boolean;
+  issues: string[];
+}
 
 export interface WorkIssueSummary {
   id: string;
@@ -68,9 +86,23 @@ export interface WorkBundleInspection {
   resolved?: Record<string, unknown>[];
   inventory: BundleInventoryEntry[];
   requiredFiles: BundleInventoryEntry[];
+  checkpoints: WorkCheckpointSummary[];
   issues: WorkIssueSummary[];
   frontier: string[];
   validationIssues: string[];
+}
+
+export interface UpdateWorkCheckpointOptions {
+  bundleRoot: string;
+  issueId?: string;
+  actor: string;
+  status: WorkCheckpointStatus;
+  stage?: WorkCheckpointStage;
+  currentState: string;
+  lastCompleted?: string;
+  nextAction: string;
+  blockers?: string[];
+  now?: Date;
 }
 
 export interface CreateWorkIssueOptions {
@@ -154,6 +186,97 @@ export async function initializeWorkBundle(
   }
 }
 
+export function initializeDocumentCheckpoint(
+  document: WorkSpecDocument,
+  input: {
+    status: WorkCheckpointStatus;
+    stage: WorkCheckpointStage;
+    actor: string;
+    currentState: string;
+    lastCompleted: string;
+    nextAction: string;
+    blockers?: string[];
+    now: Date;
+  },
+): void {
+  writeCheckpoint(document, input);
+}
+
+export async function updateBundleCheckpoint(
+  options: UpdateWorkCheckpointOptions,
+): Promise<WorkCheckpointSummary> {
+  const now = options.now ?? new Date();
+  let path: string;
+  let document: WorkSpecDocument;
+  let owner: WorkCheckpointSummary["owner"];
+  let issue: string | undefined;
+  let stage = options.stage;
+  let status: WorkCheckpointStatus = options.status;
+
+  if (options.issueId) {
+    const parsed = await readIssueById(options.bundleRoot, options.issueId);
+    path = parsed.path;
+    document = parsed.document;
+    owner = "issue";
+    issue = parsed.summary.id;
+    const expectedStage: WorkCheckpointStage = parsed.summary.phase === "wayfinding"
+      ? "wayfind"
+      : "implement";
+    if (stage && stage !== expectedStage && stage !== "review") {
+      throw new Error(
+        `${parsed.summary.id} checkpoint stage must be ${expectedStage} or review`,
+      );
+    }
+    stage = stage ?? expectedStage;
+    if (["completed", "dropped"].includes(parsed.summary.status)) {
+      status = "complete";
+      stage = "complete";
+    } else if (parsed.summary.status !== "claimed") {
+      throw new Error(
+        `${parsed.summary.id} must be claimed before recording an active checkpoint`,
+      );
+    } else {
+      const claim = recordValue(parsed.document.metadata.claim);
+      const claimedBy = stringValue(claim?.actor);
+      if (claimedBy && normalizeActor(options.actor) !== claimedBy) {
+        throw new Error(
+          `${parsed.summary.id} is claimed by ${claimedBy}, not ${normalizeActor(options.actor)}`,
+        );
+      }
+    }
+  } else {
+    path = join(options.bundleRoot, "change.md");
+    document = parseWorkSpec(await readFile(path, "utf8"));
+    owner = "change";
+    if (status === "complete") {
+      throw new Error("The change checkpoint becomes complete only when wfctl closes the bundle");
+    }
+    stage = stage ?? (document.metadata.mode === "wayfinder" ? "wayfind" : "shape");
+  }
+
+  const previous = checkpointRecord(document);
+  writeCheckpoint(document, {
+    status,
+    stage: stage!,
+    actor: normalizeActor(options.actor),
+    currentState: requireCheckpointText(options.currentState, "current state"),
+    lastCompleted: options.lastCompleted
+      ? requireCheckpointText(options.lastCompleted, "last completed action")
+      : requireCheckpointText(previous?.last_completed, "last completed action"),
+    nextAction: requireCheckpointText(options.nextAction, "next action"),
+    blockers: uniqueStrings(options.blockers ?? []),
+    now,
+  });
+  await writeFile(path, serializeWorkSpec(document), "utf8");
+  return checkpointSummary(
+    document,
+    relativePath(options.bundleRoot, path),
+    owner,
+    issue,
+    true,
+  )!;
+}
+
 export async function inspectWorkBundle(
   bundleRoot: string,
   stage: WorkBundleStage,
@@ -179,6 +302,31 @@ export async function inspectWorkBundle(
     inventory,
   );
   const map = await optionalDocument(join(bundleRoot, "map.md"));
+  const checkpoints = [
+    checkpointSummary(
+      change,
+      "change.md",
+      "change",
+      undefined,
+      Number(change.metadata.workflow_version) >= 4,
+    ),
+    ...parsedIssues
+      .filter((entry) =>
+        stage === "review" || requiredPaths.includes(relativeIssuePath(entry.path))
+      )
+      .map((entry) =>
+        checkpointSummary(
+          entry.document,
+          relativeIssuePath(entry.path),
+          "issue",
+          entry.summary.id,
+          Number(entry.document.metadata.workflow_version) >= 2,
+        )
+      ),
+  ].filter((entry): entry is WorkCheckpointSummary => entry !== undefined);
+  for (const checkpoint of checkpoints) {
+    validationIssues.push(...checkpoint.issues);
+  }
   return {
     root: bundleRoot,
     stage,
@@ -192,6 +340,7 @@ export async function inspectWorkBundle(
     requiredFiles: requiredPaths
       .map((path) => inventory.find((entry) => entry.path === path))
       .filter((entry): entry is BundleInventoryEntry => entry !== undefined),
+    checkpoints,
     issues: summaries,
     frontier: summaries.filter((entry) => entry.frontier).map((entry) => entry.id),
     validationIssues: [...new Set(validationIssues)].sort(),
@@ -273,6 +422,20 @@ export async function createWorkIssue(
       document.metadata.artifacts = artifacts;
       document.metadata.created_at = now.toISOString();
       document.metadata.updated_at = now.toISOString();
+      initializeDocumentCheckpoint(document, {
+        status: "ready",
+        stage: options.phase === "wayfinding" ? "wayfind" : "implement",
+        actor: "system:wfctl",
+        currentState: blockedBy.length > 0
+          ? `Issue is unclaimed and depends on ${blockedBy.join(", ")}.`
+          : "Issue is ready but unclaimed.",
+        lastCompleted: "Issue record created.",
+        nextAction: blockedBy.length > 0
+          ? "Complete the declared dependencies, then review and claim this issue."
+          : "Read the required context and claim the issue.",
+        blockers: [],
+        now,
+      });
     },
   );
   const parsed = await parseIssueFile(options.bundleRoot, relativePath(options.bundleRoot, path));
@@ -353,7 +516,19 @@ export async function claimWorkIssue(
   try {
     parsed.document.metadata.status = "claimed";
     parsed.document.metadata.claim = claim;
-    parsed.document.metadata.updated_at = now.toISOString();
+    writeCheckpoint(parsed.document, {
+      status: "active",
+      stage: current.phase === "wayfinding" ? "wayfind" : "implement",
+      actor: stringValue(claim.actor),
+      currentState: "Issue is claimed and ready for execution.",
+      lastCompleted: stringValue(checkpointRecord(parsed.document)?.last_completed)
+        || "Required context reviewed and issue claimed.",
+      nextAction: current.phase === "wayfinding"
+        ? "Resolve this one bounded Wayfinder question and persist the answer."
+        : "Implement the next behavior-first step within this issue scope.",
+      blockers: [],
+      now,
+    });
     await writeFile(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   } catch (error) {
     await removeFile(lockPath);
@@ -375,7 +550,16 @@ export async function releaseWorkIssue(
   assertClaimContext(parsed, claimContext);
   parsed.document.metadata.status = "ready";
   parsed.document.metadata.claim = null;
-  parsed.document.metadata.updated_at = now.toISOString();
+  writeCheckpoint(parsed.document, {
+    status: "ready",
+    stage: parsed.summary.phase === "wayfinding" ? "wayfind" : "implement",
+    actor: "system:wfctl",
+    currentState: "Issue claim was released; the issue is ready for another session.",
+    lastCompleted: "Previous claim released without completing the issue.",
+    nextAction: "Read the current context and claim the issue before continuing.",
+    blockers: [],
+    now,
+  });
   await writeFile(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   await removeFile(claimLockPath(bundleRoot, parsed.summary.id));
   return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
@@ -406,7 +590,16 @@ export async function resolveWorkIssue(
     completed_at: now.toISOString(),
     ...(completedClaim ? { claim: completedClaim } : {}),
   };
-  parsed.document.metadata.updated_at = now.toISOString();
+  writeCheckpoint(parsed.document, {
+    status: "complete",
+    stage: "complete",
+    actor: stringValue(completedClaim?.actor) || "system:wfctl",
+    currentState: `Issue completed: ${options.summary.trim()}`,
+    lastCompleted: options.summary.trim(),
+    nextAction: "Return to the parent bundle and select or create the next frontier item.",
+    blockers: [],
+    now,
+  });
   await writeFile(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   await removeFile(claimLockPath(options.bundleRoot, parsed.summary.id));
   if (parsed.summary.phase === "wayfinding") {
@@ -447,7 +640,16 @@ export async function dropWorkIssue(
     completed_at: now.toISOString(),
     ...(droppedClaim ? { claim: droppedClaim } : {}),
   };
-  parsed.document.metadata.updated_at = now.toISOString();
+  writeCheckpoint(parsed.document, {
+    status: "complete",
+    stage: "complete",
+    actor: stringValue(droppedClaim?.actor) || "system:wfctl",
+    currentState: `Issue dropped: ${reason.trim()}`,
+    lastCompleted: "Issue explicitly removed from the active frontier.",
+    nextAction: "Return to the parent bundle and reassess the remaining frontier.",
+    blockers: [],
+    now,
+  });
   await writeFile(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   await removeFile(claimLockPath(bundleRoot, parsed.summary.id));
   return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
@@ -484,7 +686,27 @@ export async function setWorkIssueBlocker(
     throw new Error(`Dependency update would create a cycle: ${cycles[0]!.join(" -> ")}`);
   }
   issue.document.metadata.blocked_by = next;
-  issue.document.metadata.updated_at = now.toISOString();
+  const claimed = issue.summary.status === "claimed";
+  writeCheckpoint(issue.document, {
+    status: claimed && next.length > 0 ? "blocked" : claimed ? "active" : "ready",
+    stage: issue.summary.phase === "wayfinding" ? "wayfind" : "implement",
+    actor: stringValue(recordValue(issue.document.metadata.claim)?.actor) || "system:wfctl",
+    currentState: next.length > 0
+      ? `Issue depends on ${next.join(", ")}.`
+      : claimed
+      ? "Issue is claimed with no unresolved dependency blocker."
+      : "Issue is ready but unclaimed.",
+    lastCompleted: blocked
+      ? `Added dependency ${blocker.summary.id}.`
+      : `Removed dependency ${blocker.summary.id}.`,
+    nextAction: next.length > 0
+      ? "Resolve the declared dependencies before continuing this issue."
+      : claimed
+      ? "Continue the claimed issue and refresh the checkpoint after material work."
+      : "Review the required context and claim the issue.",
+    blockers: claimed ? next : [],
+    now,
+  });
   await writeFile(issue.path, serializeWorkSpec(issue.document), "utf8");
   return (await readIssueById(bundleRoot, issue.summary.id)).summary;
 }
@@ -613,7 +835,16 @@ export async function finishWayfinder(
     map: "map.md",
     resolved_at: nowIso,
   };
-  change.metadata.updated_at = nowIso;
+  writeCheckpoint(change, {
+    status: "active",
+    stage: "shape",
+    actor: "system:wfctl",
+    currentState: "Wayfinder is resolved and the bounded delivery specification is active.",
+    lastCompleted: "Direction map synthesized into stable acceptance criteria.",
+    nextAction: "Review the bounded specification and prepare the delivery frontier.",
+    blockers: [],
+    now,
+  });
   await writeFile(mapPath, serializeWorkSpec(map), "utf8");
   await writeFile(changePath, serializeWorkSpec(change), "utf8");
   return { mapPath, changePath, mode: deliveryMode };
@@ -623,7 +854,7 @@ export async function bundleCompletionIssues(
   bundleRoot: string,
   change: WorkSpecDocument,
 ): Promise<string[]> {
-  if (change.metadata.workflow_version !== 3) {
+  if (![3, 4].includes(Number(change.metadata.workflow_version))) {
     return [];
   }
   const issues: string[] = [];
@@ -686,6 +917,9 @@ export async function bundleCompletionIssues(
     }
   }
   const inspection = await inspectWorkBundle(bundleRoot, "review");
+  for (const checkpoint of inspection.checkpoints) {
+    issues.push(...checkpoint.issues);
+  }
   for (const entry of inspection.inventory) {
     if (entry.role === "review") {
       continue;
@@ -717,7 +951,7 @@ async function validateBundle(
       issues.push(`${required}: required bundle file is missing`);
     }
   }
-  if (![2, 3].includes(Number(change.metadata.workflow_version))) {
+  if (![2, 3, 4].includes(Number(change.metadata.workflow_version))) {
     issues.push("change.md: unsupported workflow_version");
   }
   const repositoryIds = new Set(
@@ -782,8 +1016,8 @@ async function validateBundle(
         }
       }
     }
-    if (entry.document.metadata.workflow_version !== 1) {
-      issues.push(`${summary.id}: workflow_version must be 1`);
+    if (![1, 2].includes(Number(entry.document.metadata.workflow_version))) {
+      issues.push(`${summary.id}: workflow_version must be 1 or 2`);
     }
     if (entry.document.metadata.kind !== "work-issue") {
       issues.push(`${summary.id}: kind must be work-issue`);
@@ -1305,6 +1539,181 @@ function normalizeActor(value: string): string {
   const normalized = value.trim();
   if (!normalized || normalized.length > 160) {
     throw new Error("Claim actor must be a non-empty identity of at most 160 characters");
+  }
+  return normalized;
+}
+
+function writeCheckpoint(
+  document: WorkSpecDocument,
+  input: {
+    status: WorkCheckpointStatus;
+    stage: WorkCheckpointStage;
+    actor: string;
+    currentState: string;
+    lastCompleted: string;
+    nextAction: string;
+    blockers?: string[];
+    now: Date;
+  },
+): void {
+  const blockers = uniqueStrings(input.blockers ?? []);
+  if (input.status === "blocked" && blockers.length === 0) {
+    throw new Error("A blocked checkpoint requires at least one blocker");
+  }
+  if (input.status !== "blocked" && blockers.length > 0) {
+    throw new Error("Checkpoint blockers require blocked status");
+  }
+  if ((input.status === "complete") !== (input.stage === "complete")) {
+    throw new Error("Complete checkpoint status and stage must be used together");
+  }
+  const updatedAt = input.now.toISOString();
+  document.metadata.checkpoint_version = 1;
+  document.metadata.updated_at = updatedAt;
+  document.metadata.checkpoint = {
+    status: input.status,
+    stage: input.stage,
+    actor: normalizeActor(input.actor),
+    current_state: requireCheckpointText(input.currentState, "current state"),
+    last_completed: requireCheckpointText(input.lastCompleted, "last completed action"),
+    next_action: requireCheckpointText(input.nextAction, "next action"),
+    blockers,
+    updated_at: updatedAt,
+    basis_sha256: "",
+  };
+  checkpointRecord(document)!.basis_sha256 = checkpointBasis(document);
+}
+
+function checkpointSummary(
+  document: WorkSpecDocument,
+  path: string,
+  owner: WorkCheckpointSummary["owner"],
+  issue: string | undefined,
+  required: boolean,
+): WorkCheckpointSummary | undefined {
+  const version = document.metadata.checkpoint_version;
+  const checkpoint = checkpointRecord(document);
+  if (version === undefined && !checkpoint && !required) {
+    return undefined;
+  }
+  const issues: string[] = [];
+  if (version !== 1) {
+    issues.push(`${path}: checkpoint_version must be 1`);
+  }
+  if (!checkpoint) {
+    issues.push(`${path}: checkpoint metadata is required`);
+  }
+  const statusValue = stringValue(checkpoint?.status);
+  const stageValue = stringValue(checkpoint?.stage);
+  const allowedStatuses: WorkCheckpointStatus[] = ["ready", "active", "blocked", "complete"];
+  const allowedStages: WorkCheckpointStage[] = ["shape", "wayfind", "implement", "review", "complete"];
+  if (!allowedStatuses.includes(statusValue as WorkCheckpointStatus)) {
+    issues.push(`${path}: checkpoint.status is invalid`);
+  }
+  if (!allowedStages.includes(stageValue as WorkCheckpointStage)) {
+    issues.push(`${path}: checkpoint.stage is invalid`);
+  }
+  const actor = stringValue(checkpoint?.actor).trim();
+  const currentState = stringValue(checkpoint?.current_state).trim();
+  const lastCompleted = stringValue(checkpoint?.last_completed).trim();
+  const nextAction = stringValue(checkpoint?.next_action).trim();
+  const updatedAt = stringValue(checkpoint?.updated_at).trim();
+  const blockersValue = checkpoint?.blockers;
+  const blockers = stringArray(blockersValue).map((entry) => entry.trim()).filter(Boolean);
+  if (!actor) issues.push(`${path}: checkpoint.actor is required`);
+  if (!currentState) issues.push(`${path}: checkpoint.current_state is required`);
+  if (!lastCompleted) issues.push(`${path}: checkpoint.last_completed is required`);
+  if (!nextAction) issues.push(`${path}: checkpoint.next_action is required`);
+  if (!updatedAt || Number.isNaN(Date.parse(updatedAt))) {
+    issues.push(`${path}: checkpoint.updated_at must be an ISO timestamp`);
+  }
+  if (!Array.isArray(blockersValue) || blockers.length !== blockersValue.length) {
+    issues.push(`${path}: checkpoint.blockers must contain only non-empty strings`);
+  }
+  if (statusValue === "blocked" && blockers.length === 0) {
+    issues.push(`${path}: blocked checkpoint requires a blocker`);
+  }
+  if (statusValue !== "blocked" && blockers.length > 0) {
+    issues.push(`${path}: only a blocked checkpoint may retain blockers`);
+  }
+  if ((statusValue === "complete") !== (stageValue === "complete")) {
+    issues.push(`${path}: complete checkpoint status and stage must be used together`);
+  }
+  const basis = stringValue(checkpoint?.basis_sha256);
+  if (!/^[0-9a-f]{64}$/.test(basis)) {
+    issues.push(`${path}: checkpoint.basis_sha256 is invalid`);
+  } else if (basis !== checkpointBasis(document)) {
+    issues.push(`${path}: checkpoint is stale; refresh it after the latest record changes`);
+  }
+  if (owner === "issue") {
+    const recordStatus = stringValue(document.metadata.status);
+    if (recordStatus === "claimed" && !["active", "blocked"].includes(statusValue)) {
+      issues.push(`${path}: claimed issue checkpoint must be active or blocked`);
+    }
+    if (["completed", "dropped"].includes(recordStatus) && statusValue !== "complete") {
+      issues.push(`${path}: terminal issue checkpoint must be complete`);
+    }
+    if (["draft", "ready"].includes(recordStatus) && statusValue !== "ready") {
+      issues.push(`${path}: unclaimed issue checkpoint must be ready`);
+    }
+  } else {
+    const terminal = Boolean(stringValue(document.metadata.closed_at).trim());
+    if (terminal && statusValue !== "complete") {
+      issues.push(`${path}: closed change checkpoint must be complete`);
+    }
+    if (!terminal && statusValue === "complete") {
+      issues.push(`${path}: active change checkpoint cannot be complete`);
+    }
+  }
+  return {
+    owner,
+    path,
+    ...(issue ? { issue } : {}),
+    status: allowedStatuses.includes(statusValue as WorkCheckpointStatus)
+      ? statusValue as WorkCheckpointStatus
+      : "ready",
+    stage: allowedStages.includes(stageValue as WorkCheckpointStage)
+      ? stageValue as WorkCheckpointStage
+      : "shape",
+    actor,
+    currentState,
+    lastCompleted,
+    nextAction,
+    blockers,
+    updatedAt,
+    valid: issues.length === 0,
+    issues,
+  };
+}
+
+function checkpointRecord(document: WorkSpecDocument): Record<string, unknown> | undefined {
+  return recordValue(document.metadata.checkpoint);
+}
+
+function checkpointBasis(document: WorkSpecDocument): string {
+  const metadata = { ...document.metadata };
+  delete metadata.checkpoint;
+  delete metadata.updated_at;
+  return sha256(Buffer.from(JSON.stringify(stableValue({ metadata, body: document.body }))));
+}
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stableValue);
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, stableValue(value[key])]),
+    );
+  }
+  return value;
+}
+
+function requireCheckpointText(value: unknown, label: string): string {
+  const normalized = stringValue(value).trim();
+  if (!normalized) {
+    throw new Error(`Checkpoint ${label} must not be empty`);
   }
   return normalized;
 }

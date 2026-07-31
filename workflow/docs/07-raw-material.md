@@ -78,7 +78,7 @@ Raw intake is continuous, not a one-time migration. A closed case keeps its
 frozen snapshot. Later files or changed blobs become a new generation and a
 later bounded case.
 
-At every handoff, the agent shows:
+After every completed or blocked batch, the agent shows:
 
 - current generation and reviewed counts;
 - active themes and blockers;

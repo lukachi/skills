@@ -3833,10 +3833,10 @@ function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeE
   let offset = bm.offset;
   let commentEnd = null;
   for (const collItem of bm.items) {
-    const { start, key, sep: sep8, value } = collItem;
+    const { start, key, sep: sep9, value } = collItem;
     const keyProps = resolveProps(start, {
       indicator: "explicit-key-ind",
-      next: key ?? sep8?.[0],
+      next: key ?? sep9?.[0],
       offset,
       onError,
       parentIndent: bm.indent,
@@ -3850,7 +3850,7 @@ function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeE
         else if ("indent" in key && key.indent !== bm.indent)
           onError(offset, "BAD_INDENT", startColMsg);
       }
-      if (!keyProps.anchor && !keyProps.tag && !sep8) {
+      if (!keyProps.anchor && !keyProps.tag && !sep9) {
         commentEnd = keyProps.end;
         if (keyProps.comment) {
           if (map2.comment)
@@ -3874,7 +3874,7 @@ function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeE
     ctx.atKey = false;
     if (mapIncludes(ctx, map2.items, keyNode))
       onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-    const valueProps = resolveProps(sep8 ?? [], {
+    const valueProps = resolveProps(sep9 ?? [], {
       indicator: "map-value-ind",
       next: value,
       offset: keyNode.range[2],
@@ -3890,7 +3890,7 @@ function resolveBlockMap({ composeNode: composeNode2, composeEmptyNode: composeE
         if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
           onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
       }
-      const valueNode = value ? composeNode2(ctx, value, valueProps, onError) : composeEmptyNode2(ctx, offset, sep8, null, valueProps, onError);
+      const valueNode = value ? composeNode2(ctx, value, valueProps, onError) : composeEmptyNode2(ctx, offset, sep9, null, valueProps, onError);
       if (ctx.schema.compat)
         flowIndentCheck(bm.indent, value, onError);
       offset = valueNode.range[2];
@@ -3985,7 +3985,7 @@ function resolveEnd(end, offset, reqSpace, onError) {
   let comment = "";
   if (end) {
     let hasSpace = false;
-    let sep8 = "";
+    let sep9 = "";
     for (const token of end) {
       const { source, type } = token;
       switch (type) {
@@ -3999,13 +3999,13 @@ function resolveEnd(end, offset, reqSpace, onError) {
           if (!comment)
             comment = cb;
           else
-            comment += sep8 + cb;
-          sep8 = "";
+            comment += sep9 + cb;
+          sep9 = "";
           break;
         }
         case "newline":
           if (comment)
-            sep8 += source;
+            sep9 += source;
           hasSpace = true;
           break;
         default:
@@ -4036,18 +4036,18 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
   let offset = fc.offset + fc.start.source.length;
   for (let i = 0; i < fc.items.length; ++i) {
     const collItem = fc.items[i];
-    const { start, key, sep: sep8, value } = collItem;
+    const { start, key, sep: sep9, value } = collItem;
     const props = resolveProps(start, {
       flow: fcName,
       indicator: "explicit-key-ind",
-      next: key ?? sep8?.[0],
+      next: key ?? sep9?.[0],
       offset,
       onError,
       parentIndent: fc.indent,
       startOnNewline: false
     });
     if (!props.found) {
-      if (!props.anchor && !props.tag && !sep8 && !value) {
+      if (!props.anchor && !props.tag && !sep9 && !value) {
         if (i === 0 && props.comma)
           onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
         else if (i < fc.items.length - 1)
@@ -4101,8 +4101,8 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
         }
       }
     }
-    if (!isMap2 && !sep8 && !props.found) {
-      const valueNode = value ? composeNode2(ctx, value, props, onError) : composeEmptyNode2(ctx, props.end, sep8, null, props, onError);
+    if (!isMap2 && !sep9 && !props.found) {
+      const valueNode = value ? composeNode2(ctx, value, props, onError) : composeEmptyNode2(ctx, props.end, sep9, null, props, onError);
       coll.items.push(valueNode);
       offset = valueNode.range[2];
       if (isBlock(value))
@@ -4114,7 +4114,7 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
       if (isBlock(key))
         onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
       ctx.atKey = false;
-      const valueProps = resolveProps(sep8 ?? [], {
+      const valueProps = resolveProps(sep9 ?? [], {
         flow: fcName,
         indicator: "map-value-ind",
         next: value,
@@ -4125,8 +4125,8 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
       });
       if (valueProps.found) {
         if (!isMap2 && !props.found && ctx.options.strict) {
-          if (sep8)
-            for (const st of sep8) {
+          if (sep9)
+            for (const st of sep9) {
               if (st === valueProps.found)
                 break;
               if (st.type === "newline") {
@@ -4143,7 +4143,7 @@ function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode: co
         else
           onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
       }
-      const valueNode = value ? composeNode2(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode2(ctx, valueProps.end, sep8, null, valueProps, onError) : null;
+      const valueNode = value ? composeNode2(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode2(ctx, valueProps.end, sep9, null, valueProps, onError) : null;
       if (valueNode) {
         if (isBlock(value))
           onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4329,7 +4329,7 @@ function resolveBlockScalar(ctx, scalar, onError) {
       chompStart = i + 1;
   }
   let value = "";
-  let sep8 = "";
+  let sep9 = "";
   let prevMoreIndented = false;
   for (let i = 0; i < contentStart; ++i)
     value += lines[i][0].slice(trimIndent) + "\n";
@@ -4346,24 +4346,24 @@ function resolveBlockScalar(ctx, scalar, onError) {
       indent = "";
     }
     if (type === Scalar.BLOCK_LITERAL) {
-      value += sep8 + indent.slice(trimIndent) + content3;
-      sep8 = "\n";
+      value += sep9 + indent.slice(trimIndent) + content3;
+      sep9 = "\n";
     } else if (indent.length > trimIndent || content3[0] === "	") {
-      if (sep8 === " ")
-        sep8 = "\n";
-      else if (!prevMoreIndented && sep8 === "\n")
-        sep8 = "\n\n";
-      value += sep8 + indent.slice(trimIndent) + content3;
-      sep8 = "\n";
+      if (sep9 === " ")
+        sep9 = "\n";
+      else if (!prevMoreIndented && sep9 === "\n")
+        sep9 = "\n\n";
+      value += sep9 + indent.slice(trimIndent) + content3;
+      sep9 = "\n";
       prevMoreIndented = true;
     } else if (content3 === "") {
-      if (sep8 === "\n")
+      if (sep9 === "\n")
         value += "\n";
       else
-        sep8 = "\n";
+        sep9 = "\n";
     } else {
-      value += sep8 + content3;
-      sep8 = " ";
+      value += sep9 + content3;
+      sep9 = " ";
       prevMoreIndented = false;
     }
   }
@@ -4542,25 +4542,25 @@ function foldLines(source) {
   if (!match)
     return source;
   let res = match[1];
-  let sep8 = " ";
+  let sep9 = " ";
   let pos = first.lastIndex;
   line.lastIndex = pos;
   while (match = line.exec(source)) {
     if (match[1] === "") {
-      if (sep8 === "\n")
-        res += sep8;
+      if (sep9 === "\n")
+        res += sep9;
       else
-        sep8 = "\n";
+        sep9 = "\n";
     } else {
-      res += sep8 + match[1];
-      sep8 = " ";
+      res += sep9 + match[1];
+      sep9 = " ";
     }
     pos = line.lastIndex;
   }
   const last = /[ \t]*(.*)/sy;
   last.lastIndex = pos;
   match = last.exec(source);
-  return res + sep8 + (match?.[1] ?? "");
+  return res + sep9 + (match?.[1] ?? "");
 }
 function doubleQuotedValue(source, onError) {
   let res = "";
@@ -6271,18 +6271,18 @@ var init_parser = __esm({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep8;
+          let sep9;
           if (scalar.end) {
-            sep8 = scalar.end;
-            sep8.push(this.sourceToken);
+            sep9 = scalar.end;
+            sep9.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep8 = [this.sourceToken];
+            sep9 = [this.sourceToken];
           const map2 = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep8 }]
+            items: [{ start, key: scalar, sep: sep9 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map2;
@@ -6435,15 +6435,15 @@ var init_parser = __esm({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep8 = it.sep;
-                  sep8.push(this.sourceToken);
+                  const sep9 = it.sep;
+                  sep9.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep8 }]
+                    items: [{ start: start2, key, sep: sep9 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -6637,13 +6637,13 @@ var init_parser = __esm({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep8 = fc.end.splice(1, fc.end.length);
-            sep8.push(this.sourceToken);
+            const sep9 = fc.end.splice(1, fc.end.length);
+            sep9.push(this.sourceToken);
             const map2 = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep8 }]
+              items: [{ start, key: fc, sep: sep9 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map2;
@@ -6913,10 +6913,10 @@ async function collectFiles(root) {
   const result = [];
   await visit3(root, "");
   return result.sort();
-  async function visit3(current, relative6) {
+  async function visit3(current, relative7) {
     const entries = await readdir(current, { withFileTypes: true });
     for (const entry of entries) {
-      const childRelative = relative6 ? join(relative6, entry.name) : entry.name;
+      const childRelative = relative7 ? join(relative7, entry.name) : entry.name;
       const child = join(current, entry.name);
       if (entry.isDirectory()) {
         await visit3(child, childRelative);
@@ -6945,7 +6945,7 @@ var WORKFLOW_VERSION, CONFIG_SCHEMA_VERSION, STATE_SCHEMA_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    WORKFLOW_VERSION = "0.7.2";
+    WORKFLOW_VERSION = "0.8.0";
     CONFIG_SCHEMA_VERSION = 1;
     STATE_SCHEMA_VERSION = 1;
   }
@@ -9965,10 +9965,10 @@ function resolveAll(constructs2, events, context) {
   const called = [];
   let index2 = -1;
   while (++index2 < constructs2.length) {
-    const resolve18 = constructs2[index2].resolveAll;
-    if (resolve18 && !called.includes(resolve18)) {
-      events = resolve18(events, context);
-      called.push(resolve18);
+    const resolve19 = constructs2[index2].resolveAll;
+    if (resolve19 && !called.includes(resolve19)) {
+      events = resolve19(events, context);
+      called.push(resolve19);
     }
   }
   return events;
@@ -15015,8 +15015,8 @@ async function collectMarkdownPaths(knowledgeRoot) {
       if (entry.isDirectory()) {
         await walk(absolute);
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
-        const stat = await lstat3(absolute);
-        if (!stat.isSymbolicLink()) {
+        const stat2 = await lstat3(absolute);
+        if (!stat2.isSymbolicLink()) {
           paths.push(portable(relative2(dirname3(knowledgeRoot), absolute)));
         }
       }
@@ -15161,8 +15161,8 @@ function completionIssues(document3, requireCompleted) {
   const promotion = recordValue2(metadata.knowledge_promotion);
   const scope = stringValue2(metadata.scope) || "leaf";
   const projectOnly = scope === "project";
-  if (metadata.workflow_version !== 2 && metadata.workflow_version !== 3) {
-    issues.push("workflow_version must be 2 or 3");
+  if (![2, 3, 4].includes(Number(metadata.workflow_version))) {
+    issues.push("workflow_version must be 2, 3, or 4");
   }
   if (requireCompleted && metadata.status !== "completed") {
     issues.push("status must be completed");
@@ -15968,18 +15968,18 @@ async function inspectIntakeCase(targetInput, id) {
     const validation = await validateKnowledge(target, stringArray3(promotion.concepts));
     issues.push(...validation.errors.map((issue3) => `${issue3.path}: ${issue3.message}`));
   }
-  const changeDestinations = /* @__PURE__ */ new Set();
+  const operationalDestinations = /* @__PURE__ */ new Set();
   for (const candidate of recordArray2(document3.metadata.candidate_claims)) {
     const routing = recordValue4(candidate.routing);
     for (const destination of stringArray3(routing?.destinations)) {
-      if (isChangePath(destination)) {
-        changeDestinations.add(destination);
+      if (isActiveChangePath(destination) || isCapturePath(destination)) {
+        operationalDestinations.add(destination);
       }
     }
   }
-  for (const destination of changeDestinations) {
+  for (const destination of operationalDestinations) {
     if (!await pathExists(join7(target, destination))) {
-      issues.push(`routed change destination does not exist: ${destination}`);
+      issues.push(`routed operational destination does not exist: ${destination}`);
     }
   }
   const ledger = await compileClaimLedger(target);
@@ -16239,8 +16239,12 @@ function caseMetadataIssues(metadata) {
           issues.push(`${prefix}.routing contains an invalid knowledge concept: ${destination}`);
         }
       } else if (lane === "change") {
-        if (!isChangePath(destination)) {
+        if (!isActiveChangePath(destination)) {
           issues.push(`${prefix}.routing contains an invalid change path: ${destination}`);
+        }
+      } else if (lane === "capture") {
+        if (!isCapturePath(destination)) {
+          issues.push(`${prefix}.routing contains an invalid capture path: ${destination}`);
         }
       }
     }
@@ -16256,8 +16260,8 @@ function caseMetadataIssues(metadata) {
     if ((disposition === "rejected" || disposition === "unresolved") && lane !== "case-only") {
       issues.push(`${prefix}: ${disposition} candidates must remain case-only`);
     }
-    if (disposition === "deferred" && lane !== "change") {
-      issues.push(`${prefix}: deferred candidates must route to change`);
+    if (disposition === "deferred" && !["change", "capture"].includes(lane)) {
+      issues.push(`${prefix}: deferred candidates must route to change or capture`);
     }
     if (disposition === "confirmed" && lane === "current-knowledge" && !["accepted", "not-applicable"].includes(intentState)) {
       issues.push(
@@ -16272,6 +16276,9 @@ function caseMetadataIssues(metadata) {
     }
     if (lane === "change" && !["proposed", "unknown"].includes(intentState)) {
       issues.push(`${prefix}: change routing requires proposed or unknown intent`);
+    }
+    if (lane === "capture" && !["proposed", "unknown", "not-applicable"].includes(intentState)) {
+      issues.push(`${prefix}: capture routing requires proposed, unknown, or not-applicable intent`);
     }
     if (lane === "history" && !(claimClass === "history" || ["superseded", "rejected"].includes(intentState) || deliveryState === "retired" || ["status", "outcome"].includes(semanticRole))) {
       issues.push(`${prefix}: history routing requires an explicitly historical state`);
@@ -16809,13 +16816,18 @@ function requireCurrentIntakeVersion(metadata) {
 function isConceptPath(value) {
   return /^knowledge\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(value) && !/(?:^|\/)(?:index|log)\.md$/i.test(value);
 }
-function isChangePath(value) {
-  return /^changes\/(?:active|inbox)\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(
+function isActiveChangePath(value) {
+  return /^changes\/active\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(
+    value
+  );
+}
+function isCapturePath(value) {
+  return /^changes\/inbox\/\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/i.test(
     value
   );
 }
 function isDurableRoutingPath(value) {
-  return isConceptPath(value) || isChangePath(value);
+  return isConceptPath(value) || isActiveChangePath(value) || isCapturePath(value);
 }
 function isClaimReference(value) {
   return /^[a-z0-9][a-z0-9-]{0,95}$/.test(value) || /^(?:intake|reconstruction):[a-z0-9][a-z0-9-]{0,95}#[a-z0-9][a-z0-9-]{0,95}$/.test(
@@ -16914,6 +16926,7 @@ var init_intake = __esm({
       "current-knowledge",
       "history",
       "change",
+      "capture",
       "case-only"
     ]);
     CLAIM_RELATIONS = [
@@ -19571,6 +19584,75 @@ async function initializeWorkBundle(bundleRoot, distributionRoot, mode, now = /*
     );
   }
 }
+function initializeDocumentCheckpoint(document3, input) {
+  writeCheckpoint(document3, input);
+}
+async function updateBundleCheckpoint(options) {
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  let path;
+  let document3;
+  let owner;
+  let issue3;
+  let stage = options.stage;
+  let status = options.status;
+  if (options.issueId) {
+    const parsed = await readIssueById(options.bundleRoot, options.issueId);
+    path = parsed.path;
+    document3 = parsed.document;
+    owner = "issue";
+    issue3 = parsed.summary.id;
+    const expectedStage = parsed.summary.phase === "wayfinding" ? "wayfind" : "implement";
+    if (stage && stage !== expectedStage && stage !== "review") {
+      throw new Error(
+        `${parsed.summary.id} checkpoint stage must be ${expectedStage} or review`
+      );
+    }
+    stage = stage ?? expectedStage;
+    if (["completed", "dropped"].includes(parsed.summary.status)) {
+      status = "complete";
+      stage = "complete";
+    } else if (parsed.summary.status !== "claimed") {
+      throw new Error(
+        `${parsed.summary.id} must be claimed before recording an active checkpoint`
+      );
+    } else {
+      const claim = recordValue6(parsed.document.metadata.claim);
+      const claimedBy = stringValue6(claim?.actor);
+      if (claimedBy && normalizeActor(options.actor) !== claimedBy) {
+        throw new Error(
+          `${parsed.summary.id} is claimed by ${claimedBy}, not ${normalizeActor(options.actor)}`
+        );
+      }
+    }
+  } else {
+    path = join10(options.bundleRoot, "change.md");
+    document3 = parseWorkSpec(await readFile11(path, "utf8"));
+    owner = "change";
+    if (status === "complete") {
+      throw new Error("The change checkpoint becomes complete only when wfctl closes the bundle");
+    }
+    stage = stage ?? (document3.metadata.mode === "wayfinder" ? "wayfind" : "shape");
+  }
+  const previous2 = checkpointRecord(document3);
+  writeCheckpoint(document3, {
+    status,
+    stage,
+    actor: normalizeActor(options.actor),
+    currentState: requireCheckpointText(options.currentState, "current state"),
+    lastCompleted: options.lastCompleted ? requireCheckpointText(options.lastCompleted, "last completed action") : requireCheckpointText(previous2?.last_completed, "last completed action"),
+    nextAction: requireCheckpointText(options.nextAction, "next action"),
+    blockers: uniqueStrings4(options.blockers ?? []),
+    now
+  });
+  await writeFile8(path, serializeWorkSpec(document3), "utf8");
+  return checkpointSummary(
+    document3,
+    relativePath(options.bundleRoot, path),
+    owner,
+    issue3,
+    true
+  );
+}
 async function inspectWorkBundle(bundleRoot, stage, selectedIssue) {
   const change = parseWorkSpec(await readFile11(join10(bundleRoot, "change.md"), "utf8"));
   const issueRead = await readIssuesForInspection(bundleRoot);
@@ -19592,6 +19674,29 @@ async function inspectWorkBundle(bundleRoot, stage, selectedIssue) {
     inventory
   );
   const map2 = await optionalDocument(join10(bundleRoot, "map.md"));
+  const checkpoints = [
+    checkpointSummary(
+      change,
+      "change.md",
+      "change",
+      void 0,
+      Number(change.metadata.workflow_version) >= 4
+    ),
+    ...parsedIssues.filter(
+      (entry) => stage === "review" || requiredPaths.includes(relativeIssuePath(entry.path))
+    ).map(
+      (entry) => checkpointSummary(
+        entry.document,
+        relativeIssuePath(entry.path),
+        "issue",
+        entry.summary.id,
+        Number(entry.document.metadata.workflow_version) >= 2
+      )
+    )
+  ].filter((entry) => entry !== void 0);
+  for (const checkpoint of checkpoints) {
+    validationIssues.push(...checkpoint.issues);
+  }
   return {
     root: bundleRoot,
     stage,
@@ -19603,6 +19708,7 @@ async function inspectWorkBundle(bundleRoot, stage, selectedIssue) {
     ...map2 ? { resolved: recordArray4(map2.metadata.resolved) } : {},
     inventory,
     requiredFiles: requiredPaths.map((path) => inventory.find((entry) => entry.path === path)).filter((entry) => entry !== void 0),
+    checkpoints,
     issues: summaries,
     frontier: summaries.filter((entry) => entry.frontier).map((entry) => entry.id),
     validationIssues: [...new Set(validationIssues)].sort()
@@ -19681,6 +19787,16 @@ async function createWorkIssue(options) {
       document3.metadata.artifacts = artifacts;
       document3.metadata.created_at = now.toISOString();
       document3.metadata.updated_at = now.toISOString();
+      initializeDocumentCheckpoint(document3, {
+        status: "ready",
+        stage: options.phase === "wayfinding" ? "wayfind" : "implement",
+        actor: "system:wfctl",
+        currentState: blockedBy.length > 0 ? `Issue is unclaimed and depends on ${blockedBy.join(", ")}.` : "Issue is ready but unclaimed.",
+        lastCompleted: "Issue record created.",
+        nextAction: blockedBy.length > 0 ? "Complete the declared dependencies, then review and claim this issue." : "Read the required context and claim the issue.",
+        blockers: [],
+        now
+      });
     }
   );
   const parsed = await parseIssueFile(options.bundleRoot, relativePath(options.bundleRoot, path));
@@ -19753,7 +19869,16 @@ async function claimWorkIssue(options) {
   try {
     parsed.document.metadata.status = "claimed";
     parsed.document.metadata.claim = claim;
-    parsed.document.metadata.updated_at = now.toISOString();
+    writeCheckpoint(parsed.document, {
+      status: "active",
+      stage: current.phase === "wayfinding" ? "wayfind" : "implement",
+      actor: stringValue6(claim.actor),
+      currentState: "Issue is claimed and ready for execution.",
+      lastCompleted: stringValue6(checkpointRecord(parsed.document)?.last_completed) || "Required context reviewed and issue claimed.",
+      nextAction: current.phase === "wayfinding" ? "Resolve this one bounded Wayfinder question and persist the answer." : "Implement the next behavior-first step within this issue scope.",
+      blockers: [],
+      now
+    });
     await writeFile8(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   } catch (error2) {
     await removeFile(lockPath);
@@ -19769,7 +19894,16 @@ async function releaseWorkIssue(bundleRoot, issueId, claimContext, now = /* @__P
   assertClaimContext(parsed, claimContext);
   parsed.document.metadata.status = "ready";
   parsed.document.metadata.claim = null;
-  parsed.document.metadata.updated_at = now.toISOString();
+  writeCheckpoint(parsed.document, {
+    status: "ready",
+    stage: parsed.summary.phase === "wayfinding" ? "wayfind" : "implement",
+    actor: "system:wfctl",
+    currentState: "Issue claim was released; the issue is ready for another session.",
+    lastCompleted: "Previous claim released without completing the issue.",
+    nextAction: "Read the current context and claim the issue before continuing.",
+    blockers: [],
+    now
+  });
   await writeFile8(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   await removeFile(claimLockPath(bundleRoot, parsed.summary.id));
   return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
@@ -19797,7 +19931,16 @@ async function resolveWorkIssue(options) {
     completed_at: now.toISOString(),
     ...completedClaim ? { claim: completedClaim } : {}
   };
-  parsed.document.metadata.updated_at = now.toISOString();
+  writeCheckpoint(parsed.document, {
+    status: "complete",
+    stage: "complete",
+    actor: stringValue6(completedClaim?.actor) || "system:wfctl",
+    currentState: `Issue completed: ${options.summary.trim()}`,
+    lastCompleted: options.summary.trim(),
+    nextAction: "Return to the parent bundle and select or create the next frontier item.",
+    blockers: [],
+    now
+  });
   await writeFile8(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   await removeFile(claimLockPath(options.bundleRoot, parsed.summary.id));
   if (parsed.summary.phase === "wayfinding") {
@@ -19831,7 +19974,16 @@ async function dropWorkIssue(bundleRoot, issueId, reason, claimContext, now = /*
     completed_at: now.toISOString(),
     ...droppedClaim ? { claim: droppedClaim } : {}
   };
-  parsed.document.metadata.updated_at = now.toISOString();
+  writeCheckpoint(parsed.document, {
+    status: "complete",
+    stage: "complete",
+    actor: stringValue6(droppedClaim?.actor) || "system:wfctl",
+    currentState: `Issue dropped: ${reason.trim()}`,
+    lastCompleted: "Issue explicitly removed from the active frontier.",
+    nextAction: "Return to the parent bundle and reassess the remaining frontier.",
+    blockers: [],
+    now
+  });
   await writeFile8(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   await removeFile(claimLockPath(bundleRoot, parsed.summary.id));
   return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
@@ -19857,7 +20009,17 @@ async function setWorkIssueBlocker(bundleRoot, issueId, blockerId, blocked, now 
     throw new Error(`Dependency update would create a cycle: ${cycles[0].join(" -> ")}`);
   }
   issue3.document.metadata.blocked_by = next;
-  issue3.document.metadata.updated_at = now.toISOString();
+  const claimed = issue3.summary.status === "claimed";
+  writeCheckpoint(issue3.document, {
+    status: claimed && next.length > 0 ? "blocked" : claimed ? "active" : "ready",
+    stage: issue3.summary.phase === "wayfinding" ? "wayfind" : "implement",
+    actor: stringValue6(recordValue6(issue3.document.metadata.claim)?.actor) || "system:wfctl",
+    currentState: next.length > 0 ? `Issue depends on ${next.join(", ")}.` : claimed ? "Issue is claimed with no unresolved dependency blocker." : "Issue is ready but unclaimed.",
+    lastCompleted: blocked ? `Added dependency ${blocker.summary.id}.` : `Removed dependency ${blocker.summary.id}.`,
+    nextAction: next.length > 0 ? "Resolve the declared dependencies before continuing this issue." : claimed ? "Continue the claimed issue and refresh the checkpoint after material work." : "Review the required context and claim the issue.",
+    blockers: claimed ? next : [],
+    now
+  });
   await writeFile8(issue3.path, serializeWorkSpec(issue3.document), "utf8");
   return (await readIssueById(bundleRoot, issue3.summary.id)).summary;
 }
@@ -19966,13 +20128,22 @@ async function finishWayfinder(bundleRoot, deliveryMode, now = /* @__PURE__ */ n
     map: "map.md",
     resolved_at: nowIso
   };
-  change.metadata.updated_at = nowIso;
+  writeCheckpoint(change, {
+    status: "active",
+    stage: "shape",
+    actor: "system:wfctl",
+    currentState: "Wayfinder is resolved and the bounded delivery specification is active.",
+    lastCompleted: "Direction map synthesized into stable acceptance criteria.",
+    nextAction: "Review the bounded specification and prepare the delivery frontier.",
+    blockers: [],
+    now
+  });
   await writeFile8(mapPath, serializeWorkSpec(map2), "utf8");
   await writeFile8(changePath, serializeWorkSpec(change), "utf8");
   return { mapPath, changePath, mode: deliveryMode };
 }
 async function bundleCompletionIssues(bundleRoot, change) {
-  if (change.metadata.workflow_version !== 3) {
+  if (![3, 4].includes(Number(change.metadata.workflow_version))) {
     return [];
   }
   const issues = [];
@@ -20033,6 +20204,9 @@ async function bundleCompletionIssues(bundleRoot, change) {
     }
   }
   const inspection = await inspectWorkBundle(bundleRoot, "review");
+  for (const checkpoint of inspection.checkpoints) {
+    issues.push(...checkpoint.issues);
+  }
   for (const entry of inspection.inventory) {
     if (entry.role === "review") {
       continue;
@@ -20059,7 +20233,7 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
       issues.push(`${required}: required bundle file is missing`);
     }
   }
-  if (![2, 3].includes(Number(change.metadata.workflow_version))) {
+  if (![2, 3, 4].includes(Number(change.metadata.workflow_version))) {
     issues.push("change.md: unsupported workflow_version");
   }
   const repositoryIds = new Set(
@@ -20124,8 +20298,8 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
         }
       }
     }
-    if (entry.document.metadata.workflow_version !== 1) {
-      issues.push(`${summary.id}: workflow_version must be 1`);
+    if (![1, 2].includes(Number(entry.document.metadata.workflow_version))) {
+      issues.push(`${summary.id}: workflow_version must be 1 or 2`);
     }
     if (entry.document.metadata.kind !== "work-issue") {
       issues.push(`${summary.id}: kind must be work-issue`);
@@ -20579,6 +20753,151 @@ function normalizeActor(value) {
   }
   return normalized;
 }
+function writeCheckpoint(document3, input) {
+  const blockers = uniqueStrings4(input.blockers ?? []);
+  if (input.status === "blocked" && blockers.length === 0) {
+    throw new Error("A blocked checkpoint requires at least one blocker");
+  }
+  if (input.status !== "blocked" && blockers.length > 0) {
+    throw new Error("Checkpoint blockers require blocked status");
+  }
+  if (input.status === "complete" !== (input.stage === "complete")) {
+    throw new Error("Complete checkpoint status and stage must be used together");
+  }
+  const updatedAt = input.now.toISOString();
+  document3.metadata.checkpoint_version = 1;
+  document3.metadata.updated_at = updatedAt;
+  document3.metadata.checkpoint = {
+    status: input.status,
+    stage: input.stage,
+    actor: normalizeActor(input.actor),
+    current_state: requireCheckpointText(input.currentState, "current state"),
+    last_completed: requireCheckpointText(input.lastCompleted, "last completed action"),
+    next_action: requireCheckpointText(input.nextAction, "next action"),
+    blockers,
+    updated_at: updatedAt,
+    basis_sha256: ""
+  };
+  checkpointRecord(document3).basis_sha256 = checkpointBasis(document3);
+}
+function checkpointSummary(document3, path, owner, issue3, required) {
+  const version = document3.metadata.checkpoint_version;
+  const checkpoint = checkpointRecord(document3);
+  if (version === void 0 && !checkpoint && !required) {
+    return void 0;
+  }
+  const issues = [];
+  if (version !== 1) {
+    issues.push(`${path}: checkpoint_version must be 1`);
+  }
+  if (!checkpoint) {
+    issues.push(`${path}: checkpoint metadata is required`);
+  }
+  const statusValue = stringValue6(checkpoint?.status);
+  const stageValue = stringValue6(checkpoint?.stage);
+  const allowedStatuses = ["ready", "active", "blocked", "complete"];
+  const allowedStages = ["shape", "wayfind", "implement", "review", "complete"];
+  if (!allowedStatuses.includes(statusValue)) {
+    issues.push(`${path}: checkpoint.status is invalid`);
+  }
+  if (!allowedStages.includes(stageValue)) {
+    issues.push(`${path}: checkpoint.stage is invalid`);
+  }
+  const actor = stringValue6(checkpoint?.actor).trim();
+  const currentState = stringValue6(checkpoint?.current_state).trim();
+  const lastCompleted = stringValue6(checkpoint?.last_completed).trim();
+  const nextAction = stringValue6(checkpoint?.next_action).trim();
+  const updatedAt = stringValue6(checkpoint?.updated_at).trim();
+  const blockersValue = checkpoint?.blockers;
+  const blockers = stringArray5(blockersValue).map((entry) => entry.trim()).filter(Boolean);
+  if (!actor) issues.push(`${path}: checkpoint.actor is required`);
+  if (!currentState) issues.push(`${path}: checkpoint.current_state is required`);
+  if (!lastCompleted) issues.push(`${path}: checkpoint.last_completed is required`);
+  if (!nextAction) issues.push(`${path}: checkpoint.next_action is required`);
+  if (!updatedAt || Number.isNaN(Date.parse(updatedAt))) {
+    issues.push(`${path}: checkpoint.updated_at must be an ISO timestamp`);
+  }
+  if (!Array.isArray(blockersValue) || blockers.length !== blockersValue.length) {
+    issues.push(`${path}: checkpoint.blockers must contain only non-empty strings`);
+  }
+  if (statusValue === "blocked" && blockers.length === 0) {
+    issues.push(`${path}: blocked checkpoint requires a blocker`);
+  }
+  if (statusValue !== "blocked" && blockers.length > 0) {
+    issues.push(`${path}: only a blocked checkpoint may retain blockers`);
+  }
+  if (statusValue === "complete" !== (stageValue === "complete")) {
+    issues.push(`${path}: complete checkpoint status and stage must be used together`);
+  }
+  const basis = stringValue6(checkpoint?.basis_sha256);
+  if (!/^[0-9a-f]{64}$/.test(basis)) {
+    issues.push(`${path}: checkpoint.basis_sha256 is invalid`);
+  } else if (basis !== checkpointBasis(document3)) {
+    issues.push(`${path}: checkpoint is stale; refresh it after the latest record changes`);
+  }
+  if (owner === "issue") {
+    const recordStatus = stringValue6(document3.metadata.status);
+    if (recordStatus === "claimed" && !["active", "blocked"].includes(statusValue)) {
+      issues.push(`${path}: claimed issue checkpoint must be active or blocked`);
+    }
+    if (["completed", "dropped"].includes(recordStatus) && statusValue !== "complete") {
+      issues.push(`${path}: terminal issue checkpoint must be complete`);
+    }
+    if (["draft", "ready"].includes(recordStatus) && statusValue !== "ready") {
+      issues.push(`${path}: unclaimed issue checkpoint must be ready`);
+    }
+  } else {
+    const terminal2 = Boolean(stringValue6(document3.metadata.closed_at).trim());
+    if (terminal2 && statusValue !== "complete") {
+      issues.push(`${path}: closed change checkpoint must be complete`);
+    }
+    if (!terminal2 && statusValue === "complete") {
+      issues.push(`${path}: active change checkpoint cannot be complete`);
+    }
+  }
+  return {
+    owner,
+    path,
+    ...issue3 ? { issue: issue3 } : {},
+    status: allowedStatuses.includes(statusValue) ? statusValue : "ready",
+    stage: allowedStages.includes(stageValue) ? stageValue : "shape",
+    actor,
+    currentState,
+    lastCompleted,
+    nextAction,
+    blockers,
+    updatedAt,
+    valid: issues.length === 0,
+    issues
+  };
+}
+function checkpointRecord(document3) {
+  return recordValue6(document3.metadata.checkpoint);
+}
+function checkpointBasis(document3) {
+  const metadata = { ...document3.metadata };
+  delete metadata.checkpoint;
+  delete metadata.updated_at;
+  return sha256(Buffer.from(JSON.stringify(stableValue({ metadata, body: document3.body }))));
+}
+function stableValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(stableValue);
+  }
+  if (isRecord2(value)) {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, stableValue(value[key])])
+    );
+  }
+  return value;
+}
+function requireCheckpointText(value, label) {
+  const normalized = stringValue6(value).trim();
+  if (!normalized) {
+    throw new Error(`Checkpoint ${label} must not be empty`);
+  }
+  return normalized;
+}
 function claimLockPath(bundleRoot, issueId) {
   const knowledgeRoot = resolve12(bundleRoot, "../../..");
   return join10(
@@ -20686,8 +21005,8 @@ async function validateKnowledge(targetInput, conceptPaths) {
   for (const absolute of selected.sort()) {
     const displayPath = portable2(relative5(target, absolute));
     try {
-      const stat = await lstat4(absolute);
-      if (stat.isSymbolicLink()) {
+      const stat2 = await lstat4(absolute);
+      if (stat2.isSymbolicLink()) {
         errors.push({ path: displayPath, message: "curated knowledge concepts must not be symlinks" });
         continue;
       }
@@ -29962,7 +30281,7 @@ function ora(options) {
 
 // src/cli.ts
 import { createInterface } from "node:readline/promises";
-import { resolve as resolve17 } from "node:path";
+import { resolve as resolve18 } from "node:path";
 
 // src/applier.ts
 import { randomUUID } from "node:crypto";
@@ -30048,6 +30367,7 @@ var KNOWLEDGE_DIRECTORIES = [
   "reconstruction/archive",
   "changes/active",
   "changes/archive",
+  "changes/archive/captures",
   "changes/inbox"
 ];
 var COMMON_SKILLS = [
@@ -30341,8 +30661,8 @@ async function planRepositoryRegistry(target) {
 }
 async function planDirectory(target, relativePath2) {
   try {
-    const stat = await lstat(join2(target, relativePath2));
-    if (stat.isDirectory()) {
+    const stat2 = await lstat(join2(target, relativePath2));
+    if (stat2.isDirectory()) {
       return {
         kind: "directory",
         path: relativePath2,
@@ -30376,8 +30696,8 @@ async function planDirectory(target, relativePath2) {
 async function planManagedBlock(target, relativePath2, body, markers) {
   const absolute = join2(target, relativePath2);
   try {
-    const stat = await lstat(absolute);
-    if (stat.isSymbolicLink()) {
+    const stat2 = await lstat(absolute);
+    if (stat2.isSymbolicLink()) {
       return {
         kind: "managed-block",
         path: relativePath2,
@@ -30385,7 +30705,7 @@ async function planManagedBlock(target, relativePath2, body, markers) {
         reason: "instruction file is a symlink not owned by this operation"
       };
     }
-    if (!stat.isFile()) {
+    if (!stat2.isFile()) {
       return {
         kind: "managed-block",
         path: relativePath2,
@@ -30435,8 +30755,8 @@ async function planLeafGitignore(target) {
   const relativePath2 = ".gitignore";
   const absolute = join2(target, relativePath2);
   try {
-    const stat = await lstat(absolute);
-    if (stat.isFile() && !stat.isSymbolicLink()) {
+    const stat2 = await lstat(absolute);
+    if (stat2.isFile() && !stat2.isSymbolicLink()) {
       const existing = await readFile3(absolute, "utf8");
       if (!existing.includes(GITIGNORE_MARKERS.start) && ignoresGraphifyOutput(existing)) {
         return {
@@ -30475,8 +30795,8 @@ async function planClaudeInstructions(target, body) {
   const path = "CLAUDE.md";
   const absolute = join2(target, path);
   try {
-    const stat = await lstat(absolute);
-    if (stat.isSymbolicLink()) {
+    const stat2 = await lstat(absolute);
+    if (stat2.isSymbolicLink()) {
       const current = await readlink(absolute);
       return current === "AGENTS.md" ? {
         kind: "symlink",
@@ -30523,8 +30843,8 @@ async function planOwnedFile(target, relativePath2, content3, state) {
   const absolute = join2(target, relativePath2);
   const desiredHash = hashContent(content3);
   try {
-    const stat = await lstat(absolute);
-    if (!stat.isFile() || stat.isSymbolicLink()) {
+    const stat2 = await lstat(absolute);
+    if (!stat2.isFile() || stat2.isSymbolicLink()) {
       return {
         kind: "file",
         path: relativePath2,
@@ -30589,8 +30909,8 @@ async function planOwnedFile(target, relativePath2, content3, state) {
 async function planObsoleteOwnedFile(target, relativePath2, installedHash) {
   const absolute = join2(target, relativePath2);
   try {
-    const stat = await lstat(absolute);
-    if (!stat.isFile() || stat.isSymbolicLink()) {
+    const stat2 = await lstat(absolute);
+    if (!stat2.isFile() || stat2.isSymbolicLink()) {
       return {
         kind: "delete",
         path: relativePath2,
@@ -30842,14 +31162,14 @@ function isMissing(error2) {
 }
 async function snapshotPath(path, root, name) {
   try {
-    const stat = await lstat2(path);
-    if (stat.isSymbolicLink()) {
+    const stat2 = await lstat2(path);
+    if (stat2.isSymbolicLink()) {
       return { path, kind: "symlink", linkTarget: await readlink2(path) };
     }
-    if (stat.isDirectory()) {
+    if (stat2.isDirectory()) {
       return { path, kind: "directory" };
     }
-    if (!stat.isFile()) {
+    if (!stat2.isFile()) {
       throw new Error(`Cannot transactionally snapshot unsupported path: ${path}`);
     }
     const backupPath = join3(root, name);
@@ -30869,8 +31189,8 @@ async function restoreSnapshot(snapshot) {
   }
   if (snapshot.kind === "directory") {
     try {
-      const stat = await lstat2(snapshot.path);
-      if (stat.isDirectory()) {
+      const stat2 = await lstat2(snapshot.path);
+      if (stat2.isDirectory()) {
         return;
       }
       await removeCurrent(snapshot.path);
@@ -30892,8 +31212,8 @@ async function restoreSnapshot(snapshot) {
 }
 async function removeCurrent(path) {
   try {
-    const stat = await lstat2(path);
-    if (stat.isDirectory() && !stat.isSymbolicLink()) {
+    const stat2 = await lstat2(path);
+    if (stat2.isDirectory() && !stat2.isSymbolicLink()) {
       await rmdir(path);
     } else {
       await unlink(path);
@@ -30916,10 +31236,260 @@ init_git();
 init_knowledge();
 init_knowledge_graph();
 init_claim_ledger();
-import { access as access5, readFile as readFile13, realpath as realpath3 } from "node:fs/promises";
-import { constants as constants5 } from "node:fs";
-import { join as join13, resolve as resolve15 } from "node:path";
+import { access as access6, readFile as readFile14, realpath as realpath4 } from "node:fs/promises";
+import { constants as constants6 } from "node:fs";
+import { join as join14, resolve as resolve16 } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+
+// src/capture.ts
+init_assets();
+init_config();
+init_git();
+init_work_spec();
+import { constants as constants5 } from "node:fs";
+import {
+  access as access5,
+  mkdir as mkdir8,
+  readFile as readFile13,
+  readdir as readdir8,
+  realpath as realpath3,
+  rename as rename8,
+  stat,
+  writeFile as writeFile9
+} from "node:fs/promises";
+import { isAbsolute as isAbsolute3, join as join12, posix as posix2, relative as relative6, resolve as resolve14, sep as sep7 } from "node:path";
+async function createCapture(options) {
+  const context = await resolveCaptureContext(options.target);
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug4(options.slug)}`;
+  const inboxRoot = join12(context.knowledgeRoot, "changes/inbox");
+  const id = await uniqueFileId(
+    [inboxRoot, join12(context.knowledgeRoot, "changes/archive/captures")],
+    base
+  );
+  const path = join12(inboxRoot, `${id}.md`);
+  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+  const template = parseWorkSpec(await readFile13(
+    join12(distributionRoot, "skills/manage-project-work/assets/capture.md"),
+    "utf8"
+  ));
+  template.metadata = {
+    ...template.metadata,
+    id,
+    title: requireText(options.title, "Capture title"),
+    status: "pending",
+    created_at: now.toISOString(),
+    source: durableSource(context.source)
+  };
+  await writeFile9(path, serializeWorkSpec(template), {
+    encoding: "utf8",
+    flag: "wx"
+  });
+  return {
+    id,
+    ...context.codeRoot ? { codeRoot: context.codeRoot } : {},
+    knowledgeRoot: context.knowledgeRoot,
+    path
+  };
+}
+async function listCaptures(target) {
+  const context = await resolveCaptureContext(target);
+  const inboxRoot = join12(context.knowledgeRoot, "changes/inbox");
+  const entries = await readdir8(inboxRoot, { withFileTypes: true });
+  const captures = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) {
+      continue;
+    }
+    const path = join12(inboxRoot, entry.name);
+    const parsed = parsePendingCapture(await readFile13(path, "utf8"), path);
+    captures.push({
+      id: parsed.id,
+      title: parsed.title,
+      status: "pending",
+      path,
+      createdAt: parsed.createdAt,
+      legacy: parsed.legacy
+    });
+  }
+  return { knowledgeRoot: context.knowledgeRoot, captures };
+}
+async function resolveCapture(options) {
+  const context = await resolveCaptureContext(options.target);
+  const id = normalizeCaptureId(options.id);
+  const inboxPath = join12(context.knowledgeRoot, "changes/inbox", `${id}.md`);
+  const document3 = parseWorkSpec(await readFile13(inboxPath, "utf8"));
+  parsePendingCapture(serializeWorkSpec(document3), inboxPath);
+  const reason = requireText(options.reason, "Capture resolution reason");
+  const destinations = await normalizeDestinations(
+    context.knowledgeRoot,
+    options.destinations ?? []
+  );
+  if (options.outcome === "routed" && destinations.length === 0) {
+    throw new Error("A routed capture requires at least one existing destination");
+  }
+  if (options.outcome === "discarded" && destinations.length > 0) {
+    throw new Error("A discarded capture cannot declare destinations");
+  }
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  delete document3.metadata.handoff_version;
+  document3.metadata.capture_version = 1;
+  document3.metadata.kind = "capture";
+  document3.metadata.status = options.outcome;
+  document3.metadata.resolved_at = now.toISOString();
+  document3.metadata.resolution = {
+    reason,
+    destinations
+  };
+  const archiveRoot = join12(context.knowledgeRoot, "changes/archive/captures");
+  const archivePath = join12(archiveRoot, `${id}.md`);
+  await assertAbsent(archivePath);
+  await mkdir8(archiveRoot, { recursive: true });
+  await rename8(inboxPath, archivePath);
+  try {
+    await writeFile9(archivePath, serializeWorkSpec(document3), "utf8");
+  } catch (error2) {
+    await rename8(archivePath, inboxPath);
+    throw error2;
+  }
+  return { id, outcome: options.outcome, destinations, archivePath };
+}
+async function resolveCaptureContext(targetInput) {
+  const source = readRepositoryMetadata(resolve14(targetInput));
+  const target = source.root;
+  const config = await readConfig(target);
+  const knowledgeRoot = config.profile === "knowledge" ? await realpath3(target) : await realpath3(resolveKnowledgeRoot(target, config));
+  const knowledgeConfig = await readConfig(knowledgeRoot);
+  if (knowledgeConfig.profile !== "knowledge") {
+    throw new Error(`Configured knowledge path is not a knowledge repository: ${knowledgeRoot}`);
+  }
+  return {
+    knowledgeRoot,
+    ...config.profile === "leaf" ? { codeRoot: target } : {},
+    source
+  };
+}
+function parsePendingCapture(content3, path) {
+  const document3 = parseWorkSpec(content3);
+  const legacy = document3.metadata.handoff_version === 1 && document3.metadata.status === "inbox";
+  const current = document3.metadata.capture_version === 1 && document3.metadata.kind === "capture" && document3.metadata.status === "pending";
+  if (!legacy && !current) {
+    throw new Error(`${path}: inbox file is not a pending capture`);
+  }
+  const id = requireText(document3.metadata.id, `${path}: id`);
+  if (`${id}.md` !== path.slice(path.lastIndexOf(sep7) + 1)) {
+    throw new Error(`${path}: capture id does not match its filename`);
+  }
+  return {
+    id,
+    title: requireText(document3.metadata.title, `${path}: title`),
+    createdAt: requireText(document3.metadata.created_at, `${path}: created_at`),
+    legacy
+  };
+}
+async function normalizeDestinations(knowledgeRoot, inputs) {
+  const destinations = [...new Set(inputs.map((input) => normalizeDestination(input)))];
+  for (const destination of destinations) {
+    if (!destination.startsWith("knowledge/") && !destination.startsWith("changes/active/")) {
+      throw new Error(
+        `Capture destination must be under knowledge/ or changes/active/: ${destination}`
+      );
+    }
+    if (!destination.endsWith(".md")) {
+      throw new Error(`Capture destination must identify a Markdown owner: ${destination}`);
+    }
+    if (destination.startsWith("knowledge/") && /(?:^|\/)(?:index|log)\.md$/i.test(destination)) {
+      throw new Error(
+        `Capture destination must be a concrete knowledge concept, not an index or log: ${destination}`
+      );
+    }
+    const absolute = resolve14(knowledgeRoot, destination);
+    const scoped = relative6(knowledgeRoot, absolute);
+    if (!scoped || scoped.startsWith(`..${sep7}`) || scoped === ".." || isAbsolute3(scoped)) {
+      throw new Error(`Capture destination escapes the knowledge repository: ${destination}`);
+    }
+    await access5(absolute, constants5.R_OK);
+    if (!(await stat(absolute)).isFile()) {
+      throw new Error(`Capture destination must be a file: ${destination}`);
+    }
+  }
+  return destinations.sort();
+}
+function normalizeDestination(input) {
+  if (isAbsolute3(input)) {
+    throw new Error(`Capture destinations must be repository-relative: ${input}`);
+  }
+  const normalized = posix2.normalize(input.replaceAll("\\", "/").replace(/^\.\//, ""));
+  if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) {
+    throw new Error(`Invalid capture destination: ${input}`);
+  }
+  return normalized;
+}
+function durableSource(source) {
+  return {
+    repository: source.repository,
+    checkout: source.checkout,
+    branch: source.branch,
+    commit_at_capture: source.commit,
+    remote: source.remote,
+    dirty: source.dirty,
+    worktree: source.worktree,
+    worktree_id: source.worktreeId
+  };
+}
+function normalizeCaptureId(value) {
+  const normalized = value.trim().replace(/\.md$/i, "");
+  if (!/^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalized)) {
+    throw new Error(`Invalid capture id: ${value}`);
+  }
+  return normalized;
+}
+function normalizeSlug4(value) {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!normalized) {
+    throw new Error("Slug must contain letters or digits");
+  }
+  return normalized;
+}
+async function uniqueFileId(roots, base) {
+  for (let index2 = 1; index2 <= 999; index2 += 1) {
+    const candidate = index2 === 1 ? base : `${base}-${index2}`;
+    const states = await Promise.all(roots.map(async (root) => {
+      try {
+        await access5(join12(root, `${candidate}.md`), constants5.F_OK);
+        return true;
+      } catch (error2) {
+        if (isMissingFileError(error2)) {
+          return false;
+        }
+        throw error2;
+      }
+    }));
+    if (states.every((exists2) => !exists2)) {
+      return candidate;
+    }
+  }
+  throw new Error(`Cannot allocate a unique capture id for ${base}`);
+}
+async function assertAbsent(path) {
+  try {
+    await access5(path, constants5.F_OK);
+    throw new Error(`Capture archive already exists: ${path}`);
+  } catch (error2) {
+    if (isRecord2(error2) && error2.code === "ENOENT") {
+      return;
+    }
+    throw error2;
+  }
+}
+function requireText(value, label) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label} must not be empty`);
+  }
+  return value.trim();
+}
+
+// src/doctor.ts
 init_repository_registry();
 
 // src/skill-installer.ts
@@ -30938,7 +31508,7 @@ import {
   symlinkSync
 } from "node:fs";
 import { homedir, tmpdir as tmpdir2 } from "node:os";
-import { dirname as dirname9, join as join12, resolve as resolve14 } from "node:path";
+import { dirname as dirname9, join as join13, resolve as resolve15 } from "node:path";
 function installSkillsTransactional(options) {
   const transaction = snapshotSkillInstall(options);
   try {
@@ -30948,7 +31518,7 @@ function installSkillsTransactional(options) {
       const qmdSkillSource = resolveQmdSkillSource();
       installSkillSource(
         cli,
-        resolve14(options.distributionRoot),
+        resolve15(options.distributionRoot),
         workflowSkillsForProfile(options.profile),
         options
       );
@@ -30976,7 +31546,7 @@ function installSkillSource(cli, source, skills, options) {
   ];
   const runtime = runtimeCommand(cli, args.slice(1));
   const result = spawnSync5(runtime.command, runtime.args, {
-    cwd: resolve14(options.target),
+    cwd: resolve15(options.target),
     encoding: "utf8",
     stdio: options.yes ? ["ignore", "pipe", "pipe"] : "inherit"
   });
@@ -30993,7 +31563,7 @@ function listInstalledSkills(target, global2) {
   const args = [cli, "list", "--json", ...global2 ? ["--global"] : []];
   const runtime = runtimeCommand(cli, args.slice(1));
   const result = spawnSync5(runtime.command, runtime.args, {
-    cwd: resolve14(target),
+    cwd: resolve15(target),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -31013,10 +31583,10 @@ function listInstalledSkills(target, global2) {
 function resolveSkillsCli() {
   const require2 = createRequire(import.meta.url);
   const packagePath = require2.resolve("skills/package.json");
-  return join12(dirname9(packagePath), "bin/cli.mjs");
+  return join13(dirname9(packagePath), "bin/cli.mjs");
 }
 function reconcileProjectWorkflowSkills(options) {
-  const lockPath = join12(options.target, "skills-lock.json");
+  const lockPath = join13(options.target, "skills-lock.json");
   if (!existsSync2(lockPath)) {
     return;
   }
@@ -31026,10 +31596,10 @@ function reconcileProjectWorkflowSkills(options) {
   } catch {
     return;
   }
-  const distributionRoot = resolve14(options.distributionRoot);
+  const distributionRoot = resolve15(options.distributionRoot);
   const owned = allWorkflowSkills().filter((skill) => {
     const entry = lock.skills?.[skill];
-    return entry?.sourceType === "local" && entry.source && resolve14(entry.source) === distributionRoot;
+    return entry?.sourceType === "local" && entry.source && resolve15(entry.source) === distributionRoot;
   });
   if (owned.length === 0) {
     return;
@@ -31039,7 +31609,7 @@ function reconcileProjectWorkflowSkills(options) {
   const cli = resolveSkillsCli();
   for (const skill of owned) {
     for (const agent of ["codex", "claude"]) {
-      const path = agent === "codex" ? join12(options.target, ".agents/skills", skill) : join12(options.target, ".claude/skills", skill);
+      const path = agent === "codex" ? join13(options.target, ".agents/skills", skill) : join13(options.target, ".claude/skills", skill);
       if (!existsSync2(path) || desired.has(skill) && selectedAgents.has(agent)) {
         continue;
       }
@@ -31053,7 +31623,7 @@ function reconcileProjectWorkflowSkills(options) {
       ];
       const runtime = runtimeCommand(cli, args.slice(1));
       const result = spawnSync5(runtime.command, runtime.args, {
-        cwd: resolve14(options.target),
+        cwd: resolve15(options.target),
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"]
       });
@@ -31072,20 +31642,20 @@ function runtimeCommand(cli, args) {
   return { command: process.execPath, args: [cli, ...args] };
 }
 function snapshotSkillInstall(options) {
-  const root = mkdtempSync(join12(tmpdir2(), "wfctl-skills-"));
+  const root = mkdtempSync(join13(tmpdir2(), "wfctl-skills-"));
   const names = [.../* @__PURE__ */ new Set([...allWorkflowSkills(), "qmd"])];
   const paths = /* @__PURE__ */ new Set();
   for (const agent of options.agents) {
-    const base = options.scope === "user" ? globalSkillRoot(agent) : join12(
-      resolve14(options.target),
+    const base = options.scope === "user" ? globalSkillRoot(agent) : join13(
+      resolve15(options.target),
       agent === "codex" ? ".agents/skills" : ".claude/skills"
     );
     for (const name of names) {
-      paths.add(join12(base, name));
+      paths.add(join13(base, name));
     }
   }
   if (options.scope === "project") {
-    paths.add(join12(resolve14(options.target), "skills-lock.json"));
+    paths.add(join13(resolve15(options.target), "skills-lock.json"));
   }
   const snapshots = [...paths].map(
     (path, index2) => snapshotSkillPath(path, root, index2)
@@ -31119,12 +31689,12 @@ function snapshotSkillPath(path, root, index2) {
   if (!existsSync2(path)) {
     return { path, kind: "absent" };
   }
-  const stat = lstatSync(path);
-  if (stat.isSymbolicLink()) {
+  const stat2 = lstatSync(path);
+  if (stat2.isSymbolicLink()) {
     return { path, kind: "symlink", linkTarget: readlinkSync(path) };
   }
-  const backup = join12(root, String(index2));
-  if (stat.isDirectory()) {
+  const backup = join13(root, String(index2));
+  if (stat2.isDirectory()) {
     cpSync(path, backup, { recursive: true, verbatimSymlinks: true });
     return { path, kind: "directory", backup };
   }
@@ -31148,17 +31718,17 @@ function restoreSkillPath(snapshot) {
 }
 function globalSkillRoot(agent) {
   if (agent === "codex") {
-    return join12(process.env.CODEX_HOME?.trim() || join12(homedir(), ".codex"), "skills");
+    return join13(process.env.CODEX_HOME?.trim() || join13(homedir(), ".codex"), "skills");
   }
-  return join12(
-    process.env.CLAUDE_CONFIG_DIR?.trim() || join12(homedir(), ".claude"),
+  return join13(
+    process.env.CLAUDE_CONFIG_DIR?.trim() || join13(homedir(), ".claude"),
     "skills"
   );
 }
 
 // src/doctor.ts
 async function runDoctor(targetInput, options = {}) {
-  const target = resolve15(targetInput);
+  const target = resolve16(targetInput);
   const checks = [];
   const runner = options.runner ?? runTool;
   let config;
@@ -31181,8 +31751,8 @@ async function runDoctor(targetInput, options = {}) {
       agents: config.skills?.agents ?? [],
       runner
     }));
-    checks.push(await graphifyGraphCheck(join13(target, "graphify-out/graph.json")));
-    checks.push(await graphifyScopeCheck(join13(target, ".graphifyignore")));
+    checks.push(await graphifyGraphCheck(join14(target, "graphify-out/graph.json")));
+    checks.push(await graphifyScopeCheck(join14(target, ".graphifyignore")));
     const ignored = runner(
       "git",
       ["check-ignore", "-q", "graphify-out/graph.json"],
@@ -31199,7 +31769,7 @@ async function runDoctor(targetInput, options = {}) {
       if (config.skills.agents.includes("codex")) {
         checks.push(await pathCheck(
           `codex-skill-${skill}`,
-          join13(target, ".agents/skills", skill, "SKILL.md"),
+          join14(target, ".agents/skills", skill, "SKILL.md"),
           "fail",
           `Codex skill ${skill} is installed`,
           `Codex skill ${skill} is missing`
@@ -31208,7 +31778,7 @@ async function runDoctor(targetInput, options = {}) {
       if (config.skills.agents.includes("claude")) {
         checks.push(await pathCheck(
           `claude-skill-${skill}`,
-          join13(target, ".claude/skills", skill, "SKILL.md"),
+          join14(target, ".claude/skills", skill, "SKILL.md"),
           "fail",
           `Claude skill ${skill} is installed`,
           `Claude skill ${skill} is missing`
@@ -31245,7 +31815,7 @@ async function runDoctor(targetInput, options = {}) {
   checks.push(qmdVersion);
   const qmdConfig = await pathCheck(
     "qmd-index-config",
-    join13(knowledgeRoot, ".qmd/index.yml"),
+    join14(knowledgeRoot, ".qmd/index.yml"),
     "fail",
     `Project-local QMD collections found at ${knowledgeRoot}`,
     `Project-local QMD configuration is missing at ${knowledgeRoot}`
@@ -31256,14 +31826,14 @@ async function runDoctor(targetInput, options = {}) {
   }
   checks.push(await pathCheck(
     "knowledge",
-    join13(knowledgeRoot, "knowledge/index.md"),
+    join14(knowledgeRoot, "knowledge/index.md"),
     "fail",
     `Knowledge bundle found at ${knowledgeRoot}`,
     `Knowledge bundle is missing at ${knowledgeRoot}`
   ));
   checks.push(await pathCheck(
     "maintainer-guide",
-    join13(target, "PROJECT_WORKFLOW.md"),
+    join14(target, "PROJECT_WORKFLOW.md"),
     "fail",
     "Maintainer guide is present",
     "PROJECT_WORKFLOW.md is missing"
@@ -31316,15 +31886,30 @@ async function runDoctor(targetInput, options = {}) {
       "reconstruction/archive",
       "changes/active",
       "changes/archive",
+      "changes/archive/captures",
       "changes/inbox"
     ]) {
       checks.push(await pathCheck(
         `knowledge-${directory}`,
-        join13(target, directory),
+        join14(target, directory),
         "fail",
         `${directory} exists`,
         `${directory} is missing`
       ));
+    }
+    try {
+      const captures = await listCaptures(target);
+      checks.push({
+        name: "capture-inbox",
+        status: captures.captures.length > 0 ? "warn" : "pass",
+        message: captures.captures.length > 0 ? `${captures.captures.length} pending capture(s) require knowledge triage` : "No pending captures"
+      });
+    } catch (error2) {
+      checks.push({
+        name: "capture-inbox",
+        status: "fail",
+        message: `Capture inbox is invalid: ${errorMessage(error2)}`
+      });
     }
     try {
       const connections = await listRepositoryConnections(target);
@@ -31349,12 +31934,12 @@ async function runDoctor(targetInput, options = {}) {
   } else {
     try {
       const connections = await listRepositoryConnections(knowledgeRoot);
-      const currentRoot = await realpath3(target);
+      const currentRoot = await realpath4(target);
       const connection = connections.find(
-        (entry) => entry.checkouts.some((checkout2) => resolve15(checkout2.root) === currentRoot)
+        (entry) => entry.checkouts.some((checkout2) => resolve16(checkout2.root) === currentRoot)
       );
       const checkout = connection?.checkouts.find(
-        (entry) => resolve15(entry.root) === currentRoot
+        (entry) => resolve16(entry.root) === currentRoot
       );
       checks.push({
         name: "repository-connection",
@@ -31415,7 +32000,7 @@ function repositoryConnectionMessage(repository, selection) {
 }
 async function graphifyScopeCheck(path) {
   try {
-    const content3 = await readFile13(path, "utf8");
+    const content3 = await readFile14(path, "utf8");
     const required = [
       ".agents/",
       ".claude/",
@@ -31438,9 +32023,9 @@ async function graphifyScopeCheck(path) {
   }
 }
 async function knowledgeGraphCheck(target, expectedGraph) {
-  const path = join13(target, ".workflow/current/knowledge-graph.json");
+  const path = join14(target, ".workflow/current/knowledge-graph.json");
   try {
-    const value = JSON.parse(await readFile13(path, "utf8"));
+    const value = JSON.parse(await readFile14(path, "utf8"));
     if (!isDeepStrictEqual(value, expectedGraph)) {
       return {
         name: "knowledge-graph",
@@ -31462,9 +32047,9 @@ async function knowledgeGraphCheck(target, expectedGraph) {
   }
 }
 async function claimLedgerCheck(target, expectedLedger) {
-  const path = join13(target, ".workflow/current/claim-ledger.json");
+  const path = join14(target, ".workflow/current/claim-ledger.json");
   try {
-    const value = JSON.parse(await readFile13(path, "utf8"));
+    const value = JSON.parse(await readFile14(path, "utf8"));
     if (!isDeepStrictEqual(value, expectedLedger)) {
       return {
         name: "claim-ledger",
@@ -31490,7 +32075,7 @@ function doctorPassed(report) {
 }
 async function pathCheck(name, path, missingStatus, presentMessage, missingMessage) {
   try {
-    await access5(path, constants5.F_OK);
+    await access6(path, constants6.F_OK);
     return { name, status: "pass", message: presentMessage };
   } catch {
     return { name, status: missingStatus, message: missingMessage };
@@ -31615,7 +32200,7 @@ function isEtagOnlyModelCacheWarning(line) {
 }
 async function graphifyGraphCheck(path) {
   try {
-    const graph = JSON.parse(await readFile13(path, "utf8"));
+    const graph = JSON.parse(await readFile14(path, "utf8"));
     if (!Array.isArray(graph.nodes) || graph.nodes.length === 0) {
       return {
         name: "graphify-graph",
@@ -31665,20 +32250,20 @@ init_knowledge();
 init_repository_registry();
 init_work_spec();
 init_work_bundle();
-import { constants as constants6 } from "node:fs";
+import { constants as constants7 } from "node:fs";
 import {
-  access as access6,
-  mkdir as mkdir8,
-  readFile as readFile14,
-  readdir as readdir8,
-  realpath as realpath4,
-  rename as rename8,
+  access as access7,
+  mkdir as mkdir9,
+  readFile as readFile15,
+  readdir as readdir9,
+  realpath as realpath5,
+  rename as rename9,
   rm as rm4,
-  writeFile as writeFile9
+  writeFile as writeFile10
 } from "node:fs/promises";
-import { dirname as dirname10, join as join14, resolve as resolve16, sep as sep7 } from "node:path";
+import { dirname as dirname10, join as join15, resolve as resolve17, sep as sep8 } from "node:path";
 async function beginWork(options) {
-  const target = await realpath4(resolve16(options.target));
+  const target = await realpath5(resolve17(options.target));
   const config = await readConfig(target);
   let knowledgeRoot;
   let codeRoots;
@@ -31686,7 +32271,7 @@ async function beginWork(options) {
     if ((options.leaves ?? []).length > 0) {
       throw new Error("--leaf may be used only when work starts from a knowledge repository");
     }
-    knowledgeRoot = await realpath4(resolveKnowledgeRoot(target, config));
+    knowledgeRoot = await realpath5(resolveKnowledgeRoot(target, config));
     codeRoots = [target];
   } else {
     knowledgeRoot = target;
@@ -31707,7 +32292,7 @@ async function beginWork(options) {
     if (leafConfig.profile !== "leaf") {
       throw new Error(`Work source is not an initialized leaf: ${input.root}`);
     }
-    const configuredKnowledge = await realpath4(resolveKnowledgeRoot(input.root, leafConfig));
+    const configuredKnowledge = await realpath5(resolveKnowledgeRoot(input.root, leafConfig));
     if (configuredKnowledge !== knowledgeRoot) {
       throw new Error(
         `Leaf points to a different knowledge repository: ${input.root} -> ${configuredKnowledge}`
@@ -31724,17 +32309,17 @@ async function beginWork(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const date = now.toISOString().slice(0, 10);
   const id = await uniqueWorkId(
-    join14(knowledgeRoot, "changes/active"),
-    `${date}-${normalizeSlug4(options.slug)}`
+    join15(knowledgeRoot, "changes/active"),
+    `${date}-${normalizeSlug5(options.slug)}`
   );
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile14(
-    join14(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
+  const template = parseWorkSpec(await readFile15(
+    join15(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
     "utf8"
   ));
   const createdAt = now.toISOString();
-  const activeDirectory = join14(knowledgeRoot, "changes/active", id);
-  const specPath = join14(activeDirectory, "change.md");
+  const activeDirectory = join15(knowledgeRoot, "changes/active", id);
+  const specPath = join15(activeDirectory, "change.md");
   const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
   const pointerPaths = boundRepositories.map(
     (entry) => leafPointerPath(entry.root, id)
@@ -31744,7 +32329,7 @@ async function beginWork(options) {
   );
   template.metadata = {
     ...template.metadata,
-    workflow_version: 3,
+    workflow_version: 4,
     id,
     title: options.title,
     mode: options.mode,
@@ -31764,6 +32349,16 @@ async function beginWork(options) {
   };
   delete template.metadata.source;
   delete template.metadata.workspace;
+  initializeDocumentCheckpoint(template, {
+    status: "active",
+    stage: options.mode === "wayfinder" ? "wayfind" : "shape",
+    actor: "system:wfctl",
+    currentState: options.mode === "wayfinder" ? "The direction map is ready for initial charting." : "Initial change framing is pending.",
+    lastCompleted: "Central work bundle created.",
+    nextAction: options.mode === "wayfinder" ? "Chart the destination and first bounded frontier question." : "Persist the first agreed framing and refresh this checkpoint.",
+    blockers: [],
+    now
+  });
   const binding = {
     schemaVersion: 4,
     id,
@@ -31774,8 +32369,8 @@ async function beginWork(options) {
     repositories: boundRepositories
   };
   try {
-    await mkdir8(activeDirectory, { recursive: false });
-    await writeFile9(specPath, serializeWorkSpec(template), {
+    await mkdir9(activeDirectory, { recursive: false });
+    await writeFile10(specPath, serializeWorkSpec(template), {
       encoding: "utf8",
       flag: "wx"
     });
@@ -31804,44 +32399,9 @@ async function beginWork(options) {
     bundleRoot: activeDirectory
   };
 }
-async function createHandoff(options) {
-  const source = readRepositoryMetadata(resolve16(options.target));
-  const target = source.root;
-  const config = await readConfig(target);
-  const knowledgeRoot = config.profile === "knowledge" ? await realpath4(target) : await realpath4(resolveKnowledgeRoot(target, config));
-  await assertKnowledgeRoot(knowledgeRoot);
-  const now = options.now ?? /* @__PURE__ */ new Date();
-  const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug4(options.slug)}`;
-  const inboxRoot = join14(knowledgeRoot, "changes/inbox");
-  const id = await uniqueFileId(inboxRoot, base);
-  const path = join14(inboxRoot, `${id}.md`);
-  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile14(
-    join14(distributionRoot, "skills/manage-project-work/assets/handoff.md"),
-    "utf8"
-  ));
-  template.metadata = {
-    ...template.metadata,
-    id,
-    title: options.title,
-    status: "inbox",
-    created_at: now.toISOString(),
-    source: durableRepository(source)
-  };
-  await writeFile9(path, serializeWorkSpec(template), {
-    encoding: "utf8",
-    flag: "wx"
-  });
-  return {
-    id,
-    ...config.profile === "leaf" ? { codeRoot: target } : {},
-    knowledgeRoot,
-    path
-  };
-}
 async function verifyWork(targetInput, id) {
   const context = await requireWorkContext(targetInput, id);
-  const document3 = parseWorkSpec(await readFile14(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile15(context.specPath, "utf8"));
   const issues = completionIssues(document3, false);
   issues.push(...await bundleCompletionIssues(dirname10(context.specPath), document3));
   issues.push(...repositoryVerificationIssues(document3, context.currentSources));
@@ -31854,7 +32414,7 @@ async function verifyWork(targetInput, id) {
 async function closeWork(options) {
   const context = await requireWorkContext(options.target, options.id);
   const activeDirectory = dirname10(context.specPath);
-  const document3 = parseWorkSpec(await readFile14(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile15(context.specPath, "utf8"));
   if (options.outcome === "completed") {
     const issues = [
       ...completionIssues(document3, true),
@@ -31877,27 +32437,37 @@ async function closeWork(options) {
       }
     }
   }
-  const archivePath = join14(context.knowledgeRoot, "changes/archive", options.id);
-  await assertAbsent(archivePath, "archive");
+  const archivePath = join15(context.knowledgeRoot, "changes/archive", options.id);
+  await assertAbsent2(archivePath, "archive");
   const now = options.now ?? /* @__PURE__ */ new Date();
   document3.metadata.status = options.outcome;
   document3.metadata.outcome = options.outcome;
   document3.metadata.closed_at = now.toISOString();
-  document3.metadata.updated_at = now.toISOString();
   document3.metadata.sources_at_close = context.currentSources.map(durableRepository);
-  await mkdir8(dirname10(archivePath), { recursive: true });
-  await rename8(activeDirectory, archivePath);
+  const checkpoint = record(document3.metadata.checkpoint);
+  initializeDocumentCheckpoint(document3, {
+    status: "complete",
+    stage: "complete",
+    actor: typeof checkpoint?.actor === "string" ? checkpoint.actor : "system:wfctl",
+    currentState: `Change bundle closed as ${options.outcome}.`,
+    lastCompleted: "Completion gates passed and the bundle was archived.",
+    nextAction: "None \u2014 this bundle is closed.",
+    blockers: [],
+    now
+  });
+  await mkdir9(dirname10(archivePath), { recursive: true });
+  await rename9(activeDirectory, archivePath);
   try {
-    await writeFile9(
-      join14(archivePath, "change.md"),
+    await writeFile10(
+      join15(archivePath, "change.md"),
       serializeWorkSpec(document3),
       "utf8"
     );
-    if (document3.metadata.workflow_version === 3) {
+    if ([3, 4].includes(Number(document3.metadata.workflow_version))) {
       await carryForwardCloseReview(archivePath, now);
     }
   } catch (error2) {
-    await rename8(archivePath, activeDirectory);
+    await rename9(archivePath, activeDirectory);
     throw error2;
   }
   for (const pointerPath of context.pointerPaths) {
@@ -31908,6 +32478,21 @@ async function closeWork(options) {
 async function workBundleContext(target, id, stage, issueId) {
   const context = await requireWorkContext(target, id);
   return await inspectWorkBundle(dirname10(context.specPath), stage, issueId);
+}
+async function updateWorkCheckpoint(options) {
+  const context = await requireWorkContext(options.target, options.id);
+  return await updateBundleCheckpoint({
+    bundleRoot: dirname10(context.specPath),
+    ...options.issueId ? { issueId: options.issueId } : {},
+    actor: options.actor,
+    status: options.status,
+    ...options.stage ? { stage: options.stage } : {},
+    currentState: options.currentState,
+    ...options.lastCompleted ? { lastCompleted: options.lastCompleted } : {},
+    nextAction: options.nextAction,
+    blockers: options.blockers ?? [],
+    ...options.now ? { now: options.now } : {}
+  });
 }
 async function createWorkIssue2(input) {
   const context = await requireWorkContext(input.target, input.id);
@@ -31927,7 +32512,7 @@ async function createWorkIssue2(input) {
   });
 }
 async function claimWorkIssue2(input) {
-  const target = await realpath4(resolve16(input.target));
+  const target = await realpath5(resolve17(input.target));
   const config = await readConfig(target);
   const context = await requireWorkContext(target, input.id);
   const source = config.profile === "leaf" ? context.currentSources.find((entry) => entry.root === target) : void 0;
@@ -31941,7 +32526,7 @@ async function claimWorkIssue2(input) {
   });
 }
 async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath4(resolve16(target));
+  const resolvedTarget = await realpath5(resolve17(target));
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await releaseWorkIssue(
@@ -31952,7 +32537,7 @@ async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new 
   );
 }
 async function completeWorkIssue(input) {
-  const target = await realpath4(resolve16(input.target));
+  const target = await realpath5(resolve17(input.target));
   const context = await requireWorkContext(target, input.id);
   const claimContext = await claimContextForTarget(target, context);
   return await resolveWorkIssue({
@@ -31965,7 +32550,7 @@ async function completeWorkIssue(input) {
   });
 }
 async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath4(resolve16(target));
+  const resolvedTarget = await realpath5(resolve17(target));
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await dropWorkIssue(
@@ -31995,12 +32580,12 @@ async function finishWayfinder2(target, id, mode, now = /* @__PURE__ */ new Date
   return await finishWayfinder(dirname10(context.specPath), mode, now);
 }
 async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
-  const target = await realpath4(resolve16(targetInput));
+  const target = await realpath5(resolve17(targetInput));
   const config = await readConfig(target);
   if (config.profile !== "leaf") {
     throw new Error("Work rebind must target the replacement leaf checkout");
   }
-  const knowledgeRoot = await realpath4(resolveKnowledgeRoot(target, config));
+  const knowledgeRoot = await realpath5(resolveKnowledgeRoot(target, config));
   const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
   const binding = await readBinding2(bindingPath);
   const current = readRepositoryMetadata(target);
@@ -32014,8 +32599,8 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   }
   const previous2 = binding.repositories[index2];
   binding.repositories[index2] = { root: target, source: current };
-  const specPath = resolve16(knowledgeRoot, binding.spec);
-  const document3 = parseWorkSpec(await readFile14(specPath, "utf8"));
+  const specPath = resolve17(knowledgeRoot, binding.spec);
+  const document3 = parseWorkSpec(await readFile15(specPath, "utf8"));
   const repositories = recordArray5(document3.metadata.repositories);
   const durableIndex = repositories.findIndex(
     (entry) => entry.repository === current.repository
@@ -32039,7 +32624,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   ];
   const previousPointer = leafPointerPath(previous2.root, id);
   const currentPointer = leafPointerPath(target, id);
-  await writeFile9(specPath, serializeWorkSpec(document3), "utf8");
+  await writeFile10(specPath, serializeWorkSpec(document3), "utf8");
   await writeBinding(bindingPath, binding, true);
   await writeBinding(currentPointer, binding, true);
   if (previousPointer !== currentPointer) {
@@ -32055,9 +32640,9 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   };
 }
 async function workStatus(targetInput, id) {
-  const target = await realpath4(resolve16(targetInput));
+  const target = await realpath5(resolve17(targetInput));
   const config = await readConfig(target);
-  const pointerRoot = config.profile === "knowledge" ? join14(target, ".workflow/current/work") : join14(target, ".workflow/current");
+  const pointerRoot = config.profile === "knowledge" ? join15(target, ".workflow/current/work") : join15(target, ".workflow/current");
   const ids = id ? [id] : await pointerIds(pointerRoot);
   const results = [];
   for (const workId of ids) {
@@ -32086,7 +32671,7 @@ async function claimContextForTarget(target, context) {
 }
 async function inspectWorkContext(target, profile, id) {
   const config = await readConfig(target);
-  const knowledgeRoot = profile === "knowledge" ? target : await realpath4(resolveKnowledgeRoot(target, config));
+  const knowledgeRoot = profile === "knowledge" ? target : await realpath5(resolveKnowledgeRoot(target, config));
   const preferred = profile === "knowledge" ? knowledgeBindingPath(knowledgeRoot, id) : leafPointerPath(target, id);
   let binding;
   let preferredExists = true;
@@ -32136,13 +32721,13 @@ async function inspectWorkContext(target, profile, id) {
       issues.push(`${entry.source.repository}: ${errorMessage(error2)}`);
     }
   }
-  const specPath = resolve16(knowledgeRoot, binding.spec);
-  const activeRoot = join14(knowledgeRoot, "changes/active");
+  const specPath = resolve17(knowledgeRoot, binding.spec);
+  const activeRoot = join15(knowledgeRoot, "changes/active");
   if (!inside(activeRoot, specPath)) {
     issues.push(`spec path is outside the active work root: ${specPath}`);
   }
   try {
-    const document3 = parseWorkSpec(await readFile14(specPath, "utf8"));
+    const document3 = parseWorkSpec(await readFile15(specPath, "utf8"));
     if (document3.metadata.scope !== binding.scope) {
       issues.push("spec scope does not match the local binding");
     }
@@ -32158,7 +32743,7 @@ async function inspectWorkContext(target, profile, id) {
         issues.push(`${entry.source.repository}: durable repository binding is inconsistent`);
       }
     }
-    const serialized = await readFile14(specPath, "utf8");
+    const serialized = await readFile15(specPath, "utf8");
     for (const entry of binding.repositories) {
       if (serialized.includes(entry.root)) {
         issues.push("durable work record leaks a local checkout path");
@@ -32242,42 +32827,42 @@ function durableRepository(source) {
 }
 async function assertKnowledgeRoot(root) {
   try {
-    await access6(join14(root, "knowledge/index.md"), constants6.R_OK);
+    await access7(join15(root, "knowledge/index.md"), constants7.R_OK);
   } catch {
     throw new Error(`Knowledge repository is not initialized: ${root}`);
   }
 }
 async function assertKnowledgeReference(root, reference) {
   const normalized = reference.replace(/^\/+/, "");
-  const absolute = resolve16(root, normalized);
-  const knowledgeRoot = join14(root, "knowledge");
+  const absolute = resolve17(root, normalized);
+  const knowledgeRoot = join15(root, "knowledge");
   if (!inside(knowledgeRoot, absolute) || !absolute.toLowerCase().endsWith(".md")) {
     throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
   }
   try {
-    await access6(absolute, constants6.R_OK);
+    await access7(absolute, constants7.R_OK);
   } catch (error2) {
     throw new Error(`Knowledge reference is not readable: ${reference} (${errorMessage(error2)})`);
   }
 }
 function knowledgeBindingPath(knowledgeRoot, id) {
   assertId(id);
-  return join14(knowledgeRoot, ".workflow/current/work", `${id}.json`);
+  return join15(knowledgeRoot, ".workflow/current/work", `${id}.json`);
 }
 function leafPointerPath(root, id) {
   assertId(id);
-  return join14(root, ".workflow/current", `${id}.json`);
+  return join15(root, ".workflow/current", `${id}.json`);
 }
 async function writeBinding(path, binding, replace = false) {
-  await mkdir8(dirname10(path), { recursive: true });
-  await writeFile9(path, `${JSON.stringify(binding, null, 2)}
+  await mkdir9(dirname10(path), { recursive: true });
+  await writeFile10(path, `${JSON.stringify(binding, null, 2)}
 `, {
     encoding: "utf8",
     flag: replace ? "w" : "wx"
   });
 }
 async function readBinding2(path) {
-  const raw = JSON.parse(await readFile14(path, "utf8"));
+  const raw = JSON.parse(await readFile15(path, "utf8"));
   if (!isRecord6(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
     (entry) => isRecord6(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
   )) {
@@ -32293,7 +32878,7 @@ function isRecord6(value) {
 }
 async function pointerIds(root) {
   try {
-    return (await readdir8(root, { withFileTypes: true })).filter(
+    return (await readdir9(root, { withFileTypes: true })).filter(
       (entry) => entry.isFile() && entry.name.endsWith(".json") && entry.name !== "repositories.json"
     ).map((entry) => entry.name.slice(0, -5)).sort();
   } catch (error2) {
@@ -32304,12 +32889,12 @@ async function pointerIds(root) {
   }
 }
 function relativeSpec(knowledgeRoot, specPath) {
-  const value = specPath.slice(`${knowledgeRoot}${sep7}`.length);
-  return value.split(sep7).join("/");
+  const value = specPath.slice(`${knowledgeRoot}${sep8}`.length);
+  return value.split(sep8).join("/");
 }
 function inside(parent, child) {
-  const boundary = `${resolve16(parent)}${sep7}`;
-  return resolve16(child).startsWith(boundary);
+  const boundary = `${resolve17(parent)}${sep8}`;
+  return resolve17(child).startsWith(boundary);
 }
 function record(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
@@ -32327,7 +32912,7 @@ async function uniqueWorkId(activeRoot, base) {
   for (let index2 = 1; index2 < 1e3; index2 += 1) {
     const candidate = index2 === 1 ? base : `${base}-${index2}`;
     try {
-      await access6(join14(activeRoot, candidate), constants6.F_OK);
+      await access7(join15(activeRoot, candidate), constants7.F_OK);
     } catch (error2) {
       if (isMissingFileError(error2)) {
         return candidate;
@@ -32337,23 +32922,9 @@ async function uniqueWorkId(activeRoot, base) {
   }
   throw new Error(`Cannot allocate a unique work id for ${base}`);
 }
-async function uniqueFileId(root, base) {
-  for (let index2 = 1; index2 < 1e3; index2 += 1) {
-    const candidate = index2 === 1 ? base : `${base}-${index2}`;
-    try {
-      await access6(join14(root, `${candidate}.md`), constants6.F_OK);
-    } catch (error2) {
-      if (isMissingFileError(error2)) {
-        return candidate;
-      }
-      throw error2;
-    }
-  }
-  throw new Error(`Cannot allocate a unique handoff id for ${base}`);
-}
-async function assertAbsent(path, label) {
+async function assertAbsent2(path, label) {
   try {
-    await access6(path, constants6.F_OK);
+    await access7(path, constants7.F_OK);
     throw new Error(`${label} already exists: ${path}`);
   } catch (error2) {
     if (isMissingFileError(error2)) {
@@ -32371,7 +32942,7 @@ async function removePath(path) {
     }
   }
 }
-function normalizeSlug4(value) {
+function normalizeSlug5(value) {
   const slug = value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   if (!slug) {
     throw new Error("Work slug must contain ASCII letters or digits");
@@ -32388,7 +32959,7 @@ function assertId(id) {
 init_assets();
 setColorEnabled(process.stdout.isTTY === true && !("NO_COLOR" in process.env));
 var main = new Command().name("wfctl").version(WORKFLOW_VERSION).description(
-  "Install and operate a shared project workflow.\nMaintainers normally use init; installed agents own the remaining commands.\n\nSetup:\n  init       Install or repair a knowledge or leaf repository\n  check      Validate the current workflow installation\n\nMaintenance:\n  upgrade    Upgrade installed rules, skills, templates, and guides\n\nKnowledge operations:\n  knowledge  Process raw input, validate knowledge, and build its graph\n\nProject work:\n  work       Operate central change bundles, maps, issues, review, and closure"
+  "Install and operate a shared project workflow.\nMaintainers normally use init; installed agents own the remaining commands.\n\nSetup:\n  init       Install or repair a knowledge or leaf repository\n  check      Validate the current workflow installation\n\nMaintenance:\n  upgrade    Upgrade installed rules, skills, templates, and guides\n\nKnowledge operations:\n  knowledge  Process raw input, validate knowledge, and build its graph\n\nProject work:\n  work       Operate captures, checkpoints, change bundles, issues, and closure"
 ).throwErrors().command("init", initCommand()).command("check", checkCommand()).command("upgrade", upgradeCommand()).command("knowledge", knowledgeCommand()).command("work", workCommand());
 try {
   await main.parse(process.argv.slice(2));
@@ -32407,17 +32978,17 @@ function initCommand() {
     "--init-git",
     "Initialize Git when creating a knowledge repository."
   ).option("-y, --yes", "Accept defaults and safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options, profileValue) => {
-    const target = resolve17(options.target);
+    const target = resolve18(options.target);
     const promptOptions = {
       yes: options.yes === true,
       json: options.json === true
     };
     const profile = await resolveProfile(profileValue, target, promptOptions);
-    let knowledge = options.knowledge ? resolve17(options.knowledge) : await installedKnowledgePath(target, profile);
+    let knowledge = options.knowledge ? resolve18(options.knowledge) : await installedKnowledgePath(target, profile);
     if (profile === "leaf" && !knowledge && !promptOptions.yes && !promptOptions.json && interactive()) {
       const answer = await ask("Knowledge repository path: ");
       if (answer) {
-        knowledge = resolve17(answer);
+        knowledge = resolve18(answer);
       }
     }
     if (options.printInstructions) {
@@ -32455,7 +33026,7 @@ function initCommand() {
 }
 function upgradeCommand() {
   return new Command().description("Preview dependencies and upgrade an existing workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-s, --skills <scope:string>", "Change skill scope: project, user, or none.").option("-a, --agents <agents:string>", "Change skill targets: codex, claude, or both.").option("--dry-run", "Preview files and dependency checks without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
-    const target = resolve17(options.target);
+    const target = resolve18(options.target);
     const config = await readConfig(target);
     const scope = options.skills ? parseSkillScope(options.skills) : config.skills?.scope ?? "project";
     const agents = options.agents ? parseAgentTargets(options.agents) : config.skills?.agents ?? ["codex", "claude"];
@@ -32591,7 +33162,7 @@ async function installWorkflow(input) {
 ${green("\u2713")} ${bold("Workflow installed")}
   ${dim("Target")}  ${resolved.target}
   ${dim("Changes")} ${applied.changed}
-  ${dim("Guide")}   ${resolve17(resolved.target, "PROJECT_WORKFLOW.md")}
+  ${dim("Guide")}   ${resolve18(resolved.target, "PROJECT_WORKFLOW.md")}
 `
     );
     if (repositoryCheckout) {
@@ -32689,31 +33260,7 @@ function checkCommand() {
   });
 }
 function workCommand() {
-  return new Command().description("Manage central change bundles bound to exact leaf checkouts.").command(
-    "handoff",
-    new Command().description(
-      "Create a lightweight, non-authoritative inbox handoff from a leaf or knowledge repository."
-    ).arguments("<slug:string>").option("-t, --target <path:string>", "Workflow repository.", { default: "." }).option("--title <title:string>", "Human-readable handoff title.", {
-      required: true
-    }).option("--json", "Print machine-readable JSON.").action(async (options, slug) => {
-      const result = await createHandoff({
-        target: options.target,
-        slug,
-        title: options.title
-      });
-      if (options.json) {
-        printJson(result);
-      } else {
-        process.stdout.write(
-          `Created ${result.id}
-` + (result.codeRoot ? `Code root: ${result.codeRoot}
-` : "") + `Knowledge root: ${result.knowledgeRoot}
-Handoff: ${result.path}
-`
-        );
-      }
-    })
-  ).command(
+  return new Command().description("Manage pending captures and central work bound to exact checkouts.").command("capture", workCaptureCommand()).command("handoff", deprecatedHandoffCommand()).command(
     "start",
     new Command().description("Start a central bundle before significant-task discussion continues.").arguments("<slug:string>").option("-t, --target <path:string>", "Leaf checkout.", { default: "." }).option("--title <title:string>", "Human-readable work title.", { required: true }).option("--mode <mode:string>", "full, slice, or wayfinder.", { default: "full" }).option(
       "--leaf <path:string>",
@@ -32743,7 +33290,7 @@ Bindings: ${result.pointerPaths.join(", ")}
         );
       }
     })
-  ).command("context", workContextCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
+  ).command("context", workContextCommand()).command("checkpoint", workCheckpointCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
     "status",
     new Command().description("Show and validate the code-root/bundle binding.").arguments("[id:string]").option("-t, --target <path:string>", "Leaf checkout.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
       const results = await workStatus(options.target, id);
@@ -32838,6 +33385,135 @@ Archive: ${result.archivePath}
     })
   );
 }
+function workCaptureCommand() {
+  return new Command().description("Capture, inspect, and resolve unassigned non-authoritative material.").command(
+    "add",
+    new Command().description("Add material that matters but has no active or curated owner yet.").arguments("<slug:string>").option("-t, --target <path:string>", "Workflow repository.", { default: "." }).option("--title <title:string>", "Human-readable capture title.", {
+      required: true
+    }).option("--json", "Print machine-readable JSON.").action(async (options, slug) => {
+      const result = await createCapture({
+        target: options.target,
+        slug,
+        title: options.title
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Captured ${result.id}
+` + (result.codeRoot ? `Source code root: ${result.codeRoot}
+` : "") + `Knowledge root: ${result.knowledgeRoot}
+Pending capture: ${result.path}
+`
+        );
+      }
+    })
+  ).command(
+    "list",
+    new Command().description("List every pending capture awaiting knowledge-repository triage.").option("-t, --target <path:string>", "Workflow repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+      const result = await listCaptures(options.target);
+      if (options.json) {
+        printJson(result);
+      } else if (result.captures.length === 0) {
+        process.stdout.write("No pending captures.\n");
+      } else {
+        process.stdout.write(`Pending captures in ${result.knowledgeRoot}:
+`);
+        for (const capture of result.captures) {
+          process.stdout.write(
+            `- ${capture.id}: ${capture.title}${capture.legacy ? " [legacy handoff]" : ""}
+  ${capture.path}
+`
+          );
+        }
+      }
+    })
+  ).command(
+    "resolve",
+    new Command().description("Route a pending capture to real owners or discard it with a reason.").arguments("<id:string>").option("-t, --target <path:string>", "Workflow repository.", { default: "." }).option("--outcome <outcome:string>", "routed or discarded.", { required: true }).option("--reason <reason:string>", "Why this resolution is correct.", {
+      required: true
+    }).option(
+      "--destination <path:string>",
+      "Existing knowledge/ or changes/active/ destination; repeat as needed.",
+      { collect: true }
+    ).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+      const result = await resolveCapture({
+        target: options.target,
+        id,
+        outcome: parseCaptureOutcome(options.outcome),
+        reason: options.reason,
+        destinations: collectedStrings(options.destination)
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Resolved ${result.id} as ${result.outcome}
+Destinations: ${result.destinations.length > 0 ? result.destinations.join(", ") : "none"}
+Archive: ${result.archivePath}
+`
+        );
+      }
+    })
+  );
+}
+function deprecatedHandoffCommand() {
+  return new Command().hidden().description("Deprecated alias for wfctl work capture add.").arguments("<slug:string>").option("-t, --target <path:string>", "Workflow repository.", { default: "." }).option("--title <title:string>", "Human-readable capture title.", {
+    required: true
+  }).option("--json", "Print machine-readable JSON.").action(async (options, slug) => {
+    const result = await createCapture({
+      target: options.target,
+      slug,
+      title: options.title
+    });
+    if (options.json) {
+      printJson({ ...result, deprecated: "Use wfctl work capture add" });
+    } else {
+      process.stdout.write(
+        `${yellow("Deprecated:")} use wfctl work capture add
+Captured ${result.id}
+Pending capture: ${result.path}
+`
+      );
+    }
+  });
+}
+function workCheckpointCommand() {
+  return new Command().description("Refresh the one resumable checkpoint owned by a change or claimed issue.").arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+    default: "."
+  }).option("--issue <id:string>", "Claimed or terminal issue that owns this session.").option("--actor <identity:string>", "Agent or maintainer identity.", { required: true }).option("--status <status:string>", "active, blocked, or complete.", {
+    default: "active"
+  }).option("--stage <stage:string>", "shape, wayfind, implement, review, or complete.").option("--state <text:string>", "Concise current state.", { required: true }).option("--last <text:string>", "Last material action completed.").option("--next <text:string>", "Exact next action for a fresh session.", {
+    required: true
+  }).option("--blocker <text:string>", "Current blocker; repeat as needed.", {
+    collect: true
+  }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+    const result = await updateWorkCheckpoint({
+      target: options.target,
+      id,
+      ...options.issue ? { issueId: options.issue } : {},
+      actor: options.actor,
+      status: parseCheckpointStatus(options.status),
+      ...options.stage ? { stage: parseCheckpointStage(options.stage) } : {},
+      currentState: options.state,
+      ...options.last ? { lastCompleted: options.last } : {},
+      nextAction: options.next,
+      blockers: collectedStrings(options.blocker)
+    });
+    if (options.json) {
+      printJson(result);
+    } else {
+      process.stdout.write(
+        `Checkpoint refreshed: ${result.path}
+Status: ${result.status}; stage: ${result.stage}
+Current: ${result.currentState}
+Next: ${result.nextAction}
+Blockers: ${result.blockers.length > 0 ? result.blockers.join(", ") : "none"}
+`
+      );
+    }
+  });
+}
 function workContextCommand() {
   return new Command().description(
     "List the exact bundle files and code context an agent must read for one stage."
@@ -32861,9 +33537,22 @@ function workContextCommand() {
 Stage: ${result.stage}${result.selectedIssue ? ` (${result.selectedIssue})` : ""}
 Mode: ${result.mode}${result.mapStatus ? `; map ${result.mapStatus}` : ""}
 Frontier: ${result.frontier.length > 0 ? result.frontier.join(", ") : "none"}
-Required full reads:
 `
     );
+    process.stdout.write("Checkpoints:\n");
+    if (result.checkpoints.length === 0) {
+      process.stdout.write("- legacy bundle: no structured checkpoint\n");
+    }
+    for (const checkpoint of result.checkpoints) {
+      process.stdout.write(
+        `- ${checkpoint.path} [${checkpoint.valid ? "current" : "invalid"}; ${checkpoint.status}/${checkpoint.stage}]
+  Current: ${checkpoint.currentState || "missing"}
+  Next: ${checkpoint.nextAction || "missing"}
+  Blockers: ${checkpoint.blockers.length > 0 ? checkpoint.blockers.join(", ") : "none"}
+`
+      );
+    }
+    process.stdout.write("Required full reads:\n");
     for (const file of result.requiredFiles) {
       process.stdout.write(
         `- ${file.path} [${file.role}; ${file.accounting}; ${file.sha256.slice(0, 12)}]
@@ -33944,6 +34633,28 @@ function parseWorkBundleStage(value) {
     throw new Error(
       `Invalid work context stage "${value}"; expected shape, wayfind, implement, review, or resume`
     );
+  }
+  return value;
+}
+function parseCheckpointStage(value) {
+  if (!["shape", "wayfind", "implement", "review", "complete"].includes(value)) {
+    throw new Error(
+      `Invalid checkpoint stage "${value}"; expected shape, wayfind, implement, review, or complete`
+    );
+  }
+  return value;
+}
+function parseCheckpointStatus(value) {
+  if (!["active", "blocked", "complete"].includes(value)) {
+    throw new Error(
+      `Invalid checkpoint status "${value}"; expected active, blocked, or complete`
+    );
+  }
+  return value;
+}
+function parseCaptureOutcome(value) {
+  if (value !== "routed" && value !== "discarded") {
+    throw new Error(`Invalid capture outcome "${value}"; expected routed or discarded`);
   }
   return value;
 }

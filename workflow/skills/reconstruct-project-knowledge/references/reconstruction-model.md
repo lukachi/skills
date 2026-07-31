@@ -98,7 +98,7 @@ source, tests, contracts, configuration, product data, or documentation.
 completed baseline.
 
 The agent turns these ledgers into a human-readable reconstruction frontier at
-every handoff: pinned source set, outstanding file/community/surface
+every pause or completed batch: pinned source set, outstanding file/community/surface
 accounting, optional-input status, cross-repository reconciliation, unresolved
 claims, maintainer decisions, and next action. The frontier is derived
 presentation. It never replaces the complete ledgers or proves semantic

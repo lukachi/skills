@@ -30,10 +30,9 @@ the other, and shared Areas, changes, and decision history keep them aligned.
 
 ## Built on reviewed skill practice
 
-The leaf flow openly reuses and modifies selected skills from Matt Pocock's
-MIT-licensed [`mattpocock/skills`](https://github.com/mattpocock/skills). `wfctl` integrates
-them with central knowledge, exact worktrees, and verification as one attributed
-workflow. See the [skill guide](docs/02-skills-and-provenance.md) and [exact provenance](THIRD_PARTY.md).
+The leaf flow openly reuses selected MIT-licensed skills from Matt Pocock's
+[`mattpocock/skills`](https://github.com/mattpocock/skills), modified and integrated as one attributed
+workflow with central knowledge, exact worktrees, and verification. See the [skill guide](docs/02-skills-and-provenance.md) and [provenance](THIRD_PARTY.md).
 
 ## What you get
 
@@ -42,9 +41,12 @@ workflow. See the [skill guide](docs/02-skills-and-provenance.md) and [exact pro
 - A linked engineering road that lets agents and engineers trace product
   meaning to exact implementation and evidence.
 - A central change bundle that survives interruptions and carries discussion,
-  optional direction maps, bounded issues, progress, and verification together.
+  optional direction maps, bounded issues, hash-bound checkpoints, and
+  verification together.
 - Source-first reconstruction for projects that already contain working code.
 - Safe intake for raw notes, ideas, research, and legacy specifications.
+- A pending-capture queue for useful material that has no active or curated
+  owner yet, with explicit routing or discard.
 - Graphify-first source navigation, QMD retrieval, and Git-pinned evidence.
 - Mechanical checks that reject broken knowledge links, invalid decision
   history, stale review receipts, incomplete work records, and unaccounted raw
@@ -112,8 +114,6 @@ knowledge remains directly readable without an agent.
 8. [Process raw material](docs/07-raw-material.md)
 9. [Review, correct, and recover](docs/08-maintainer-control.md)
 
-Workflow authors can continue with the
-[engine contract](spec/ENGINE.md),
-[project work contract](spec/WORK.md),
-[knowledge contract](spec/KNOWLEDGE.md), and
-[verification guide](spec/VERIFICATION.md).
+Workflow authors can continue with the [engine](spec/ENGINE.md),
+[project work](spec/WORK.md), [knowledge](spec/KNOWLEDGE.md), and
+[verification](spec/VERIFICATION.md) contracts.

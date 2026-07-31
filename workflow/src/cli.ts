@@ -25,6 +25,12 @@ import {
   updateQmdIndex,
 } from "./dependencies.js";
 import { doctorPassed, runDoctor } from "./doctor.js";
+import {
+  createCapture,
+  listCaptures,
+  resolveCapture,
+  type CaptureOutcome,
+} from "./capture.js";
 import { buildInstallPlan, summarizePlan } from "./planner.js";
 import { installSkillsTransactional } from "./skill-installer.js";
 import {
@@ -82,7 +88,6 @@ import {
   closeWork,
   completeWorkIssue,
   createWorkIssue,
-  createHandoff,
   dropWorkIssue,
   finishWayfinder,
   rebindWork,
@@ -92,10 +97,13 @@ import {
   verifyWork,
   workBundleContext,
   workStatus,
+  updateWorkCheckpoint,
 } from "./work.js";
 import type {
   BundleReviewStatus,
   WorkBundleStage,
+  WorkCheckpointStage,
+  WorkCheckpointStatus,
   WorkIssuePhase,
   WorkIssueType,
 } from "./work-bundle.js";
@@ -121,7 +129,7 @@ const main = new Command()
       + "Knowledge operations:\n"
       + "  knowledge  Process raw input, validate knowledge, and build its graph\n\n"
       + "Project work:\n"
-      + "  work       Operate central change bundles, maps, issues, review, and closure",
+      + "  work       Operate captures, checkpoints, change bundles, issues, and closure",
   )
   .throwErrors()
   .command("init", initCommand())
@@ -509,37 +517,9 @@ function checkCommand() {
 
 function workCommand() {
   return new Command()
-    .description("Manage central change bundles bound to exact leaf checkouts.")
-    .command(
-      "handoff",
-      new Command()
-        .description(
-          "Create a lightweight, non-authoritative inbox handoff from a leaf or knowledge repository.",
-        )
-        .arguments("<slug:string>")
-        .option("-t, --target <path:string>", "Workflow repository.", { default: "." })
-        .option("--title <title:string>", "Human-readable handoff title.", {
-          required: true,
-        })
-        .option("--json", "Print machine-readable JSON.")
-        .action(async (options, slug) => {
-          const result = await createHandoff({
-            target: options.target,
-            slug,
-            title: options.title,
-          });
-          if (options.json) {
-            printJson(result);
-          } else {
-            process.stdout.write(
-              `Created ${result.id}\n`
-                + (result.codeRoot ? `Code root: ${result.codeRoot}\n` : "")
-                + `Knowledge root: ${result.knowledgeRoot}\n`
-                + `Handoff: ${result.path}\n`,
-            );
-          }
-        }),
-    )
+    .description("Manage pending captures and central work bound to exact checkouts.")
+    .command("capture", workCaptureCommand())
+    .command("handoff", deprecatedHandoffCommand())
     .command(
       "start",
       new Command()
@@ -587,6 +567,7 @@ function workCommand() {
         }),
     )
     .command("context", workContextCommand())
+    .command("checkpoint", workCheckpointCommand())
     .command("issue", workIssueCommand())
     .command("map", workMapCommand())
     .command("review", workReviewCommand())
@@ -705,6 +686,176 @@ function workCommand() {
     );
 }
 
+function workCaptureCommand() {
+  return new Command()
+    .description("Capture, inspect, and resolve unassigned non-authoritative material.")
+    .command(
+      "add",
+      new Command()
+        .description("Add material that matters but has no active or curated owner yet.")
+        .arguments("<slug:string>")
+        .option("-t, --target <path:string>", "Workflow repository.", { default: "." })
+        .option("--title <title:string>", "Human-readable capture title.", {
+          required: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, slug) => {
+          const result = await createCapture({
+            target: options.target,
+            slug,
+            title: options.title,
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Captured ${result.id}\n`
+                + (result.codeRoot ? `Source code root: ${result.codeRoot}\n` : "")
+                + `Knowledge root: ${result.knowledgeRoot}\n`
+                + `Pending capture: ${result.path}\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "list",
+      new Command()
+        .description("List every pending capture awaiting knowledge-repository triage.")
+        .option("-t, --target <path:string>", "Workflow repository.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const result = await listCaptures(options.target);
+          if (options.json) {
+            printJson(result);
+          } else if (result.captures.length === 0) {
+            process.stdout.write("No pending captures.\n");
+          } else {
+            process.stdout.write(`Pending captures in ${result.knowledgeRoot}:\n`);
+            for (const capture of result.captures) {
+              process.stdout.write(
+                `- ${capture.id}: ${capture.title}${capture.legacy ? " [legacy handoff]" : ""}\n`
+                  + `  ${capture.path}\n`,
+              );
+            }
+          }
+        }),
+    )
+    .command(
+      "resolve",
+      new Command()
+        .description("Route a pending capture to real owners or discard it with a reason.")
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Workflow repository.", { default: "." })
+        .option("--outcome <outcome:string>", "routed or discarded.", { required: true })
+        .option("--reason <reason:string>", "Why this resolution is correct.", {
+          required: true,
+        })
+        .option(
+          "--destination <path:string>",
+          "Existing knowledge/ or changes/active/ destination; repeat as needed.",
+          { collect: true },
+        )
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await resolveCapture({
+            target: options.target,
+            id,
+            outcome: parseCaptureOutcome(options.outcome),
+            reason: options.reason,
+            destinations: collectedStrings(options.destination),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Resolved ${result.id} as ${result.outcome}\n`
+                + `Destinations: ${
+                  result.destinations.length > 0 ? result.destinations.join(", ") : "none"
+                }\n`
+                + `Archive: ${result.archivePath}\n`,
+            );
+          }
+        }),
+    );
+}
+
+function deprecatedHandoffCommand() {
+  return new Command()
+    .hidden()
+    .description("Deprecated alias for wfctl work capture add.")
+    .arguments("<slug:string>")
+    .option("-t, --target <path:string>", "Workflow repository.", { default: "." })
+    .option("--title <title:string>", "Human-readable capture title.", {
+      required: true,
+    })
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, slug) => {
+      const result = await createCapture({
+        target: options.target,
+        slug,
+        title: options.title,
+      });
+      if (options.json) {
+        printJson({ ...result, deprecated: "Use wfctl work capture add" });
+      } else {
+        process.stdout.write(
+          `${yellow("Deprecated:")} use wfctl work capture add\n`
+            + `Captured ${result.id}\n`
+            + `Pending capture: ${result.path}\n`,
+        );
+      }
+    });
+}
+
+function workCheckpointCommand() {
+  return new Command()
+    .description("Refresh the one resumable checkpoint owned by a change or claimed issue.")
+    .arguments("<id:string>")
+    .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+      default: ".",
+    })
+    .option("--issue <id:string>", "Claimed or terminal issue that owns this session.")
+    .option("--actor <identity:string>", "Agent or maintainer identity.", { required: true })
+    .option("--status <status:string>", "active, blocked, or complete.", {
+      default: "active",
+    })
+    .option("--stage <stage:string>", "shape, wayfind, implement, review, or complete.")
+    .option("--state <text:string>", "Concise current state.", { required: true })
+    .option("--last <text:string>", "Last material action completed.")
+    .option("--next <text:string>", "Exact next action for a fresh session.", {
+      required: true,
+    })
+    .option("--blocker <text:string>", "Current blocker; repeat as needed.", {
+      collect: true,
+    })
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      const result = await updateWorkCheckpoint({
+        target: options.target,
+        id,
+        ...(options.issue ? { issueId: options.issue } : {}),
+        actor: options.actor,
+        status: parseCheckpointStatus(options.status),
+        ...(options.stage ? { stage: parseCheckpointStage(options.stage) } : {}),
+        currentState: options.state,
+        ...(options.last ? { lastCompleted: options.last } : {}),
+        nextAction: options.next,
+        blockers: collectedStrings(options.blocker),
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Checkpoint refreshed: ${result.path}\n`
+            + `Status: ${result.status}; stage: ${result.stage}\n`
+            + `Current: ${result.currentState}\n`
+            + `Next: ${result.nextAction}\n`
+            + `Blockers: ${result.blockers.length > 0 ? result.blockers.join(", ") : "none"}\n`,
+        );
+      }
+    });
+}
+
 function workContextCommand() {
   return new Command()
     .description(
@@ -734,9 +885,21 @@ function workContextCommand() {
         `Work bundle: ${result.root}\n`
           + `Stage: ${result.stage}${result.selectedIssue ? ` (${result.selectedIssue})` : ""}\n`
           + `Mode: ${result.mode}${result.mapStatus ? `; map ${result.mapStatus}` : ""}\n`
-          + `Frontier: ${result.frontier.length > 0 ? result.frontier.join(", ") : "none"}\n`
-          + "Required full reads:\n",
+          + `Frontier: ${result.frontier.length > 0 ? result.frontier.join(", ") : "none"}\n`,
       );
+      process.stdout.write("Checkpoints:\n");
+      if (result.checkpoints.length === 0) {
+        process.stdout.write("- legacy bundle: no structured checkpoint\n");
+      }
+      for (const checkpoint of result.checkpoints) {
+        process.stdout.write(
+          `- ${checkpoint.path} [${checkpoint.valid ? "current" : "invalid"}; ${checkpoint.status}/${checkpoint.stage}]\n`
+            + `  Current: ${checkpoint.currentState || "missing"}\n`
+            + `  Next: ${checkpoint.nextAction || "missing"}\n`
+            + `  Blockers: ${checkpoint.blockers.length > 0 ? checkpoint.blockers.join(", ") : "none"}\n`,
+        );
+      }
+      process.stdout.write("Required full reads:\n");
       for (const file of result.requiredFiles) {
         process.stdout.write(
           `- ${file.path} [${file.role}; ${file.accounting}; ${file.sha256.slice(0, 12)}]\n`,
@@ -2159,6 +2322,31 @@ function parseWorkBundleStage(value: string): WorkBundleStage {
     );
   }
   return value as WorkBundleStage;
+}
+
+function parseCheckpointStage(value: string): WorkCheckpointStage {
+  if (!["shape", "wayfind", "implement", "review", "complete"].includes(value)) {
+    throw new Error(
+      `Invalid checkpoint stage "${value}"; expected shape, wayfind, implement, review, or complete`,
+    );
+  }
+  return value as WorkCheckpointStage;
+}
+
+function parseCheckpointStatus(value: string): WorkCheckpointStatus {
+  if (!["active", "blocked", "complete"].includes(value)) {
+    throw new Error(
+      `Invalid checkpoint status "${value}"; expected active, blocked, or complete`,
+    );
+  }
+  return value as WorkCheckpointStatus;
+}
+
+function parseCaptureOutcome(value: string): CaptureOutcome {
+  if (value !== "routed" && value !== "discarded") {
+    throw new Error(`Invalid capture outcome "${value}"; expected routed or discarded`);
+  }
+  return value;
 }
 
 function parseWorkIssuePhase(value: string): WorkIssuePhase {

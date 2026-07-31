@@ -52,11 +52,11 @@ unresolved.
 | The agent misunderstood the goal | Correct it immediately. It must update the living record before continuing. |
 | Product intent is unknown | Decide it or explicitly defer it. Do not let implementation become intent by default. |
 | Code and knowledge disagree | Ask for a conflict packet, then identify whether implementation, recorded intent, or both are stale. |
-| The session was compacted or restarted | Ask to resume. The agent restores the canonical record and workflow status. |
+| The session was compacted or restarted | Ask to resume. The agent reads the current checkpoint, canonical record, and exact workflow context. |
 | You changed branch or worktree | Tell the agent. It must stop until you approve an explicit rebind. |
 | The task cannot be completed | Accept a truthful partial or abandoned outcome with gaps preserved. |
 | New raw files appeared | Ask the knowledge agent to process the new raw material. |
-| A significant finding came from lightweight work | Ask the agent to retain a compact handoff for later triage. |
+| An unowned significant finding came from lightweight work | Ask the agent to capture it for later triage. If an active record already owns it, update that record instead. |
 | The workflow has an update | Ask the agent to preview and apply the upgrade in the current repository. |
 
 ## Correct false completion

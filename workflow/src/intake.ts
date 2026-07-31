@@ -90,6 +90,7 @@ const ROUTING_LANES = new Set([
   "current-knowledge",
   "history",
   "change",
+  "capture",
   "case-only",
 ]);
 
@@ -650,18 +651,18 @@ export async function inspectIntakeCase(
     const validation = await validateKnowledge(target, stringArray(promotion.concepts));
     issues.push(...validation.errors.map((issue) => `${issue.path}: ${issue.message}`));
   }
-  const changeDestinations = new Set<string>();
+  const operationalDestinations = new Set<string>();
   for (const candidate of recordArray(document.metadata.candidate_claims)) {
     const routing = recordValue(candidate.routing);
     for (const destination of stringArray(routing?.destinations)) {
-      if (isChangePath(destination)) {
-        changeDestinations.add(destination);
+      if (isActiveChangePath(destination) || isCapturePath(destination)) {
+        operationalDestinations.add(destination);
       }
     }
   }
-  for (const destination of changeDestinations) {
+  for (const destination of operationalDestinations) {
     if (!await pathExists(join(target, destination))) {
-      issues.push(`routed change destination does not exist: ${destination}`);
+      issues.push(`routed operational destination does not exist: ${destination}`);
     }
   }
   const ledger = await compileClaimLedger(target);
@@ -959,8 +960,12 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
           issues.push(`${prefix}.routing contains an invalid knowledge concept: ${destination}`);
         }
       } else if (lane === "change") {
-        if (!isChangePath(destination)) {
+        if (!isActiveChangePath(destination)) {
           issues.push(`${prefix}.routing contains an invalid change path: ${destination}`);
+        }
+      } else if (lane === "capture") {
+        if (!isCapturePath(destination)) {
+          issues.push(`${prefix}.routing contains an invalid capture path: ${destination}`);
         }
       }
     }
@@ -979,8 +984,8 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
     ) {
       issues.push(`${prefix}: ${disposition} candidates must remain case-only`);
     }
-    if (disposition === "deferred" && lane !== "change") {
-      issues.push(`${prefix}: deferred candidates must route to change`);
+    if (disposition === "deferred" && !["change", "capture"].includes(lane)) {
+      issues.push(`${prefix}: deferred candidates must route to change or capture`);
     }
     if (
       disposition === "confirmed"
@@ -1008,6 +1013,12 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
       && !["proposed", "unknown"].includes(intentState)
     ) {
       issues.push(`${prefix}: change routing requires proposed or unknown intent`);
+    }
+    if (
+      lane === "capture"
+      && !["proposed", "unknown", "not-applicable"].includes(intentState)
+    ) {
+      issues.push(`${prefix}: capture routing requires proposed, unknown, or not-applicable intent`);
     }
     if (
       lane === "history"
@@ -1684,14 +1695,20 @@ function isConceptPath(value: string): boolean {
     && !/(?:^|\/)(?:index|log)\.md$/i.test(value);
 }
 
-function isChangePath(value: string): boolean {
-  return /^changes\/(?:active|inbox)\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(
+function isActiveChangePath(value: string): boolean {
+  return /^changes\/active\/(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/i.test(
+    value,
+  );
+}
+
+function isCapturePath(value: string): boolean {
+  return /^changes\/inbox\/\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/i.test(
     value,
   );
 }
 
 function isDurableRoutingPath(value: string): boolean {
-  return isConceptPath(value) || isChangePath(value);
+  return isConceptPath(value) || isActiveChangePath(value) || isCapturePath(value);
 }
 
 function isClaimReference(value: string): boolean {

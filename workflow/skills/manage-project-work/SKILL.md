@@ -1,6 +1,6 @@
 ---
 name: manage-project-work
-description: "Classify and route project work through the central knowledge-backed workflow. Use when a requested feature, fix, refactor, migration, investigation, operational change, product decision, or architecture change may be significant; when resuming active work after interruption; or when retaining a useful lightweight handoff. This is the default project-work router: it decides between lightweight work, a bounded change, and deliberate Wayfinder, then invokes the appropriate explicit mode."
+description: "Classify and route project work through the central knowledge-backed workflow. Use when a requested feature, fix, refactor, migration, investigation, operational change, product decision, or architecture change may be significant; when resuming active work after interruption; or when a useful lightweight result has no active or curated owner yet. This is the default project-work router: it decides between lightweight work, a pending capture, a bounded change, and deliberate Wayfinder, then maintains the owning active checkpoint."
 ---
 
 # Manage Project Work
@@ -16,7 +16,8 @@ meaning, a contract, state, security, reliability, operations, architecture,
 ownership, or cross-repository coordination. Size alone is not decisive.
 
 - **Lightweight:** clearly local and behavior-preserving. Work directly. Offer
-  `wfctl work handoff` only when a non-obvious reusable fact should survive.
+  a pending capture only when a non-obvious reusable result should survive and
+  no active change or curated concept already owns it.
 - **Bounded significant change:** the outcome can be specified honestly now.
   Start one central bundle and use `specify-project-change`.
 - **Wayfinder:** a consequential destination is visible, but dependent product
@@ -49,17 +50,31 @@ leaf.
 
 A turn is material when it changes a requirement, constraint, idea,
 alternative, decision, rejection, deferral, scope boundary, evidence, risk,
-question, or next action. Before continuing after such a turn:
+question, or next action. Before continuing after such a turn, first update the
+owning semantic record, then refresh its checkpoint last:
 
-1. update current state and handoff;
-2. append a concise proposed, approved, rejected, deferred, or superseded
+1. append a concise proposed, approved, rejected, deferred, or superseded
    ledger entry;
-3. update affected scope, acceptance, issues, decisions, and progress;
-4. preserve rationale without copying the chat transcript.
+2. update affected current state, scope, acceptance, issues, decisions, and
+   evidence;
+3. preserve rationale without copying the chat transcript;
+4. run `wfctl work checkpoint <id>` for bundle-level discussion, or add
+   `--issue <issue-id>` for a claimed issue. Supply current state, last
+   completed action, exact next action, blockers, and actor.
+
+The checkpoint hash binds the record after those edits. Never edit its YAML by
+hand. If any owned record changes afterward, `wfctl work context` reports the
+checkpoint stale and the agent must refresh it before claiming or closing work.
 
 After compaction or interruption, run context/status, read every required file
-in full, and resume from recorded state and exact worktree claims. Never
-reconstruct the task from conversation memory.
+in full, inspect the checkpoint shown first, and resume from recorded state and
+exact worktree claims. A checkpoint locates the frontier; it never replaces the
+required full reads. Never reconstruct the task from conversation memory.
+
+If an upgraded legacy bundle has no structured checkpoint, read its current
+record and former Progress/Handoff sections completely, then run `wfctl work
+checkpoint` once to adopt the new model. Preserve the old prose as lineage, but
+do not maintain a second resume state afterward.
 
 ## Route the active bundle
 
@@ -79,13 +94,18 @@ no final dump into `raw/`. Completed closure moves the entire bundle intact to
 `changes/archive/<id>/`; verified durable truth is separately curated into
 `knowledge/`.
 
-## Lightweight handoff
+## Pending capture
 
-When the maintainer accepts retaining a useful lightweight result, run:
+Do not create a capture when an active change, issue, intake case,
+reconstruction, or curated concept already owns the material; update that owner
+and its checkpoint instead. When useful lightweight material genuinely has no
+owner and the maintainer accepts retaining it, run:
 
 ```sh
-wfctl work handoff <slug> --title "<fact to retain>"
+wfctl work capture add <slug> --title "<fact to retain>"
 ```
 
-Complete the returned inbox record. It is a non-authoritative candidate until
-normal knowledge review; never cite raw or intake material as current truth.
+Complete the returned pending capture. It remains non-authoritative until the
+knowledge agent routes it to a real destination or discards it through
+`wfctl work capture resolve`. Never copy active progress into `changes/inbox/`
+and never cite raw or intake material as current truth.

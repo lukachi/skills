@@ -51,10 +51,21 @@ Tests must derive expected behavior from the approved contract or an
 independent authority, never from the implementation they are meant to test.
 Do not over-mock the behavior under review.
 
-Update the issue's `Progress` and `Handoff` after every material turn. Record
-deviations in the parent `change.md` when they affect approved scope,
-acceptance, or decisions; reopen framing review before continuing materially
-different work.
+After every material turn, update the issue evidence and notes, then refresh
+its single structured checkpoint last:
+
+```sh
+wfctl work checkpoint <change-id> --issue <issue-id> \
+  --actor "agent:<identity>" \
+  --state "<current state>" \
+  --last "<last completed action>" \
+  --next "<exact next action>"
+```
+
+Use `--status blocked --blocker "<reason>"` when progress genuinely cannot
+continue. Record deviations in the parent `change.md` when they affect approved
+scope, acceptance, or decisions; refresh the parent checkpoint and reopen
+framing review before continuing materially different work.
 
 ## Resolve honestly
 
@@ -71,7 +82,9 @@ wfctl work issue complete <change-id> <issue-id> \
   --evidence "<direct inspection or command result>"
 ```
 
-If interrupted, keep the claim and handoff current. If deliberately giving the
-issue back, run `wfctl work issue release`. Do not mark a partial outcome
-completed. Final change-wide review, knowledge promotion, and archival belong
-to `verify-project-work` after every required issue is terminal.
+If interrupted, refresh the claimed issue checkpoint before stopping. If
+deliberately giving the issue back, run `wfctl work issue release`; it resets
+the issue checkpoint to ready. Completion makes the issue checkpoint terminal;
+then refresh the parent checkpoint with the next frontier action. Do not mark a
+partial outcome completed. Final change-wide review, knowledge promotion, and
+archival belong to `verify-project-work` after every required issue is terminal.

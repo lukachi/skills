@@ -64,6 +64,10 @@ The canonical directory lives at `changes/active/<change-id>/` in knowledge:
 - `artifacts/` contains linked research or prototypes;
 - `review.md` accounts for every file at its current content hash.
 
+`change.md` and each issue carry one structured checkpoint in frontmatter. The
+agent refreshes the owning checkpoint after material edits. Its hash proves
+which record state it summarizes; it does not replace reading that record.
+
 Source code remains in its owning leaf repository. A leaf contains only an
 ignored pointer and exact claim metadata, never a second spec or tracker.
 
@@ -84,9 +88,19 @@ corrections that preserve behavior and contracts may skip the full workflow.
 If the impact is ambiguous, the agent explains the risk and recommends either:
 
 - use the significant-work record; or
-- proceed lightly and optionally retain a compact handoff afterward.
+- proceed lightly and optionally retain a pending capture afterward when a
+  reusable result has no existing owner.
 
 You choose. The workflow should not turn every edit into a ceremony.
+
+A capture enters `changes/inbox/` and is not active work or project truth. The
+knowledge agent later routes it to an existing curated or active destination,
+or discards it with a reason. If work is already active, the agent updates that
+bundle and its checkpoint instead of creating an inbox duplicate.
+
+After an upgrade, an older active bundle may initially report no structured
+checkpoint. The agent reads its legacy progress and handoff prose once, creates
+the checkpoint, and then uses only the checkpoint for resumable state.
 
 ## Broad or uncertain work
 

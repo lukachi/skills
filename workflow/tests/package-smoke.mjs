@@ -118,6 +118,14 @@ try {
   );
   assert.equal(existsSync(join(packaged, "LICENSE")), true);
   assert.equal(existsSync(join(packaged, "skills/manage-project-work/SKILL.md")), true);
+  assert.equal(
+    existsSync(join(packaged, "skills/manage-project-work/assets/capture.md")),
+    true,
+  );
+  assert.equal(
+    existsSync(join(packaged, "skills/manage-project-work/assets/handoff.md")),
+    false,
+  );
   assert.equal(existsSync(join(packaged, "skills/specify-project-change/SKILL.md")), true);
   assert.equal(existsSync(join(packaged, "skills/split-project-change/SKILL.md")), true);
   assert.equal(existsSync(join(packaged, "skills/implement-work-item/SKILL.md")), true);
@@ -197,6 +205,9 @@ try {
   assert.match(stripAnsi(workHelp.stdout), /^\s+issue\s/m);
   assert.match(stripAnsi(workHelp.stdout), /^\s+map\s/m);
   assert.match(stripAnsi(workHelp.stdout), /^\s+review\s/m);
+  assert.match(stripAnsi(workHelp.stdout), /^\s+capture\s/m);
+  assert.match(stripAnsi(workHelp.stdout), /^\s+checkpoint\s/m);
+  assert.doesNotMatch(stripAnsi(workHelp.stdout), /^\s+handoff\s/m);
 
   const sourcesHelp = spawnSync(
     "node",
@@ -286,6 +297,7 @@ try {
   assert.equal(existsSync(join(target, ".qmd/index.yml")), true);
   assert.equal(existsSync(join(target, "changes/active")), true);
   assert.equal(existsSync(join(target, "changes/inbox")), true);
+  assert.equal(existsSync(join(target, "changes/archive/captures")), true);
   assert.equal(existsSync(join(target, "intake/cases/active")), true);
   assert.equal(existsSync(join(target, "reconstruction/active")), true);
   assert.equal(
@@ -296,6 +308,130 @@ try {
     existsSync(join(target, ".workflow/current/claim-ledger.json")),
     true,
   );
+
+  const captureAdd = spawnSync(
+    "node",
+    [
+      join(packaged, "dist/cli.js"),
+      "work",
+      "capture",
+      "add",
+      "package-smoke",
+      "--target",
+      target,
+      "--title",
+      "Package smoke capture",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(captureAdd.status, 0, captureAdd.stderr || captureAdd.stdout);
+  const captured = JSON.parse(captureAdd.stdout);
+  assert.equal(existsSync(captured.path), true);
+
+  const captureList = spawnSync(
+    "node",
+    [
+      join(packaged, "dist/cli.js"),
+      "work",
+      "capture",
+      "list",
+      "--target",
+      target,
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(captureList.status, 0, captureList.stderr || captureList.stdout);
+  assert.deepEqual(
+    JSON.parse(captureList.stdout).captures.map((entry) => entry.id),
+    [captured.id],
+  );
+
+  const captureResolve = spawnSync(
+    "node",
+    [
+      join(packaged, "dist/cli.js"),
+      "work",
+      "capture",
+      "resolve",
+      captured.id,
+      "--target",
+      target,
+      "--outcome",
+      "discarded",
+      "--reason",
+      "Package smoke lifecycle completed.",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(
+    captureResolve.status,
+    0,
+    captureResolve.stderr || captureResolve.stdout,
+  );
+  assert.equal(existsSync(JSON.parse(captureResolve.stdout).archivePath), true);
+
+  const workStart = spawnSync(
+    "node",
+    [
+      join(packaged, "dist/cli.js"),
+      "work",
+      "start",
+      "package-checkpoint",
+      "--target",
+      target,
+      "--title",
+      "Package checkpoint smoke",
+      "--mode",
+      "full",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(workStart.status, 0, workStart.stderr || workStart.stdout);
+  const startedWork = JSON.parse(workStart.stdout);
+  const checkpoint = spawnSync(
+    "node",
+    [
+      join(packaged, "dist/cli.js"),
+      "work",
+      "checkpoint",
+      startedWork.id,
+      "--target",
+      target,
+      "--actor",
+      "agent:package-smoke",
+      "--state",
+      "The package checkpoint command ran.",
+      "--last",
+      "Created the packaged work bundle.",
+      "--next",
+      "Inspect the packaged context output.",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(checkpoint.status, 0, checkpoint.stderr || checkpoint.stdout);
+  assert.equal(JSON.parse(checkpoint.stdout).valid, true);
+  const workContext = spawnSync(
+    "node",
+    [
+      join(packaged, "dist/cli.js"),
+      "work",
+      "context",
+      startedWork.id,
+      "--target",
+      target,
+      "--stage",
+      "shape",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(workContext.status, 0, workContext.stderr || workContext.stdout);
+  assert.equal(JSON.parse(workContext.stdout).checkpoints[0].valid, true);
 
   const knowledgeHelp = spawnSync(
     "node",

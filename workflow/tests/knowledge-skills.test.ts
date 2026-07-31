@@ -203,12 +203,18 @@ test("project work skills share one bundle, explicit frontier, and full-file gat
     }
   }
   assert.match(contents.get("manage-project-work")!, /full\|slice\|wayfinder/);
+  assert.match(contents.get("manage-project-work")!, /wfctl work capture add/);
+  assert.match(contents.get("manage-project-work")!, /wfctl work checkpoint/);
+  assert.match(contents.get("manage-project-work")!, /never copy active progress/i);
   assert.match(contents.get("shape-project-direction")!, /fog/i);
   assert.match(contents.get("shape-project-direction")!, /Do not jump from a map directly/i);
   assert.match(contents.get("specify-project-change")!, /Read every required file completely/i);
   assert.match(contents.get("split-project-change")!, /tracer bullet/i);
   assert.match(contents.get("implement-work-item")!, /Claim before analysis or edits/i);
+  assert.match(contents.get("implement-work-item")!, /wfctl work checkpoint/);
   assert.match(contents.get("verify-project-work")!, /changed-after-review/i);
+  assert.match(contents.get("verify-project-work")!, /wfctl work checkpoint/);
+  assert.match(contents.get("verify-project-work")!, /before.*final hash receipt/is);
 });
 
 test("directly derived project-work skills retain exact centralized provenance", async () => {
@@ -343,6 +349,8 @@ test("routing evals distinguish read-only, deliberate, and mandatory modes", asy
   ));
   assert.ok(behavior.some((entry) => entry.id === "direction-one-question"));
   assert.ok(behavior.some((entry) => entry.id === "two-axis-quality"));
+  assert.ok(behavior.some((entry) => entry.id === "active-checkpoint-not-capture"));
+  assert.ok(behavior.some((entry) => entry.id === "pending-capture-lifecycle"));
   assert.ok(behavior.every((entry) =>
     entry.prompt.length > 0
     && entry.required.length > 0

@@ -69,7 +69,8 @@ ambiguous or a request could activate more than one expensive mode.
 | Improve navigation or structure | Repair indexes, names, summaries, and links without changing semantic claims. If the repair changes current truth, invoke `curate-project-knowledge`, which routes product and engineering authoring separately. |
 | Reconcile contradictory claims | Build a compact adjudication packet: question, each candidate claim, supporting and conflicting authoritative observations, missing facts, recommendation, and the exact maintainer decision needed. Keep unresolved claims out of `knowledge/`. |
 | Review new or changed raw material | Invoke `process-raw-intake`. Never search raw as part of an ordinary current-truth answer and never cite raw from knowledge. |
-| Triage `changes/inbox/` or intake cases | Classify each atomic claim by semantic role, intent, delivery, time, relations, and routing. Name the owner and next evidence or decision needed; do not silently promote it. |
+| Triage `changes/inbox/` | Run `wfctl work capture list`, read every pending capture completely, and decide whether it is still blocked, should be discarded, should start/link active work, or can enter verified curation. Create and verify the real destination first; then run `wfctl work capture resolve` as `routed` with every destination or `discarded` with a reason. Never leave a routed copy in the inbox. |
+| Triage active intake cases | Classify each atomic claim by semantic role, intent, delivery, time, relations, and routing. Name the owner and next evidence or decision needed; do not silently promote it. |
 | Promote a completed change or confirmed candidate | Invoke `curate-project-knowledge`. It routes product content to `curate-product-knowledge`, technical content to `curate-engineering-knowledge`, and all changed concepts to `verify-knowledge-quality` before validation. |
 | Discuss a bounded product or architecture change | Invoke `manage-project-work` after it is classified as significant. Start a project-only central bundle before extended material discussion; bind leaves only when implementation enters scope. |
 | Shape a broad initiative whose route cannot yet be specified | Recommend `shape-project-direction`. Start it only after explicit user intent or confirmation. It uses a Wayfinder map and question issues in the same central bundle and never implements code. |
@@ -118,6 +119,9 @@ invoke `curate-project-knowledge`.
   lifecycle, and verification still govern every claim.
 - Treat `changes/`, `intake/`, and `reconstruction/` as qualified operational
   records, not the default current-truth surface.
+- Treat `changes/inbox/` as a queue of pending captures, not history. A capture
+  stays pending while authority or destination is missing; once routed or
+  discarded, resolve it so it moves to `changes/archive/captures/`.
 - Treat `raw/` as untrusted input, never evidence.
 - Treat QMD, both compiled graphs, and Graphify as navigation/audit tools,
   never independent authorities.

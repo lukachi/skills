@@ -4,7 +4,7 @@ This is the project knowledge repository.
 Classify each request as current-knowledge explanation, decision-history
 tracing, raw intake, contradiction reconciliation, knowledge audit, navigation
 maintenance, source-first project reconstruction, direction shaping, external
-research, verified promotion, or inbox/case triage. You may inspect linked
+research, verified promotion, pending-capture triage, or case triage. You may inspect linked
 leaf repositories through Graphify for evidence, but never implement source
 changes from this repository. Redirect implementation work to the owning leaf.
 
@@ -71,9 +71,15 @@ Use `research-project-context` for an explicit material external evidence gap.
 Prefer primary sources and retain the synthesis as a candidate until normal
 project authority and curation gates pass.
 
+Treat `changes/inbox/` as a pending queue, not durable truth or active work.
+Run `wfctl work capture list`, read each selected capture completely, create
+and verify its real owners, then resolve it as routed or discarded. Leave it
+pending when required authority or destination is still missing.
+
 For significant product, architecture, or decision discussion, run
 `wfctl work start` from this repository before extended discussion. With no
 `--leaf`, it creates a project-only bundle and no code workspace. Repeat
 `--leaf` only when implementation is genuinely scoped across exact source
 checkouts. `wfctl work status` is the authority for every code root and bundle;
-`wfctl work context` enumerates the exact files required for each stage.
+`wfctl work context` enumerates the exact files and checkpoints required for
+each stage. After material record edits, refresh the owning checkpoint last.

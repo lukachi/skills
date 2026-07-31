@@ -35,8 +35,8 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   const scope = stringValue(metadata.scope) || "leaf";
   const projectOnly = scope === "project";
 
-  if (metadata.workflow_version !== 2 && metadata.workflow_version !== 3) {
-    issues.push("workflow_version must be 2 or 3");
+  if (![2, 3, 4].includes(Number(metadata.workflow_version))) {
+    issues.push("workflow_version must be 2, 3, or 4");
   }
   if (requireCompleted && metadata.status !== "completed") {
     issues.push("status must be completed");

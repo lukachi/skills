@@ -37,6 +37,7 @@ const KNOWLEDGE_DIRECTORIES = [
   "reconstruction/archive",
   "changes/active",
   "changes/archive",
+  "changes/archive/captures",
   "changes/inbox",
 ];
 

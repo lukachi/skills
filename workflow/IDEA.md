@@ -79,8 +79,9 @@ honest owner.
 Significant work begins with one canonical bundle. Its parent change keeps the
 outcome, scope, language, constraints, decisions, and stable acceptance IDs
 current. An optional Wayfinder map resolves a route too foggy for one session;
-bounded issues carry execution and progress; complete file receipts support
-verification. The directory moves intact into history when it closes.
+bounded issues carry execution; each active owner has one hash-bound resumable
+checkpoint; complete file receipts support verification. The directory moves
+intact into history when it closes.
 
 This prevents chat from becoming the only memory and prevents separate product,
 planning, issue, and progress systems from drifting apart.

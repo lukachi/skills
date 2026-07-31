@@ -1,5 +1,5 @@
 ---
-workflow_version: 1
+workflow_version: 2
 kind: work-issue
 id: "{{ISSUE_ID}}"
 title: "{{TITLE}}"
@@ -14,6 +14,17 @@ claim: null
 resolution: null
 created_at: "{{CREATED_AT}}"
 updated_at: "{{CREATED_AT}}"
+checkpoint_version: 1
+checkpoint:
+  status: ready
+  stage: implement
+  actor: system:wfctl
+  current_state: Issue is ready but unclaimed.
+  last_completed: Issue record created.
+  next_action: Read the required context and claim the issue.
+  blockers: []
+  updated_at: "{{CREATED_AT}}"
+  basis_sha256: "{{CHECKPOINT_BASIS}}"
 ---
 
 # Outcome
@@ -31,17 +42,7 @@ Wayfinder issue, state the precise question it resolves instead.
 Record relevant project knowledge, approved decisions, repository scope, and
 explicit exclusions. Do not copy the parent specification.
 
-# Progress
-
-Keep the last completed action, current state, blocker, and next action current
-after every material turn.
-
 # Verification
 
 Record direct source inspection, executable checks, outcomes, and limitations.
 Graph or search output is navigation evidence, not implementation proof.
-
-# Handoff
-
-State what a fresh session must do next and which exact bundle and code roots it
-must revalidate with `wfctl work context`.

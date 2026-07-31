@@ -126,7 +126,7 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   assert.ok(upgrade.operations.some((operation) =>
     operation.path === ".workflow/config.json"
     && operation.status === "update"
-    && /0\.7\.2/.test(operation.reason)
+    && /0\.8\.0/.test(operation.reason)
   ));
 });
 

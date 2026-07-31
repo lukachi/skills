@@ -29,24 +29,35 @@ import {
   createWorkIssue as createBundleIssue,
   dropWorkIssue as dropBundleIssue,
   finishWayfinder as finishBundleWayfinder,
+  initializeDocumentCheckpoint,
   initializeWorkBundle,
   inspectWorkBundle as inspectBundle,
   releaseWorkIssue as releaseBundleIssue,
   resolveWorkIssue as resolveBundleIssue,
   reviewBundleFile,
   setWorkIssueBlocker as setBundleIssueBlocker,
+  updateBundleCheckpoint,
   type BundleReviewStatus,
   type WorkBundleInspection,
   type WorkBundleStage,
   type WorkIssuePhase,
   type WorkIssueSummary,
   type WorkIssueType,
+  type WorkCheckpointStage,
+  type WorkCheckpointStatus,
+  type WorkCheckpointSummary,
 } from "./work-bundle.js";
 import type {
   RepositoryMetadata,
   WorkMode,
   WorkOutcome,
 } from "./types.js";
+
+export { createCapture as createHandoff } from "./capture.js";
+export type {
+  CreateCaptureOptions as CreateHandoffOptions,
+  CreateCaptureResult as CreateHandoffResult,
+} from "./capture.js";
 
 type WorkScope = "project" | "leaf" | "multi-repo";
 
@@ -99,21 +110,6 @@ export interface BeginWorkResult {
   bundleRoot: string;
 }
 
-export interface CreateHandoffOptions {
-  target: string;
-  slug: string;
-  title: string;
-  distributionRoot?: string;
-  now?: Date;
-}
-
-export interface CreateHandoffResult {
-  id: string;
-  codeRoot?: string;
-  knowledgeRoot: string;
-  path: string;
-}
-
 export interface VerifyWorkResult {
   id: string;
   specPath: string;
@@ -158,6 +154,20 @@ export interface RebindWorkResult {
   currentRoot: string;
   branch: string;
   worktreeId: string;
+}
+
+export interface UpdateWorkCheckpointOptions {
+  target: string;
+  id: string;
+  issueId?: string;
+  actor: string;
+  status: WorkCheckpointStatus;
+  stage?: WorkCheckpointStage;
+  currentState: string;
+  lastCompleted?: string;
+  nextAction: string;
+  blockers?: string[];
+  now?: Date;
 }
 
 export interface CreateWorkIssueInput {
@@ -269,7 +279,7 @@ export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkRes
 
   template.metadata = {
     ...template.metadata,
-    workflow_version: 3,
+    workflow_version: 4,
     id,
     title: options.title,
     mode: options.mode,
@@ -291,6 +301,20 @@ export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkRes
   };
   delete template.metadata.source;
   delete template.metadata.workspace;
+  initializeDocumentCheckpoint(template, {
+    status: "active",
+    stage: options.mode === "wayfinder" ? "wayfind" : "shape",
+    actor: "system:wfctl",
+    currentState: options.mode === "wayfinder"
+      ? "The direction map is ready for initial charting."
+      : "Initial change framing is pending.",
+    lastCompleted: "Central work bundle created.",
+    nextAction: options.mode === "wayfinder"
+      ? "Chart the destination and first bounded frontier question."
+      : "Persist the first agreed framing and refresh this checkpoint.",
+    blockers: [],
+    now,
+  });
 
   const binding: WorkBinding = {
     schemaVersion: 4,
@@ -332,46 +356,6 @@ export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkRes
     pointerPaths: [bindingPath, ...pointerPaths],
     pointerPath: pointerPaths[0] ?? bindingPath,
     bundleRoot: activeDirectory,
-  };
-}
-
-export async function createHandoff(
-  options: CreateHandoffOptions,
-): Promise<CreateHandoffResult> {
-  const source = readRepositoryMetadata(resolve(options.target));
-  const target = source.root;
-  const config = await readConfig(target);
-  const knowledgeRoot = config.profile === "knowledge"
-    ? await realpath(target)
-    : await realpath(resolveKnowledgeRoot(target, config));
-  await assertKnowledgeRoot(knowledgeRoot);
-  const now = options.now ?? new Date();
-  const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug(options.slug)}`;
-  const inboxRoot = join(knowledgeRoot, "changes/inbox");
-  const id = await uniqueFileId(inboxRoot, base);
-  const path = join(inboxRoot, `${id}.md`);
-  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile(
-    join(distributionRoot, "skills/manage-project-work/assets/handoff.md"),
-    "utf8",
-  ));
-  template.metadata = {
-    ...template.metadata,
-    id,
-    title: options.title,
-    status: "inbox",
-    created_at: now.toISOString(),
-    source: durableRepository(source),
-  };
-  await writeFile(path, serializeWorkSpec(template), {
-    encoding: "utf8",
-    flag: "wx",
-  });
-  return {
-    id,
-    ...(config.profile === "leaf" ? { codeRoot: target } : {}),
-    knowledgeRoot,
-    path,
   };
 }
 
@@ -427,8 +411,18 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
   document.metadata.status = options.outcome;
   document.metadata.outcome = options.outcome;
   document.metadata.closed_at = now.toISOString();
-  document.metadata.updated_at = now.toISOString();
   document.metadata.sources_at_close = context.currentSources.map(durableRepository);
+  const checkpoint = record(document.metadata.checkpoint);
+  initializeDocumentCheckpoint(document, {
+    status: "complete",
+    stage: "complete",
+    actor: typeof checkpoint?.actor === "string" ? checkpoint.actor : "system:wfctl",
+    currentState: `Change bundle closed as ${options.outcome}.`,
+    lastCompleted: "Completion gates passed and the bundle was archived.",
+    nextAction: "None — this bundle is closed.",
+    blockers: [],
+    now,
+  });
   await mkdir(dirname(archivePath), { recursive: true });
   await rename(activeDirectory, archivePath);
   try {
@@ -437,7 +431,7 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
       serializeWorkSpec(document),
       "utf8",
     );
-    if (document.metadata.workflow_version === 3) {
+    if ([3, 4].includes(Number(document.metadata.workflow_version))) {
       await carryForwardCloseReview(archivePath, now);
     }
   } catch (error) {
@@ -459,6 +453,24 @@ export async function workBundleContext(
 ): Promise<WorkBundleInspection> {
   const context = await requireWorkContext(target, id);
   return await inspectBundle(dirname(context.specPath), stage, issueId);
+}
+
+export async function updateWorkCheckpoint(
+  options: UpdateWorkCheckpointOptions,
+): Promise<WorkCheckpointSummary> {
+  const context = await requireWorkContext(options.target, options.id);
+  return await updateBundleCheckpoint({
+    bundleRoot: dirname(context.specPath),
+    ...(options.issueId ? { issueId: options.issueId } : {}),
+    actor: options.actor,
+    status: options.status,
+    ...(options.stage ? { stage: options.stage } : {}),
+    currentState: options.currentState,
+    ...(options.lastCompleted ? { lastCompleted: options.lastCompleted } : {}),
+    nextAction: options.nextAction,
+    blockers: options.blockers ?? [],
+    ...(options.now ? { now: options.now } : {}),
+  });
 }
 
 export async function createWorkIssue(
@@ -1033,21 +1045,6 @@ async function uniqueWorkId(activeRoot: string, base: string): Promise<string> {
     }
   }
   throw new Error(`Cannot allocate a unique work id for ${base}`);
-}
-
-async function uniqueFileId(root: string, base: string): Promise<string> {
-  for (let index = 1; index < 1000; index += 1) {
-    const candidate = index === 1 ? base : `${base}-${index}`;
-    try {
-      await access(join(root, `${candidate}.md`), constants.F_OK);
-    } catch (error) {
-      if (isMissingFileError(error)) {
-        return candidate;
-      }
-      throw error;
-    }
-  }
-  throw new Error(`Cannot allocate a unique handoff id for ${base}`);
 }
 
 async function assertAbsent(path: string, label: string): Promise<void> {

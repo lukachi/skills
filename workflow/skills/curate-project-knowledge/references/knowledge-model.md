@@ -5,9 +5,9 @@
 - `raw/`: append-oriented untrusted input; never evidence.
 - `intake/`: Git-frozen raw review records; never current truth or an OKF source.
 - `reconstruction/`: source-first baseline and audit receipts at exact revisions.
-- `changes/active/`: proposed behavior and living execution agreements.
-- `changes/archive/`: qualified historical change records.
-- `changes/inbox/`: non-authoritative handoffs awaiting triage.
+- `changes/active/`: proposed behavior, living execution agreements, and their checkpoints.
+- `changes/archive/`: qualified historical changes and resolved capture receipts.
+- `changes/inbox/`: pending non-authoritative captures awaiting triage.
 - `knowledge/`: curated OKF v0.2 current knowledge and the default reading surface.
 - source repositories: implementation authority at exact revisions.
 

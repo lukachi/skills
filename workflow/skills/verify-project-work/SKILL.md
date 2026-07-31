@@ -58,8 +58,21 @@ reason.
 
 Present acceptance results, engineering findings, checks, deviations, risks,
 and knowledge delta as one completion review packet. Record only explicit
-maintainer approval. Then refresh every file receipt changed by that review and
-run:
+maintainer approval. Finish all semantic edits to `change.md`, then refresh its
+checkpoint in review stage **before** recording the final hash receipt:
+
+```sh
+wfctl work checkpoint <id> \
+  --actor "agent:<identity>" \
+  --stage review \
+  --state "Final verification and maintainer decision are recorded." \
+  --last "Reconciled acceptance, implementation, and knowledge promotion." \
+  --next "Re-read changed bundle files, refresh their receipts, and run the completion gate."
+```
+
+Re-read `change.md` completely after that command and refresh its receipt, plus
+every other file changed by the review. Require a current checkpoint and zero
+unseen, changed-after-review, or invalid files. Then run:
 
 ```sh
 wfctl work verify <id>
@@ -68,4 +81,6 @@ wfctl work close <id> --outcome completed|partial|abandoned
 
 Use the honest outcome. Completed closure fails on open issues or claims,
 unresolved Wayfinder state, acceptance gaps, stale file receipts, dirty or
-mismatched source revisions, missing evidence, or incomplete promotion.
+mismatched source revisions, a stale checkpoint, missing evidence, or
+incomplete promotion. Closing the bundle makes its checkpoint terminal; do not
+create a capture for this completed session state.

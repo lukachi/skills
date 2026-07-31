@@ -36,13 +36,15 @@ graph, and one completion gate:
 | Wayfinder | `shape-project-direction` | Stores the map and question issues in the central change bundle and forbids a jump into product code |
 | To Spec | `specify-project-change` | Writes the canonical `change.md`, stable acceptance IDs, knowledge alignment, and maintainer framing review |
 | To Tickets | `split-project-change` | Writes dependency-aware tracer-bullet issues into the same bundle with acceptance and repository coverage |
-| Implement and TDD | `implement-work-item` | Adds exact leaf/worktree claims, Graphify-first inspection, durable progress, and evidence-backed resolution |
+| Implement and TDD | `implement-work-item` | Adds exact leaf/worktree claims, Graphify-first inspection, hash-bound checkpoints, and evidence-backed resolution |
 | Code Review | `verify-project-work` | Adds full bundle accounting, contract and engineering axes, exact revision receipts, and knowledge promotion |
 
-Grilling, domain-modeling, research, prototype, and handoff practices are
-embedded where they serve those flows; they are not silently installed as a
-second tracker or router. The complete source mapping and modification notes
-live in [Third-party provenance](../THIRD_PARTY.md).
+Grilling, domain-modeling, research, prototype, and upstream handoff practices
+are embedded where they serve those flows; they are not silently installed as
+a second tracker or router. Upstream handoff behavior is deliberately split
+between pending captures for unowned material and checkpoints for active work.
+The complete source mapping and modification notes live in
+[Third-party provenance](../THIRD_PARTY.md).
 
 ## What `wfctl init` installs
 

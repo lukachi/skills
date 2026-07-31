@@ -10,7 +10,7 @@ An issue is an executable unit, not a copy of the parent spec.
 - Declares only dependencies that genuinely prevent starting.
 - Identifies repository scope without prescribing stale file paths.
 - Can be verified independently at a public or project-approved seam.
-- Leaves a precise progress and handoff state after every material turn.
+- Leaves one precise, hash-bound checkpoint after every material turn.
 
 ## Bad splits
 

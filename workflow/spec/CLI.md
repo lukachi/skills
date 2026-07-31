@@ -151,12 +151,21 @@ approval—`qmd pull` and `qmd embed` when semantic retrieval is needed.
 
 Installed agents own these commands.
 
-- `wfctl work handoff <slug>` creates a lightweight, non-authoritative inbox
-  record from knowledge or a leaf.
+- `wfctl work capture add <slug>` creates a pending, non-authoritative inbox
+  record only when material has no active or curated owner.
+- `wfctl work capture list` lists the complete pending queue from knowledge or
+  a linked leaf.
+- `wfctl work capture resolve <id>` requires a reason and either existing
+  destinations (`routed`) or none (`discarded`), then moves the receipt to
+  `changes/archive/captures/`. The hidden `wfctl work handoff` command remains
+  a deprecated compatibility alias for `capture add`.
 - `wfctl work start <slug>` creates one project-only, single-leaf, or
   multi-repository bundle in `full`, `slice`, or deliberate `wayfinder` mode.
 - `wfctl work context <id>` inventories the complete bundle and returns the
-  exact full-read set for shaping, Wayfinder, implementation, review, or resume.
+  exact full-read set plus relevant structured checkpoints for shaping,
+  Wayfinder, implementation, review, or resume.
+- `wfctl work checkpoint <id>` refreshes the one hash-bound resumable state
+  owned by the change or a selected claimed issue after semantic edits.
 - `wfctl work issue create|list|show` operates the dependency graph and
   executable frontier inside the bundle.
 - `wfctl work issue block|unblock` updates dependency edges and rejects cycles.
@@ -179,6 +188,7 @@ Example:
 wfctl work start world-loop --title "Implement the world loop" --mode full
 wfctl work status
 wfctl work context <id> --stage shape
+wfctl work checkpoint <id> --actor "agent:session" --state "Framing is current" --last "Scope reviewed" --next "Request framing approval"
 wfctl work issue list <id>
 wfctl work verify <id>
 wfctl work close <id> --outcome completed

@@ -11,9 +11,15 @@ bounded work, `artifacts/` contains referenced support, and `review.md` records
 full-file accounting. A leaf stores only an ignored binding pointer.
 
 After every material maintainer turn, update current state, decisions,
-acceptance, progress, and handoff before continuing. After interruption or
-compaction, run `wfctl work context` and `wfctl work status`, read every required
-file completely, and resume from the bundle rather than conversation memory.
+acceptance, progress, and evidence, then run `wfctl work checkpoint` last for
+the owning change or claimed issue. A stale checkpoint blocks later gates.
+After interruption or compaction, run `wfctl work context` and `wfctl work
+status`, inspect the reported checkpoint, read every required file completely,
+and resume from the bundle rather than conversation memory.
+
+Use `changes/inbox/` only for pending captures that have no active or curated
+owner. Never duplicate active progress there. Resolve each capture to existing
+destinations or discard it with a reason so the inbox remains a real queue.
 
 Before claiming an issue, record a current review receipt for every required
 context file. Claim from the exact bound leaf before code work. Never infer a

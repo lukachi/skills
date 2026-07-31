@@ -114,16 +114,18 @@ Fixtures, mocks, demonstrations, and fakes must be identified during
 verification and cannot establish production delivery unless they are the
 explicit accepted scope.
 
-The agent updates the record after every material discussion turn. After
-compaction or interruption, it resumes from that record and workflow status,
-not conversation memory.
+The agent updates the owning semantic record after every material discussion
+turn, then refreshes its structured checkpoint last. After compaction or
+interruption, it resumes from that checkpoint, the complete owning record, and
+workflow status—not conversation memory.
 
 ### Lightweight work
 
 Clearly local mechanical work that preserves behavior and contracts may bypass
 the full gate. If impact is ambiguous, the agent explains the risk and asks the
-maintainer to choose. Useful durable findings may enter `changes/inbox/` as a
-non-authoritative handoff.
+maintainer to choose. Useful unowned findings may enter `changes/inbox/` as a
+pending, non-authoritative capture. Active work instead refreshes its owning
+structured checkpoint.
 
 ### Broad uncertain work
 

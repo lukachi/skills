@@ -16,6 +16,11 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { applyInstallPlan } from "../src/applier.js";
+import {
+  createCapture,
+  listCaptures,
+  resolveCapture,
+} from "../src/capture.js";
 import { readRepositoryMetadata } from "../src/git.js";
 import { hashKnowledgeConcept } from "../src/knowledge.js";
 import { buildInstallPlan } from "../src/planner.js";
@@ -27,7 +32,6 @@ import {
   closeWork,
   completeWorkIssue,
   createWorkIssue,
-  createHandoff,
   finishWayfinder,
   rebindWork,
   reviewWorkBundleFile,
@@ -35,6 +39,7 @@ import {
   verifyWork,
   workBundleContext,
   workStatus,
+  updateWorkCheckpoint,
 } from "../src/work.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -96,6 +101,12 @@ test("runs the completed central work lifecycle", async () => {
   assert.equal(started.knowledgeRoot, knowledgeRoot);
   assert.match(started.specPath, /changes\/active\/2026-07-28-world-loop\/change\.md$/);
   assert.equal(document.metadata.status, "shaping");
+  assert.equal(document.metadata.workflow_version, 4);
+  assert.equal(document.metadata.checkpoint_version, 1);
+  assert.equal(
+    (document.metadata.checkpoint as Record<string, unknown>).status,
+    "active",
+  );
   assert.deepEqual(
     (document.metadata.knowledge_alignment as Record<string, unknown>).reviewed,
     [],
@@ -203,6 +214,17 @@ The world loop follows the reviewed authority model.[^world-loop-decision]
   );
   document.body = document.body.replace("\nEvidence: raw/legacy.md\n", "");
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test",
+    status: "active",
+    stage: "review",
+    currentState: "Implementation and knowledge promotion are ready for final review.",
+    lastCompleted: "Acceptance evidence and curated knowledge were recorded.",
+    nextAction: "Review every current bundle file and close the change.",
+    now: new Date("2026-07-28T11:56:00.000Z"),
+  });
   await reviewWorkBundleFile(leaf, started.id, "change.md", "reviewed", "");
 
   const verified = await verifyWork(leaf, started.id);
@@ -234,6 +256,17 @@ The world loop follows the reviewed authority model.[^world-loop-decision]
   );
   (document.metadata.verification as Record<string, unknown>).revision = verifiedSource.commit;
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test",
+    status: "active",
+    stage: "review",
+    currentState: "The verified revision is corrected and closure is ready.",
+    lastCompleted: "Verification was rebound to the current source revision.",
+    nextAction: "Review the corrected change record and close the bundle.",
+    now: new Date("2026-07-28T11:59:40.000Z"),
+  });
   await reviewWorkBundleFile(leaf, started.id, "change.md", "reviewed", "");
 
   const closed = await closeWork({
@@ -300,8 +333,8 @@ test("blocks significant completion without explicit maintainer reviews", async 
   assert.ok(verified.issues.includes("maintainer_review.completion.status must be approved"));
 });
 
-test("creates a lightweight handoff in the knowledge inbox", async () => {
-  const root = await mkdtemp(join(tmpdir(), "wfctl-handoff-"));
+test("captures unassigned material and closes its inbox lifecycle", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-capture-"));
   const knowledge = join(root, "knowledge-repo");
   const leaf = join(root, "leaf-repo");
   await mkdir(knowledge);
@@ -320,7 +353,7 @@ test("creates a lightweight handoff in the knowledge inbox", async () => {
     distributionRoot,
   }));
 
-  const created = await createHandoff({
+  const created = await createCapture({
     target: leaf,
     slug: "small-observation",
     title: "Small observation",
@@ -330,14 +363,89 @@ test("creates a lightweight handoff in the knowledge inbox", async () => {
   assert.equal(created.knowledgeRoot, await realpath(knowledge));
   assert.match(created.path, /changes\/inbox\/2026-07-28-small-observation\.md$/);
   const content = await readFile(created.path, "utf8");
-  assert.match(content, /status: inbox/);
+  assert.match(content, /kind: capture/);
+  assert.match(content, /status: pending/);
   assert.match(content, /repository:/);
   assert.match(content, /worktree_id: main/);
   await assert.rejects(
     access(join(leaf, ".workflow/current", `${created.id}.json`)),
   );
 
-  const projectOnly = await createHandoff({
+  const pending = await listCaptures(leaf);
+  assert.deepEqual(pending.captures.map((entry) => entry.id), [created.id]);
+  await assert.rejects(
+    resolveCapture({
+      target: leaf,
+      id: created.id,
+      outcome: "routed",
+      reason: "An index is not a semantic owner.",
+      destinations: ["knowledge/index.md"],
+    }),
+    /concrete knowledge concept/,
+  );
+  const destination = join(knowledge, "knowledge/references/captured-observation.md");
+  await writeFile(destination, "# Captured observation\n", "utf8");
+  const resolved = await resolveCapture({
+    target: leaf,
+    id: created.id,
+    outcome: "routed",
+    reason: "The verified result belongs in the curated knowledge index.",
+    destinations: ["knowledge/references/captured-observation.md"],
+    now: new Date("2026-07-28T10:04:00.000Z"),
+  });
+  assert.match(resolved.archivePath, /changes\/archive\/captures\/2026-07-28-small-observation\.md$/);
+  assert.deepEqual(resolved.destinations, ["knowledge/references/captured-observation.md"]);
+  const archived = await readFile(resolved.archivePath, "utf8");
+  assert.match(archived, /status: routed/);
+  assert.match(archived, /knowledge\/references\/captured-observation\.md/);
+  assert.equal((await listCaptures(knowledge)).captures.length, 0);
+
+  const repeated = await createCapture({
+    target: leaf,
+    slug: "small-observation",
+    title: "A later observation with the same slug",
+    distributionRoot,
+    now: new Date("2026-07-28T10:04:30.000Z"),
+  });
+  assert.equal(repeated.id, "2026-07-28-small-observation-2");
+  await resolveCapture({
+    target: leaf,
+    id: repeated.id,
+    outcome: "discarded",
+    reason: "Duplicate finding.",
+  });
+
+  const legacyPath = join(knowledge, "changes/inbox/2026-07-28-legacy-note.md");
+  await writeFile(
+    legacyPath,
+    `---
+handoff_version: 1
+id: 2026-07-28-legacy-note
+title: Legacy note
+status: inbox
+created_at: 2026-07-28T09:00:00.000Z
+source: {}
+claim_refs: []
+---
+
+# Summary
+
+Legacy material.
+`,
+    "utf8",
+  );
+  assert.equal((await listCaptures(knowledge)).captures[0]?.legacy, true);
+  const migrated = await resolveCapture({
+    target: knowledge,
+    id: "2026-07-28-legacy-note",
+    outcome: "discarded",
+    reason: "Legacy input was reviewed and is no longer useful.",
+  });
+  const migratedContent = await readFile(migrated.archivePath, "utf8");
+  assert.match(migratedContent, /capture_version: 1/);
+  assert.doesNotMatch(migratedContent, /handoff_version/);
+
+  const projectOnly = await createCapture({
     target: knowledge,
     slug: "raw-proposal",
     title: "Raw proposal",
@@ -347,7 +455,16 @@ test("creates a lightweight handoff in the knowledge inbox", async () => {
   assert.equal(projectOnly.codeRoot, undefined);
   assert.equal(projectOnly.knowledgeRoot, await realpath(knowledge));
   assert.match(projectOnly.path, /changes\/inbox\/2026-07-28-raw-proposal\.md$/);
-  assert.match(await readFile(projectOnly.path, "utf8"), /status: inbox/);
+  assert.match(await readFile(projectOnly.path, "utf8"), /status: pending/);
+  const discarded = await resolveCapture({
+    target: knowledge,
+    id: projectOnly.id,
+    outcome: "discarded",
+    reason: "No material claim survived review.",
+    now: new Date("2026-07-28T10:06:00.000Z"),
+  });
+  assert.match(discarded.archivePath, /changes\/archive\/captures\/2026-07-28-raw-proposal\.md$/);
+  assert.match(await readFile(discarded.archivePath, "utf8"), /status: discarded/);
 });
 
 test("detects linked Git worktrees for close metadata", async () => {
@@ -445,6 +562,16 @@ test("runs project-only knowledge work without inventing a code checkout", async
   assert.deepEqual(document.metadata.repositories, []);
   completeWorkDocument(document, "project");
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  await updateWorkCheckpoint({
+    target: knowledge,
+    id: started.id,
+    actor: "agent:test",
+    status: "active",
+    stage: "review",
+    currentState: "Project-only work is ready for final review.",
+    lastCompleted: "Knowledge change and verification evidence completed.",
+    nextAction: "Review the current change record and close the bundle.",
+  });
   await reviewWorkBundleFile(knowledge, started.id, "change.md", "reviewed", "");
   assert.deepEqual((await verifyWork(knowledge, started.id)).issues, []);
 
@@ -508,6 +635,16 @@ test("coordinates one project change across every selected leaf", async () => {
     checks: [{ command: `test ${source.repository}`, result: "passed" }],
   }));
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  await updateWorkCheckpoint({
+    target: knowledge,
+    id: started.id,
+    actor: "agent:test",
+    status: "active",
+    stage: "review",
+    currentState: "All selected leaf revisions are ready for final review.",
+    lastCompleted: "Multi-repository verification receipts recorded.",
+    nextAction: "Review the current bundle and close the coordinated change.",
+  });
   await reviewWorkBundleFile(knowledge, started.id, "change.md", "reviewed", "");
   assert.deepEqual((await verifyWork(knowledge, started.id)).issues, []);
 
@@ -593,6 +730,21 @@ test("enforces full bundle reads, exact claims, dependency frontier, and stale r
   }];
   change.body += "\nBottom-of-file requirement: preserve recovery semantics.\n";
   await writeFile(started.specPath, serializeWorkSpec(change), "utf8");
+  assert.ok(
+    (await workBundleContext(leaf, started.id, "shape")).validationIssues.some((issue) =>
+      /checkpoint is stale/.test(issue)
+    ),
+  );
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test-session",
+    status: "active",
+    stage: "implement",
+    currentState: "Acceptance and recovery semantics are specified for issue splitting.",
+    lastCompleted: "Specification updated with the bottom-of-file requirement.",
+    nextAction: "Create and execute the delivery frontier.",
+  });
   const repository = String(
     ((change.metadata.repositories as Record<string, unknown>[])[0]!).repository,
   );
@@ -651,6 +803,32 @@ test("enforces full bundle reads, exact claims, dependency frontier, and stale r
   assert.equal(
     (claimedDocument.metadata.claim as Record<string, unknown>).worktree_id,
     readRepositoryMetadata(leaf).worktreeId,
+  );
+  claimedDocument.body += "\nImplemented the first behavior-first step.\n";
+  await writeFile(
+    join(started.bundleRoot, first.path),
+    serializeWorkSpec(claimedDocument),
+    "utf8",
+  );
+  assert.ok(
+    (await workBundleContext(leaf, started.id, "implement", first.id)).validationIssues.some(
+      (issue) => /checkpoint is stale/.test(issue),
+    ),
+  );
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    issueId: first.id,
+    actor: "agent:test-session",
+    status: "active",
+    currentState: "The first behavior-first step is implemented and awaiting final checks.",
+    lastCompleted: "Implemented the first behavior-first step.",
+    nextAction: "Run focused checks and complete this issue with evidence.",
+  });
+  assert.equal(
+    (await workBundleContext(leaf, started.id, "implement", first.id)).checkpoints
+      .find((entry) => entry.issue === first.id)?.valid,
+    true,
   );
   await assert.rejects(
     completeWorkIssue({
@@ -752,6 +930,16 @@ test("Wayfinder resolves one shared map before delivery specification", async ()
     status: "pending",
   }];
   await writeFile(started.specPath, serializeWorkSpec(change), "utf8");
+  await updateWorkCheckpoint({
+    target: knowledge,
+    id: started.id,
+    actor: "agent:wayfinder-test",
+    status: "active",
+    stage: "review",
+    currentState: "Wayfinder answers are synthesized into bounded acceptance.",
+    lastCompleted: "Fog cleared and delivery acceptance drafted.",
+    nextAction: "Review every current bundle file and finish Wayfinder.",
+  });
   await assert.rejects(
     finishWayfinder(knowledge, started.id, "full"),
     /every bundle file is reviewed/,

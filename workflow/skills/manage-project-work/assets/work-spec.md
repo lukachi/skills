@@ -1,5 +1,5 @@
 ---
-workflow_version: 3
+workflow_version: 4
 id: "{{WORK_ID}}"
 title: "{{TITLE}}"
 mode: "{{MODE}}"
@@ -7,6 +7,17 @@ status: shaping
 scope: leaf
 created_at: "{{CREATED_AT}}"
 updated_at: "{{CREATED_AT}}"
+checkpoint_version: 1
+checkpoint:
+  status: active
+  stage: shape
+  actor: system:wfctl
+  current_state: Initial framing is pending.
+  last_completed: Central work bundle created.
+  next_action: Persist the first agreed framing and refresh this checkpoint.
+  blockers: []
+  updated_at: "{{CREATED_AT}}"
+  basis_sha256: "{{CHECKPOINT_BASIS}}"
 repositories: []
 acceptance: []
 direction:
@@ -53,8 +64,8 @@ State the intended outcome and why it matters.
 # Current state
 
 Maintain the latest agreed problem, desired outcome, constraints, scope,
-assumptions, risks, and next action. Rewrite this section whenever the current
-understanding changes.
+assumptions, and risks. Rewrite this section whenever the current understanding
+changes; keep resumable execution state only in the structured checkpoint.
 
 # Direction map
 
@@ -142,9 +153,3 @@ against authoritative sources; untrusted raw intake is never provenance.
 # Deviations and unresolved work
 
 State deviations, remaining risks, placeholders, mocks, follow-ups, or `None`.
-
-# Handoff
-
-Record the exact next action, last completed action, blocking question, and the
-paths reported by `wfctl work status`. This section must be sufficient to resume
-after compaction without relying on conversation memory.

@@ -3,6 +3,7 @@
 A completed record requires:
 
 - every plan and acceptance checkbox resolved;
+- the change and every relevant issue have a current structured checkpoint;
 - every stable acceptance ID marked verified and paired with passed evidence;
 - every bundle file except the review ledger accounted for at its current hash;
 - no unseen, changed-after-review, or invalid bundle file;
@@ -27,6 +28,11 @@ A completed record requires:
 - a matching revision, worktree ID, and checks receipt for every bound
   repository. Single-leaf work may use the top-level verification fields;
   multi-repository work uses `verification.repositories`.
+
+Update semantic records first, refresh the owning checkpoint last, then re-read
+the changed record and record its final file receipt. A checkpoint edit changes
+the file hash; recording the receipt before the checkpoint would immediately
+make that receipt stale.
 
 The CLI validates the bundle graph, file hashes, record structure, exact source
 bindings, and any promoted concept files. It

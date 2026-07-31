@@ -35,7 +35,7 @@ You can use ordinary project language:
 | Resolve a contradiction | “Reconcile the conflicting claims about session ownership.” |
 | Audit quality | “Find stale, missing, duplicated, or contradictory knowledge.” |
 | Improve navigation | “Organize the economy Area for a newcomer.” |
-| Review pending work | “Triage the knowledge inbox and active cases.” |
+| Review pending work | “Triage pending captures and active cases.” |
 
 You do not need to know a skill name, file path, case ID, or CLI command.
 
@@ -64,6 +64,21 @@ During these operations, the agent shows a human-readable frontier: what has
 been covered, what remains, what is blocked, and which decision it needs from
 you. Internal ledgers remain available for audit but are not your normal
 interface.
+
+## Pending captures
+
+`changes/inbox/` is a queue for useful material that does not yet belong to an
+active change or curated concept. It is neither current project truth nor a
+second task tracker.
+
+Ask the agent to review pending captures. It reads each one completely, finds
+or creates the real owner, verifies that destination, and then records the
+capture as `routed`. If the material should not survive, it records why and
+marks it `discarded`. The receipt moves to `changes/archive/captures/`, so the
+inbox contains only genuinely pending material.
+
+When work already has an active change or issue, the agent updates that record
+and its checkpoint instead of creating a capture.
 
 ## The repository boundary
 

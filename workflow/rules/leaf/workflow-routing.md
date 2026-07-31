@@ -13,7 +13,7 @@ Use the full workflow when work may change observable behavior, domain meaning, 
 
 Skip the full workflow only when the change is clearly local and preserves behavior and contracts, such as presentation-only polish, copy edits, formatting, or a mechanical correction with no design choice.
 
-If classification is uncertain, explain the possible impact and ask the maintainer whether to use the full workflow. Recommend one answer. If the maintainer declines, proceed lightly and offer `wfctl work handoff` before closing so reusable findings enter `changes/inbox/` without becoming authoritative history.
+If classification is uncertain, explain the possible impact and ask the maintainer whether to use the full workflow. Recommend one answer. If the maintainer declines, proceed lightly and offer a pending capture only when a reusable finding has no existing owner. Use `wfctl work capture add`; never duplicate active work in `changes/inbox/` or present the capture as authoritative history.
 
 Never use task size alone as the classifier. A one-line contract change can be significant; a large mechanical rewrite can be lightweight.
 

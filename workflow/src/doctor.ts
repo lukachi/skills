@@ -25,6 +25,7 @@ import {
   compileClaimLedger,
   type ClaimLedger,
 } from "./claim-ledger.js";
+import { listCaptures } from "./capture.js";
 import { buildInstallPlan, skillsForProfile } from "./planner.js";
 import {
   listRepositoryConnections,
@@ -216,6 +217,7 @@ export async function runDoctor(
         "reconstruction/archive",
         "changes/active",
         "changes/archive",
+        "changes/archive/captures",
         "changes/inbox",
       ]
     ) {
@@ -226,6 +228,22 @@ export async function runDoctor(
         `${directory} exists`,
         `${directory} is missing`,
       ));
+    }
+    try {
+      const captures = await listCaptures(target);
+      checks.push({
+        name: "capture-inbox",
+        status: captures.captures.length > 0 ? "warn" : "pass",
+        message: captures.captures.length > 0
+          ? `${captures.captures.length} pending capture(s) require knowledge triage`
+          : "No pending captures",
+      });
+    } catch (error) {
+      checks.push({
+        name: "capture-inbox",
+        status: "fail",
+        message: `Capture inbox is invalid: ${errorMessage(error)}`,
+      });
     }
     try {
       const connections = await listRepositoryConnections(target);

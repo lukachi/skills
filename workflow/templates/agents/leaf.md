@@ -25,7 +25,8 @@ After `wfctl work start`, run `wfctl work status <id>` and the stage-specific
 `wfctl work context <id>` before any code edit,
 after changing directories, after resuming, and before verification or close.
 Use only the reported `Code roots` for their respective code operations and
-the reported `Spec` only for spec/progress updates. A worktree is a distinct
+the reported `Spec` only for record updates. Refresh the owning change or issue
+checkpoint after every material edit. A worktree is a distinct
 code root; never infer another checkout from repository name, branch, or spec
 location. A branch/worktree mismatch requires explicit `wfctl work rebind`
 before any code edit.
@@ -33,9 +34,9 @@ before any code edit.
 Keep one canonical change bundle in the knowledge repository. `change.md` owns
 the parent contract, optional `map.md` owns Wayfinder lineage, and `issues/`
 owns bounded progress. Update it after every material maintainer turn, claim
-one frontier issue from the exact leaf before implementation, verify the whole
-bundle with `verify-project-work`, promote durable truth separately, then
-archive the directory intact.
+one frontier issue from the exact leaf before implementation, then refresh that
+record's checkpoint last. Verify the whole bundle with `verify-project-work`,
+promote durable truth separately, then archive the directory intact.
 
 During promotion, keep linked product and engineering views separate. Invoke
 `curate-product-knowledge` for stakeholder-facing behavior,

@@ -107,8 +107,10 @@ references use `intake:<case-id>#<candidate-id>` or
   superseded intent cannot use this lane.
 - `history`: confirmed former truth or durable chronology. Preserve it in
   Area decisions/evolution or another honest history concept.
-- `change`: reviewed proposed work. Create a durable handoff or active change;
-  do not present it as current knowledge.
+- `change`: reviewed proposed work with an active owner under
+  `changes/active/`; do not present it as current knowledge.
+- `capture`: useful pending material without an active or curated owner. Its
+  destination is one receipt under `changes/inbox/`, not project truth.
 - `case-only`: rejected or unresolved material. It remains discoverable in the
   operational case but produces no authoritative derivative.
 
@@ -119,7 +121,7 @@ rejected proposal remains case-only.
 
 Every current/history candidate carries independent authority receipts and
 explicit `routing.destinations`. `promotion.concepts` must equal the union of
-knowledge destinations. Change destinations must exist before completion.
+knowledge destinations. Change and capture destinations must exist before completion.
 This prevents confirmed current/history claims from being silently dropped
 and prevents outputs from appearing without a reviewed candidate.
 

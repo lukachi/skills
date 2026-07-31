@@ -63,12 +63,12 @@ skill by name.
 
 | Surface | Purpose | Trust |
 | --- | --- | --- |
-| `raw/` | Continuous append-only dumps and captures | Untrusted clue source; never evidence |
+| `raw/` | Continuous append-only dumps and source material | Untrusted clue source; never evidence |
 | `intake/` | Git-frozen raw review cases | Operational audit trail; never cited by knowledge |
 | `reconstruction/` | Source-first project baselines and audits | Qualified review records; opt-in, not default truth |
-| `changes/active/` | One change bundle per significant outcome: parent contract, optional map, bounded issues, artifacts, and review ledger | Current execution agreement |
-| `changes/archive/` | Closed change bundles moved intact with reviews and receipts | Historical record qualified by outcome and reviews |
-| `changes/inbox/` | Lightweight handoffs awaiting triage | Non-authoritative input to the normal change or curation flow |
+| `changes/active/` | One change bundle per significant outcome: parent contract, structured checkpoints, optional map, bounded issues, artifacts, and review ledger | Current execution agreement |
+| `changes/archive/` | Closed change bundles plus resolved capture receipts | Historical record qualified by outcome and reviews |
+| `changes/inbox/` | Pending captures with no active or curated owner yet | Non-authoritative queue awaiting explicit routing or discard |
 | `knowledge/` | Curated OKF concepts | Default current project knowledge |
 | source repositories | Executable implementation | Implementation authority at an exact revision |
 
@@ -193,13 +193,21 @@ across components or repositories.
 
 Use the lightweight path only when behavior and contracts clearly remain
 unchanged. Size is not the classifier. When ambiguous, the agent explains the
-impact, recommends a route, and asks you. A compact handoff change record may
-preserve useful lightweight findings without imposing the full gate.
+impact, recommends a route, and asks you. A pending capture may preserve a
+useful lightweight result without imposing the full gate, but only when no
+active change or curated concept already owns it.
 
-Accepted lightweight handoffs go to `changes/inbox/` through
-`wfctl work handoff`. Leaf handoffs retain exact source/worktree metadata;
-knowledge handoffs retain project-only intake/reconstruction proposals and
-their claim references. Both remain non-authoritative until triaged.
+Accepted unowned material enters `changes/inbox/` through `wfctl work capture
+add`. Leaf captures retain exact source/worktree metadata; knowledge captures
+retain project-only intake/reconstruction proposals and their claim references.
+The knowledge agent lists and reads pending captures, creates real destinations,
+then resolves each as routed or discarded. Resolved receipts move to
+`changes/archive/captures/`; they never become authority by themselves.
+
+Active work never uses the inbox for session state. The owning change or issue
+contains one structured checkpoint. The agent refreshes it after material
+edits, and `wfctl work context` rejects a stale hash while still requiring the
+underlying files to be read completely.
 
 Read-only explanation, history, ownership, and health questions run
 automatically. Raw processing, whole-project reconstruction, durable external

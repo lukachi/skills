@@ -57,10 +57,11 @@ wfctl work issue create <change-id> <slug> \
   --blocked-by ISSUE-001
 ```
 
-Repeat options as needed. Put detailed progress in its issue file; never create
-a second issue file in a leaf. Run `wfctl work issue list <change-id>` and
-confirm every acceptance ID is covered, the graph is acyclic, and the frontier
-matches the intended concurrency.
+Repeat options as needed. Each issue receives its own ready checkpoint; never
+create a second issue or progress file in a leaf. Run `wfctl work issue list
+<change-id>` and confirm every acceptance ID is covered, the graph is acyclic,
+and the frontier matches the intended concurrency. Refresh the parent
+checkpoint last with the first executable frontier action.
 
 Do not implement during this skill. Hand a frontier issue to
 `implement-work-item` in a fresh context.

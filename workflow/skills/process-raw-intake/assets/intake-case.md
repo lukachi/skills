@@ -104,7 +104,8 @@ Route each candidate explicitly:
 
 - current accepted truth to `current-knowledge`;
 - former durable truth to `history`;
-- proposed ideas and plans to `change`;
+- reviewed, owned proposals and plans to `change`;
+- useful unowned proposals or findings to `capture`;
 - rejected or unresolved material to `case-only`.
 
 List knowledge destinations in `promotion.concepts`. Record why rejected,

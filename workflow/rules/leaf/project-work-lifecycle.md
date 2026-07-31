@@ -15,8 +15,8 @@ repository owns significant-work bundles and current project knowledge.
 7. Use `implement-work-item` for one frontier issue. Read every required file,
    record current receipts, and claim the issue from this exact checkout before
    implementation.
-8. Update issue progress after material turns. Update the parent change when
-   approved scope, acceptance, or decisions change.
+8. After material turns, update the owning issue or parent change, then refresh
+   its structured checkpoint last. Never copy active progress into the inbox.
 9. Verify behavior through direct production-path inspection and fresh checks.
 10. Preserve implementation in the exact clean Git commit only with normal
     maintainer authorization.

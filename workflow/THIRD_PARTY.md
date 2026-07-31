@@ -20,10 +20,10 @@ in [`vendor/mattpocock/upstream.json`](vendor/mattpocock/upstream.json).
 
 | Upstream source | Local skill | Retained behavior | Main `wfctl` modifications |
 | --- | --- | --- | --- |
-| `wayfinder` | `shape-project-direction` | Destination-first map, decision issues, named resolutions, fog, frontier, and deliberate invocation | Central knowledge bundle; local Markdown issue graph; full-read receipts; explicit spec handoff; source implementation forbidden during Wayfinder |
+| `wayfinder` | `shape-project-direction` | Destination-first map, decision issues, named resolutions, fog, frontier, and deliberate invocation | Central knowledge bundle; local Markdown issue graph; full-read receipts; explicit transition into specification; source implementation forbidden during Wayfinder |
 | `to-spec` | `specify-project-change` | Synthesize earned context instead of restarting the interview; define product outcome, exclusions, technical and testing decisions | Canonical `change.md`; stable acceptance IDs; Graphify and knowledge alignment; maintainer framing review; resolved-map synthesis |
 | `to-tickets` | `split-project-change` | Tracer-bullet issues, explicit blockers, complete descriptions, and user-reviewed granularity | Bundle-local issue graph; acceptance coverage; exact repository scope; cycle validation; no competing leaf or external tracker |
-| `implement` and `tdd` | `implement-work-item` | Implement from an approved spec or ticket, use behavior-first test cycles, run focused and broad checks, then review | Exact leaf/worktree claim; Graphify-first inspection; durable progress and handoff; evidence-backed issue resolution; no automatic commit |
+| `implement` and `tdd` | `implement-work-item` | Implement from an approved spec or ticket, use behavior-first test cycles, run focused and broad checks, then review | Exact leaf/worktree claim; Graphify-first inspection; hash-bound checkpoints; evidence-backed issue resolution; no automatic commit |
 | `code-review` | `verify-project-work` | Separate contract/spec and engineering/standards review axes | Every bundle file accounted at a current hash; stable acceptance matrix; exact revision receipts; knowledge promotion; maintainer completion gate |
 
 ## Embedded influences
@@ -31,8 +31,10 @@ in [`vendor/mattpocock/upstream.json`](vendor/mattpocock/upstream.json).
 The review also incorporated selected practices from `domain-modeling`,
 `grilling`, `grill-with-docs`, `research`, `prototype`, and `handoff`. Those
 practices are embedded as bounded issue types, conversation rules, curation
-steps, or compact handoffs. They are not copied or installed as standalone
-skills and do not create a second issue tracker.
+steps, pending captures, or active checkpoints. In particular, upstream
+`handoff` behavior is split locally: unowned material becomes a capture, while
+resumable active state remains with its owning change or issue. These are not
+copied or installed as standalone skills and do not create a second tracker.
 
 ## External tool integrations
 

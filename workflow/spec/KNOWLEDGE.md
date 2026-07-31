@@ -12,9 +12,9 @@ curation, retrieval, lifecycle, and generated relationship artifacts.
 | `raw/` | Continuous append-oriented input | Untrusted; never evidence or current truth |
 | `intake/` | Bounded review of frozen raw inputs | Audit and candidate state only |
 | `reconstruction/` | Source-first baselines and audits | Audit and candidate state only |
-| `changes/inbox/` | Lightweight handoffs and proposals | Non-authoritative |
-| `changes/active/` | Canonical living work records | Approved intent within recorded scope |
-| `changes/archive/` | Honest closed outcomes and receipts | Durable project history, not current knowledge by itself |
+| `changes/inbox/` | Pending captures without an active or curated owner | Non-authoritative queue |
+| `changes/active/` | Canonical living work records with hash-bound checkpoints | Approved intent within recorded scope |
+| `changes/archive/` | Honest closed outcomes and resolved capture receipts | Durable project history, not current knowledge by itself |
 | `knowledge/` | Curated OKF v0.2 bundle | Current project knowledge and durable history |
 
 `knowledge/` must never cite or link to `raw/` or `intake/`. Curated claims use
@@ -133,7 +133,8 @@ not flattened.
 | --- | --- | --- |
 | `current-knowledge` | Confirmed current product or implementation truth | Curated non-index concepts |
 | `history` | Confirmed former state or durable chronology | Curated decision, history, or evolution concepts |
-| `change` | Reviewed proposal or plan | `changes/inbox/` or `changes/active/` |
+| `change` | Reviewed proposal or plan with an active owner | `changes/active/` |
+| `capture` | Useful pending material without an active or curated owner | `changes/inbox/` |
 | `case-only` | Rejected, unresolved, or non-durable material | No destination |
 
 Proposed intent cannot route to current knowledge. Unresolved material cannot

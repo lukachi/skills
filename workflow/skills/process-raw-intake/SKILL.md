@@ -207,24 +207,29 @@ answer or keep the candidate unresolved outside `knowledge/`.
 1. Route each candidate before authoring output:
    - `current-knowledge`: confirmed accepted current truth;
    - `history`: confirmed former truth or durable chronology;
-   - `change`: a reviewed proposal or plan that is not current truth;
+   - `change`: a reviewed proposal or plan with an active work owner;
+   - `capture`: useful pending material that has no active or curated owner;
    - `case-only`: rejected or unresolved material.
    A rejection normally stays case-only. If the same boundary keeps returning,
    do not promote the rejected proposals. Ask whether the maintainer intends a
    durable non-goal or negative product rule. Only the explicitly accepted
    boundary may enter current knowledge through the normal decision threshold
    and curation gate.
-2. Create every declared destination. A proposed idea normally becomes a
-   `changes/inbox/` handoff or an active change, not a knowledge concept. For
-   lightweight retained input, run from the knowledge root:
+2. Create every declared destination. Route an owned proposal to an active
+   `change`; route useful but still unowned material to `capture`. Neither is a
+   knowledge concept. If an intake case already has enough authority and scope
+   to start significant work, start or update that change directly. Otherwise
+   run from the knowledge root:
 
    ```sh
-   wfctl work handoff <slug> --title "<proposal or finding>"
+   wfctl work capture add <slug> --title "<proposal or finding>"
    ```
 
-   Fill the created handoff with the reviewed proposal, its claim IDs,
-   conditions, lineage, and next decision. Start project-only significant work
-   with `wfctl work start` when shaping must continue.
+   Fill the pending capture with the reviewed proposal, its claim IDs,
+   conditions, lineage, and next decision. It is still not truth. During later
+   inbox triage, create the real curated or active destination first and then
+   close the capture with `wfctl work capture resolve`; discard it explicitly
+   when no material route survives.
 3. Group current/history candidates into the smallest coherent concepts and
    invoke `curate-project-knowledge`. It routes product and engineering views
    to their specialized skills and invokes `verify-knowledge-quality`. Every

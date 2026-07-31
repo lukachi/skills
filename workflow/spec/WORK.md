@@ -30,11 +30,12 @@ exact repository/worktree binding. It never owns a second spec or tracker.
 The files have distinct authority:
 
 - `change.md` owns the current problem, outcome, scope, stable acceptance IDs,
-  approved decisions, overall progress, verification, and knowledge delta;
+  approved decisions, overall progress, its structured checkpoint,
+  verification, and knowledge delta;
 - `map.md` is a low-resolution Wayfinder index: destination, standing notes,
   resolved ticket pointers, fog, and out-of-scope boundaries;
 - `issues/` owns bounded questions or delivery units, dependency edges,
-  checkout claims, progress, resolutions, and evidence;
+  checkout claims, one checkpoint per issue, resolutions, and evidence;
 - `artifacts/` holds referenced research or prototypes, never unlinked
   alternative specifications;
 - `review.md` records complete file accounting at exact content hashes.
@@ -67,6 +68,53 @@ unblocks its dependants; their dependency edges must be reviewed explicitly.
 Issues are optional for a small bounded change that fits safely in the
 canonical `change.md`. Once issues exist, every acceptance criterion must be
 covered by at least one non-dropped delivery issue.
+
+## Active checkpoints
+
+A checkpoint is the single concise resume state owned by an active execution
+unit. `change.md` owns the checkpoint for shaping, direct bounded work, and
+final review. Each issue owns its own checkpoint so independent claims can
+resume without overwriting another issue's state.
+
+Every checkpoint records:
+
+- ready, active, blocked, or complete status;
+- shaping, Wayfinder, implementation, review, or complete stage;
+- actor and update time;
+- current state and last completed action;
+- one exact next action;
+- explicit blockers;
+- a SHA-256 basis over the owning record excluding the checkpoint itself.
+
+The agent updates semantic content first and runs `wfctl work checkpoint` last.
+If the record changes afterward, the basis no longer matches and stage context
+reports the checkpoint stale. Claim, review, or completion may not use a stale
+checkpoint. This proves which record state was summarized, not that the summary
+is semantically honest; full-file reading and review remain mandatory.
+
+Issue creation, claim, release, completion, and drop transition their
+checkpoints automatically. A material turn during a claim still requires an
+explicit refresh. Multiple concurrent issues keep separate checkpoints; active
+state is never copied into `changes/inbox/`.
+
+## Pending captures
+
+Material that is worth retaining but has no active change, issue, intake,
+reconstruction, curation, or knowledge owner may enter
+`changes/inbox/<capture-id>.md`. It is a pending, non-authoritative capture—not
+a checkpoint, issue, or current project claim.
+
+The knowledge agent lists and reads captures completely. A pending capture may
+remain while authority or destination is missing. It becomes terminal only
+when the agent either:
+
+- creates and verifies every real `knowledge/` or `changes/active/`
+  destination, then resolves it as `routed`; or
+- resolves it as `discarded` with a reason.
+
+Resolution moves the receipt to `changes/archive/captures/`. The archive proves
+disposition and lineage, not truth. Existing legacy inbox handoffs remain
+readable and are normalized when resolved.
 
 ## Wayfinder
 

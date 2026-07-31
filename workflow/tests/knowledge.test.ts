@@ -13,6 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { applyInstallPlan } from "../src/applier.js";
+import { createCapture } from "../src/capture.js";
 import {
   beginIntakeCase,
   closeIntakeCase,
@@ -1201,18 +1202,22 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
     now: new Date("2026-07-28T11:10:00.000Z"),
   });
   const document = parseWorkSpec(await readFile(started.path, "utf8"));
-  const changePath = "changes/inbox/proposal-lineage.md";
-  const refinedChangePath = "changes/inbox/refined-proposal.md";
-  await writeFile(
-    join(target, changePath),
-    "# Proposal lineage\n\nPreserves both proposals and their relationship.\n",
-    "utf8",
-  );
-  await writeFile(
-    join(target, refinedChangePath),
-    "# Refined proposal\n\nPreserves the refined proposal.\n",
-    "utf8",
-  );
+  const firstCapture = await createCapture({
+    target,
+    slug: "proposal-lineage",
+    title: "Proposal lineage",
+    distributionRoot,
+    now: new Date("2026-07-28T11:12:00.000Z"),
+  });
+  const secondCapture = await createCapture({
+    target,
+    slug: "refined-proposal",
+    title: "Refined proposal",
+    distributionRoot,
+    now: new Date("2026-07-28T11:13:00.000Z"),
+  });
+  const capturePath = `changes/inbox/${firstCapture.id}.md`;
+  const refinedCapturePath = `changes/inbox/${secondCapture.id}.md`;
   document.metadata.candidate_claims = [
     intakeClaim({
       id: "old-proposal",
@@ -1233,8 +1238,8 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
         derived_from: [],
       },
       routing: {
-        lane: "change",
-        destinations: [changePath],
+        lane: "capture",
+        destinations: [capturePath],
       },
     }),
     intakeClaim({
@@ -1256,20 +1261,20 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
         derived_from: [],
       },
       routing: {
-        lane: "change",
-        destinations: [refinedChangePath],
+        lane: "capture",
+        destinations: [refinedCapturePath],
       },
     }),
   ];
   document.metadata.promotion = {
     status: "not-needed",
     concepts: [],
-    reason: "Both reviewed proposals remain in the change lane.",
+    reason: "Both reviewed proposals remain in the pending capture lane.",
     validation: "not-needed",
   };
   document.metadata.omission_audit = {
     result: "pending",
-    notes: ["Probe the durable proposal handoff without consulting raw."],
+    notes: ["Probe the durable pending captures without consulting raw."],
     probes: [],
   };
   await writeFile(started.path, serializeWorkSpec(document), "utf8");
@@ -1281,7 +1286,7 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
     candidateIds: ["old-proposal", "new-proposal"],
     status: "passed",
     answer: "Only the earlier proposal was inspected.",
-    outputPaths: [changePath],
+    outputPaths: [capturePath],
     reviewedBy: "workflow-agent/test",
     now: new Date("2026-07-28T11:12:00.000Z"),
   });
@@ -1296,7 +1301,7 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
     candidateIds: ["old-proposal", "new-proposal"],
     status: "passed",
     answer: "Both durable proposal records were inspected.",
-    outputPaths: [changePath, refinedChangePath],
+    outputPaths: [capturePath, refinedCapturePath],
     reviewedBy: "workflow-agent/test",
     now: new Date("2026-07-28T11:13:00.000Z"),
   });
@@ -1320,8 +1325,8 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
     question: "What earlier proposal preceded the refinement?",
     candidateIds: ["old-proposal"],
     status: "failed",
-    answer: "The durable handoff omitted the predecessor.",
-    outputPaths: [changePath],
+    answer: "The pending capture omitted the predecessor.",
+    outputPaths: [capturePath],
     reviewedBy: "workflow-agent/test",
     now: new Date("2026-07-28T11:15:00.000Z"),
   });
@@ -1335,8 +1340,8 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
     question: "What earlier proposal preceded the refinement?",
     candidateIds: ["old-proposal"],
     status: "passed",
-    answer: "The handoff preserves the earlier proposal and its successor.",
-    outputPaths: [changePath],
+    answer: "The capture preserves the earlier proposal and its successor.",
+    outputPaths: [capturePath],
     reviewedBy: "workflow-agent/test",
     now: new Date("2026-07-28T11:20:00.000Z"),
   });
@@ -1348,10 +1353,23 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
     candidateIds: ["new-proposal"],
     status: "passed",
     answer: "The refined proposal is recorded as proposed, not current truth.",
-    outputPaths: [refinedChangePath],
+    outputPaths: [refinedCapturePath],
     reviewedBy: "workflow-agent/test",
     now: new Date("2026-07-28T11:25:00.000Z"),
   });
+  assert.deepEqual((await inspectIntakeCase(target, started.id)).issues, []);
+
+  const wrongLane = parseWorkSpec(await readFile(started.path, "utf8"));
+  const wrongCandidate = (
+    wrongLane.metadata.candidate_claims as Array<Record<string, unknown>>
+  )[0]!;
+  (wrongCandidate.routing as Record<string, unknown>).lane = "change";
+  await writeFile(started.path, serializeWorkSpec(wrongLane), "utf8");
+  assert.ok((await inspectIntakeCase(target, started.id)).issues.some((issue) =>
+    /routing contains an invalid change path/.test(issue)
+  ));
+  (wrongCandidate.routing as Record<string, unknown>).lane = "capture";
+  await writeFile(started.path, serializeWorkSpec(wrongLane), "utf8");
   assert.deepEqual((await inspectIntakeCase(target, started.id)).issues, []);
 
   const reconstructionDirectory = join(

@@ -47,7 +47,7 @@ maintainer to know their names.
 - “How is it implemented?” means read-only engineering explanation, not
   engineering curation.
 - “This document is wrong; update it” means curation after authority checks.
-- “Here is a raw idea” means intake or a lightweight handoff, never direct
+- “Here is a raw idea” means intake or a pending capture, never direct
   curation.
 - “Let us brainstorm” stays conversational until a material direction must be
   retained. A broad consequential initiative may then be offered direction
