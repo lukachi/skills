@@ -1,83 +1,71 @@
 ---
 name: shape-project-direction
-description: Turn a broad, consequential, and still-uncertain product or architecture initiative into a durable direction inside the canonical workflow change record. Use when several Areas or systems may be affected, the destination is clearer than the route, important choices depend on one another, or ordinary task planning would pretend that unresolved product or architecture questions are settled. Use only after the maintainer explicitly asks to shape the direction or accepts the agent's recommendation. Do not use for routine brainstorming, a bounded implementation task, current-project explanation, or direct code changes.
+description: Run deliberate Wayfinder for a consequential project initiative whose destination is visible but route, product meaning, or architecture remains too foggy for one honest specification or agent session. Use only when the maintainer explicitly requests Wayfinder or accepts the router's recommendation. Do not use for ordinary brainstorming, a bounded large feature, current-project explanation, or product-code implementation.
 ---
 
 # Shape Project Direction
 
-Resolve the decisions that define a large initiative before implementation
-planning becomes falsely precise. Use the normal workflow record as the only
-durable state; never create a parallel strategy document.
+Wayfinder finds a route; it does not build the destination. It stores one
+low-resolution map and bounded question issues inside the same central bundle
+that later becomes the delivery specification.
 
-Read [the direction-shaping contract](references/direction-shaping-contract.md)
-before starting or resuming this mode.
+Read [the Wayfinder contract](references/direction-shaping-contract.md) before
+charting or resuming.
 
-## Enter deliberately
+## Chart the map
 
-1. Confirm that the request is broad, consequential, and genuinely
-   under-specified. A large but already bounded task belongs to
-   `manage-project-work`.
-2. If the maintainer did not explicitly request direction shaping, explain the
-   uncertainty, recommend this mode, and wait for agreement before creating
-   records.
-3. Resolve the knowledge root. Reuse the active canonical change record when
-   one already owns the initiative. Otherwise run `wfctl work start <slug>
-   --title "<initiative>" --mode full` from knowledge for project-only
-   shaping. Bind leaves only when their exact implementation scope is already
-   known.
-4. Run `wfctl work status <id>`. Record the returned knowledge root, code
-   roots, and spec path. Do not edit product source while direction shaping is
-   active.
+1. Reuse the initiative's active bundle or start one with `wfctl work start
+   <slug> --title "<destination>" --mode wayfinder`. Bind only already-known
+   evidence leaves; unknown future implementation repositories are not guessed.
+2. Run `wfctl work context <id> --stage wayfind` and `wfctl work status <id>`.
+   Do not edit product source during this phase.
+3. Name the destination first: what a finished map will make specifiable, for
+   whom, and the boundary it must not cross.
+4. Explore breadth-first. Put a precise answerable question into a Wayfinder
+   issue. Put only still-unphraseable in-scope uncertainty into `map.md` fog.
+   Put ruled-out work under out of scope.
+5. Create currently visible blockers before their dependants with `wfctl work
+   issue create --phase wayfinding --type
+   research|prototype|grilling|task`. Use `wfctl work issue block|unblock` when
+   later evidence changes an edge. Stop charting; do not resolve a normal issue
+   in the same session.
 
-## Build the direction map
+If breadth-first exploration reveals no meaningful fog and the whole route fits
+one session, stop and recommend ordinary `specify-project-change` instead.
 
-Maintain these sections in the canonical spec:
+## Work one frontier question
 
-- `Direction map`: destination, current landscape, affected Areas, actors,
-  capabilities, constraints, success signals, and explicit non-goals;
-- `Domain language`: proposed canonical terms, definitions, aliases to avoid,
-  conflicts with existing knowledge, and resolution state;
-- `Decision frontier`: the few unresolved decisions that materially change
-  the destination or viable routes;
-- `Uncertainty and fog`: unknown facts, missing authority, dependencies,
-  contradictions, risks, and what would resolve each;
-- `Discussion and decision ledger`: append-only proposed, approved, rejected,
-  deferred, and superseded outcomes;
-- `Handoff`: exact next question or action.
+Run `wfctl work map status <id>`. Without a named issue, choose the first
+frontier item. Read the map, selected issue, parent change, blockers, and
+referenced artifacts completely; record current hash receipts. Claim before
+work:
 
-Use QMD and current knowledge to discover existing language, decisions, and
-constraints. When source reality matters, invoke `analyze-with-graphify` in
-the exact relevant leaf and inspect the source directly. Find discoverable
-facts yourself instead of asking the maintainer to recall them.
+```sh
+wfctl work issue claim <id> <issue-id> --actor "agent:<identity>"
+```
 
-## Resolve one decision at a time
+- `research` discovers an external or project fact without supplying product
+  authority;
+- `prototype` creates a cheap artifact for a real human to react to;
+- `grilling` resolves one product/domain decision with the maintainer, one
+  evidence-backed question at a time;
+- `task` performs a prerequisite that makes a later decision possible.
 
-1. Select the highest-leverage unresolved item from `Decision frontier`.
-2. Present one focused question with:
-   - why it matters now;
-   - verified facts and conflicts;
-   - viable choices and tradeoffs;
-   - a recommendation.
-3. Ask only that question. Do not send an interview checklist.
-4. Immediately update the spec after the maintainer's answer: current state,
-   terminology, frontier, fog, ledger, exclusions, and handoff.
-5. Challenge contradictions and vague terms respectfully. Do not manufacture
-   agreement or treat a proposal as approved.
-6. Repeat until the frontier is resolved, deliberately deferred, or honestly
-   blocked.
+Ask one focused question at a time. Persist the answer before selecting another.
 
-## Exit without duplicating state
+Never answer the human side of a human-in-the-loop issue yourself. Complete at
+most one non-research issue per session. Record the full answer and evidence in
+the issue, then run `wfctl work issue complete`. The CLI adds only a named gist
+to the map. Update newly visible issues and remove the corresponding fog so one
+fact never lives in two competing places.
 
-1. Present a compact direction review: destination, boundaries, canonical
-   language, accepted decisions, tradeoffs, deferred questions, risks, and
-   recommended next unit of work.
-2. Record explicit maintainer approval in the existing spec. Do not ask for a
-   decision already stated explicitly.
-3. If implementation follows, invoke `manage-project-work` and refine the same
-   canonical living spec into scope, acceptance criteria, plan, code bindings,
-   and verification. Never copy the direction into a second spec.
-4. If the direction itself changes durable project knowledge, route only the
-   approved result through `curate-project-knowledge`. Proposed and deferred
-   material remains in the change record.
-5. If work stops, keep the honest shaping status and a resumable handoff. Do
-   not call an unresolved map complete.
+## Hand off to specification
+
+The route is clear only when every Wayfinder issue is completed or explicitly
+dropped, no in-scope fog remains, and the next bounded change can be specified
+without guessing. Invoke `specify-project-change`: it must read all resolved
+issues, synthesize stable acceptance criteria into `change.md`, obtain review,
+and run `wfctl work map finish`.
+
+Do not jump from a map directly into implementation. The retained `map.md` is
+decision lineage, while `change.md` becomes the current delivery contract.

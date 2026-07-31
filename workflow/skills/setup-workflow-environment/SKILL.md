@@ -66,8 +66,10 @@ requests manual or automation-oriented instructions.
     restart the agent session before knowledge-dependent work.
     Confirm `explore-project-knowledge` is installed for both profiles so
     project discovery works identically from knowledge and leaf sessions.
-    Confirm `shape-project-direction` is installed for both profiles. For a
-    knowledge profile, also confirm `research-project-context` is installed.
+    Confirm `shape-project-direction`, `specify-project-change`,
+    `split-project-change`, and `implement-work-item` are installed for both
+    profiles. For a knowledge profile, also confirm
+    `research-project-context` is installed.
 12. For a knowledge profile, confirm that `.qmd/index.yml` defines separate
     `knowledge`, `changes`, `intake`, `reconstruction`, and `raw` collections.
     Confirm that `reconstruction/active` and `reconstruction/archive` exist and

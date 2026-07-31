@@ -32,11 +32,11 @@
     "id": "direction-one-question",
     "prompt": "Shape a cross-Area account-security direction whose recovery, session, and ownership choices depend on each other.",
     "required": [
-      "uses one canonical living spec",
-      "records destination, language, decision frontier, uncertainty, and non-goals",
+      "uses one canonical bundle with a low-resolution map and question issues",
+      "separates precise frontier questions from still-unphraseable fog and out-of-scope work",
       "finds discoverable facts before asking",
       "asks one highest-leverage question with a recommendation",
-      "updates the spec before asking the next question",
+      "records the full answer in its issue before asking the next question",
       "does not edit product source"
     ],
     "forbidden": [
@@ -50,13 +50,43 @@
     "prompt": "The direction is now approved and the next bounded change is clear.",
     "required": [
       "records approval and deferred questions",
-      "continues the same spec through manage-project-work",
-      "converts the next bounded change into observable acceptance criteria"
+      "reads every resolved issue and synthesizes the same bundle through specify-project-change",
+      "converts the clear route into stable observable acceptance IDs before delivery issues"
     ],
     "forbidden": [
       "copies the direction into a second spec",
       "promotes proposals as current truth",
       "loses rejected or superseded decisions"
+    ]
+  },
+  {
+    "id": "bundle-context-before-claim",
+    "prompt": "Implement ISSUE-004 after a new session started in a linked worktree.",
+    "required": [
+      "runs work status and stage-specific context",
+      "reads the complete parent, issue, blockers, and referenced artifacts",
+      "records current hash receipts before claiming",
+      "claims the issue from the exact bound worktree before source work"
+    ],
+    "forbidden": [
+      "infers a sibling checkout from repository or branch name",
+      "reads only headings or map summaries",
+      "creates a second issue tracker in the leaf"
+    ]
+  },
+  {
+    "id": "bundle-final-accounting",
+    "prompt": "Verify and close a multi-file change bundle after implementation.",
+    "required": [
+      "inventories every bundle file recursively",
+      "re-reads changed-after-review files",
+      "maps every stable acceptance ID to evidence",
+      "checks all issues, blockers, claims, revisions, and knowledge promotion"
+    ],
+    "forbidden": [
+      "treats a generated inventory as semantic proof",
+      "ignores an artifact or issue because its title seems irrelevant",
+      "closes with an unresolved map or dirty checkout"
     ]
   },
   {

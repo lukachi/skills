@@ -97,6 +97,9 @@ Knowledge adds:
 - `process-raw-intake`;
 - `research-project-context`;
 - `shape-project-direction`;
+- `specify-project-change`;
+- `split-project-change`;
+- `implement-work-item`;
 - `align-project-knowledge`;
 - `manage-project-work`;
 - `verify-project-work`;
@@ -111,6 +114,23 @@ reconstruction, and durable project research.
 
 The pinned `skills` CLI installs independent copies in each selected agent's
 native location. `wfctl` must not create cross-agent symlinks.
+
+## Upstream skill influences
+
+Third-party skill suites are design inputs, not runtime dependencies or a
+second consumer workflow. Pin the exact reviewed upstream revision under
+`vendor/`, retain its license, and document the local skills influenced by the
+review. Integrate selected behavior deliberately into wfctl's own bundle,
+commands, rules, tests, and skills. Consumers must never fetch mutable upstream
+prompts during installation or maintain two competing issue trackers.
+
+When refreshing an influence:
+
+1. inspect the complete relevant upstream skills and references;
+2. update the pinned revision and review scope;
+3. preserve wfctl ownership, knowledge authority, and worktree invariants;
+4. adapt useful behavior instead of overwriting local skills wholesale;
+5. rerun deterministic and black-box behavior verification.
 
 ## Documentation ownership
 

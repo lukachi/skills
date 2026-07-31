@@ -1,0 +1,6 @@
+interface:
+  display_name: "Implement Work Item"
+  short_description: "Implement one claimed bundle issue safely"
+  default_prompt: "Use this skill to claim and implement one frontier issue from the exact bound checkout, verify it, and update the central bundle."
+policy:
+  allow_implicit_invocation: false

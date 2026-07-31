@@ -23,10 +23,17 @@ import { addLeafRepository } from "../src/repository-registry.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 import {
   beginWork,
+  claimWorkIssue,
   closeWork,
+  completeWorkIssue,
+  createWorkIssue,
   createHandoff,
+  finishWayfinder,
   rebindWork,
+  reviewWorkBundleFile,
+  setWorkIssueBlocker,
   verifyWork,
+  workBundleContext,
   workStatus,
 } from "../src/work.js";
 
@@ -102,6 +109,11 @@ test("runs the completed central work lifecycle", async () => {
   assert.equal(status[0]?.codeRoot, leafRoot);
   assert.equal(status[0]?.specPath, started.specPath);
   document.metadata.status = "completed";
+  document.metadata.acceptance = [{
+    id: "AC-01",
+    criterion: "The reviewed world loop behavior is delivered.",
+    status: "verified",
+  }];
   const verifiedSource = readRepositoryMetadata(leaf);
   document.metadata.verification = {
     result: "passed",
@@ -110,6 +122,11 @@ test("runs the completed central work lifecycle", async () => {
     acceptance_reviewed: true,
     implementation_reviewed: true,
     checks: [{ command: "bun run test", result: "passed" }],
+    acceptance: [{
+      id: "AC-01",
+      result: "passed",
+      evidence: ["Direct source inspection and bun run test"],
+    }],
     unresolved: [],
   };
   document.metadata.maintainer_review = {
@@ -186,6 +203,7 @@ The world loop follows the reviewed authority model.[^world-loop-decision]
   );
   document.body = document.body.replace("\nEvidence: raw/legacy.md\n", "");
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  await reviewWorkBundleFile(leaf, started.id, "change.md", "reviewed", "");
 
   const verified = await verifyWork(leaf, started.id);
   assert.deepEqual(verified.issues, []);
@@ -216,6 +234,7 @@ The world loop follows the reviewed authority model.[^world-loop-decision]
   );
   (document.metadata.verification as Record<string, unknown>).revision = verifiedSource.commit;
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  await reviewWorkBundleFile(leaf, started.id, "change.md", "reviewed", "");
 
   const closed = await closeWork({
     target: leaf,
@@ -426,6 +445,7 @@ test("runs project-only knowledge work without inventing a code checkout", async
   assert.deepEqual(document.metadata.repositories, []);
   completeWorkDocument(document, "project");
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  await reviewWorkBundleFile(knowledge, started.id, "change.md", "reviewed", "");
   assert.deepEqual((await verifyWork(knowledge, started.id)).issues, []);
 
   const closed = await closeWork({
@@ -488,6 +508,7 @@ test("coordinates one project change across every selected leaf", async () => {
     checks: [{ command: `test ${source.repository}`, result: "passed" }],
   }));
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  await reviewWorkBundleFile(knowledge, started.id, "change.md", "reviewed", "");
   assert.deepEqual((await verifyWork(knowledge, started.id)).issues, []);
 
   const closed = await closeWork({
@@ -533,6 +554,216 @@ test("detects a branch switch until the work is explicitly rebound", async () =>
   assert.ok(drifted[0]?.issues.some((issue) => /run wfctl work rebind/.test(issue)));
   await rebindWork(leaf, started.id);
   assert.equal((await workStatus(leaf, started.id))[0]?.valid, true);
+});
+
+test("enforces full bundle reads, exact claims, dependency frontier, and stale review", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-bundle-"));
+  const knowledge = join(root, "knowledge");
+  const leaf = join(root, "leaf");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  initializeGit(knowledge);
+  initializeGit(leaf);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+  commitAll(leaf, "initialize workflow");
+
+  const started = await beginWork({
+    target: leaf,
+    slug: "bundle-coverage",
+    title: "Bundle coverage",
+    mode: "full",
+    distributionRoot,
+    now: new Date("2026-07-31T10:00:00.000Z"),
+  });
+  const change = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  change.metadata.acceptance = [{
+    id: "AC-01",
+    criterion: "A user can complete the reviewed behavior.",
+    status: "pending",
+  }];
+  change.body += "\nBottom-of-file requirement: preserve recovery semantics.\n";
+  await writeFile(started.specPath, serializeWorkSpec(change), "utf8");
+  const repository = String(
+    ((change.metadata.repositories as Record<string, unknown>[])[0]!).repository,
+  );
+  const first = await createWorkIssue({
+    target: leaf,
+    id: started.id,
+    slug: "first-slice",
+    title: "Deliver the first complete slice",
+    phase: "delivery",
+    type: "delivery",
+    satisfies: ["AC-01"],
+    repositories: [repository],
+    distributionRoot,
+  });
+  const second = await createWorkIssue({
+    target: leaf,
+    id: started.id,
+    slug: "follow-up-slice",
+    title: "Deliver the dependent slice",
+    phase: "delivery",
+    type: "delivery",
+    blockedBy: [first.id],
+    satisfies: ["AC-01"],
+    repositories: [repository],
+    distributionRoot,
+  });
+  await assert.rejects(
+    setWorkIssueBlocker(leaf, started.id, first.id, second.id, true),
+    /create a cycle/,
+  );
+  const context = await workBundleContext(leaf, started.id, "implement", first.id);
+  assert.deepEqual(
+    context.requiredFiles.map((entry) => entry.path),
+    ["change.md", first.path],
+  );
+  await assert.rejects(
+    claimWorkIssue({
+      target: leaf,
+      id: started.id,
+      issueId: first.id,
+      actor: "agent:test-session",
+    }),
+    /required context is reviewed/,
+  );
+  for (const path of context.requiredFiles.map((entry) => entry.path)) {
+    await reviewWorkBundleFile(leaf, started.id, path, "reviewed", "");
+  }
+  const claimed = await claimWorkIssue({
+    target: leaf,
+    id: started.id,
+    issueId: first.id,
+    actor: "agent:test-session",
+  });
+  assert.equal(claimed.status, "claimed");
+  const claimedDocument = parseWorkSpec(await readFile(join(started.bundleRoot, first.path), "utf8"));
+  assert.equal(
+    (claimedDocument.metadata.claim as Record<string, unknown>).worktree_id,
+    readRepositoryMetadata(leaf).worktreeId,
+  );
+  await assert.rejects(
+    completeWorkIssue({
+      target: knowledge,
+      id: started.id,
+      issueId: first.id,
+      summary: "This must not resolve from the record workspace.",
+      evidence: ["No valid leaf context"],
+    }),
+    /source claim must be operated from its bound leaf/,
+  );
+  await completeWorkIssue({
+    target: leaf,
+    id: started.id,
+    issueId: first.id,
+    summary: "The first complete behavior is implemented and checked.",
+    evidence: ["Direct source inspection", "bun test first-slice"],
+  });
+  const afterCompletion = await workBundleContext(leaf, started.id, "resume");
+  assert.ok(afterCompletion.frontier.includes(second.id));
+
+  await reviewWorkBundleFile(leaf, started.id, second.path, "reviewed", "");
+  const secondPath = join(started.bundleRoot, second.path);
+  await writeFile(
+    secondPath,
+    `${await readFile(secondPath, "utf8")}\nLate requirement that must not be guessed away.\n`,
+    "utf8",
+  );
+  const changed = await workBundleContext(leaf, started.id, "review");
+  assert.equal(
+    changed.inventory.find((entry) => entry.path === second.path)?.accounting,
+    "changed-after-review",
+  );
+});
+
+test("Wayfinder resolves one shared map before delivery specification", async () => {
+  const knowledge = await mkdtemp(join(tmpdir(), "wfctl-wayfinder-"));
+  initializeGit(knowledge);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  const started = await beginWork({
+    target: knowledge,
+    slug: "account-system",
+    title: "Find the account-system direction",
+    mode: "wayfinder",
+    distributionRoot,
+    now: new Date("2026-07-31T10:00:00.000Z"),
+  });
+  const mapPath = join(started.bundleRoot, "map.md");
+  const map = parseWorkSpec(await readFile(mapPath, "utf8"));
+  map.metadata.destination = "A reviewable specification for the account system";
+  map.metadata.fog = ["The recovery authority is not yet precise"];
+  await writeFile(mapPath, serializeWorkSpec(map), "utf8");
+  const issue = await createWorkIssue({
+    target: knowledge,
+    id: started.id,
+    slug: "recovery-authority",
+    title: "Choose the recovery authority",
+    phase: "wayfinding",
+    type: "grilling",
+    distributionRoot,
+  });
+  const context = await workBundleContext(knowledge, started.id, "wayfind", issue.id);
+  assert.deepEqual(
+    context.requiredFiles.map((entry) => entry.path),
+    ["change.md", issue.path, "map.md"],
+  );
+  for (const path of context.requiredFiles.map((entry) => entry.path)) {
+    await reviewWorkBundleFile(knowledge, started.id, path, "reviewed", "");
+  }
+  await claimWorkIssue({
+    target: knowledge,
+    id: started.id,
+    issueId: issue.id,
+    actor: "agent:wayfinder-test",
+  });
+  await completeWorkIssue({
+    target: knowledge,
+    id: started.id,
+    issueId: issue.id,
+    summary: "Recovery is controlled by a separately verified ownership factor.",
+    evidence: ["Maintainer decision recorded during focused grilling"],
+  });
+  await assert.rejects(
+    finishWayfinder(knowledge, started.id, "full"),
+    /not-yet-specified fog/,
+  );
+
+  const updatedMap = parseWorkSpec(await readFile(mapPath, "utf8"));
+  updatedMap.metadata.fog = [];
+  await writeFile(mapPath, serializeWorkSpec(updatedMap), "utf8");
+  const change = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  change.metadata.acceptance = [{
+    id: "AC-01",
+    criterion: "The approved recovery authority is specified as observable behavior.",
+    status: "pending",
+  }];
+  await writeFile(started.specPath, serializeWorkSpec(change), "utf8");
+  await assert.rejects(
+    finishWayfinder(knowledge, started.id, "full"),
+    /every bundle file is reviewed/,
+  );
+  const review = await workBundleContext(knowledge, started.id, "review");
+  for (const file of review.requiredFiles) {
+    await reviewWorkBundleFile(knowledge, started.id, file.path, "reviewed", "");
+  }
+  const finished = await finishWayfinder(knowledge, started.id, "full");
+  assert.equal(finished.mode, "full");
+  assert.equal(parseWorkSpec(await readFile(mapPath, "utf8")).metadata.status, "resolved");
+  assert.equal(parseWorkSpec(await readFile(started.specPath, "utf8")).metadata.mode, "full");
 });
 
 async function sealConcept(target: string, relativePath: string): Promise<void> {
@@ -608,6 +839,11 @@ function completeWorkDocument(
   scope: "project" | "multi-repo",
 ): void {
   document.metadata.status = "completed";
+  document.metadata.acceptance = [{
+    id: "AC-01",
+    criterion: "The scoped project outcome is verified.",
+    status: "verified",
+  }];
   document.metadata.knowledge_alignment = {
     reviewed: ["knowledge/index.md"],
     conflicts: [],
@@ -640,6 +876,11 @@ function completeWorkDocument(
     implementation_reviewed: scope !== "project",
     knowledge_reviewed: scope === "project",
     checks: [{ command: "wfctl knowledge validate", result: "passed" }],
+    acceptance: [{
+      id: "AC-01",
+      result: "passed",
+      evidence: ["Fresh structural and semantic checks"],
+    }],
     unresolved: [],
     repositories: [],
   };

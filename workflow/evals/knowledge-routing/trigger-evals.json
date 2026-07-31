@@ -60,6 +60,24 @@
     "should_not_trigger": ["shape-project-direction", "reconstruct-project-knowledge"]
   },
   {
+    "id": "explicit-spec-synthesis",
+    "prompt": "We have finished discussing this bounded change. Synthesize the active bundle into the implementation specification without interviewing me again.",
+    "should_trigger": ["specify-project-change"],
+    "should_not_trigger": ["shape-project-direction", "implement-work-item"]
+  },
+  {
+    "id": "explicit-ticket-split",
+    "prompt": "Split the approved change into dependency-aware tracer-bullet work items, but do not implement them yet.",
+    "should_trigger": ["split-project-change"],
+    "should_not_trigger": ["implement-work-item", "shape-project-direction"]
+  },
+  {
+    "id": "explicit-frontier-implementation",
+    "prompt": "Implement the next ready work item from the active change bundle in this exact checkout.",
+    "should_trigger": ["implement-work-item"],
+    "should_not_trigger": ["split-project-change", "shape-project-direction"]
+  },
+  {
     "id": "explicit-external-research",
     "prompt": "Research the current primary standards that constrain passkey recovery and preserve the result for our architecture decision.",
     "should_trigger": ["research-project-context"],

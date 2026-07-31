@@ -42,8 +42,9 @@ and executes the mode; the maintainer never needs its skill or command name.
 
 Use `shape-project-direction` when a consequential initiative has several
 dependent product or architecture decisions and normal task planning would
-guess. It maintains the same canonical work spec later used by
-`manage-project-work`; never create a parallel strategy source.
+guess. It maintains a Wayfinder map and question issues inside the same
+canonical bundle later used by `manage-project-work`; never create a parallel
+strategy source or implement the destination from the knowledge checkout.
 
 Use `research-project-context` for a material external evidence gap. Prefer
 primary sources and keep the synthesis in the owning active record or a

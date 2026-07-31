@@ -18,7 +18,7 @@ You will have:
 
 - one initialized knowledge repository;
 - every source repository connected as a leaf;
-- project-local Codex and/or Claude Code skills;
+- project-local skills for the selected agent conventions;
 - QMD retrieval in knowledge and Graphify navigation in each leaf;
 - visible `PROJECT_WORKFLOW.md` instructions in every repository.
 
@@ -53,14 +53,13 @@ From the cloned source, you may install only the setup skill first:
 
 ```sh
 bunx skills add /absolute/path/to/skills/workflow \
-  --skill setup-workflow-environment \
-  --agent codex \
-  --agent claude-code
+  --skill setup-workflow-environment
 ```
 
-Restart the agent, open it in the intended repository, and ask it to initialize
-the workflow. The setup agent previews and operates the same `wfctl init`
-process; it does not bypass dependency or conflict checks.
+Choose the agent conventions you use when prompted. Then restart the agent,
+open it in the intended repository, and ask it to initialize the workflow. The
+setup agent previews and operates the same `wfctl init` process; it does not
+bypass dependency or conflict checks.
 
 ## 2. Initialize knowledge
 
@@ -76,7 +75,7 @@ The interactive installer:
 1. previews every file change;
 2. checks Git and QMD;
 3. asks whether skills should be project-local, user-level, or skipped;
-4. asks whether to install for Codex, Claude Code, or both;
+4. asks which supported agent conventions to install;
 5. preserves existing instructions outside managed blocks;
 6. builds the initial knowledge indexes.
 
@@ -107,7 +106,7 @@ for reconstruction.
 
 ## 4. Restart and verify
 
-Restart Codex or Claude Code so the new session discovers the installed skills.
+Restart your coding agent so the new session discovers the installed skills.
 Then ask inside each repository:
 
 > Check whether the workflow in this repository is healthy.

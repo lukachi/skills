@@ -17,11 +17,12 @@ If classification is uncertain, explain the possible impact and ask the maintain
 
 Never use task size alone as the classifier. A one-line contract change can be significant; a large mechanical rewrite can be lightweight.
 
-Once work is classified as significant, create its shaping record before
-extended discussion so requirements and decisions survive session compaction.
+Once work is classified as significant, create its central change bundle before
+extended discussion so requirements, issues, decisions, and progress survive
+session compaction.
 
 When a consequential initiative is too uncertain to define acceptance criteria
 without guessing across several dependent choices, recommend
-`shape-project-direction`. Start it only after maintainer agreement, keep using
-the same canonical spec, and do not edit code until it returns a bounded
-implementation frontier.
+`shape-project-direction`. Start Wayfinder only after maintainer agreement,
+keep its map and issues in the same central bundle, and do not edit code until
+the resolved route has been synthesized into a bounded specification.

@@ -22,6 +22,26 @@ import { readRepositoryMetadata } from "./git.js";
 import { validateKnowledge } from "./knowledge.js";
 import { resolveReconstructionLeaves } from "./repository-registry.js";
 import { completionIssues, parseWorkSpec, serializeWorkSpec } from "./work-spec.js";
+import {
+  bundleCompletionIssues,
+  carryForwardCloseReview,
+  claimWorkIssue as claimBundleIssue,
+  createWorkIssue as createBundleIssue,
+  dropWorkIssue as dropBundleIssue,
+  finishWayfinder as finishBundleWayfinder,
+  initializeWorkBundle,
+  inspectWorkBundle as inspectBundle,
+  releaseWorkIssue as releaseBundleIssue,
+  resolveWorkIssue as resolveBundleIssue,
+  reviewBundleFile,
+  setWorkIssueBlocker as setBundleIssueBlocker,
+  type BundleReviewStatus,
+  type WorkBundleInspection,
+  type WorkBundleStage,
+  type WorkIssuePhase,
+  type WorkIssueSummary,
+  type WorkIssueType,
+} from "./work-bundle.js";
 import type {
   RepositoryMetadata,
   WorkMode,
@@ -76,6 +96,7 @@ export interface BeginWorkResult {
   specPath: string;
   pointerPaths: string[];
   pointerPath: string;
+  bundleRoot: string;
 }
 
 export interface CreateHandoffOptions {
@@ -120,6 +141,7 @@ export interface WorkStatusResult {
   codeRoot?: string;
   knowledgeRoot: string;
   specPath: string;
+  bundleRoot: string;
   pointerPaths: string[];
   pointerPath: string;
   sources: RepositoryMetadata[];
@@ -136,6 +158,38 @@ export interface RebindWorkResult {
   currentRoot: string;
   branch: string;
   worktreeId: string;
+}
+
+export interface CreateWorkIssueInput {
+  target: string;
+  id: string;
+  slug: string;
+  title: string;
+  phase: WorkIssuePhase;
+  type: WorkIssueType;
+  blockedBy?: string[];
+  satisfies?: string[];
+  repositories?: string[];
+  artifacts?: string[];
+  distributionRoot?: string;
+  now?: Date;
+}
+
+export interface ClaimWorkIssueInput {
+  target: string;
+  id: string;
+  issueId: string;
+  actor: string;
+  now?: Date;
+}
+
+export interface CompleteWorkIssueInput {
+  target: string;
+  id: string;
+  issueId: string;
+  summary: string;
+  evidence: string[];
+  now?: Date;
 }
 
 export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkResult> {
@@ -215,7 +269,7 @@ export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkRes
 
   template.metadata = {
     ...template.metadata,
-    workflow_version: 2,
+    workflow_version: 3,
     id,
     title: options.title,
     mode: options.mode,
@@ -231,6 +285,9 @@ export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkRes
     graph_evidence: {
       queries: options.graphQuery ? [options.graphQuery] : [],
     },
+    direction: options.mode === "wayfinder"
+      ? { status: "charting", map: "map.md", resolved_at: "" }
+      : { status: "bounded", map: "", resolved_at: "" },
   };
   delete template.metadata.source;
   delete template.metadata.workspace;
@@ -251,6 +308,7 @@ export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkRes
       encoding: "utf8",
       flag: "wx",
     });
+    await initializeWorkBundle(activeDirectory, distributionRoot, options.mode, now);
     await writeBinding(bindingPath, binding);
     for (const pointerPath of pointerPaths) {
       await writeBinding(pointerPath, binding);
@@ -273,6 +331,7 @@ export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkRes
     specPath,
     pointerPaths: [bindingPath, ...pointerPaths],
     pointerPath: pointerPaths[0] ?? bindingPath,
+    bundleRoot: activeDirectory,
   };
 }
 
@@ -323,6 +382,7 @@ export async function verifyWork(
   const context = await requireWorkContext(targetInput, id);
   const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
   const issues = completionIssues(document, false);
+  issues.push(...await bundleCompletionIssues(dirname(context.specPath), document));
   issues.push(...repositoryVerificationIssues(document, context.currentSources));
   return {
     id,
@@ -339,6 +399,7 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
   if (options.outcome === "completed") {
     const issues = [
       ...completionIssues(document, true),
+      ...await bundleCompletionIssues(activeDirectory, document),
       ...repositoryVerificationIssues(document, context.currentSources),
     ];
     if (issues.length > 0) {
@@ -376,6 +437,9 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
       serializeWorkSpec(document),
       "utf8",
     );
+    if (document.metadata.workflow_version === 3) {
+      await carryForwardCloseReview(archivePath, now);
+    }
   } catch (error) {
     await rename(archivePath, activeDirectory);
     throw error;
@@ -385,6 +449,147 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
   }
 
   return { id: options.id, outcome: options.outcome, archivePath };
+}
+
+export async function workBundleContext(
+  target: string,
+  id: string,
+  stage: WorkBundleStage,
+  issueId?: string,
+): Promise<WorkBundleInspection> {
+  const context = await requireWorkContext(target, id);
+  return await inspectBundle(dirname(context.specPath), stage, issueId);
+}
+
+export async function createWorkIssue(
+  input: CreateWorkIssueInput,
+): Promise<WorkIssueSummary> {
+  const context = await requireWorkContext(input.target, input.id);
+  const distributionRoot = input.distributionRoot ?? await findDistributionRoot();
+  return await createBundleIssue({
+    bundleRoot: dirname(context.specPath),
+    slug: input.slug,
+    title: input.title,
+    phase: input.phase,
+    type: input.type,
+    ...(input.blockedBy ? { blockedBy: input.blockedBy } : {}),
+    ...(input.satisfies ? { satisfies: input.satisfies } : {}),
+    ...(input.repositories ? { repositories: input.repositories } : {}),
+    ...(input.artifacts ? { artifacts: input.artifacts } : {}),
+    ...(input.now ? { now: input.now } : {}),
+    distributionRoot,
+  });
+}
+
+export async function claimWorkIssue(
+  input: ClaimWorkIssueInput,
+): Promise<WorkIssueSummary> {
+  const target = await realpath(resolve(input.target));
+  const config = await readConfig(target);
+  const context = await requireWorkContext(target, input.id);
+  const source = config.profile === "leaf"
+    ? context.currentSources.find((entry) => entry.root === target)
+    : undefined;
+  return await claimBundleIssue({
+    bundleRoot: dirname(context.specPath),
+    issueId: input.issueId,
+    actor: input.actor,
+    ...(source ? { source } : {}),
+    projectOnly: context.scope === "project",
+    ...(input.now ? { now: input.now } : {}),
+  });
+}
+
+export async function releaseWorkIssue(
+  target: string,
+  id: string,
+  issueId: string,
+  now = new Date(),
+): Promise<WorkIssueSummary> {
+  const resolvedTarget = await realpath(resolve(target));
+  const context = await requireWorkContext(resolvedTarget, id);
+  const claimContext = await claimContextForTarget(resolvedTarget, context);
+  return await releaseBundleIssue(
+    dirname(context.specPath),
+    issueId,
+    claimContext,
+    now,
+  );
+}
+
+export async function completeWorkIssue(
+  input: CompleteWorkIssueInput,
+): Promise<WorkIssueSummary> {
+  const target = await realpath(resolve(input.target));
+  const context = await requireWorkContext(target, input.id);
+  const claimContext = await claimContextForTarget(target, context);
+  return await resolveBundleIssue({
+    bundleRoot: dirname(context.specPath),
+    issueId: input.issueId,
+    summary: input.summary,
+    evidence: input.evidence,
+    claimContext,
+    ...(input.now ? { now: input.now } : {}),
+  });
+}
+
+export async function dropWorkIssue(
+  target: string,
+  id: string,
+  issueId: string,
+  reason: string,
+  now = new Date(),
+): Promise<WorkIssueSummary> {
+  const resolvedTarget = await realpath(resolve(target));
+  const context = await requireWorkContext(resolvedTarget, id);
+  const claimContext = await claimContextForTarget(resolvedTarget, context);
+  return await dropBundleIssue(
+    dirname(context.specPath),
+    issueId,
+    reason,
+    claimContext,
+    now,
+  );
+}
+
+export async function setWorkIssueBlocker(
+  target: string,
+  id: string,
+  issueId: string,
+  blockerId: string,
+  blocked: boolean,
+  now = new Date(),
+): Promise<WorkIssueSummary> {
+  const context = await requireWorkContext(target, id);
+  return await setBundleIssueBlocker(
+    dirname(context.specPath),
+    issueId,
+    blockerId,
+    blocked,
+    now,
+  );
+}
+
+export async function reviewWorkBundleFile(
+  target: string,
+  id: string,
+  path: string,
+  status: BundleReviewStatus,
+  reason: string,
+  now = new Date(),
+) {
+  const context = await requireWorkContext(target, id);
+  return await reviewBundleFile(dirname(context.specPath), path, status, reason, now);
+}
+
+export async function finishWayfinder(
+  target: string,
+  id: string,
+  mode: "full" | "slice",
+  now = new Date(),
+) {
+  const context = await requireWorkContext(target, id);
+  return await finishBundleWayfinder(dirname(context.specPath), mode, now);
 }
 
 export async function rebindWork(
@@ -485,6 +690,20 @@ async function requireWorkContext(
     throw new Error(`Work context mismatch for ${id}: ${context.issues.join("; ")}`);
   }
   return context;
+}
+
+async function claimContextForTarget(
+  target: string,
+  context: WorkStatusResult,
+) {
+  const config = await readConfig(target);
+  const source = config.profile === "leaf"
+    ? context.currentSources.find((entry) => entry.root === target)
+    : undefined;
+  return {
+    ...(source ? { source } : {}),
+    allowProject: config.profile === "knowledge",
+  };
 }
 
 async function inspectWorkContext(
@@ -603,6 +822,7 @@ async function inspectWorkContext(
     ...(codeRoots[0] ? { codeRoot: codeRoots[0] } : {}),
     knowledgeRoot,
     specPath,
+    bundleRoot: dirname(specPath),
     pointerPaths,
     pointerPath: profile === "leaf"
       ? preferred

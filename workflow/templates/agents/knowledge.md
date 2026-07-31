@@ -63,9 +63,9 @@ are never assumed to exist or promoted without their own authority.
 
 Use `shape-project-direction` for an explicitly selected broad initiative whose
 dependent decisions are not yet bounded enough for implementation planning.
-Keep destination, language, decision frontier, uncertainty, and non-goals in
-the same living spec later used by `manage-project-work`. Ask one focused
-question at a time and do not edit source.
+Keep one Wayfinder map and its question issues in the same central bundle later
+used for delivery. Ask one focused question at a time, synthesize the resolved
+map with `specify-project-change`, and do not edit source.
 
 Use `research-project-context` for an explicit material external evidence gap.
 Prefer primary sources and retain the synthesis as a candidate until normal
@@ -73,7 +73,7 @@ project authority and curation gates pass.
 
 For significant product, architecture, or decision discussion, run
 `wfctl work start` from this repository before extended discussion. With no
-`--leaf`, it creates a project-only living spec and no code workspace. Repeat
+`--leaf`, it creates a project-only bundle and no code workspace. Repeat
 `--leaf` only when implementation is genuinely scoped across exact source
-checkouts. `wfctl work status` is the authority for every code root and the
-single spec path.
+checkouts. `wfctl work status` is the authority for every code root and bundle;
+`wfctl work context` enumerates the exact files required for each stage.

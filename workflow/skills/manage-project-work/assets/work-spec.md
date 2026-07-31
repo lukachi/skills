@@ -1,5 +1,5 @@
 ---
-workflow_version: 2
+workflow_version: 3
 id: "{{WORK_ID}}"
 title: "{{TITLE}}"
 mode: "{{MODE}}"
@@ -8,6 +8,11 @@ scope: leaf
 created_at: "{{CREATED_AT}}"
 updated_at: "{{CREATED_AT}}"
 repositories: []
+acceptance: []
+direction:
+  status: bounded
+  map: ""
+  resolved_at: ""
 knowledge_alignment:
   reviewed: []
   conflicts: []
@@ -33,6 +38,7 @@ verification:
   revision: ""
   worktree_id: ""
   repositories: []
+  acceptance: []
   acceptance_reviewed: false
   implementation_reviewed: false
   knowledge_reviewed: false

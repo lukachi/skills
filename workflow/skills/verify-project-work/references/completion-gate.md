@@ -3,8 +3,14 @@
 A completed record requires:
 
 - every plan and acceptance checkbox resolved;
+- every stable acceptance ID marked verified and paired with passed evidence;
+- every bundle file except the review ledger accounted for at its current hash;
+- no unseen, changed-after-review, or invalid bundle file;
+- every work issue completed or explicitly dropped, with no active claim;
+- every acceptance ID covered by a non-dropped delivery issue when issues are used;
+- no issue dependency cycle or completed issue with an unresolved blocker;
+- any retained Wayfinder map resolved, with no remaining fog;
 - at least one relevant Graphify query recorded for code-scoped work;
-- at least one curated knowledge concept recorded for significant work;
 - `acceptance_reviewed: true`;
 - `implementation_reviewed: true` for code-scoped work, or
   `knowledge_reviewed: true` for project-only work;
@@ -22,7 +28,8 @@ A completed record requires:
   repository. Single-leaf work may use the top-level verification fields;
   multi-repository work uses `verification.repositories`.
 
-The CLI validates the record's structure and any promoted concept files. It
+The CLI validates the bundle graph, file hashes, record structure, exact source
+bindings, and any promoted concept files. It
 cannot prove that a conversation occurred, that semantic evidence is correct,
 or that no material claim was omitted. The agent must record a maintainer
 approval only after an explicit decision, and the maintainer remains

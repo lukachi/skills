@@ -55,17 +55,17 @@ The agent automatically selects read-only navigation. It starts raw processing,
 reconstruction, durable research, direction shaping, or semantic curation only
 when you explicitly ask for that outcome or accept its recommendation.
 
-Significant product or architecture discussion starts a project-only living
-spec here with `wfctl work start`. It has no code root, so the agent cannot
+Significant product or architecture discussion starts a project-only central
+bundle here with `wfctl work start`. It has no code root, so the agent cannot
 accidentally implement in the knowledge checkout. Multi-repository work also
-starts here when one spec must bind several explicit leaf worktrees.
+starts here when one bundle must bind several explicit leaf worktrees.
 
 If the initiative is too broad to define honest acceptance criteria, the agent
-first shapes its direction in that same spec. It maintains the destination,
-canonical vocabulary candidates, decision frontier, uncertainty, non-goals,
-and exact next question. It asks one question at a time and does not write
-source code. Once the next bounded change is clear, the same record continues
-through the normal significant-work loop.
+first uses Wayfinder in that same bundle. `map.md` keeps the destination, fog,
+resolved-route pointers, and out-of-scope boundaries; precise questions become
+claimable issues. It asks one question at a time and does not write source code.
+Once the route is clear, the agent reads every resolution, synthesizes the
+normal specification, and only then continues through delivery.
 
 ### Source-first project reconstruction
 

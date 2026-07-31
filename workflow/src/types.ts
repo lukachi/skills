@@ -1,9 +1,9 @@
-export const WORKFLOW_VERSION = "0.6.0";
+export const WORKFLOW_VERSION = "0.7.0";
 export const CONFIG_SCHEMA_VERSION = 1;
 export const STATE_SCHEMA_VERSION = 1;
 
 export type Profile = "knowledge" | "leaf";
-export type WorkMode = "full" | "slice";
+export type WorkMode = "full" | "slice" | "wayfinder";
 export type WorkOutcome = "completed" | "partial" | "abandoned";
 export type SkillScope = "project" | "user" | "none";
 export type AgentTarget = "codex" | "claude";

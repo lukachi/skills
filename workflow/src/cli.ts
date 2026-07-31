@@ -78,12 +78,27 @@ import type {
 import { WORKFLOW_VERSION } from "./types.js";
 import {
   beginWork,
+  claimWorkIssue,
   closeWork,
+  completeWorkIssue,
+  createWorkIssue,
   createHandoff,
+  dropWorkIssue,
+  finishWayfinder,
   rebindWork,
+  releaseWorkIssue,
+  reviewWorkBundleFile,
+  setWorkIssueBlocker,
   verifyWork,
+  workBundleContext,
   workStatus,
 } from "./work.js";
+import type {
+  BundleReviewStatus,
+  WorkBundleStage,
+  WorkIssuePhase,
+  WorkIssueType,
+} from "./work-bundle.js";
 import {
   findDistributionRoot,
   renderAgentInstructions,
@@ -106,7 +121,7 @@ const main = new Command()
       + "Knowledge operations:\n"
       + "  knowledge  Process raw input, validate knowledge, and build its graph\n\n"
       + "Project work:\n"
-      + "  work       Create handoffs or start, verify, and close change records",
+      + "  work       Operate central change bundles, maps, issues, review, and closure",
   )
   .throwErrors()
   .command("init", initCommand())
@@ -493,7 +508,7 @@ function checkCommand() {
 
 function workCommand() {
   return new Command()
-    .description("Manage central change records bound to exact leaf checkouts.")
+    .description("Manage central change bundles bound to exact leaf checkouts.")
     .command(
       "handoff",
       new Command()
@@ -527,11 +542,11 @@ function workCommand() {
     .command(
       "start",
       new Command()
-        .description("Start a shaping record before significant-task discussion continues.")
+        .description("Start a central bundle before significant-task discussion continues.")
         .arguments("<slug:string>")
         .option("-t, --target <path:string>", "Leaf checkout.", { default: "." })
         .option("--title <title:string>", "Human-readable work title.", { required: true })
-        .option("--mode <mode:string>", "full or slice.", { default: "full" })
+        .option("--mode <mode:string>", "full, slice, or wayfinder.", { default: "full" })
         .option(
           "--leaf <path:string>",
           "Leaf checkout for project-wide or multi-repository work started from knowledge; repeat as needed.",
@@ -570,10 +585,14 @@ function workCommand() {
           }
         }),
     )
+    .command("context", workContextCommand())
+    .command("issue", workIssueCommand())
+    .command("map", workMapCommand())
+    .command("review", workReviewCommand())
     .command(
       "status",
       new Command()
-        .description("Show and validate the code-root/spec binding.")
+        .description("Show and validate the code-root/bundle binding.")
         .arguments("[id:string]")
         .option("-t, --target <path:string>", "Leaf checkout.", { default: "." })
         .option("--json", "Print machine-readable JSON.")
@@ -592,6 +611,7 @@ function workCommand() {
                     result.codeRoots.length > 0 ? result.codeRoots.join(", ") : "none"
                   }\n`
                   + `Knowledge root: ${result.knowledgeRoot}\n`
+                  + `Bundle: ${result.bundleRoot}\n`
                   + `Spec: ${result.specPath}\n`,
               );
               for (const source of result.currentSources) {
@@ -635,7 +655,7 @@ function workCommand() {
     .command(
       "verify",
       new Command()
-        .description("Check the structural completion gate for a bound change record.")
+        .description("Check the structural completion gate for a bound change bundle.")
         .arguments("<id:string>")
         .option("-t, --target <path:string>", "Bound leaf checkout.", { default: "." })
         .option("--json", "Print machine-readable JSON.")
@@ -659,7 +679,7 @@ function workCommand() {
     .command(
       "close",
       new Command()
-        .description("Archive a bound change record after its required gates pass.")
+        .description("Archive a bound change bundle after its required gates pass.")
         .arguments("<id:string>")
         .option("-t, --target <path:string>", "Bound leaf checkout.", { default: "." })
         .option("--outcome <outcome:string>", "completed, partial, or abandoned.", {
@@ -678,6 +698,414 @@ function workCommand() {
             process.stdout.write(
               `Closed ${result.id} as ${result.outcome}\n`
                 + `Archive: ${result.archivePath}\n`,
+            );
+          }
+        }),
+    );
+}
+
+function workContextCommand() {
+  return new Command()
+    .description(
+      "List the exact bundle files and code context an agent must read for one stage.",
+    )
+    .arguments("<id:string>")
+    .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+      default: ".",
+    })
+    .option("--stage <stage:string>", "shape, wayfind, implement, review, or resume.", {
+      default: "resume",
+    })
+    .option("--issue <id:string>", "Selected work issue for wayfind or implement.")
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      const result = await workBundleContext(
+        options.target,
+        id,
+        parseWorkBundleStage(options.stage),
+        options.issue,
+      );
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(
+        `Work bundle: ${result.root}\n`
+          + `Stage: ${result.stage}${result.selectedIssue ? ` (${result.selectedIssue})` : ""}\n`
+          + `Mode: ${result.mode}${result.mapStatus ? `; map ${result.mapStatus}` : ""}\n`
+          + `Frontier: ${result.frontier.length > 0 ? result.frontier.join(", ") : "none"}\n`
+          + "Required full reads:\n",
+      );
+      for (const file of result.requiredFiles) {
+        process.stdout.write(
+          `- ${file.path} [${file.role}; ${file.accounting}; ${file.sha256.slice(0, 12)}]\n`,
+        );
+      }
+      if (result.validationIssues.length > 0) {
+        process.stdout.write("Validation issues:\n");
+        for (const issue of result.validationIssues) {
+          process.stdout.write(`- ${issue}\n`);
+        }
+        process.exitCode = 2;
+      }
+    });
+}
+
+function workIssueCommand() {
+  return new Command()
+    .description("Create, claim, resolve, and inspect bounded bundle issues.")
+    .command(
+      "create",
+      new Command()
+        .description("Create one dependency-aware issue inside the central change bundle.")
+        .arguments("<id:string> <slug:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--title <title:string>", "Human-readable issue title.", { required: true })
+        .option("--phase <phase:string>", "wayfinding or delivery.", { required: true })
+        .option(
+          "--type <type:string>",
+          "research, prototype, grilling, task, or delivery.",
+          { required: true },
+        )
+        .option("--blocked-by <id:string>", "Blocking issue ID; repeat as needed.", {
+          collect: true,
+        })
+        .option("--satisfies <id:string>", "Acceptance ID; repeat as needed.", {
+          collect: true,
+        })
+        .option("--repository <id:string>", "Repository identity; repeat as needed.", {
+          collect: true,
+        })
+        .option("--artifact <path:string>", "Referenced artifacts/ path; repeat as needed.", {
+          collect: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, slug) => {
+          const result = await createWorkIssue({
+            target: options.target,
+            id,
+            slug,
+            title: options.title,
+            phase: parseWorkIssuePhase(options.phase),
+            type: parseWorkIssueType(options.type),
+            blockedBy: collectedStrings(options.blockedBy),
+            satisfies: collectedStrings(options.satisfies),
+            repositories: collectedStrings(options.repository),
+            artifacts: collectedStrings(options.artifact),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Created ${result.id}: ${result.title}\n`
+                + `Path: ${result.path}\n`
+                + `Blocked by: ${result.blockedBy.length > 0 ? result.blockedBy.join(", ") : "none"}\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "list",
+      new Command()
+        .description("Show every issue and the current executable frontier.")
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await workBundleContext(options.target, id, "resume");
+          if (options.json) {
+            printJson({ issues: result.issues, frontier: result.frontier });
+            return;
+          }
+          if (result.issues.length === 0) {
+            process.stdout.write("No work issues in this bundle.\n");
+            return;
+          }
+          for (const issue of result.issues) {
+            process.stdout.write(
+              `${issue.frontier ? "FRONTIER" : issue.status.toUpperCase()} ${issue.id} ${issue.title}\n`
+                + `  ${issue.phase}/${issue.type}; blockers: ${
+                  issue.blockedBy.length > 0 ? issue.blockedBy.join(", ") : "none"
+                }\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "show",
+      new Command()
+        .description("Show one issue and the exact context needed to work it.")
+        .arguments("<id:string> <issue:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, issue) => {
+          const resume = await workBundleContext(options.target, id, "resume", issue);
+          const selected = resume.issues.find((entry) => entry.id === issue.toUpperCase());
+          if (!selected) {
+            throw new Error(`Work issue not found: ${issue}`);
+          }
+          const result = await workBundleContext(
+            options.target,
+            id,
+            selected.phase === "wayfinding" ? "wayfind" : "implement",
+            selected.id,
+          );
+          if (options.json) {
+            printJson({ issue: selected, context: result.requiredFiles });
+          } else {
+            process.stdout.write(
+              `${selected.id}: ${selected.title}\n`
+                + `Status: ${selected.status}; phase: ${selected.phase}; type: ${selected.type}\n`
+                + `Path: ${selected.path}\nRequired full reads:\n`,
+            );
+            for (const file of result.requiredFiles) {
+              process.stdout.write(`- ${file.path} [${file.accounting}]\n`);
+            }
+          }
+        }),
+    )
+    .command(
+      "claim",
+      new Command()
+        .description("Claim a frontier issue from the exact current work context.")
+        .arguments("<id:string> <issue:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--actor <identity:string>", "Agent or maintainer identity.", {
+          required: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, issue) => {
+          const result = await claimWorkIssue({
+            target: options.target,
+            id,
+            issueId: issue,
+            actor: options.actor,
+          });
+          if (options.json) printJson(result);
+          else process.stdout.write(`Claimed ${result.id}: ${result.title}\n`);
+        }),
+    )
+    .command(
+      "block",
+      new Command()
+        .description("Add one blocking edge and reject dependency cycles.")
+        .arguments("<id:string> <issue:string> <blocker:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, issue, blocker) => {
+          const result = await setWorkIssueBlocker(
+            options.target,
+            id,
+            issue,
+            blocker,
+            true,
+          );
+          if (options.json) printJson(result);
+          else process.stdout.write(`${result.id} is now blocked by ${blocker.toUpperCase()}\n`);
+        }),
+    )
+    .command(
+      "unblock",
+      new Command()
+        .description("Remove one blocking edge after explicit graph review.")
+        .arguments("<id:string> <issue:string> <blocker:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, issue, blocker) => {
+          const result = await setWorkIssueBlocker(
+            options.target,
+            id,
+            issue,
+            blocker,
+            false,
+          );
+          if (options.json) printJson(result);
+          else process.stdout.write(`${result.id} is no longer blocked by ${blocker.toUpperCase()}\n`);
+        }),
+    )
+    .command(
+      "release",
+      new Command()
+        .description("Release an unfinished claim back to the frontier.")
+        .arguments("<id:string> <issue:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, issue) => {
+          const result = await releaseWorkIssue(options.target, id, issue);
+          if (options.json) printJson(result);
+          else process.stdout.write(`Released ${result.id}: ${result.title}\n`);
+        }),
+    )
+    .command(
+      "complete",
+      new Command()
+        .description("Resolve a claimed issue with a concise answer and evidence.")
+        .arguments("<id:string> <issue:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--summary <text:string>", "Resolution or delivered outcome.", {
+          required: true,
+        })
+        .option("--evidence <text:string>", "Evidence entry; repeat as needed.", {
+          collect: true,
+          required: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, issue) => {
+          const result = await completeWorkIssue({
+            target: options.target,
+            id,
+            issueId: issue,
+            summary: options.summary,
+            evidence: collectedStrings(options.evidence),
+          });
+          if (options.json) printJson(result);
+          else process.stdout.write(`Completed ${result.id}: ${result.title}\n`);
+        }),
+    )
+    .command(
+      "drop",
+      new Command()
+        .description("Remove an issue from the route with an explicit reason.")
+        .arguments("<id:string> <issue:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--reason <text:string>", "Why this issue no longer belongs on the route.", {
+          required: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, issue) => {
+          const result = await dropWorkIssue(options.target, id, issue, options.reason);
+          if (options.json) printJson(result);
+          else process.stdout.write(`Dropped ${result.id}: ${result.title}\n`);
+        }),
+    );
+}
+
+function workMapCommand() {
+  return new Command()
+    .description("Operate the deliberate Wayfinder phase of a change bundle.")
+    .command(
+      "status",
+      new Command()
+        .description("Show the map, fog state, issue graph, and current frontier.")
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await workBundleContext(options.target, id, "wayfind");
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Wayfinder ${id}: ${result.mapStatus ?? "missing map"}\n`
+                + `Destination: ${result.destination || "not set"}\n`
+                + `Fog: ${result.fog?.length ?? 0} item(s)\n`
+                + `Frontier: ${result.frontier.length > 0 ? result.frontier.join(", ") : "none"}\n`
+                + `Map: ${result.requiredFiles.find((entry) => entry.path === "map.md")?.path ?? "missing"}\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "finish",
+      new Command()
+        .description(
+          "Finish a clear, already-synthesized map into full or slice delivery shaping.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--mode <mode:string>", "full or slice delivery mode.", { required: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await finishWayfinder(
+            options.target,
+            id,
+            parseDeliveryMode(options.mode),
+          );
+          if (options.json) printJson(result);
+          else {
+            process.stdout.write(
+              `Wayfinder resolved; ${id} returned to ${result.mode} delivery shaping.\n`
+                + `Change: ${result.changePath}\nMap: ${result.mapPath}\n`,
+            );
+          }
+        }),
+    );
+}
+
+function workReviewCommand() {
+  return new Command()
+    .description("Account for every bundle file at its current content hash.")
+    .command(
+      "status",
+      new Command()
+        .description("Show complete bundle accounting and stale or unseen files.")
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await workBundleContext(options.target, id, "review");
+          if (options.json) {
+            printJson(result);
+            return;
+          }
+          for (const file of result.inventory) {
+            process.stdout.write(
+              `${file.accounting.toUpperCase().padEnd(20)} ${file.path} ${file.sha256.slice(0, 12)}\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "file",
+      new Command()
+        .description("Record a full-file review receipt at the current hash.")
+        .arguments("<id:string> <path:string>")
+        .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
+          default: ".",
+        })
+        .option("--status <status:string>", "reviewed or irrelevant.", {
+          default: "reviewed",
+        })
+        .option("--reason <text:string>", "Required when an artifact is irrelevant.", {
+          default: "",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, path) => {
+          const result = await reviewWorkBundleFile(
+            options.target,
+            id,
+            path,
+            parseBundleReviewStatus(options.status),
+            options.reason,
+          );
+          if (options.json) printJson(result);
+          else {
+            process.stdout.write(
+              `${result.accounting.toUpperCase()} ${result.path} ${result.sha256}\n`,
             );
           }
         }),
@@ -1710,8 +2138,47 @@ function parseAgentTargets(value: string): AgentTarget[] {
 }
 
 function parseWorkMode(value: string): WorkMode {
+  if (value !== "full" && value !== "slice" && value !== "wayfinder") {
+    throw new Error(`Invalid mode "${value}"; expected full, slice, or wayfinder`);
+  }
+  return value;
+}
+
+function parseDeliveryMode(value: string): "full" | "slice" {
   if (value !== "full" && value !== "slice") {
-    throw new Error(`Invalid mode "${value}"; expected full or slice`);
+    throw new Error(`Invalid delivery mode "${value}"; expected full or slice`);
+  }
+  return value;
+}
+
+function parseWorkBundleStage(value: string): WorkBundleStage {
+  if (!["shape", "wayfind", "implement", "review", "resume"].includes(value)) {
+    throw new Error(
+      `Invalid work context stage "${value}"; expected shape, wayfind, implement, review, or resume`,
+    );
+  }
+  return value as WorkBundleStage;
+}
+
+function parseWorkIssuePhase(value: string): WorkIssuePhase {
+  if (value !== "wayfinding" && value !== "delivery") {
+    throw new Error(`Invalid issue phase "${value}"; expected wayfinding or delivery`);
+  }
+  return value;
+}
+
+function parseWorkIssueType(value: string): WorkIssueType {
+  if (!["research", "prototype", "grilling", "task", "delivery"].includes(value)) {
+    throw new Error(
+      `Invalid issue type "${value}"; expected research, prototype, grilling, task, or delivery`,
+    );
+  }
+  return value as WorkIssueType;
+}
+
+function parseBundleReviewStatus(value: string): BundleReviewStatus {
+  if (value !== "reviewed" && value !== "irrelevant") {
+    throw new Error(`Invalid review status "${value}"; expected reviewed or irrelevant`);
   }
   return value;
 }

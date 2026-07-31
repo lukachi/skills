@@ -1,0 +1,6 @@
+interface:
+  display_name: "Split Project Change"
+  short_description: "Split an approved change into bounded issues"
+  default_prompt: "Use this skill to split an approved central change specification into dependency-aware tracer-bullet issues in the same bundle."
+policy:
+  allow_implicit_invocation: false

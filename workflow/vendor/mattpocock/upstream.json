@@ -1,0 +1,25 @@
+{
+  "repository": "https://github.com/mattpocock/skills.git",
+  "revision": "2ab958093e83e0ec752e6c1c5932da465bf23e0c",
+  "reviewedAt": "2026-07-31",
+  "integration": "adapted-not-vendored",
+  "reviewedSkills": [
+    "wayfinder",
+    "to-spec",
+    "to-tickets",
+    "implement",
+    "tdd",
+    "code-review",
+    "domain-modeling",
+    "grilling",
+    "grill-with-docs",
+    "handoff"
+  ],
+  "localSkills": [
+    "shape-project-direction",
+    "specify-project-change",
+    "split-project-change",
+    "implement-work-item",
+    "verify-project-work"
+  ]
+}

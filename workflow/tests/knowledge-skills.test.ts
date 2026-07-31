@@ -165,12 +165,50 @@ test("direction shaping and project research are deliberate bounded modes", asyn
     assert.ok(String(openai.interface?.short_description).length >= 25);
     assert.ok(String(openai.interface?.short_description).length <= 64);
   }
-  assert.match(shape, /same\s+canonical living spec|same canonical spec/);
-  assert.match(shape, /one focused question/);
-  assert.match(shape, /Do not edit product source/);
+  assert.match(shape, /same central bundle/i);
+  assert.match(shape, /one question at a time|one focused question/i);
+  assert.match(shape, /Do not edit product source|does not write source code/i);
   assert.match(research, /primary (?:and current )?sources|primary material/);
   assert.match(research, /candidate, not authority/i);
   assert.match(research, /claim-to-source matrix/);
+});
+
+test("project work skills share one bundle, explicit frontier, and full-file gate", async () => {
+  const names = [
+    "manage-project-work",
+    "shape-project-direction",
+    "specify-project-change",
+    "split-project-change",
+    "implement-work-item",
+    "verify-project-work",
+  ];
+  const contents = new Map<string, string>();
+  for (const name of names) {
+    const content = await readFile(join(root, "skills", name, "SKILL.md"), "utf8");
+    contents.set(name, content);
+    assert.doesNotMatch(content, /TODO|\[TODO/);
+    const frontmatterMatch = /^---\n([\s\S]+?)\n---/.exec(content);
+    assert.ok(frontmatterMatch, `${name} must have YAML frontmatter`);
+    const frontmatter = parse(frontmatterMatch[1]!) as Record<string, unknown>;
+    assert.equal(frontmatter.name, name);
+    assert.ok(String(frontmatter.description).length <= 1024);
+    const openai = parse(await readFile(
+      join(root, "skills", name, "agents/openai.yaml"),
+      "utf8",
+    )) as { interface?: Record<string, unknown>; policy?: Record<string, unknown> };
+    assert.ok(String(openai.interface?.short_description).length >= 25);
+    assert.ok(String(openai.interface?.short_description).length <= 64);
+    if (name !== "manage-project-work" && name !== "verify-project-work") {
+      assert.equal(openai.policy?.allow_implicit_invocation, false);
+    }
+  }
+  assert.match(contents.get("manage-project-work")!, /full\|slice\|wayfinder/);
+  assert.match(contents.get("shape-project-direction")!, /fog/i);
+  assert.match(contents.get("shape-project-direction")!, /Do not jump from a map directly/i);
+  assert.match(contents.get("specify-project-change")!, /Read every required file completely/i);
+  assert.match(contents.get("split-project-change")!, /tracer bullet/i);
+  assert.match(contents.get("implement-work-item")!, /Claim before analysis or edits/i);
+  assert.match(contents.get("verify-project-work")!, /changed-after-review/i);
 });
 
 test("trigger and behavior eval corpora cover positives and near misses", async () => {

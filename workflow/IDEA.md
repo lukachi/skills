@@ -74,15 +74,16 @@ owning Area instead of becoming one flat chronological dump.
 Cross-Area material stays at the project level only when no single Area is the
 honest owner.
 
-### 4. Keep one living record for consequential work
+### 4. Keep one living bundle for consequential work
 
-Significant work begins with one canonical record. During discussion, the agent
-keeps its outcome, scope, language, constraints, questions, decisions, and
-progress current. The same record matures into the implementation spec,
-verification report, and archived outcome.
+Significant work begins with one canonical bundle. Its parent change keeps the
+outcome, scope, language, constraints, decisions, and stable acceptance IDs
+current. An optional Wayfinder map resolves a route too foggy for one session;
+bounded issues carry execution and progress; complete file receipts support
+verification. The directory moves intact into history when it closes.
 
 This prevents chat from becoming the only memory and prevents separate product,
-planning, and progress documents from drifting apart.
+planning, issue, and progress systems from drifting apart.
 
 ### 5. Require evidence without claiming perfect understanding
 

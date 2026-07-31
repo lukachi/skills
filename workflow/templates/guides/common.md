@@ -51,8 +51,8 @@ skill by name.
 | `raw/` | Continuous append-only dumps and captures | Untrusted clue source; never evidence |
 | `intake/` | Git-frozen raw review cases | Operational audit trail; never cited by knowledge |
 | `reconstruction/` | Source-first project baselines and audits | Qualified review records; opt-in, not default truth |
-| `changes/active/` | One proposal/spec/progress record per significant task | Current execution agreement |
-| `changes/archive/` | Closed change records with reviews and receipts | Historical record qualified by outcome and reviews |
+| `changes/active/` | One change bundle per significant outcome: parent contract, optional map, bounded issues, artifacts, and review ledger | Current execution agreement |
+| `changes/archive/` | Closed change bundles moved intact with reviews and receipts | Historical record qualified by outcome and reviews |
 | `changes/inbox/` | Lightweight handoffs awaiting triage | Non-authoritative input to the normal change or curation flow |
 | `knowledge/` | Curated OKF concepts | Default current project knowledge |
 | source repositories | Executable implementation | Implementation authority at an exact revision |
@@ -73,7 +73,8 @@ verification:
 2. A bounded reconstruction binds exact clean leaf revisions, uses Graphify
    plus direct source, creates repository dossiers, and separates observed
    implementation from accepted intent.
-3. Significant ongoing work produces a living record under `changes/active/`
+3. Significant ongoing work produces a central bundle under `changes/active/`
+   with stable acceptance, bounded issue progress, complete file accounting,
    and fresh implementation receipts.
 4. Every lane verifies each claim against its proper authority.
 5. The maintainer adjudicates intent, normative decisions, and unresolved
@@ -191,11 +192,13 @@ research, semantic curation, and broad direction shaping are deliberate:
 unless you already requested the outcome, the agent explains the gap and asks
 one focused confirmation before starting.
 
-For a consequential initiative whose dependent decisions are still unclear,
-the agent uses direction shaping before implementation planning. It records
-the destination, domain language, decision frontier, uncertainty, tradeoffs,
-and next bounded change in the same living spec used later. It never creates a
-parallel strategy source.
+For a consequential initiative whose route is too unclear for one honest
+specification session, the agent may recommend deliberate Wayfinder. One map
+stores the destination, standing context, fog, and named resolution pointers;
+precise questions become dependency-aware issues. When the route clears, the
+agent reads every issue, synthesizes the ordinary change specification, and
+only then starts delivery. It never builds the destination from an unresolved
+map or creates a parallel strategy source.
 
 ## Review gates
 
@@ -231,38 +234,43 @@ the living record before continuing.
 ## Significant-work loop
 
 1. Classify the task.
-2. Immediately create and bind a `shaping` record with `wfctl work start`.
+2. Immediately create and bind a central bundle with `wfctl work start`.
 3. Use `wfctl work status` to distinguish every exact implementation `Code
-   root` from the central `Spec` path. Project-only work has no code root.
+   root` from the central bundle. Use stage-specific `wfctl work context` to
+   enumerate every file the agent must read. Project-only work has no code root.
 4. Record the current request, constraints, open questions, and next action.
 5. Analyze source code through Graphify and direct inspection in every bound
    repository; skip this only when the record has no code scope.
 6. Align with current `knowledge/`.
 7. Resolve blocking authority questions and obtain framing approval.
-8. Set the record active. Implement only in the bound code root while updating
-   the same change file after every material maintainer turn.
-9. Reconcile every criterion against the actual implementation.
-10. With normal maintainer authorization, preserve the implementation
+8. Set the change active. For multi-session work, create dependency-aware
+   issues whose acceptance coverage and repository scope are explicit.
+9. Read and claim one frontier issue from the exact bound leaf. Implement only
+   there while keeping issue progress and the parent contract current.
+10. Reconcile every stable criterion against the actual implementation.
+11. With normal maintainer authorization, preserve the implementation
     in the bound Git commit; `wfctl` never commits automatically.
-11. Run final checks against every clean commit and record one revision and
+12. Run final checks against every clean commit and record one revision and
     worktree receipt per repository.
-12. Promote durable verified truth into `knowledge/`, or record why no current
+13. Enumerate and read the complete bundle, refresh every content-hash receipt,
+    and reject unseen, changed, malformed, or silently dropped work.
+14. Promote durable verified truth into `knowledge/`, or record why no current
     knowledge changed.
-13. Obtain completion approval, mark the record completion-ready, and compute
+15. Obtain completion approval, mark the record completion-ready, and compute
     current content hashes for promoted stable concepts.
-14. Run `wfctl knowledge validate --target <Knowledge root>` for promoted
+16. Run `wfctl knowledge validate --target <Knowledge root>` for promoted
     concepts.
-15. Run `wfctl knowledge build --target <Knowledge root>` to prove links,
+17. Run `wfctl knowledge build --target <Knowledge root>` to prove links,
     authored relationships, and stable-concept reachability.
-16. Run `wfctl work verify`, and archive the honest
+18. Run `wfctl work verify`, and archive the honest
     outcome with `wfctl work close`.
 
 A material turn changes a requirement, constraint, alternative, decision,
 scope, evidence, risk, question, or next action. The agent updates mutable
 current sections and appends a proposed/approved/rejected/deferred/superseded
 ledger entry before continuing. After interruption or compaction, it runs
-`wfctl work status`, reads the entire spec, and resumes from its recorded state
-instead of chat memory.
+`wfctl work context` and `wfctl work status`, reads every required bundle file,
+and resumes from recorded state instead of chat memory.
 
 Partial or abandoned outcomes are valid historical records. They must never be
 relabeled as completed. A completed close also requires a clean bound checkout,

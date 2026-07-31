@@ -1,0 +1,1405 @@
+import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import {
+  access,
+  mkdir,
+  readFile,
+  readdir,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
+import { basename, join, relative, resolve, sep } from "node:path";
+import type { RepositoryMetadata, WorkMode, WorkSpecDocument } from "./types.js";
+import {
+  isRecord,
+  parseWorkSpec,
+  serializeWorkSpec,
+} from "./work-spec.js";
+
+export type WorkBundleStage = "shape" | "wayfind" | "implement" | "review" | "resume";
+export type WorkIssuePhase = "wayfinding" | "delivery";
+export type WorkIssueType =
+  | "research"
+  | "prototype"
+  | "grilling"
+  | "task"
+  | "delivery";
+export type WorkIssueStatus =
+  | "draft"
+  | "ready"
+  | "claimed"
+  | "completed"
+  | "dropped";
+export type BundleReviewStatus = "reviewed" | "irrelevant";
+
+export interface WorkIssueSummary {
+  id: string;
+  title: string;
+  path: string;
+  phase: WorkIssuePhase;
+  type: WorkIssueType;
+  status: WorkIssueStatus;
+  blockedBy: string[];
+  satisfies: string[];
+  repositories: string[];
+  artifacts: string[];
+  claimed: boolean;
+  unblocked: boolean;
+  frontier: boolean;
+}
+
+export interface BundleInventoryEntry {
+  path: string;
+  role: "change" | "map" | "issue" | "artifact" | "review" | "unknown";
+  sha256: string;
+  bytes: number;
+  accounting: "reviewed" | "irrelevant" | "unseen" | "changed-after-review" | "invalid";
+  reason: string;
+}
+
+export interface WorkBundleInspection {
+  root: string;
+  stage: WorkBundleStage;
+  selectedIssue?: string;
+  mode: string;
+  mapStatus?: string;
+  destination?: string;
+  fog?: unknown[];
+  resolved?: Record<string, unknown>[];
+  inventory: BundleInventoryEntry[];
+  requiredFiles: BundleInventoryEntry[];
+  issues: WorkIssueSummary[];
+  frontier: string[];
+  validationIssues: string[];
+}
+
+export interface CreateWorkIssueOptions {
+  bundleRoot: string;
+  slug: string;
+  title: string;
+  phase: WorkIssuePhase;
+  type: WorkIssueType;
+  blockedBy?: string[];
+  satisfies?: string[];
+  repositories?: string[];
+  artifacts?: string[];
+  now?: Date;
+  distributionRoot: string;
+}
+
+export interface ClaimWorkIssueOptions {
+  bundleRoot: string;
+  issueId: string;
+  actor: string;
+  source?: RepositoryMetadata;
+  projectOnly: boolean;
+  now?: Date;
+}
+
+export interface ResolveWorkIssueOptions {
+  bundleRoot: string;
+  issueId: string;
+  summary: string;
+  evidence: string[];
+  now?: Date;
+  claimContext: WorkIssueClaimContext;
+}
+
+export interface WorkIssueClaimContext {
+  source?: RepositoryMetadata;
+  allowProject: boolean;
+}
+
+interface ReviewReceipt {
+  path: string;
+  sha256: string;
+  status: BundleReviewStatus;
+  reason: string;
+  reviewed_at: string;
+}
+
+interface ParsedIssue {
+  path: string;
+  document: WorkSpecDocument;
+  summary: WorkIssueSummary;
+}
+
+const ISSUE_PATH = /^issues\/(ISSUE-\d{3})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
+const ACCEPTANCE_ID = /^AC-\d{2,}$/;
+
+export async function initializeWorkBundle(
+  bundleRoot: string,
+  distributionRoot: string,
+  mode: WorkMode,
+  now = new Date(),
+): Promise<void> {
+  await mkdir(join(bundleRoot, "issues"), { recursive: false });
+  await mkdir(join(bundleRoot, "artifacts"), { recursive: false });
+  await writeTemplate(
+    join(distributionRoot, "skills/manage-project-work/assets/bundle-review.md"),
+    join(bundleRoot, "review.md"),
+    (document) => {
+      document.metadata.updated_at = now.toISOString();
+    },
+  );
+  if (mode === "wayfinder") {
+    await writeTemplate(
+      join(distributionRoot, "skills/manage-project-work/assets/wayfinder-map.md"),
+      join(bundleRoot, "map.md"),
+      (document) => {
+        document.metadata.created_at = now.toISOString();
+        document.metadata.updated_at = now.toISOString();
+      },
+    );
+  }
+}
+
+export async function inspectWorkBundle(
+  bundleRoot: string,
+  stage: WorkBundleStage,
+  selectedIssue?: string,
+): Promise<WorkBundleInspection> {
+  const change = parseWorkSpec(await readFile(join(bundleRoot, "change.md"), "utf8"));
+  const issueRead = await readIssuesForInspection(bundleRoot);
+  const parsedIssues = issueRead.parsed;
+  const validationIssues = [
+    ...issueRead.errors,
+    ...await validateBundle(bundleRoot, change, parsedIssues),
+  ];
+  const inventory = await bundleInventory(bundleRoot, validationIssues);
+  const summaries = withGraphState(parsedIssues.map((entry) => entry.summary));
+  const normalizedSelected = selectedIssue ? normalizeIssueId(selectedIssue) : undefined;
+  if (normalizedSelected && !summaries.some((entry) => entry.id === normalizedSelected)) {
+    validationIssues.push(`selected issue does not exist: ${normalizedSelected}`);
+  }
+  const requiredPaths = requiredPathsForStage(
+    stage,
+    normalizedSelected,
+    parsedIssues,
+    inventory,
+  );
+  const map = await optionalDocument(join(bundleRoot, "map.md"));
+  return {
+    root: bundleRoot,
+    stage,
+    ...(normalizedSelected ? { selectedIssue: normalizedSelected } : {}),
+    mode: stringValue(change.metadata.mode),
+    ...(map ? { mapStatus: stringValue(map.metadata.status) } : {}),
+    ...(map ? { destination: stringValue(map.metadata.destination) } : {}),
+    ...(map ? { fog: Array.isArray(map.metadata.fog) ? map.metadata.fog : [] } : {}),
+    ...(map ? { resolved: recordArray(map.metadata.resolved) } : {}),
+    inventory,
+    requiredFiles: requiredPaths
+      .map((path) => inventory.find((entry) => entry.path === path))
+      .filter((entry): entry is BundleInventoryEntry => entry !== undefined),
+    issues: summaries,
+    frontier: summaries.filter((entry) => entry.frontier).map((entry) => entry.id),
+    validationIssues: [...new Set(validationIssues)].sort(),
+  };
+}
+
+export async function createWorkIssue(
+  options: CreateWorkIssueOptions,
+): Promise<WorkIssueSummary> {
+  const change = parseWorkSpec(await readFile(join(options.bundleRoot, "change.md"), "utf8"));
+  const existing = await readIssues(options.bundleRoot);
+  const id = nextIssueId(existing.map((entry) => entry.summary.id));
+  const slug = normalizeSlug(options.slug);
+  const path = join(options.bundleRoot, "issues", `${id}-${slug}.md`);
+  const blockedBy = uniqueStrings(options.blockedBy ?? []).map(normalizeIssueId);
+  const satisfies = uniqueStrings(options.satisfies ?? []).map(normalizeAcceptanceId);
+  const repositories = uniqueStrings(options.repositories ?? []);
+  const artifacts = uniqueStrings(options.artifacts ?? []).map(normalizeArtifactPath);
+  if (!options.title.trim()) {
+    throw new Error("Issue title must not be empty");
+  }
+  if (options.phase === "wayfinding" && change.metadata.mode !== "wayfinder") {
+    throw new Error("Wayfinding issues require an active Wayfinder map");
+  }
+  if (options.phase === "delivery" && change.metadata.mode === "wayfinder") {
+    throw new Error("Delivery issues cannot be created before Wayfinder is finished");
+  }
+  if (options.phase === "wayfinding" && satisfies.length > 0) {
+    throw new Error("Wayfinding issues resolve questions; they do not satisfy delivery acceptance IDs");
+  }
+  const knownAcceptance = new Set(acceptanceCriteria(change).map((entry) => entry.id));
+  for (const acceptance of satisfies) {
+    if (!knownAcceptance.has(acceptance)) {
+      throw new Error(`Unknown acceptance criterion: ${acceptance}`);
+    }
+  }
+  const knownRepositories = new Set(
+    recordArray(change.metadata.repositories).map((entry) => stringValue(entry.repository)),
+  );
+  for (const repository of repositories) {
+    if (!knownRepositories.has(repository)) {
+      throw new Error(`Repository is outside the change scope: ${repository}`);
+    }
+  }
+  if (options.phase === "delivery" && knownRepositories.size > 0 && repositories.length === 0) {
+    throw new Error("A source-scoped delivery issue must declare at least one repository");
+  }
+  for (const artifact of artifacts) {
+    await access(resolveBundleFile(options.bundleRoot, artifact), constants.R_OK);
+  }
+  const knownIssueIds = new Set(existing.map((entry) => entry.summary.id));
+  for (const blocker of blockedBy) {
+    if (!knownIssueIds.has(blocker)) {
+      throw new Error(`Unknown blocking issue: ${blocker}`);
+    }
+    if (existing.find((entry) => entry.summary.id === blocker)?.summary.phase !== options.phase) {
+      throw new Error(`Blocking issue must be in the same phase: ${blocker}`);
+    }
+  }
+  if (options.phase === "wayfinding" && options.type === "delivery") {
+    throw new Error("Wayfinding issues cannot use the delivery type");
+  }
+  if (options.phase === "delivery" && options.type !== "delivery" && options.type !== "task") {
+    throw new Error("Delivery-phase issues must use delivery or task type");
+  }
+  const now = options.now ?? new Date();
+  await writeTemplate(
+    join(options.distributionRoot, "skills/manage-project-work/assets/work-issue.md"),
+    path,
+    (document) => {
+      document.metadata.id = id;
+      document.metadata.title = options.title;
+      document.metadata.phase = options.phase;
+      document.metadata.type = options.type;
+      document.metadata.status = "ready";
+      document.metadata.blocked_by = blockedBy;
+      document.metadata.satisfies = satisfies;
+      document.metadata.repositories = repositories;
+      document.metadata.artifacts = artifacts;
+      document.metadata.created_at = now.toISOString();
+      document.metadata.updated_at = now.toISOString();
+    },
+  );
+  const parsed = await parseIssueFile(options.bundleRoot, relativePath(options.bundleRoot, path));
+  return withGraphState([...existing.map((entry) => entry.summary), parsed.summary])
+    .find((entry) => entry.id === id)!;
+}
+
+export async function claimWorkIssue(
+  options: ClaimWorkIssueOptions,
+): Promise<WorkIssueSummary> {
+  const id = normalizeIssueId(options.issueId);
+  const issues = await readIssues(options.bundleRoot);
+  const graph = withGraphState(issues.map((entry) => entry.summary));
+  const current = graph.find((entry) => entry.id === id);
+  const parsed = issues.find((entry) => entry.summary.id === id);
+  if (!current || !parsed) {
+    throw new Error(`Work issue not found: ${id}`);
+  }
+  if (current.status !== "ready") {
+    throw new Error(`Work issue ${id} is ${current.status}, not ready`);
+  }
+  if (!current.unblocked) {
+    throw new Error(`Work issue ${id} is blocked by unresolved dependencies`);
+  }
+  if (current.phase === "delivery" && !options.projectOnly && !options.source) {
+    throw new Error("A source-scoped delivery issue must be claimed from a bound leaf checkout");
+  }
+  if (current.phase === "delivery" && options.source && current.repositories.length > 0
+    && !current.repositories.includes(options.source.repository)) {
+    throw new Error(
+      `Work issue ${id} is not scoped to repository ${options.source.repository}`,
+    );
+  }
+  const context = await inspectWorkBundle(
+    options.bundleRoot,
+    current.phase === "wayfinding" ? "wayfind" : "implement",
+    id,
+  );
+  if (context.validationIssues.length > 0) {
+    throw new Error(`Claim is blocked by invalid bundle state: ${context.validationIssues.join("; ")}`);
+  }
+  const unread = context.requiredFiles.filter((entry) => entry.accounting !== "reviewed");
+  if (unread.length > 0) {
+    throw new Error(
+      `Claim is blocked until required context is reviewed at its current hash: ${
+        unread.map((entry) => `${entry.path} (${entry.accounting})`).join(", ")
+      }`,
+    );
+  }
+  const lockPath = claimLockPath(options.bundleRoot, id);
+  await mkdir(join(options.bundleRoot, "..", "..", "..", ".workflow", "current", "work-claims", basename(options.bundleRoot)), {
+    recursive: true,
+  });
+  const now = options.now ?? new Date();
+  const claim = options.source
+    ? {
+      actor: normalizeActor(options.actor),
+      repository: options.source.repository,
+      checkout: options.source.checkout,
+      branch: options.source.branch,
+      commit: options.source.commit,
+      worktree_id: options.source.worktreeId,
+      claimed_at: now.toISOString(),
+    }
+    : {
+      actor: normalizeActor(options.actor),
+      repository: "project",
+      checkout: "knowledge",
+      branch: "",
+      commit: "",
+      worktree_id: "knowledge",
+      claimed_at: now.toISOString(),
+    };
+  await writeFile(lockPath, `${JSON.stringify(claim, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+  });
+  try {
+    parsed.document.metadata.status = "claimed";
+    parsed.document.metadata.claim = claim;
+    parsed.document.metadata.updated_at = now.toISOString();
+    await writeFile(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+  } catch (error) {
+    await removeFile(lockPath);
+    throw error;
+  }
+  return (await readIssueById(options.bundleRoot, id)).summary;
+}
+
+export async function releaseWorkIssue(
+  bundleRoot: string,
+  issueId: string,
+  claimContext: WorkIssueClaimContext,
+  now = new Date(),
+): Promise<WorkIssueSummary> {
+  const parsed = await readIssueById(bundleRoot, issueId);
+  if (parsed.summary.status !== "claimed") {
+    throw new Error(`Work issue ${parsed.summary.id} is not claimed`);
+  }
+  assertClaimContext(parsed, claimContext);
+  parsed.document.metadata.status = "ready";
+  parsed.document.metadata.claim = null;
+  parsed.document.metadata.updated_at = now.toISOString();
+  await writeFile(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+  await removeFile(claimLockPath(bundleRoot, parsed.summary.id));
+  return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
+}
+
+export async function resolveWorkIssue(
+  options: ResolveWorkIssueOptions,
+): Promise<WorkIssueSummary> {
+  const parsed = await readIssueById(options.bundleRoot, options.issueId);
+  if (parsed.summary.status !== "claimed") {
+    throw new Error(`Work issue ${parsed.summary.id} must be claimed before completion`);
+  }
+  assertClaimContext(parsed, options.claimContext);
+  if (!options.summary.trim()) {
+    throw new Error("Issue resolution summary must not be empty");
+  }
+  const evidence = uniqueStrings(options.evidence);
+  if (evidence.length === 0) {
+    throw new Error("Issue completion requires at least one evidence entry");
+  }
+  const now = options.now ?? new Date();
+  const completedClaim = recordValue(parsed.document.metadata.claim);
+  parsed.document.metadata.status = "completed";
+  parsed.document.metadata.claim = null;
+  parsed.document.metadata.resolution = {
+    summary: options.summary.trim(),
+    evidence,
+    completed_at: now.toISOString(),
+    ...(completedClaim ? { claim: completedClaim } : {}),
+  };
+  parsed.document.metadata.updated_at = now.toISOString();
+  await writeFile(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+  await removeFile(claimLockPath(options.bundleRoot, parsed.summary.id));
+  if (parsed.summary.phase === "wayfinding") {
+    await appendMapResolution(
+      options.bundleRoot,
+      parsed.summary.id,
+      parsed.summary.title,
+      options.summary.trim(),
+      now,
+    );
+  }
+  return (await readIssueById(options.bundleRoot, parsed.summary.id)).summary;
+}
+
+export async function dropWorkIssue(
+  bundleRoot: string,
+  issueId: string,
+  reason: string,
+  claimContext: WorkIssueClaimContext,
+  now = new Date(),
+): Promise<WorkIssueSummary> {
+  const parsed = await readIssueById(bundleRoot, issueId);
+  if (parsed.summary.status === "completed" || parsed.summary.status === "dropped") {
+    throw new Error(`Work issue ${parsed.summary.id} is already terminal`);
+  }
+  if (!reason.trim()) {
+    throw new Error("Dropping an issue requires a reason");
+  }
+  if (parsed.summary.status === "claimed") {
+    assertClaimContext(parsed, claimContext);
+  }
+  const droppedClaim = recordValue(parsed.document.metadata.claim);
+  parsed.document.metadata.status = "dropped";
+  parsed.document.metadata.claim = null;
+  parsed.document.metadata.resolution = {
+    summary: reason.trim(),
+    evidence: [],
+    completed_at: now.toISOString(),
+    ...(droppedClaim ? { claim: droppedClaim } : {}),
+  };
+  parsed.document.metadata.updated_at = now.toISOString();
+  await writeFile(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+  await removeFile(claimLockPath(bundleRoot, parsed.summary.id));
+  return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
+}
+
+export async function setWorkIssueBlocker(
+  bundleRoot: string,
+  issueId: string,
+  blockerId: string,
+  blocked: boolean,
+  now = new Date(),
+): Promise<WorkIssueSummary> {
+  const issue = await readIssueById(bundleRoot, issueId);
+  const blocker = await readIssueById(bundleRoot, blockerId);
+  if (["completed", "dropped"].includes(issue.summary.status)) {
+    throw new Error(`Cannot change dependencies of terminal issue ${issue.summary.id}`);
+  }
+  if (issue.summary.id === blocker.summary.id) {
+    throw new Error("An issue cannot block itself");
+  }
+  if (issue.summary.phase !== blocker.summary.phase) {
+    throw new Error("Blocking issues must be in the same phase");
+  }
+  const next = blocked
+    ? uniqueStrings([...issue.summary.blockedBy, blocker.summary.id])
+    : issue.summary.blockedBy.filter((id) => id !== blocker.summary.id);
+  const all = (await readIssues(bundleRoot)).map((entry) =>
+    entry.summary.id === issue.summary.id
+      ? { ...entry.summary, blockedBy: next }
+      : entry.summary
+  );
+  const cycles = dependencyCycles(all);
+  if (cycles.length > 0) {
+    throw new Error(`Dependency update would create a cycle: ${cycles[0]!.join(" -> ")}`);
+  }
+  issue.document.metadata.blocked_by = next;
+  issue.document.metadata.updated_at = now.toISOString();
+  await writeFile(issue.path, serializeWorkSpec(issue.document), "utf8");
+  return (await readIssueById(bundleRoot, issue.summary.id)).summary;
+}
+
+export async function reviewBundleFile(
+  bundleRoot: string,
+  inputPath: string,
+  status: BundleReviewStatus,
+  reason: string,
+  now = new Date(),
+): Promise<BundleInventoryEntry> {
+  const normalized = normalizeBundlePath(inputPath);
+  if (normalized === "review.md") {
+    throw new Error("review.md cannot review itself");
+  }
+  const role = roleForPath(normalized);
+  if (role === "unknown" || role === "review") {
+    throw new Error(`Unsupported bundle file: ${normalized}`);
+  }
+  if (status === "irrelevant" && role !== "artifact") {
+    throw new Error("Only supporting artifacts may be marked irrelevant");
+  }
+  if (status === "irrelevant" && !reason.trim()) {
+    throw new Error("An irrelevant artifact requires a reason");
+  }
+  const absolute = resolveBundleFile(bundleRoot, normalized);
+  const content = await readFile(absolute);
+  const reviewPath = join(bundleRoot, "review.md");
+  const review = parseWorkSpec(await readFile(reviewPath, "utf8"));
+  const receipts = reviewReceipts(review);
+  const receipt: ReviewReceipt = {
+    path: normalized,
+    sha256: sha256(content),
+    status,
+    reason: reason.trim(),
+    reviewed_at: now.toISOString(),
+  };
+  review.metadata.files = [
+    ...receipts.filter((entry) => entry.path !== normalized),
+    receipt,
+  ].sort((left, right) => left.path.localeCompare(right.path));
+  review.metadata.updated_at = now.toISOString();
+  await writeFile(reviewPath, serializeWorkSpec(review), "utf8");
+  const inspection = await inspectWorkBundle(bundleRoot, "review");
+  return inspection.inventory.find((entry) => entry.path === normalized)!;
+}
+
+export async function carryForwardCloseReview(
+  bundleRoot: string,
+  now = new Date(),
+): Promise<BundleInventoryEntry> {
+  return await reviewBundleFile(
+    bundleRoot,
+    "change.md",
+    "reviewed",
+    "Workflow-owned close metadata applied after the completed bundle gate passed.",
+    now,
+  );
+}
+
+export async function finishWayfinder(
+  bundleRoot: string,
+  deliveryMode: Exclude<WorkMode, "wayfinder">,
+  now = new Date(),
+): Promise<{ mapPath: string; changePath: string; mode: string }> {
+  const mapPath = join(bundleRoot, "map.md");
+  const map = parseWorkSpec(await readFile(mapPath, "utf8"));
+  const changePath = join(bundleRoot, "change.md");
+  const change = parseWorkSpec(await readFile(changePath, "utf8"));
+  if (change.metadata.mode !== "wayfinder") {
+    throw new Error("The active change is not in Wayfinder mode");
+  }
+  if (!stringValue(map.metadata.destination).trim()) {
+    throw new Error("Wayfinder destination is empty");
+  }
+  if (!Array.isArray(map.metadata.fog)) {
+    throw new Error("Wayfinder fog must be an array");
+  }
+  if (map.metadata.fog.length > 0) {
+    throw new Error("Wayfinder still contains not-yet-specified fog");
+  }
+  const issues = await readIssues(bundleRoot);
+  const unfinished = issues
+    .filter((entry) => entry.summary.phase === "wayfinding")
+    .filter((entry) => !["completed", "dropped"].includes(entry.summary.status));
+  if (unfinished.length > 0) {
+    throw new Error(
+      `Wayfinder has unfinished issues: ${unfinished.map((entry) => entry.summary.id).join(", ")}`,
+    );
+  }
+  if (issues.some((entry) => entry.summary.phase === "delivery")) {
+    throw new Error("Delivery issues must be created after Wayfinder is synthesized into the spec");
+  }
+  const wayfindingIssues = issues.filter((entry) => entry.summary.phase === "wayfinding");
+  if (wayfindingIssues.length === 0) {
+    throw new Error("Wayfinder has no resolved route issues; use ordinary shaping instead");
+  }
+  const acceptance = acceptanceCriteria(change);
+  if (acceptance.length === 0) {
+    throw new Error("Synthesize the map into stable acceptance criteria before finishing Wayfinder");
+  }
+  const inspection = await inspectWorkBundle(bundleRoot, "review");
+  if (inspection.validationIssues.length > 0) {
+    throw new Error(
+      `Wayfinder finish is blocked by invalid bundle state: ${inspection.validationIssues.join("; ")}`,
+    );
+  }
+  const unread = inspection.requiredFiles.filter((entry) =>
+    entry.accounting !== "reviewed" && entry.accounting !== "irrelevant"
+  );
+  if (unread.length > 0) {
+    throw new Error(
+      `Wayfinder finish is blocked until every bundle file is reviewed at its current hash: ${
+        unread.map((entry) => `${entry.path} (${entry.accounting})`).join(", ")
+      }`,
+    );
+  }
+  const nowIso = now.toISOString();
+  map.metadata.status = "resolved";
+  map.metadata.resolved_at = nowIso;
+  map.metadata.updated_at = nowIso;
+  change.metadata.mode = deliveryMode;
+  change.metadata.status = "shaping";
+  change.metadata.direction = {
+    status: "resolved",
+    map: "map.md",
+    resolved_at: nowIso,
+  };
+  change.metadata.updated_at = nowIso;
+  await writeFile(mapPath, serializeWorkSpec(map), "utf8");
+  await writeFile(changePath, serializeWorkSpec(change), "utf8");
+  return { mapPath, changePath, mode: deliveryMode };
+}
+
+export async function bundleCompletionIssues(
+  bundleRoot: string,
+  change: WorkSpecDocument,
+): Promise<string[]> {
+  if (change.metadata.workflow_version !== 3) {
+    return [];
+  }
+  const issues: string[] = [];
+  const issueRead = await readIssuesForInspection(bundleRoot);
+  const parsedIssues = issueRead.parsed;
+  issues.push(...issueRead.errors);
+  issues.push(...await validateBundle(bundleRoot, change, parsedIssues));
+  if (change.metadata.mode === "wayfinder") {
+    issues.push("Wayfinder must be synthesized into full or slice delivery mode");
+  }
+  const map = await optionalDocument(join(bundleRoot, "map.md"));
+  if (map && map.metadata.status !== "resolved") {
+    issues.push("map.md status must be resolved before completed closure");
+  }
+  const criteria = acceptanceCriteria(change);
+  if (criteria.length === 0) {
+    issues.push("acceptance must contain at least one stable criterion");
+  }
+  for (const criterion of criteria) {
+    if (criterion.status !== "verified") {
+      issues.push(`acceptance ${criterion.id} must be verified`);
+    }
+  }
+  const verification = recordValue(change.metadata.verification);
+  const receipts = recordArray(verification?.acceptance);
+  const receiptIds = receipts.map((entry) => stringValue(entry.id));
+  if (new Set(receiptIds).size !== receiptIds.length) {
+    issues.push("verification.acceptance IDs must be unique");
+  }
+  for (const receiptId of receiptIds) {
+    if (!criteria.some((criterion) => criterion.id === receiptId)) {
+      issues.push(`verification.acceptance is outside current scope: ${receiptId}`);
+    }
+  }
+  for (const criterion of criteria) {
+    const receipt = receipts.find((entry) => entry.id === criterion.id);
+    if (!receipt || receipt.result !== "passed" || !nonEmptyStringArray(receipt.evidence)) {
+      issues.push(`verification.acceptance must contain passed evidence for ${criterion.id}`);
+    }
+  }
+  const deliveryIssues = parsedIssues.filter((entry) => entry.summary.phase === "delivery");
+  for (const entry of parsedIssues) {
+    if (!["completed", "dropped"].includes(entry.summary.status)) {
+      issues.push(`${entry.summary.id} is not completed or dropped`);
+    }
+    if (entry.summary.claimed) {
+      issues.push(`${entry.summary.id} still has an active claim`);
+    }
+  }
+  if (deliveryIssues.length > 0) {
+    const covered = new Set(
+      deliveryIssues
+        .filter((entry) => entry.summary.status !== "dropped")
+        .flatMap((entry) => entry.summary.satisfies),
+    );
+    for (const criterion of criteria) {
+      if (!covered.has(criterion.id)) {
+        issues.push(`acceptance ${criterion.id} is not covered by a delivery issue`);
+      }
+    }
+  }
+  const inspection = await inspectWorkBundle(bundleRoot, "review");
+  for (const entry of inspection.inventory) {
+    if (entry.role === "review") {
+      continue;
+    }
+    if (entry.accounting !== "reviewed" && entry.accounting !== "irrelevant") {
+      issues.push(`${entry.path} is ${entry.accounting} in bundle review`);
+    }
+  }
+  return [...new Set(issues)];
+}
+
+async function validateBundle(
+  bundleRoot: string,
+  change: WorkSpecDocument,
+  parsedIssues: ParsedIssue[],
+): Promise<string[]> {
+  const issues: string[] = [];
+  const files = await walkFiles(bundleRoot);
+  for (const file of files) {
+    if (file.symlink) {
+      issues.push(`${file.path}: symlinks are not allowed in a work bundle`);
+    }
+    if (roleForPath(file.path) === "unknown") {
+      issues.push(`${file.path}: unknown bundle file location`);
+    }
+  }
+  for (const required of ["change.md", "review.md"]) {
+    if (!files.some((entry) => entry.path === required)) {
+      issues.push(`${required}: required bundle file is missing`);
+    }
+  }
+  if (![2, 3].includes(Number(change.metadata.workflow_version))) {
+    issues.push("change.md: unsupported workflow_version");
+  }
+  const repositoryIds = new Set(
+    recordArray(change.metadata.repositories).map((entry) => stringValue(entry.repository)),
+  );
+  const criteria = acceptanceCriteria(change);
+  const criterionIds = new Set(criteria.map((entry) => entry.id));
+  if (criterionIds.size !== criteria.length) {
+    issues.push("change.md: acceptance IDs must be unique");
+  }
+  for (const criterion of criteria) {
+    if (!['pending', 'verified'].includes(criterion.status)) {
+      issues.push(`${criterion.id}: acceptance status must be pending or verified`);
+    }
+  }
+  const ids = new Set(parsedIssues.map((entry) => entry.summary.id));
+  if (ids.size !== parsedIssues.length) {
+    issues.push("issues/: issue IDs must be unique");
+  }
+  for (const entry of parsedIssues) {
+    const summary = entry.summary;
+    for (const blocker of summary.blockedBy) {
+      if (!ids.has(blocker)) {
+        issues.push(`${summary.id}: unknown blocker ${blocker}`);
+      }
+      if (blocker === summary.id) {
+        issues.push(`${summary.id}: an issue cannot block itself`);
+      }
+    }
+    for (const acceptance of summary.satisfies) {
+      if (!criterionIds.has(acceptance)) {
+        issues.push(`${summary.id}: unknown acceptance criterion ${acceptance}`);
+      }
+    }
+    for (const repository of summary.repositories) {
+      if (!repositoryIds.has(repository)) {
+        issues.push(`${summary.id}: repository is outside work scope: ${repository}`);
+      }
+    }
+    for (const artifact of summary.artifacts) {
+      if (!files.some((file) => file.path === artifact)) {
+        issues.push(`${summary.id}: referenced artifact does not exist: ${artifact}`);
+      }
+    }
+    if (summary.status === "claimed" && !recordValue(entry.document.metadata.claim)) {
+      issues.push(`${summary.id}: claimed status requires claim metadata`);
+    }
+    if (summary.status !== "claimed" && recordValue(entry.document.metadata.claim)) {
+      issues.push(`${summary.id}: only a claimed issue may retain claim metadata`);
+    }
+    if (summary.status === "completed") {
+      const resolution = recordValue(entry.document.metadata.resolution);
+      if (!stringValue(resolution?.summary).trim()) {
+        issues.push(`${summary.id}: completed issue requires a resolution summary`);
+      }
+      if (!nonEmptyStringArray(resolution?.evidence)) {
+        issues.push(`${summary.id}: completed issue requires evidence`);
+      }
+      for (const blocker of summary.blockedBy) {
+        if (parsedIssues.find((candidate) => candidate.summary.id === blocker)?.summary.status !== "completed") {
+          issues.push(`${summary.id}: completed issue has unresolved blocker ${blocker}`);
+        }
+      }
+    }
+    if (entry.document.metadata.workflow_version !== 1) {
+      issues.push(`${summary.id}: workflow_version must be 1`);
+    }
+    if (entry.document.metadata.kind !== "work-issue") {
+      issues.push(`${summary.id}: kind must be work-issue`);
+    }
+    if (summary.phase === "wayfinding" && summary.type === "delivery") {
+      issues.push(`${summary.id}: Wayfinding issues cannot use delivery type`);
+    }
+    if (
+      summary.phase === "delivery"
+      && summary.type !== "delivery"
+      && summary.type !== "task"
+    ) {
+      issues.push(`${summary.id}: delivery issues must use delivery or task type`);
+    }
+  }
+  for (const cycle of dependencyCycles(parsedIssues.map((entry) => entry.summary))) {
+    issues.push(`issue dependency cycle: ${cycle.join(" -> ")}`);
+  }
+  const map = await optionalDocument(join(bundleRoot, "map.md"));
+  if (change.metadata.mode === "wayfinder" && !map) {
+    issues.push("map.md is required in Wayfinder mode");
+  }
+  if (map && map.metadata.kind !== "wayfinder-map") {
+    issues.push("map.md: kind must be wayfinder-map");
+  }
+  if (map && map.metadata.workflow_version !== 1) {
+    issues.push("map.md: workflow_version must be 1");
+  }
+  if (map && !["charting", "resolved"].includes(stringValue(map.metadata.status))) {
+    issues.push("map.md: status must be charting or resolved");
+  }
+  if (map && !Array.isArray(map.metadata.fog)) {
+    issues.push("map.md: fog must be an array");
+  }
+  if (map && !Array.isArray(map.metadata.out_of_scope)) {
+    issues.push("map.md: out_of_scope must be an array");
+  }
+  if (map) {
+    const resolved = recordArray(map.metadata.resolved);
+    const resolvedIds = resolved.map((entry) => stringValue(entry.issue));
+    if (new Set(resolvedIds).size !== resolvedIds.length) {
+      issues.push("map.md: resolved issue pointers must be unique");
+    }
+    for (const entry of parsedIssues.filter((candidate) =>
+      candidate.summary.phase === "wayfinding" && candidate.summary.status === "completed"
+    )) {
+      if (!resolvedIds.includes(entry.summary.id)) {
+        issues.push(`map.md: completed Wayfinder issue is not indexed: ${entry.summary.id}`);
+      }
+    }
+    for (const resolvedId of resolvedIds) {
+      const entry = parsedIssues.find((candidate) => candidate.summary.id === resolvedId);
+      if (!entry || entry.summary.phase !== "wayfinding" || entry.summary.status !== "completed") {
+        issues.push(`map.md: resolved pointer is not a completed Wayfinder issue: ${resolvedId}`);
+      }
+    }
+  }
+  const review = await optionalDocument(join(bundleRoot, "review.md"));
+  if (review) {
+    if (review.metadata.workflow_version !== 1) {
+      issues.push("review.md: workflow_version must be 1");
+    }
+    if (review.metadata.kind !== "bundle-review") {
+      issues.push("review.md: kind must be bundle-review");
+    }
+    const receipts = reviewReceipts(review);
+    if (new Set(receipts.map((entry) => entry.path)).size !== receipts.length) {
+      issues.push("review.md: receipt paths must be unique");
+    }
+    for (const receipt of receipts) {
+      if (!files.some((entry) => entry.path === receipt.path)) {
+        issues.push(`review.md: receipt points to a missing file: ${receipt.path}`);
+      }
+      if (receipt.status === "irrelevant" && roleForPath(receipt.path) !== "artifact") {
+        issues.push(`review.md: only artifacts may be irrelevant: ${receipt.path}`);
+      }
+      if (!/^[0-9a-f]{64}$/.test(receipt.sha256)) {
+        issues.push(`review.md: invalid SHA-256 receipt for ${receipt.path}`);
+      }
+      if (receipt.status === "irrelevant" && !receipt.reason.trim()) {
+        issues.push(`review.md: irrelevant receipt requires a reason for ${receipt.path}`);
+      }
+    }
+  }
+  return issues;
+}
+
+async function bundleInventory(
+  bundleRoot: string,
+  validationIssues: string[],
+): Promise<BundleInventoryEntry[]> {
+  const review = await optionalDocument(join(bundleRoot, "review.md"));
+  const receipts = review ? reviewReceipts(review) : [];
+  const invalidPaths = new Set(
+    validationIssues
+      .map((issue) => issue.split(":", 1)[0]!)
+      .filter((path) => path.includes(".") || path.includes("/")),
+  );
+  const inventory: BundleInventoryEntry[] = [];
+  for (const file of await walkFiles(bundleRoot)) {
+    const content = await readFile(file.absolute);
+    const digest = sha256(content);
+    const role = roleForPath(file.path);
+    const receipt = receipts.find((entry) => entry.path === file.path);
+    let accounting: BundleInventoryEntry["accounting"];
+    let reason = "";
+    if (file.symlink || role === "unknown" || invalidPaths.has(file.path)) {
+      accounting = "invalid";
+    } else if (file.path === "review.md") {
+      accounting = "reviewed";
+      reason = "accounting ledger";
+    } else if (!receipt) {
+      accounting = "unseen";
+    } else if (receipt.sha256 !== digest) {
+      accounting = "changed-after-review";
+    } else {
+      accounting = receipt.status;
+      reason = receipt.reason;
+    }
+    inventory.push({
+      path: file.path,
+      role,
+      sha256: digest,
+      bytes: content.byteLength,
+      accounting,
+      reason,
+    });
+  }
+  return inventory.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function requiredPathsForStage(
+  stage: WorkBundleStage,
+  selectedIssue: string | undefined,
+  parsedIssues: ParsedIssue[],
+  inventory: BundleInventoryEntry[],
+): string[] {
+  if (stage === "review") {
+    return inventory.filter((entry) => entry.role !== "review").map((entry) => entry.path);
+  }
+  const required = new Set<string>(["change.md"]);
+  const hasMap = inventory.some((entry) => entry.path === "map.md");
+  if (hasMap && ["shape", "wayfind", "resume"].includes(stage)) {
+    required.add("map.md");
+  }
+  const selected = selectedIssue
+    ? parsedIssues.find((entry) => entry.summary.id === selectedIssue)
+    : undefined;
+  if (selected) {
+    required.add(relativeIssuePath(selected.path));
+    for (const blocker of transitiveBlockers(selected.summary, parsedIssues.map((entry) => entry.summary))) {
+      const parsed = parsedIssues.find((entry) => entry.summary.id === blocker);
+      if (parsed) {
+        required.add(relativeIssuePath(parsed.path));
+      }
+    }
+    for (const artifact of selected.summary.artifacts) {
+      required.add(artifact);
+    }
+  } else if (stage === "resume") {
+    for (const entry of parsedIssues.filter((entry) => entry.summary.status === "claimed")) {
+      required.add(relativeIssuePath(entry.path));
+    }
+  }
+  return [...required].sort();
+}
+
+async function appendMapResolution(
+  bundleRoot: string,
+  id: string,
+  title: string,
+  summary: string,
+  now: Date,
+): Promise<void> {
+  const path = join(bundleRoot, "map.md");
+  const map = parseWorkSpec(await readFile(path, "utf8"));
+  const resolved = recordArray(map.metadata.resolved).filter((entry) => entry.issue !== id);
+  map.metadata.resolved = [
+    ...resolved,
+    { issue: id, title, summary },
+  ];
+  map.metadata.updated_at = now.toISOString();
+  await writeFile(path, serializeWorkSpec(map), "utf8");
+}
+
+async function readIssues(bundleRoot: string): Promise<ParsedIssue[]> {
+  const files = (await walkFiles(join(bundleRoot, "issues")))
+    .filter((entry) => entry.path.endsWith(".md"));
+  const parsed: ParsedIssue[] = [];
+  for (const file of files) {
+    parsed.push(await parseIssueFile(bundleRoot, `issues/${file.path}`));
+  }
+  return parsed.sort((left, right) => left.summary.id.localeCompare(right.summary.id));
+}
+
+async function readIssuesForInspection(bundleRoot: string): Promise<{
+  parsed: ParsedIssue[];
+  errors: string[];
+}> {
+  const files = (await walkFiles(join(bundleRoot, "issues")))
+    .filter((entry) => entry.path.endsWith(".md"));
+  const parsed: ParsedIssue[] = [];
+  const errors: string[] = [];
+  for (const file of files) {
+    const path = `issues/${file.path}`;
+    try {
+      parsed.push(await parseIssueFile(bundleRoot, path));
+    } catch (error) {
+      errors.push(`${path}: ${errorText(error)}`);
+    }
+  }
+  parsed.sort((left, right) => left.summary.id.localeCompare(right.summary.id));
+  return { parsed, errors };
+}
+
+async function readIssueById(bundleRoot: string, input: string): Promise<ParsedIssue> {
+  const id = normalizeIssueId(input);
+  const issue = (await readIssues(bundleRoot)).find((entry) => entry.summary.id === id);
+  if (!issue) {
+    throw new Error(`Work issue not found: ${id}`);
+  }
+  return issue;
+}
+
+async function parseIssueFile(bundleRoot: string, relativeFile: string): Promise<ParsedIssue> {
+  const path = resolveBundleFile(bundleRoot, relativeFile);
+  const relativeName = relativePath(bundleRoot, path);
+  const match = ISSUE_PATH.exec(relativeName);
+  if (!match) {
+    throw new Error(`Invalid issue path: ${relativeName}`);
+  }
+  const document = parseWorkSpec(await readFile(path, "utf8"));
+  const id = stringValue(document.metadata.id);
+  if (id !== match[1]) {
+    throw new Error(`${relativeName}: metadata id must match ${match[1]}`);
+  }
+  const phase = enumValue(document.metadata.phase, ["wayfinding", "delivery"] as const, `${id}.phase`);
+  const type = enumValue(
+    document.metadata.type,
+    ["research", "prototype", "grilling", "task", "delivery"] as const,
+    `${id}.type`,
+  );
+  const status = enumValue(
+    document.metadata.status,
+    ["draft", "ready", "claimed", "completed", "dropped"] as const,
+    `${id}.status`,
+  );
+  return {
+    path,
+    document,
+    summary: {
+      id,
+      title: requiredString(document.metadata.title, `${id}.title`),
+      path: relativeName,
+      phase,
+      type,
+      status,
+      blockedBy: uniqueStrings(stringArray(document.metadata.blocked_by)).map(normalizeIssueId),
+      satisfies: uniqueStrings(stringArray(document.metadata.satisfies)).map(normalizeAcceptanceId),
+      repositories: uniqueStrings(stringArray(document.metadata.repositories)),
+      artifacts: uniqueStrings(stringArray(document.metadata.artifacts)).map(normalizeArtifactPath),
+      claimed: status === "claimed",
+      unblocked: false,
+      frontier: false,
+    },
+  };
+}
+
+function withGraphState(input: WorkIssueSummary[]): WorkIssueSummary[] {
+  const byId = new Map(input.map((entry) => [entry.id, entry]));
+  return input.map((entry) => {
+    const unblocked = entry.blockedBy.every((id) => byId.get(id)?.status === "completed");
+    return {
+      ...entry,
+      unblocked,
+      frontier: entry.status === "ready" && unblocked && !entry.claimed,
+    };
+  });
+}
+
+function assertClaimContext(
+  issue: ParsedIssue,
+  context: WorkIssueClaimContext,
+): void {
+  const claim = recordValue(issue.document.metadata.claim);
+  if (!claim) {
+    throw new Error(`${issue.summary.id}: claim metadata is missing`);
+  }
+  if (claim.repository === "project") {
+    if (!context.allowProject) {
+      throw new Error(`${issue.summary.id}: project claim must be operated from knowledge`);
+    }
+    return;
+  }
+  if (!context.source) {
+    throw new Error(`${issue.summary.id}: source claim must be operated from its bound leaf`);
+  }
+  if (claim.repository !== context.source.repository) {
+    throw new Error(`${issue.summary.id}: claim repository does not match the current leaf`);
+  }
+  if (claim.worktree_id !== context.source.worktreeId) {
+    throw new Error(`${issue.summary.id}: claim worktree does not match the current leaf`);
+  }
+  if (claim.branch !== context.source.branch) {
+    throw new Error(`${issue.summary.id}: claim branch does not match the current leaf`);
+  }
+}
+
+function dependencyCycles(input: WorkIssueSummary[]): string[][] {
+  const byId = new Map(input.map((entry) => [entry.id, entry]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const cycles: string[][] = [];
+  const stack: string[] = [];
+  function visit(id: string): void {
+    if (visiting.has(id)) {
+      const start = stack.indexOf(id);
+      cycles.push([...stack.slice(start), id]);
+      return;
+    }
+    if (visited.has(id)) {
+      return;
+    }
+    visiting.add(id);
+    stack.push(id);
+    for (const blocker of byId.get(id)?.blockedBy ?? []) {
+      if (byId.has(blocker)) {
+        visit(blocker);
+      }
+    }
+    stack.pop();
+    visiting.delete(id);
+    visited.add(id);
+  }
+  for (const id of byId.keys()) {
+    visit(id);
+  }
+  return cycles;
+}
+
+function transitiveBlockers(issue: WorkIssueSummary, all: WorkIssueSummary[]): string[] {
+  const byId = new Map(all.map((entry) => [entry.id, entry]));
+  const found = new Set<string>();
+  function visit(id: string): void {
+    if (found.has(id)) {
+      return;
+    }
+    found.add(id);
+    for (const blocker of byId.get(id)?.blockedBy ?? []) {
+      visit(blocker);
+    }
+  }
+  for (const blocker of issue.blockedBy) {
+    visit(blocker);
+  }
+  return [...found].sort();
+}
+
+function acceptanceCriteria(document: WorkSpecDocument): Array<{
+  id: string;
+  criterion: string;
+  status: string;
+}> {
+  return recordArray(document.metadata.acceptance).map((entry) => {
+    const id = normalizeAcceptanceId(stringValue(entry.id));
+    return {
+      id,
+      criterion: requiredString(entry.criterion, `${id}.criterion`),
+      status: stringValue(entry.status),
+    };
+  });
+}
+
+function reviewReceipts(document: WorkSpecDocument): ReviewReceipt[] {
+  return recordArray(document.metadata.files).map((entry) => ({
+    path: normalizeBundlePath(requiredString(entry.path, "review.files.path")),
+    sha256: requiredString(entry.sha256, "review.files.sha256"),
+    status: enumValue(
+      entry.status,
+      ["reviewed", "irrelevant"] as const,
+      "review.files.status",
+    ),
+    reason: stringValue(entry.reason),
+    reviewed_at: requiredString(entry.reviewed_at, "review.files.reviewed_at"),
+  }));
+}
+
+async function writeTemplate(
+  source: string,
+  destination: string,
+  mutate: (document: WorkSpecDocument) => void,
+): Promise<void> {
+  const document = parseWorkSpec(await readFile(source, "utf8"));
+  mutate(document);
+  await writeFile(destination, serializeWorkSpec(document), {
+    encoding: "utf8",
+    flag: "wx",
+  });
+}
+
+async function optionalDocument(path: string): Promise<WorkSpecDocument | undefined> {
+  try {
+    return parseWorkSpec(await readFile(path, "utf8"));
+  } catch (error) {
+    if (isMissing(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function walkFiles(root: string): Promise<Array<{
+  path: string;
+  absolute: string;
+  symlink: boolean;
+}>> {
+  const output: Array<{ path: string; absolute: string; symlink: boolean }> = [];
+  async function walk(current: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch (error) {
+      if (isMissing(error)) {
+        return;
+      }
+      throw error;
+    }
+    for (const entry of entries) {
+      const absolute = join(current, entry.name);
+      const path = relativePath(root, absolute);
+      if (entry.isSymbolicLink()) {
+        output.push({ path, absolute, symlink: true });
+      } else if (entry.isDirectory()) {
+        await walk(absolute);
+      } else if (entry.isFile()) {
+        output.push({ path, absolute, symlink: false });
+      }
+    }
+  }
+  await walk(root);
+  return output.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function roleForPath(path: string): BundleInventoryEntry["role"] {
+  if (path === "change.md") return "change";
+  if (path === "map.md") return "map";
+  if (path === "review.md") return "review";
+  if (ISSUE_PATH.test(path)) return "issue";
+  if (/^artifacts\/.+/.test(path)) return "artifact";
+  return "unknown";
+}
+
+function nextIssueId(ids: string[]): string {
+  const highest = ids.reduce((max, id) => {
+    const value = Number(id.slice("ISSUE-".length));
+    return Number.isInteger(value) ? Math.max(max, value) : max;
+  }, 0);
+  if (highest >= 999) {
+    throw new Error("Work bundle cannot allocate more than 999 issue IDs");
+  }
+  return `ISSUE-${String(highest + 1).padStart(3, "0")}`;
+}
+
+function normalizeIssueId(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  if (!/^ISSUE-\d{3}$/.test(normalized)) {
+    throw new Error(`Invalid issue ID: ${value}`);
+  }
+  return normalized;
+}
+
+function normalizeAcceptanceId(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  if (!ACCEPTANCE_ID.test(normalized)) {
+    throw new Error(`Invalid acceptance ID: ${value}`);
+  }
+  return normalized;
+}
+
+function normalizeArtifactPath(value: string): string {
+  const normalized = normalizeBundlePath(value);
+  if (!normalized.startsWith("artifacts/") || normalized === "artifacts/") {
+    throw new Error(`Artifact reference must be under artifacts/: ${value}`);
+  }
+  return normalized;
+}
+
+function normalizeBundlePath(value: string): string {
+  const normalized = value.trim().replaceAll("\\", "/").replace(/^\.\//, "");
+  if (!normalized || normalized.startsWith("/") || normalized.split("/").includes("..")) {
+    throw new Error(`Invalid bundle-relative path: ${value}`);
+  }
+  return normalized;
+}
+
+function resolveBundleFile(bundleRoot: string, path: string): string {
+  const normalized = normalizeBundlePath(path);
+  const absolute = resolve(bundleRoot, normalized);
+  const boundary = `${resolve(bundleRoot)}${sep}`;
+  if (!absolute.startsWith(boundary)) {
+    throw new Error(`Path escapes the work bundle: ${path}`);
+  }
+  return absolute;
+}
+
+function normalizeSlug(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!normalized) {
+    throw new Error("Issue slug must contain ASCII letters or digits");
+  }
+  return normalized;
+}
+
+function normalizeActor(value: string): string {
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 160) {
+    throw new Error("Claim actor must be a non-empty identity of at most 160 characters");
+  }
+  return normalized;
+}
+
+function claimLockPath(bundleRoot: string, issueId: string): string {
+  const knowledgeRoot = resolve(bundleRoot, "../../..");
+  return join(
+    knowledgeRoot,
+    ".workflow/current/work-claims",
+    basename(bundleRoot),
+    `${normalizeIssueId(issueId)}.json`,
+  );
+}
+
+function relativeIssuePath(path: string): string {
+  const marker = `${sep}issues${sep}`;
+  const index = path.lastIndexOf(marker);
+  return index >= 0 ? `issues/${path.slice(index + marker.length).split(sep).join("/")}` : path;
+}
+
+function relativePath(root: string, path: string): string {
+  return relative(root, path).split(sep).join("/");
+}
+
+function sha256(content: Uint8Array): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function recordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is Record<string, unknown> => isRecord(entry))
+    : [];
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+function uniqueStrings(value: string[]): string[] {
+  return [...new Set(value.map((entry) => entry.trim()).filter(Boolean))];
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function requiredString(value: unknown, field: string): string {
+  const result = stringValue(value).trim();
+  if (!result) {
+    throw new Error(`${field} must be a non-empty string`);
+  }
+  return result;
+}
+
+function enumValue<const T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+  field: string,
+): T[number] {
+  if (typeof value !== "string" || !allowed.includes(value)) {
+    throw new Error(`${field} must be one of: ${allowed.join(", ")}`);
+  }
+  return value as T[number];
+}
+
+function nonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
+}
+
+function isMissing(error: unknown): boolean {
+  return isRecord(error) && error.code === "ENOENT";
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function removeFile(path: string): Promise<void> {
+  try {
+    await unlink(path);
+  } catch (error) {
+    if (!isMissing(error)) {
+      throw error;
+    }
+  }
+}
+
+export async function assertBundleFileExists(bundleRoot: string, path: string): Promise<void> {
+  await access(resolveBundleFile(bundleRoot, path), constants.R_OK);
+}

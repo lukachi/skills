@@ -10,6 +10,7 @@ import { errorMessage, isMissingFileError, readConfig } from "./config.js";
 import { compileKnowledgeGraph } from "./knowledge-graph.js";
 import { inspectProjectReconstructionReceipt } from "./reconstruction.js";
 import { completionIssues, parseWorkSpec } from "./work-spec.js";
+import { bundleCompletionIssues } from "./work-bundle.js";
 
 export interface KnowledgeValidationIssue {
   path: string;
@@ -873,10 +874,15 @@ async function projectChangeRecords(
         const content = await readFile(join(root, entry.name, "change.md"), "utf8");
         const document = parseWorkSpec(content);
         if (document.metadata) {
+          const bundleIssues = await bundleCompletionIssues(
+            join(root, entry.name),
+            document,
+          );
           result.set(entry.name, {
             ...document.metadata,
             __untrustedIntakeReference: containsUntrustedIntakePath(content),
             __receiptReady: completionIssues(document, true).length === 0
+              && bundleIssues.length === 0
               && document.metadata.status === "completed"
               && (
                 !root.endsWith(`${sep}archive`)

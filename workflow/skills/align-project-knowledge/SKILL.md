@@ -51,12 +51,13 @@ Do not design from code and memory alone. Establish the project's current intent
 11. Treat only `knowledge/` as the default current-knowledge surface. Do not
    consult `raw/` or `intake/` to fill a gap.
 12. Record QMD queries, graph-expanded concept paths, directly reviewed
-    concept paths, constraints, and any conflict in the living spec.
+    concept paths, constraints, and any conflict in the central change bundle.
 
-When a living spec already exists, run `wfctl work status <id>` first. Read
-curated knowledge from its `Knowledge root`, update only its exact `Spec` path,
-and inspect implementation only from its exact `Code root`. Do not treat the
-spec's repository as the implementation checkout.
+When a bundle already exists, run `wfctl work status <id>` and stage-specific
+`wfctl work context <id>` first. Read curated knowledge from its `Knowledge
+root`, update only the returned bundle files, and inspect implementation only
+from exact `Code roots`. Do not treat the knowledge repository as the
+implementation checkout.
 
 ## Conflicts
 

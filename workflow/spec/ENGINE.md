@@ -6,6 +6,7 @@ This document is normative for workflow ownership, installation, work routing,
 and safety. More specific contracts own their domains:
 
 - [KNOWLEDGE.md](KNOWLEDGE.md) — trust, curation, intake, and retrieval;
+- [WORK.md](WORK.md) — change bundles, Wayfinder, issues, and review accounting;
 - [RECONSTRUCTION.md](RECONSTRUCTION.md) — source-first completeness;
 - [CLI.md](CLI.md) — command behavior and operator surface;
 - [VERIFICATION.md](VERIFICATION.md) — package and agent-behavior evaluation.
@@ -99,7 +100,7 @@ coordination.
 
 It must pass through:
 
-1. one early shaping/spec/progress record;
+1. one early central change bundle with stable parent acceptance and progress;
 2. exact project-only or source-checkout bindings;
 3. Graphify-first source analysis when code is involved;
 4. alignment with curated project knowledge;
@@ -126,9 +127,9 @@ non-authoritative handoff.
 
 ### Broad uncertain work
 
-A consequential initiative with unresolved dependent choices enters direction
-shaping only after explicit user intent or confirmation. It uses the same
-canonical record as later execution and captures:
+A consequential initiative with unresolved dependent choices enters Wayfinder
+only after explicit user intent or confirmation. It uses a map and question
+issues in the same canonical bundle as later execution and captures:
 
 - destination and affected Areas;
 - domain language;
@@ -137,8 +138,10 @@ canonical record as later execution and captures:
 - non-goals;
 - the next bounded change.
 
-The agent asks one evidence-backed question at a time and records each material
-answer before continuing. It must not create a parallel strategy source.
+The agent asks one evidence-backed question at a time, resolves at most one
+non-research issue per session, and records each material answer before
+continuing. A clear map is synthesized into the ordinary specification before
+delivery issues or code work. It must not create a parallel strategy source.
 
 ### External research
 

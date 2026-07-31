@@ -13,7 +13,7 @@ second repository can destroy the real plan.
 
 ## Outcome
 
-You and the agent share one durable record that follows consequential work from
+You and the agent share one durable bundle that follows consequential work from
 early discussion through implementation, verification, and honest closure.
 Either of you can recover what was decided, why, what changed, and what remains.
 
@@ -34,26 +34,38 @@ coordination between components.
 
 For significant work, the agent must:
 
-1. Create one living work record before extended discussion.
+1. Create one central change bundle before extended discussion.
 2. Record material requirements, constraints, alternatives, answers, and
    decisions after each meaningful conversation turn.
-3. Bind the record to the exact repository checkout or worktrees where code
+3. Bind the bundle to the exact repository checkout or worktrees where code
    may be changed.
 4. Investigate source through Graphify and compare the task with current
    knowledge.
 5. Show a short framing packet: outcome, scope, exclusions, decisions,
    unknowns, and acceptance criteria.
 6. Wait for your explicit framing approval.
-7. Implement only in the bound leaf checkout—not in the knowledge repository.
-8. Verify the actual implementation and show evidence, deviations, and risks.
-9. Ask for your completion decision and archive the real outcome.
+7. For multi-session work, split the approved contract into bounded issues with
+   explicit blockers and acceptance coverage.
+8. Claim one ready issue and implement only in the bound leaf checkout—not in
+   the knowledge repository.
+9. Verify the actual implementation and every bundle file, then show evidence,
+   deviations, and risks.
+10. Ask for your completion decision and archive the real outcome.
 
 Correct the framing as soon as something is wrong. Silence is not approval.
 
 ## Where the record and code live
 
-The canonical record lives in the knowledge repository under
-`changes/active/`. Source code remains in its owning leaf repository.
+The canonical directory lives at `changes/active/<change-id>/` in knowledge:
+
+- `change.md` is the parent outcome, scope, decisions, and acceptance contract;
+- `map.md` appears only for Wayfinder and preserves how a foggy route cleared;
+- `issues/` contains bounded decision or delivery work and its progress;
+- `artifacts/` contains linked research or prototypes;
+- `review.md` accounts for every file at its current content hash.
+
+Source code remains in its owning leaf repository. A leaf contains only an
+ignored pointer and exact claim metadata, never a second spec or tracker.
 
 The agent stores local path bindings separately and verifies them before every
 implementation or completion action. A worktree is not a special workflow
@@ -61,7 +73,7 @@ mode, but its exact identity matters: changing branches or checkouts cannot
 silently redirect the task.
 
 If one outcome spans several repositories, the agent binds the relevant
-worktrees to the same record. Each leaf receives its own final verification
+worktrees to the same bundle. Each leaf receives its own final verification
 receipt.
 
 ## Lightweight work
@@ -82,13 +94,15 @@ When important dependent choices are still unresolved, ask:
 
 > Help me shape the account-security direction before we decide what to build.
 
-After you confirm this deliberate mode, the agent uses the same living record
-to map the destination, affected Areas, domain language, decision frontier,
-uncertainty, tradeoffs, and non-goals. It asks one focused question at a time
-and records each material answer before continuing.
+After you confirm this deliberate mode, the agent creates a Wayfinder map in
+the same bundle. It fixes the destination, keeps still-vague in-scope questions
+as fog, and turns precise questions into claimable issues. Each session resolves
+one decision or investigation; the full answer stays in its issue.
 
-When a bounded change becomes clear, that same record continues into normal
-planning. The agent does not create a competing strategy document.
+When the route is clear, the agent reads every resolved issue, synthesizes a
+normal specification and stable acceptance criteria, and only then creates
+delivery issues. It does not jump from the map directly into implementation or
+create a competing strategy document.
 
 ## Resume after interruption
 
@@ -96,7 +110,8 @@ Say:
 
 > Resume the active work.
 
-The agent restores the task from the canonical record and workflow status, not
+The agent asks the workflow for the exact stage-specific file list, reads those
+files completely, and restores the task from the bundle and exact claim—not
 from chat memory. Confirm any unresolved checkout or product decision before it
 continues.
 

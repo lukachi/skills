@@ -28,8 +28,12 @@
 - Install `reconstruct-project-knowledge` only for the knowledge profile.
 - Install `research-project-context` only for the knowledge profile.
 - Install `shape-project-direction` for both profiles so an unbounded
-  significant initiative can resolve into the same canonical work spec before
-  implementation starts.
+  significant initiative can resolve its Wayfinder map inside the same central
+  bundle before implementation starts.
+- Install `specify-project-change`, `split-project-change`, and
+  `implement-work-item` for both profiles so specification synthesis,
+  dependency-aware issue creation, and exact-worktree execution are explicit
+  reusable modes rather than hidden conventions.
 - Install `curate-project-knowledge` for both profiles because a leaf agent
   must promote durable truth before closing significant work.
 - Install `curate-product-knowledge`, `curate-engineering-knowledge`, and
@@ -37,8 +41,8 @@
   them to keep stakeholder and technical views separate and to bind independent
   authority/truth and reader-communication review to the current content hash.
 - Install alignment, work management, and verification skills for both
-  profiles. Knowledge needs them for project-only and multi-repository living
-  specs; a project-only record has no implementation checkout.
+  profiles. Knowledge needs them for project-only and multi-repository bundles;
+  a project-only bundle has no implementation checkout.
 - Select Codex, Claude, or both explicitly.
 - Let the pinned installer update an already owned selected skill in
   non-interactive mode. Remove only obsolete project-scope workflow skills

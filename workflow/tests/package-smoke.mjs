@@ -36,10 +36,12 @@ try {
   const packaged = join(sandbox, "package");
   assert.equal(existsSync(join(packaged, "README.md")), true);
   assert.equal(existsSync(join(packaged, "IDEA.md")), true);
+  assert.equal(existsSync(join(packaged, "THIRD_PARTY.md")), true);
   assert.equal(existsSync(join(packaged, "docs/01-installation.md")), true);
   assert.equal(existsSync(join(packaged, "docs/07-maintainer-control.md")), true);
   assert.equal(existsSync(join(packaged, "spec/ENGINE.md")), true);
   assert.equal(existsSync(join(packaged, "spec/KNOWLEDGE.md")), true);
+  assert.equal(existsSync(join(packaged, "spec/WORK.md")), true);
   assert.equal(existsSync(join(packaged, "spec/RECONSTRUCTION.md")), true);
   assert.equal(existsSync(join(packaged, "spec/CLI.md")), true);
   assert.equal(existsSync(join(packaged, "spec/DEVELOPMENT.md")), true);
@@ -94,6 +96,9 @@ try {
   );
   assert.equal(existsSync(join(packaged, "LICENSE")), true);
   assert.equal(existsSync(join(packaged, "skills/manage-project-work/SKILL.md")), true);
+  assert.equal(existsSync(join(packaged, "skills/specify-project-change/SKILL.md")), true);
+  assert.equal(existsSync(join(packaged, "skills/split-project-change/SKILL.md")), true);
+  assert.equal(existsSync(join(packaged, "skills/implement-work-item/SKILL.md")), true);
   assert.equal(
     existsSync(join(packaged, "skills/operate-project-knowledge/SKILL.md")),
     true,
@@ -133,6 +138,8 @@ try {
   assert.equal(existsSync(join(packaged, "rules/leaf/workflow-routing.md")), true);
   assert.equal(existsSync(join(packaged, "templates/knowledge/knowledge/index.md")), true);
   assert.equal(existsSync(join(packaged, "templates/guides/common.md")), true);
+  assert.equal(existsSync(join(packaged, "vendor/mattpocock/upstream.json")), true);
+  assert.equal(existsSync(join(packaged, "vendor/mattpocock/LICENSE")), true);
 
   const target = join(sandbox, "consumer");
   const mainHelp = spawnSync(
@@ -151,6 +158,17 @@ try {
   assert.doesNotMatch(stripAnsi(mainHelp.stdout), /^\s+plan\s/m);
   assert.doesNotMatch(stripAnsi(mainHelp.stdout), /^\s+apply\s/m);
   assert.doesNotMatch(stripAnsi(mainHelp.stdout), /^\s+sync\s/m);
+
+  const workHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "work", "--help"],
+    { encoding: "utf8" },
+  );
+  assert.equal(workHelp.status, 0, workHelp.stderr || workHelp.stdout);
+  assert.match(stripAnsi(workHelp.stdout), /^\s+context\s/m);
+  assert.match(stripAnsi(workHelp.stdout), /^\s+issue\s/m);
+  assert.match(stripAnsi(workHelp.stdout), /^\s+map\s/m);
+  assert.match(stripAnsi(workHelp.stdout), /^\s+review\s/m);
 
   const sourcesHelp = spawnSync(
     "node",

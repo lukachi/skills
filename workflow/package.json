@@ -1,6 +1,6 @@
 {
   "name": "wfctl",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": false,
   "license": "MIT",
   "description": "Deterministic project workflow bootstrap and lifecycle CLI",
@@ -11,13 +11,15 @@
   "files": [
     "README.md",
     "IDEA.md",
+    "THIRD_PARTY.md",
     "docs",
     "spec",
     "dist",
     "evals",
     "rules",
     "skills",
-    "templates"
+    "templates",
+    "vendor"
   ],
   "scripts": {
     "build": "bun scripts/build.mjs",

@@ -71,12 +71,12 @@ The knowledge agent may inspect any connected leaf to verify a claim. It must
 not implement product code from the knowledge repository.
 
 If the desired outcome requires source changes, open or continue the task in
-the owning leaf. The work record stays central while implementation stays in
+the owning leaf. The change bundle stays central while implementation stays in
 the exact bound checkout.
 
-Project-only product or architecture discussions may remain in knowledge with
-no code root. A later implementation phase binds only the leaves that actually
-need changes.
+Project-only product or architecture discussions and Wayfinder may remain in
+knowledge with no code root. A later delivery phase binds only the leaves that
+actually need changes; knowledge itself never becomes an implementation root.
 
 ## Result
 

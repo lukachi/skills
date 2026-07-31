@@ -145,8 +145,19 @@ Installed agents own these commands.
 
 - `wfctl work handoff <slug>` creates a lightweight, non-authoritative inbox
   record from knowledge or a leaf.
-- `wfctl work start <slug>` creates one early project-only, single-leaf, or
-  multi-repository living record.
+- `wfctl work start <slug>` creates one project-only, single-leaf, or
+  multi-repository bundle in `full`, `slice`, or deliberate `wayfinder` mode.
+- `wfctl work context <id>` inventories the complete bundle and returns the
+  exact full-read set for shaping, Wayfinder, implementation, review, or resume.
+- `wfctl work issue create|list|show` operates the dependency graph and
+  executable frontier inside the bundle.
+- `wfctl work issue block|unblock` updates dependency edges and rejects cycles.
+- `wfctl work issue claim|release|complete|drop` records exact worktree claims
+  and honest issue outcomes. Claim requires current full-read receipts.
+- `wfctl work map status|finish` exposes Wayfinder fog/frontier and finishes an
+  already-synthesized map into `full` or `slice` delivery shaping.
+- `wfctl work review status|file` accounts for every bundle file at its current
+  SHA-256 content hash.
 - `wfctl work status [id]` shows and validates code/spec bindings.
 - `wfctl work rebind <id>` explicitly moves one repository binding and records
   the transition.
@@ -159,14 +170,18 @@ Example:
 ```sh
 wfctl work start world-loop --title "Implement the world loop" --mode full
 wfctl work status
+wfctl work context <id> --stage shape
+wfctl work issue list <id>
 wfctl work verify <id>
 wfctl work close <id> --outcome completed
 ```
 
-Completed closure requires current matching verification, explicit framing and
-completion decisions, clean bound source checkouts, one final receipt per
-repository, and a knowledge delta or explicit no-update reason. `wfctl` never
-commits automatically and never closes completed work into `raw/`.
+Completed closure also requires a resolved map, terminal issue graph, stable
+acceptance coverage and evidence, complete current file accounting, explicit
+framing and completion decisions, clean bound source checkouts, one final
+receipt per repository, and a knowledge delta or explicit no-update reason.
+`wfctl` never commits automatically and never closes completed work into
+`raw/`.
 
 ## Non-interactive operation
 

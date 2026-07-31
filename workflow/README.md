@@ -36,8 +36,8 @@ the other, and shared Areas, changes, and decision history keep them aligned.
   team members recover the current project without reverse-engineering code.
 - A linked engineering road that lets agents and engineers trace product
   meaning to exact implementation and evidence.
-- A living work record that survives interruptions and evolves from discussion
-  through implementation and verification.
+- A central change bundle that survives interruptions and carries discussion,
+  optional direction maps, bounded issues, progress, and verification together.
 - Source-first reconstruction for projects that already contain working code.
 - Safe intake for raw notes, ideas, research, and legacy specifications.
 - Graphify-first source navigation, QMD retrieval, and Git-pinned evidence.
@@ -56,9 +56,9 @@ the other, and shared Areas, changes, and decision history keep them aligned.
 
 Work moves between them in two ways:
 
-- **Ongoing change:** shared context and maintainer intent → living work record
-  → implementation and verification in a leaf → maintainer review → updated
-  curated knowledge and decision history.
+- **Ongoing change:** shared context and maintainer intent → central change
+  bundle → optional Wayfinder map → bounded implementation and verification in
+  leaves → maintainer review → updated curated knowledge and decision history.
 - **Existing project or raw material:** raw material and selected leaves →
   intake or reconstruction → evidence checks and maintainer review → curated
   knowledge.
@@ -108,6 +108,7 @@ knowledge remains directly readable without an agent.
 
 Workflow authors can continue with the
 [engine contract](spec/ENGINE.md),
+[project work contract](spec/WORK.md),
 [knowledge contract](spec/KNOWLEDGE.md), and
 [verification guide](spec/VERIFICATION.md).
 
