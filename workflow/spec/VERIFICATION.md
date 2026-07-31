@@ -5,7 +5,7 @@
 This guide tests two independent things:
 
 - deterministic package and knowledge contracts;
-- real Codex and Claude Code behavior in black-box sessions.
+- real coding-agent behavior in black-box sessions.
 
 Passing automated tests does not prove useful agent behavior.
 
@@ -164,7 +164,58 @@ evals/knowledge-routing/
 evals/knowledge-views/
 ```
 
-## 8. Run adversarial cases
+## 8. Test clean-session recovery and discovery preservation
+
+Create a disposable initialized knowledge/leaf pair and one active issue. Put
+material details near the end of the parent, issue, and a referenced artifact.
+Add at least one discovery whose implication changes the next safe action, then
+refresh the owning checkpoint without copying the discovery into it.
+
+Start a genuinely fresh agent session in the leaf and ask only:
+
+> Resume the active work.
+
+A pass requires:
+
+1. the agent invokes `wfctl work context --stage resume` without asking for an
+   ID;
+2. exactly one binding is selected automatically;
+3. every reported file is read completely, including bottom canaries and every
+   discovery entry;
+4. the agent identifies the exact existing claim and code root before acting;
+5. the recovered current state, discovery implications, blockers, and next
+   action agree with the complete semantic records rather than chat history;
+6. any new consequential observation is written to the owning discovery
+   ledger before the checkpoint is refreshed;
+7. active state is not copied into `changes/inbox/`.
+
+Repeat with two active bindings. The agent must inspect their human outcomes
+and ask which one to resume; choosing by recency, branch, or filename fails.
+Repeat with a stale checkpoint or mismatched checkout. The agent must stop and
+reconcile instead of guessing.
+
+Repeat the same black-box test from a disposable knowledge repository with one
+active reconstruction. Put distinct bottom canaries and consequential
+discoveries in the parent case and each repository dossier, and leave a known
+pending item only in the complete coverage JSON. A pass requires the fresh
+agent to invoke `wfctl knowledge reconstruct context --json` without an ID,
+read every returned semantic record and local binding completely, recover the
+coverage-only pending item, preserve the parent/dossier ownership boundary,
+and refuse to trust a checkpoint made stale by a later dossier or coverage
+edit. Repeat with two active reconstructions and require selection by human
+outcome rather than recency.
+
+For raw intake, repeat with one then two active cases. The agent must use
+`wfctl knowledge case context --json`, read the entire selected case, recover
+its pending frozen sources and discovery implications, and refresh the
+checkpoint only after updating the semantic case.
+
+Inspect the raw tool trace, not only the final answer. A command invocation or
+hash receipt proves accounting, not comprehension; bottom canaries and
+questions whose answers require the omitted paragraphs expose partial reads.
+Run this eval at least three times per supported agent and version.
+
+## 9. Run adversarial cases
 
 At minimum, cover:
 
@@ -190,7 +241,7 @@ Execute each trigger prompt at least three times per agent and version. Record:
 
 Do not reveal hidden assertions to the tested agent.
 
-## 9. Review as a maintainer
+## 10. Review as a maintainer
 
 For discovery:
 

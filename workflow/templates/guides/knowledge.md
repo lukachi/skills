@@ -120,6 +120,14 @@ ledgers: pinned repositories, outstanding files/communities/surfaces,
 optional-input status, cross-repository reconciliation, unresolved claims,
 human decisions, and next action.
 
+You do not need to remember a reconstruction case ID between sessions. The
+agent asks the workflow for the active context. One active case resumes
+automatically; several are shown by human title so you can choose the intended
+outcome. The case and repository dossiers preserve consequential discoveries,
+while a checked checkpoint records where work stopped and the next safe
+action. If any owned record changed afterward, the checkpoint is reported as
+stale and the agent rebuilds the frontier from the complete records.
+
 The agent's reconstruction gate fails on worktree or commit drift, dirty
 source, an unaccounted file or Graphify community, unexplained runtime
 surfaces, incomplete source reads or dossiers, unresolved raw input or claims,
@@ -164,6 +172,12 @@ bounded topics rather than asking an agent to summarize the entire dump.
 After each completed or blocked batch the agent shows the raw frontier: input generation, accounting
 counts, active themes, blockers, decisions needed, next recommended batch, and
 the remaining completion condition.
+
+Raw-intake cases use the same resume contract: one active case is discovered
+without asking you for its ID, the entire case is reread, consequential review
+discoveries remain in its operational ledger, and a stale checkpoint cannot be
+silently trusted. These records are working memory and audit trail; they do not
+become curated truth by existing.
 
 ### Current knowledge maintenance
 

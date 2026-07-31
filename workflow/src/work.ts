@@ -131,6 +131,7 @@ export interface CloseWorkResult {
 
 export interface WorkStatusResult {
   id: string;
+  title: string;
   valid: boolean;
   scope: WorkScope;
   codeRoots: string[];
@@ -279,7 +280,7 @@ export async function beginWork(options: BeginWorkOptions): Promise<BeginWorkRes
 
   template.metadata = {
     ...template.metadata,
-    workflow_version: 4,
+    workflow_version: 5,
     id,
     title: options.title,
     mode: options.mode,
@@ -431,7 +432,7 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
       serializeWorkSpec(document),
       "utf8",
     );
-    if ([3, 4].includes(Number(document.metadata.workflow_version))) {
+    if ([3, 4, 5].includes(Number(document.metadata.workflow_version))) {
       await carryForwardCloseReview(archivePath, now);
     }
   } catch (error) {
@@ -447,12 +448,15 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
 
 export async function workBundleContext(
   target: string,
-  id: string,
+  id: string | undefined,
   stage: WorkBundleStage,
   issueId?: string,
-): Promise<WorkBundleInspection> {
+): Promise<WorkBundleInspection & { id: string }> {
   const context = await requireWorkContext(target, id);
-  return await inspectBundle(dirname(context.specPath), stage, issueId);
+  return {
+    id: context.id,
+    ...await inspectBundle(dirname(context.specPath), stage, issueId),
+  };
 }
 
 export async function updateWorkCheckpoint(
@@ -691,15 +695,25 @@ export async function workStatus(
 
 async function requireWorkContext(
   targetInput: string,
-  id: string,
+  id?: string,
 ): Promise<WorkStatusResult> {
   const results = await workStatus(targetInput, id);
+  if (!id && results.length === 0) {
+    throw new Error("No active work records are bound to this checkout");
+  }
+  if (!id && results.length > 1) {
+    throw new Error(
+      `Multiple active work records are bound to this checkout: ${
+        results.map((entry) => `${entry.id} (${entry.title})`).join(", ")
+      }. Run wfctl work status, inspect the candidates, and ask the maintainer which outcome to resume; do not guess`,
+    );
+  }
   const context = results[0];
   if (!context) {
     throw new Error(`Active work binding not found: ${id}`);
   }
   if (!context.valid) {
-    throw new Error(`Work context mismatch for ${id}: ${context.issues.join("; ")}`);
+    throw new Error(`Work context mismatch for ${context.id}: ${context.issues.join("; ")}`);
   }
   return context;
 }
@@ -785,11 +799,15 @@ async function inspectWorkContext(
 
   const specPath = resolve(knowledgeRoot, binding.spec);
   const activeRoot = join(knowledgeRoot, "changes/active");
+  let title = id;
   if (!inside(activeRoot, specPath)) {
     issues.push(`spec path is outside the active work root: ${specPath}`);
   }
   try {
     const document = parseWorkSpec(await readFile(specPath, "utf8"));
+    title = typeof document.metadata.title === "string"
+      ? document.metadata.title.trim() || id
+      : id;
     if (document.metadata.scope !== binding.scope) {
       issues.push("spec scope does not match the local binding");
     }
@@ -828,6 +846,7 @@ async function inspectWorkContext(
   const sources = binding.repositories.map((entry) => entry.source);
   return {
     id,
+    title,
     valid: issues.length === 0,
     scope: binding.scope,
     codeRoots,

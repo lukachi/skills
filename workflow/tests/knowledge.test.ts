@@ -17,11 +17,13 @@ import { createCapture } from "../src/capture.js";
 import {
   beginIntakeCase,
   closeIntakeCase,
+  intakeContext,
   inspectIntakeCase,
   inventoryRaw,
   markIntakeSource,
   migrateIntakeCase,
   recordIntakeProbe,
+  updateIntakeCheckpoint,
 } from "../src/intake.js";
 import {
   hashKnowledgeConcept,
@@ -41,7 +43,9 @@ import {
   markReconstructionFiles,
   readReconstructionSource,
   recordReconstructionSurface,
+  reconstructionContext,
   reviewReconstructionSurfaces,
+  updateReconstructionCheckpoint,
 } from "../src/reconstruction.js";
 import { addLeafRepository } from "../src/repository-registry.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
@@ -88,6 +92,171 @@ function intakeClaim(
     ...overrides,
   };
 }
+
+test("resumes one active intake case and detects a stale checkpoint", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-intake-context-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  await writeFile(join(target, "raw/notes.md"), "# Notes\n\nA candidate.\n", "utf8");
+  commitAll(target, "add intake fixture");
+  await assert.rejects(intakeContext(target), /No active raw-intake cases/);
+  const first = await beginIntakeCase({
+    target,
+    slug: "first-topic",
+    title: "First intake topic",
+    paths: ["raw/notes.md"],
+    distributionRoot,
+    now: new Date("2026-07-31T09:00:00.000Z"),
+  });
+  const initial = await intakeContext(target);
+  assert.equal(initial.id, first.id);
+  assert.equal(initial.checkpoint?.valid, true);
+  assert.deepEqual(initial.requiredFiles.map((entry) => entry.role), ["case-full-read"]);
+
+  const document = parseWorkSpec(await readFile(first.path, "utf8"));
+  document.body = document.body.replace(
+    "\n# Promotion\n",
+    `\n## DISC-001 — Candidate wording matters\n\n- **Observation:** The note uses a domain-specific term.\n- **Evidence:** Complete frozen source review is still pending.\n- **Implication:** Later adjudication must preserve the term rather than normalize it away.\n- **Scope:** This intake case and its future product-language candidate.\n- **Disposition:** Verify the term with the maintainer during adjudication.\n\n# Promotion\n`,
+  );
+  await writeFile(first.path, serializeWorkSpec(document), "utf8");
+  const stale = await intakeContext(target, first.id);
+  assert.equal(stale.checkpoint?.valid, false);
+  assert.ok(stale.validationIssues.some((issue) => /checkpoint is stale/.test(issue)));
+
+  await updateIntakeCheckpoint({
+    target,
+    id: first.id,
+    status: "active",
+    stage: "source-review",
+    actor: "workflow-agent/test",
+    currentState: "The first source is awaiting complete review.",
+    lastCompleted: "Recorded the consequential terminology discovery.",
+    nextAction: "Read raw/notes.md completely from the frozen blob.",
+    now: new Date("2026-07-31T09:05:00.000Z"),
+  });
+  assert.equal((await intakeContext(target, first.id)).checkpoint?.valid, true);
+  const malformedIntake = parseWorkSpec(await readFile(first.path, "utf8"));
+  malformedIntake.body = malformedIntake.body.replace(
+    "- **Evidence:** Complete frozen source review is still pending.",
+    "- **Evidence:**",
+  );
+  await writeFile(first.path, serializeWorkSpec(malformedIntake), "utf8");
+  assert.ok(
+    (await intakeContext(target, first.id)).validationIssues.some((issue) =>
+      /DISC-001 requires a non-empty Evidence field/.test(issue)
+    ),
+  );
+
+  const second = await beginIntakeCase({
+    target,
+    slug: "second-topic",
+    title: "Second intake topic",
+    paths: ["raw/notes.md"],
+    distributionRoot,
+    now: new Date("2026-07-31T09:10:00.000Z"),
+  });
+  await assert.rejects(
+    intakeContext(target),
+    new RegExp(`Multiple active raw-intake cases[\\s\\S]*${first.id} — First intake topic[\\s\\S]*${second.id} — Second intake topic`),
+  );
+});
+
+test("resumes reconstruction from complete case, dossier, binding, and coverage state", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-reconstruction-context-");
+  const leaf = await initializedLeafRepository(
+    "wfctl-reconstruction-context-leaf-",
+    target,
+  );
+  await assert.rejects(reconstructionContext(target), /No active reconstruction cases/);
+  const first = await beginProjectReconstruction({
+    target,
+    slug: "first-baseline",
+    title: "First project baseline",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-31T10:00:00.000Z"),
+  });
+  const initial = await reconstructionContext(target);
+  assert.equal(initial.id, first.id);
+  assert.equal(initial.checkpoint?.valid, true);
+  assert.deepEqual(
+    new Set(initial.requiredFiles.map((entry) => entry.role)),
+    new Set([
+      "case-full-read",
+      "repository-dossier-full-read",
+      "machine-coverage-read-via-context-json",
+      "local-checkout-binding-full-read",
+    ]),
+  );
+  assert.ok((initial.coverage[0]?.outstandingFiles.length ?? 0) > 0);
+
+  const dossierPath = first.repositories[0]!.dossier;
+  const dossier = parseWorkSpec(await readFile(dossierPath, "utf8"));
+  dossier.body = dossier.body.replace(
+    "\n# Candidate claims\n",
+    `\n## DISC-001 — Entrypoint requires direct inspection\n\n- **Observation:** The graph exposes an entrypoint candidate but not its full conditions.\n- **Evidence:** Graphify community 1 and its source-file locator.\n- **Implication:** The pinned source must be read before a candidate claim is authored.\n- **Scope:** The first repository dossier and entrypoint coverage.\n- **Disposition:** Read the complete pinned source and then update the surface ledger.\n\n# Candidate claims\n`,
+  );
+  await writeFile(dossierPath, serializeWorkSpec(dossier), "utf8");
+  const stale = await reconstructionContext(target, first.id);
+  assert.equal(stale.checkpoint?.valid, false);
+  assert.ok(stale.validationIssues.some((issue) => /checkpoint is stale/.test(issue)));
+
+  await updateReconstructionCheckpoint({
+    target,
+    id: first.id,
+    status: "active",
+    stage: "repository-analysis",
+    actor: "workflow-agent/test",
+    currentState: "Repository analysis is at the first entrypoint.",
+    lastCompleted: "Recorded why Graphify alone cannot establish the entrypoint conditions.",
+    nextAction: "Read the complete pinned entrypoint source through wfctl.",
+    now: new Date("2026-07-31T10:05:00.000Z"),
+  });
+  assert.equal((await reconstructionContext(target, first.id)).checkpoint?.valid, true);
+  const bindingPath = join(
+    target,
+    ".workflow/current/reconstruction",
+    `${first.id}.json`,
+  );
+  const binding = JSON.parse(await readFile(bindingPath, "utf8")) as {
+    repositories: Array<{ commit: string }>;
+  };
+  const originalBinding = JSON.stringify(binding, null, 2) + "\n";
+  binding.repositories[0]!.commit = "ffffffffffffffffffffffffffffffffffffffff";
+  await writeFile(bindingPath, JSON.stringify(binding, null, 2) + "\n", "utf8");
+  assert.ok(
+    (await reconstructionContext(target, first.id)).validationIssues.some((issue) =>
+      /local checkout binding does not match the durable case/.test(issue)
+    ),
+  );
+  await writeFile(bindingPath, originalBinding, "utf8");
+  const malformedDossier = parseWorkSpec(await readFile(dossierPath, "utf8"));
+  malformedDossier.body = malformedDossier.body.replace(
+    "- **Evidence:** Graphify community 1 and its source-file locator.",
+    "- **Evidence:**",
+  );
+  await writeFile(dossierPath, serializeWorkSpec(malformedDossier), "utf8");
+  assert.ok(
+    (await reconstructionContext(target, first.id)).validationIssues.some((issue) =>
+      /DISC-001 requires a non-empty Evidence field/.test(issue)
+    ),
+  );
+
+  const second = await beginProjectReconstruction({
+    target,
+    slug: "second-audit",
+    title: "Second project audit",
+    mode: "audit",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-31T10:10:00.000Z"),
+  });
+  await assert.rejects(
+    reconstructionContext(target),
+    new RegExp(`Multiple active reconstruction cases[\\s\\S]*${first.id} — First project baseline[\\s\\S]*${second.id} — Second project audit`),
+  );
+});
 
 test("freezes intake coverage to exact Git blobs and detects working-tree drift", async () => {
   const target = await initializedKnowledgeRepository("wfctl-intake-");
@@ -486,6 +655,10 @@ The repository exports one greeting capability.
 # Evidence
 
 The capability is implemented and tested at the pinned revision.
+
+# Discovery ledger
+
+No consequential repository-local discoveries remain outside the candidate ledger.
 `;
   await writeFile(repository.dossier, serializeWorkSpec(dossierDocument), "utf8");
   dossierDocument.metadata.candidate_ids = ["greeting-capability"];

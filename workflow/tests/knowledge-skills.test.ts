@@ -111,6 +111,49 @@ test("knowledge view templates encode separate audiences and required sections",
   assert.match(engineering, /# Product knowledge/);
 });
 
+test("knowledge-side cases preserve discoveries and clean-session resume state", async () => {
+  const reconstruction = await readFile(
+    join(root, "skills/reconstruct-project-knowledge/SKILL.md"),
+    "utf8",
+  );
+  const intake = await readFile(
+    join(root, "skills/process-raw-intake/SKILL.md"),
+    "utf8",
+  );
+  const reconstructionCase = await readFile(
+    join(root, "skills/reconstruct-project-knowledge/assets/reconstruction-case.md"),
+    "utf8",
+  );
+  const dossier = await readFile(
+    join(root, "skills/reconstruct-project-knowledge/assets/repository-dossier.md"),
+    "utf8",
+  );
+  const intakeCase = await readFile(
+    join(root, "skills/process-raw-intake/assets/intake-case.md"),
+    "utf8",
+  );
+  for (const content of [reconstruction, intake]) {
+    assert.match(content, /context --json/);
+    assert.match(content, /without an ID/);
+    assert.match(content, /checkpoint/);
+    assert.match(content, /DISC-NNN/);
+    assert.match(content, /Observation/);
+    assert.match(content, /Evidence/);
+    assert.match(content, /Implication/);
+    assert.match(content, /Scope/);
+    assert.match(content, /Disposition/);
+  }
+  assert.match(reconstruction, /repository dossier/i);
+  assert.match(reconstruction, /cross-repository/i);
+  assert.match(reconstruction, /checkpoint is stale/i);
+  for (const template of [reconstructionCase, dossier, intakeCase]) {
+    assert.match(template, /session_record_version: 1/);
+    assert.match(template, /# Discovery ledger/);
+  }
+  assert.match(reconstructionCase, /basis_sha256/);
+  assert.match(intakeCase, /basis_sha256/);
+});
+
 test("workflow keeps maintainer-product and engineering roads first-class", async () => {
   const readme = await readFile(join(root, "README.md"), "utf8");
   const idea = await readFile(join(root, "IDEA.md"), "utf8");
@@ -206,15 +249,35 @@ test("project work skills share one bundle, explicit frontier, and full-file gat
   assert.match(contents.get("manage-project-work")!, /wfctl work capture add/);
   assert.match(contents.get("manage-project-work")!, /wfctl work checkpoint/);
   assert.match(contents.get("manage-project-work")!, /never copy active progress/i);
+  assert.match(contents.get("manage-project-work")!, /Discovery ledger/);
+  assert.match(contents.get("manage-project-work")!, /could a fresh session repeat/i);
+  assert.match(contents.get("manage-project-work")!, /context --stage resume/);
+  assert.match(contents.get("manage-project-work")!, /without an ID/);
   assert.match(contents.get("shape-project-direction")!, /fog/i);
   assert.match(contents.get("shape-project-direction")!, /Do not jump from a map directly/i);
   assert.match(contents.get("specify-project-change")!, /Read every required file completely/i);
   assert.match(contents.get("split-project-change")!, /tracer bullet/i);
   assert.match(contents.get("implement-work-item")!, /Claim before analysis or edits/i);
   assert.match(contents.get("implement-work-item")!, /wfctl work checkpoint/);
+  assert.match(contents.get("implement-work-item")!, /Discovery ledger/);
+  assert.match(contents.get("implement-work-item")!, /Never hide a discovery only in checkpoint/i);
   assert.match(contents.get("verify-project-work")!, /changed-after-review/i);
   assert.match(contents.get("verify-project-work")!, /wfctl work checkpoint/);
   assert.match(contents.get("verify-project-work")!, /before.*final hash receipt/is);
+
+  for (const asset of ["work-spec.md", "work-issue.md"]) {
+    const template = await readFile(
+      join(root, "skills/manage-project-work/assets", asset),
+      "utf8",
+    );
+    assert.match(template, /# Discovery ledger/);
+    assert.match(template, /Observation/);
+    assert.match(template, /Evidence/);
+    assert.match(template, /Implication/);
+    assert.match(template, /Scope/);
+    assert.match(template, /Disposition/);
+    assert.match(template, /not .*activity log/i);
+  }
 });
 
 test("directly derived project-work skills retain exact centralized provenance", async () => {
@@ -350,7 +413,13 @@ test("routing evals distinguish read-only, deliberate, and mandatory modes", asy
   assert.ok(behavior.some((entry) => entry.id === "direction-one-question"));
   assert.ok(behavior.some((entry) => entry.id === "two-axis-quality"));
   assert.ok(behavior.some((entry) => entry.id === "active-checkpoint-not-capture"));
+  assert.ok(behavior.some((entry) => entry.id === "material-discovery-survives-session"));
+  assert.ok(behavior.some((entry) => entry.id === "clean-session-resume-discovery"));
   assert.ok(behavior.some((entry) => entry.id === "pending-capture-lifecycle"));
+  assert.ok(trigger.some((entry) =>
+    entry.id === "clean-session-resume"
+    && entry.should_trigger.includes("manage-project-work")
+  ));
   assert.ok(behavior.every((entry) =>
     entry.prompt.length > 0
     && entry.required.length > 0
@@ -369,4 +438,7 @@ test("verification guide separates natural discovery from authoring conformance"
   assert.match(guide, /## 4\. Test progressive follow-ups/);
   assert.match(guide, /## 5\. Test authoring separately/);
   assert.match(guide, /This is a conformance test, not an onboarding prompt/);
+  assert.match(guide, /## 8\. Test clean-session recovery and discovery preservation/);
+  assert.match(guide, /wfctl work context --stage resume/);
+  assert.match(guide, /bottom canaries/i);
 });

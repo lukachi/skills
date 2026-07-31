@@ -16,9 +16,29 @@ import { errorMessage, isMissingFileError, readConfig } from "./config.js";
 import { readRepositoryMetadata } from "./git.js";
 import { validateKnowledge } from "./knowledge.js";
 import { compileClaimLedger } from "./claim-ledger.js";
+import { discoveryLedgerIssues } from "./discovery-ledger.js";
+import {
+  inspectSessionCheckpoint,
+  selectActiveCase,
+  sessionBasis,
+  sessionFile,
+  writeSessionCheckpoint,
+  type KnowledgeSessionCheckpointInput,
+  type KnowledgeSessionCheckpointSummary,
+  type KnowledgeSessionFile,
+  type KnowledgeSessionStatus,
+} from "./knowledge-session.js";
 import type { WorkOutcome } from "./types.js";
 
 const INTAKE_CASE_VERSION = 4;
+const INTAKE_SESSION_VERSION = 1;
+const INTAKE_CHECKPOINT_STAGES = [
+  "source-review",
+  "adjudication",
+  "promotion",
+  "omission-audit",
+  "review",
+] as const;
 const SOURCE_STATUSES = new Set([
   "pending",
   "reviewed",
@@ -205,6 +225,32 @@ export interface IntakeCaseResult {
   issues: string[];
 }
 
+export interface IntakeContext {
+  id: string;
+  title: string;
+  root: string;
+  requiredFiles: KnowledgeSessionFile[];
+  files: number;
+  reviewed: number;
+  pendingSources: string[];
+  blockedSources: string[];
+  checkpoint?: KnowledgeSessionCheckpointSummary;
+  validationIssues: string[];
+}
+
+export interface UpdateIntakeCheckpointOptions {
+  target: string;
+  id: string;
+  status: KnowledgeSessionStatus;
+  stage: typeof INTAKE_CHECKPOINT_STAGES[number];
+  actor: string;
+  currentState: string;
+  lastCompleted: string;
+  nextAction: string;
+  blockers?: string[];
+  now?: Date;
+}
+
 export interface CloseIntakeCaseOptions {
   target: string;
   id: string;
@@ -352,11 +398,119 @@ export async function beginIntakeCase(
   try {
     await mkdir(directory, { recursive: false });
     await writeFile(path, serializeCase(document), { encoding: "utf8", flag: "wx" });
+    await updateIntakeCheckpoint({
+      target,
+      id,
+      status: "active",
+      stage: "source-review",
+      actor: "system:wfctl",
+      currentState: "Intake case created from exact frozen Git blobs.",
+      lastCompleted: "The bounded raw source ledger was frozen.",
+      nextAction: "Read every frozen source completely and classify each material atomic candidate.",
+      blockers: [],
+      now,
+    });
   } catch (error) {
     await rm(directory, { recursive: true, force: true });
     throw error;
   }
   return { id, path, baseline, files: sources.length };
+}
+
+export async function intakeContext(
+  targetInput: string,
+  requestedId?: string,
+): Promise<IntakeContext> {
+  const target = await requireKnowledgeRepository(targetInput);
+  const selected = await selectActiveCase(
+    join(target, "intake/cases/active"),
+    requestedId,
+    "raw-intake",
+  );
+  const content = await readFile(selected.path, "utf8");
+  const document = parseCase(content);
+  const basis = sessionBasis(document);
+  const sessionVersion = Number(document.metadata.session_record_version);
+  const validationIssues: string[] = [];
+  if (
+    document.metadata.session_record_version !== undefined
+    && sessionVersion !== INTAKE_SESSION_VERSION
+  ) {
+    validationIssues.push(`session_record_version must be ${INTAKE_SESSION_VERSION}`);
+  }
+  if (sessionVersion === INTAKE_SESSION_VERSION) {
+    validationIssues.push(...discoveryLedgerIssues(document.body, "case.md", true));
+  }
+  const checkpoint = inspectSessionCheckpoint(
+    document,
+    basis,
+    INTAKE_CHECKPOINT_STAGES,
+    sessionVersion === INTAKE_SESSION_VERSION,
+  );
+  if (checkpoint) {
+    validationIssues.push(...checkpoint.issues);
+  }
+  const sources = recordArray(document.metadata.sources);
+  return {
+    id: selected.id,
+    title: stringValue(document.metadata.title) || selected.title,
+    root: dirname(selected.path),
+    requiredFiles: [
+      sessionFile(
+        selected.path.slice(target.length + 1),
+        "case-full-read",
+        content,
+      ),
+    ],
+    files: sources.length,
+    reviewed: sources.filter((source) =>
+      source.status === "reviewed" || source.status === "no-relevant-claims"
+    ).length,
+    pendingSources: sources
+      .filter((source) => source.status === "pending")
+      .map((source) => stringValue(source.path)),
+    blockedSources: sources
+      .filter((source) => source.status === "needs-maintainer" || source.status === "unreadable")
+      .map((source) => stringValue(source.path)),
+    ...(checkpoint ? { checkpoint } : {}),
+    validationIssues: [...new Set(validationIssues)].sort(),
+  };
+}
+
+export async function updateIntakeCheckpoint(
+  options: UpdateIntakeCheckpointOptions,
+): Promise<KnowledgeSessionCheckpointSummary> {
+  const target = await requireKnowledgeRepository(options.target);
+  const path = intakeCasePath(target, "active", options.id);
+  const document = parseCase(await readFile(path, "utf8"));
+  if (Number(document.metadata.session_record_version) !== INTAKE_SESSION_VERSION) {
+    throw new Error(
+      "This legacy intake case has no resumable session contract; preserve it as-is or start a current bounded case.",
+    );
+  }
+  const basis = sessionBasis(document);
+  const checkpointInput: KnowledgeSessionCheckpointInput = {
+    status: options.status,
+    stage: options.stage,
+    actor: options.actor,
+    currentState: options.currentState,
+    lastCompleted: options.lastCompleted,
+    nextAction: options.nextAction,
+    blockers: options.blockers ?? [],
+    ...(options.now ? { now: options.now } : {}),
+  };
+  writeSessionCheckpoint(document, checkpointInput, basis);
+  await writeFile(path, serializeCase(document), "utf8");
+  const summary = inspectSessionCheckpoint(
+    document,
+    sessionBasis(document),
+    INTAKE_CHECKPOINT_STAGES,
+    true,
+  );
+  if (!summary) {
+    throw new Error("Failed to persist intake checkpoint");
+  }
+  return summary;
 }
 
 export async function markIntakeSource(
@@ -606,7 +760,7 @@ export async function inspectIntakeCase(
   const target = await requireKnowledgeRepository(targetInput);
   const path = intakeCasePath(target, "active", id);
   const document = parseCase(await readFile(path, "utf8"));
-  const issues = caseMetadataIssues(document.metadata);
+  const issues = caseMetadataIssues(document.metadata, document.body);
   const baseline = recordValue(document.metadata.baseline);
   const commit = stringValue(baseline?.commit);
   const pathspecs = stringArray(baseline?.paths);
@@ -710,6 +864,18 @@ export async function closeIntakeCase(
   document.metadata.outcome = options.outcome;
   document.metadata.closed_at = now.toISOString();
   document.metadata.updated_at = now.toISOString();
+  if (document.metadata.session_record_version === INTAKE_SESSION_VERSION) {
+    writeSessionCheckpoint(document, {
+      status: "complete",
+      stage: "review",
+      actor: "system:wfctl",
+      currentState: `Raw-intake case archived with outcome ${options.outcome}.`,
+      lastCompleted: "The intake close gate recorded its honest outcome.",
+      nextAction: "No active case continuation remains; use the archive as an audit trail.",
+      blockers: [],
+      now,
+    }, sessionBasis(document));
+  }
   await mkdir(dirname(archivePath), { recursive: true });
   await rename(directory, archivePath);
   try {
@@ -721,7 +887,7 @@ export async function closeIntakeCase(
   return { id: options.id, outcome: options.outcome, archivePath };
 }
 
-function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
+function caseMetadataIssues(metadata: Record<string, unknown>, body = ""): string[] {
   const issues: string[] = [];
   const baseline = recordValue(metadata.baseline);
   const sources = recordArray(metadata.sources);
@@ -734,6 +900,15 @@ function caseMetadataIssues(metadata: Record<string, unknown>): string[] {
     issues.push(
       `intake_case_version must be ${INTAKE_CASE_VERSION}; run wfctl knowledge case migrate <case-id>`,
     );
+  }
+  if (
+    metadata.session_record_version !== undefined
+    && metadata.session_record_version !== INTAKE_SESSION_VERSION
+  ) {
+    issues.push(`session_record_version must be ${INTAKE_SESSION_VERSION}`);
+  }
+  if (metadata.session_record_version === INTAKE_SESSION_VERSION) {
+    issues.push(...discoveryLedgerIssues(body, "case.md", true));
   }
   if (metadata.status !== "active") {
     issues.push("status must remain active until wfctl archives the case");

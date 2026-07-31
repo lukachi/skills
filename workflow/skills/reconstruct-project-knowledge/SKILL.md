@@ -1,6 +1,6 @@
 ---
 name: reconstruct-project-knowledge
-description: Run an explicit, bounded baseline reconstruction or whole-project audit across one or more registered leaf repositories, Git history, current curated knowledge, and optional documentation, change records, or raw candidates. Use when the maintainer asks to establish or rebuild an untrustworthy project baseline, accepts that recommendation after a knowledge gap is reported, or requests a source-wide alignment audit. Do not trigger merely because someone asks what the project does or how one capability works. This is an expensive knowledge-repository operation with complete source accounting, not the per-task leaf workflow.
+description: Run or resume an explicit, bounded baseline reconstruction or whole-project audit across one or more registered leaf repositories, Git history, current curated knowledge, and optional documentation, change records, or raw candidates. Use when the maintainer asks to establish or rebuild an untrustworthy project baseline, accepts that recommendation after a knowledge gap is reported, requests a source-wide alignment audit, or asks a fresh or compacted knowledge-repository session to continue an active reconstruction. Do not trigger merely because someone asks what the project does or how one capability works. This is an expensive knowledge-repository operation with complete source accounting, not the per-task leaf workflow.
 ---
 
 # Reconstruct Project Knowledge
@@ -104,6 +104,21 @@ complete JSON accounting remains the machine source.
    `case.md` plus every generated repository dossier. Run `wfctl knowledge
    reconstruct coverage <case-id>` for the complete machine-owned coverage
    summary; do not manually edit `*.coverage.json`.
+   On a fresh session, after compaction, or whenever the active case ID is not
+   already established, begin instead with:
+
+   ```sh
+   wfctl knowledge reconstruct context --json
+   ```
+
+   Omit the ID deliberately. The CLI selects only when exactly one active
+   reconstruction exists. With several, use the human titles it returns to
+   identify the owner and ask the maintainer if ambiguity remains; never choose
+   from dates or directory order. Read every returned `case-full-read`,
+   `repository-dossier-full-read`, and local binding file completely. Treat the
+   JSON coverage frontier as the complete machine enumeration; do not replace
+   it with a truncated terminal list or a partial direct read of the coverage
+   file.
 8. Treat `.workflow/current/reconstruction/<case-id>.json` as the local
    checkout binding. Never copy its absolute paths into the durable case,
    dossiers, or curated knowledge.
@@ -202,6 +217,15 @@ For each dossier:
    structured surface to those
    candidate IDs through its structured `candidate_ids` field.
 
+While inspecting a repository, immediately add a dossier `DISC-NNN` entry
+whenever losing the information could change a later conclusion, omit a
+condition, repeat material investigation, or send the next agent down the
+wrong path. Record the observation, exact evidence boundary, implication,
+scope, and disposition through the required `Observation`, `Evidence`,
+`Implication`, `Scope`, and `Disposition` fields. Move or restate it in the
+parent case when it changes cross-repository reconciliation. Do not wait for a
+checkpoint and do not use the ledger as a diary of ordinary commands.
+
 Before leaving a repository, rerun `coverage`. Explain every Graphify-unindexed
 text file and every `unclassified`, `pending`, or `blocked` entry. A confirmed
 `source-code` candidate must cite a path whose full pinned read is complete.
@@ -257,19 +281,40 @@ needed change, identify the owning leaf and open normal significant work there.
 
 ## Maintain the record during discussion
 
-The reconstruction case is the session's durable working memory. After every
+The reconstruction case and repository dossiers are the session's durable
+working memory. Stable `knowledge/` pages are not scratchpads. After every
 material maintainer turn, update candidate state, decisions, contradictions,
-promotion map, and next action before continuing. Do not wait until the end.
+promotion map, and affected discovery entries before continuing. Refresh the
+checkpoint after those semantic and coverage updates, after each repository
+pass, before compaction, and before ending a session:
+
+```sh
+wfctl knowledge reconstruct checkpoint <case-id> \
+  --actor workflow-agent/1 \
+  --stage repository-analysis \
+  --state "<concise current frontier>" \
+  --last "<last material result>" \
+  --next "<one executable next action>"
+```
+
+Use `--status blocked --blocker "..."` when continuation needs missing
+authority or an unavailable source. The checkpoint is a resumable pointer,
+not the evidence, decision history, or discovery ledger. Its basis hash covers
+the case, every dossier, and every coverage ledger; any later edit makes it
+stale until refreshed.
 
 After compaction or interruption:
 
-1. run `wfctl knowledge reconstruct check <case-id>`;
-2. read the entire case and all dossiers;
-3. run `wfctl knowledge reconstruct coverage <case-id>` and resume from its
-   exact pending communities, files, read ranges, and surfaces;
-4. confirm the exact bound checkouts;
-5. resume from recorded unresolved candidates and next actions, not chat
-   memory.
+1. run `wfctl knowledge reconstruct context --json` without an ID unless the
+   active owner is already unambiguous;
+2. read the entire case, every dossier, and local binding returned by the
+   command, including their final lines and every discovery entry;
+3. use the returned complete coverage frontier for exact pending communities,
+   files, read ranges, and surfaces;
+4. if the checkpoint is stale, treat its next action as a hint only, rebuild
+   the frontier from the full records, and refresh it before continuing;
+5. confirm the exact bound checkouts and resume from durable candidates,
+   discoveries, coverage, and maintainer decisions rather than chat memory.
 
 Then render the current reconstruction frontier before continuing analysis.
 

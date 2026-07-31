@@ -36,7 +36,10 @@ For significant work, the agent must:
 
 1. Create one central change bundle before extended discussion.
 2. Record material requirements, constraints, alternatives, answers, and
-   decisions after each meaningful conversation turn.
+   decisions after each meaningful conversation turn. During discussion or
+   investigation, preserve consequential discoveries whose loss could make a
+   future session repeat work, choose differently, misunderstand the task, or
+   act unsafely.
 3. Bind the bundle to the exact repository checkout or worktrees where code
    may be changed.
 4. Investigate source through Graphify and compare the task with current
@@ -67,6 +70,13 @@ The canonical directory lives at `changes/active/<change-id>/` in knowledge:
 `change.md` and each issue carry one structured checkpoint in frontmatter. The
 agent refreshes the owning checkpoint after material edits. Its hash proves
 which record state it summarizes; it does not replace reading that record.
+
+Each change and issue also has a `Discovery ledger`. It is deliberately broad:
+the agent records any newly learned information that would materially matter
+to a future session, together with its evidence, implication, scope, and
+current destination. It is not a list restricted to bugs, traps, or technical
+facts, and it is not a transcript or activity log. Superseded observations stay
+visible with their disposition corrected.
 
 Source code remains in its owning leaf repository. A leaf contains only an
 ignored pointer and exact claim metadata, never a second spec or tracker.
@@ -125,9 +135,13 @@ Say:
 > Resume the active work.
 
 The agent asks the workflow for the exact stage-specific file list, reads those
-files completely, and restores the task from the bundle and exact claim—not
-from chat memory. Confirm any unresolved checkout or product decision before it
-continues.
+files completely, including their discovery ledgers, and restores the task
+from the bundle and exact claim—not from chat memory. Internally it starts with
+`wfctl work context --stage resume` and does not need you to know the work ID.
+Exactly one bound record may be selected automatically. With several active
+records, the agent explains their human outcomes and asks which one you mean;
+it never guesses from recency or branch name. Confirm any unresolved checkout
+or product decision before it continues.
 
 ## Honest endings
 

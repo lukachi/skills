@@ -116,6 +116,25 @@ Each selected repository produces one dossier containing:
 
 Repository names, roles, and count are never predefined by the workflow.
 
+## Session continuity
+
+The parent case owns whole-project discoveries and each dossier owns
+repository-local discoveries. A material discovery records its observation,
+evidence boundary, implication, scope, and disposition immediately; it remains
+operational memory until normal claim adjudication and promotion establish a
+durable destination.
+
+The parent checkpoint records only current state, last material action, next
+safe action, blockers, and actor. Its basis hash covers the parent case, every
+dossier, and every coverage ledger. Any later semantic or coverage change
+makes the checkpoint stale. A clean session uses `reconstruct context --json`
+to select only one active case, enumerate every required full read, expose the
+complete coverage frontier, and detect staleness. Multiple active cases require
+selection by human outcome; recency is never ownership.
+
+Discovery ledgers and checkpoints never enter curated `knowledge/` pages and
+never establish truth.
+
 ## Whole-project reconciliation
 
 After repository dossiers are complete, the agent reconciles them into:

@@ -92,6 +92,32 @@ reports the checkpoint stale. Claim, review, or completion may not use a stale
 checkpoint. This proves which record state was summarized, not that the summary
 is semantically honest; full-file reading and review remain mandatory.
 
+### Discovery ledger
+
+The semantic owner also keeps a broad discovery ledger. A discovery must be
+preserved when its loss could cause a fresh session to repeat material
+investigation, choose differently, misunderstand the work, or act unsafely.
+The trigger is consequence, not a closed category such as trap, finding, fact,
+or lesson.
+
+Each entry records the observation and uncertainty, direct evidence or missing
+evidence, implication, applicable scope or lifetime, and current disposition.
+The entry may link a larger artifact but keeps ownership explicit. Invalidated
+entries remain as lineage with an updated disposition. Routine activity is not
+a discovery. The checkpoint may reference an entry and its frontier effect but
+does not duplicate it.
+
+New change and issue schema versions require the ledger section. Context
+validation accepts an empty ledger, but every real `DISC-*` entry must have a
+unique stable ID and non-empty values for all five fields. This proves record
+shape, not that the agent noticed every consequential observation.
+
+On a clean session, `wfctl work context --stage resume` without an ID resolves
+only an unambiguous single binding. The agent reads the reported checkpoint and
+every required file, including complete discovery ledgers, before it acts.
+Multiple bindings require a maintainer selection; directory, recency, branch,
+or repository name may not select implicitly.
+
 Issue creation, claim, release, completion, and drop transition their
 checkpoints automatically. A material turn during a claim still requires an
 explicit refresh. Multiple concurrent issues keep separate checkpoints; active

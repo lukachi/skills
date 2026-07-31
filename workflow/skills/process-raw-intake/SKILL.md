@@ -1,6 +1,6 @@
 ---
 name: process-raw-intake
-description: Inventory and process continuous untrusted raw intake through Git blob identity, bounded review cases, QMD-assisted discovery, complete source reading, atomic claim classification, temporal and supersession analysis, authoritative verification, durable routing, omission probes, and maintainer adjudication. Use after the maintainer explicitly asks to process new or changed raw material, accepts a proposed intake batch, or an approved reconstruction scope requires its frozen raw generation to converge. Handle ideas, chat exports, research, specs, historical files, chronology, and conflicts without treating raw text as truth. Do not start merely because raw files exist.
+description: Start or resume continuous untrusted raw intake through Git blob identity, bounded review cases, QMD-assisted discovery, complete source reading, atomic claim classification, temporal and supersession analysis, authoritative verification, durable routing, omission probes, and maintainer adjudication. Use after the maintainer explicitly asks to process new or changed raw material, accepts a proposed intake batch, an approved reconstruction scope requires its frozen raw generation to converge, or a fresh or compacted knowledge-repository session must continue an active intake case. Handle ideas, chat exports, research, specs, historical files, chronology, and conflicts without treating raw text as truth. Do not start merely because raw files exist.
 ---
 
 # Process Raw Intake
@@ -117,6 +117,13 @@ counts by hand.
    [case](assets/intake-case.md) records every Git tree entry and its exact blob
    ID. Do not edit generated source identity fields.
 
+On a fresh session, after compaction, or when the active case ID is not already
+established, first run `wfctl knowledge case context --json` without an ID.
+Auto-resume only the single active case. If several cases exist, use their
+human titles to determine the owner and ask the maintainer when still
+ambiguous; never guess from timestamps. Read the returned case file completely
+through its last line before reviewing another raw source.
+
 ## Retrieve and read
 
 1. Search raw explicitly with `qmd search ... -c raw` for exact terms and a
@@ -156,6 +163,32 @@ counts by hand.
    chronology rather than flattening them into one summary. Capture order and
    file modification time do not decide truth. Give rejected, deferred, or
    unresolved candidates a concrete `reason`.
+
+Immediately add a case `DISC-NNN` entry when losing a review result could
+change later adjudication, omit a condition or alternative, cause repeated
+investigation, or route a candidate differently. Record `Observation`, exact
+`Evidence` boundary, `Implication`, `Scope`, and `Disposition`. A raw path may
+identify the trigger but is never authoritative evidence. This is operational
+working memory, not an extra candidate list or a diary of every command.
+
+After material source review, maintainer discussion, adjudication, routing, or
+omission probing, update the semantic case first and refresh the checkpoint
+last:
+
+```sh
+wfctl knowledge case checkpoint <case-id> \
+  --actor workflow-agent/1 \
+  --stage source-review \
+  --state "<concise current frontier>" \
+  --last "<last material result>" \
+  --next "<one executable next action>"
+```
+
+Use `--status blocked --blocker "..."` for a genuine blocker. Before
+compaction or stopping, always refresh it. If `case context` reports a stale
+checkpoint, read the complete case, rebuild the frontier from the frozen
+source ledger and candidates, then refresh the checkpoint; do not trust its
+old next action as authority.
 
 If `case check` reports intake schema v3, run `wfctl knowledge case migrate
 <case-id>`. Review every conservative `unknown` field against the full frozen

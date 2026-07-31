@@ -115,9 +115,20 @@ verification and cannot establish production delivery unless they are the
 explicit accepted scope.
 
 The agent updates the owning semantic record after every material discussion
-turn, then refreshes its structured checkpoint last. After compaction or
-interruption, it resumes from that checkpoint, the complete owning record, and
-workflow status—not conversation memory.
+or investigation turn. Consequential new understanding passes an
+information-loss test and enters the owner's broad discovery ledger with its
+basis, implication, scope, and disposition. The agent then refreshes the
+structured checkpoint last. After compaction, interruption, or a clean-session
+start, it discovers an unambiguous binding, reads the checkpoint and complete
+owning records, verifies workflow status and exact claims, and resumes without
+conversation memory.
+
+This contract applies to central change bundles, raw-intake cases, and
+reconstruction cases. Reconstruction uses repository dossiers for local
+discoveries and the parent case for cross-repository meaning. Its checkpoint
+basis includes the parent case, every dossier, and every coverage ledger;
+coverage remains accounting, not semantic truth. Curated `knowledge/` concepts
+never receive an operational discovery ledger.
 
 ### Lightweight work
 

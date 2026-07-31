@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 import type { RepositoryMetadata, WorkMode, WorkSpecDocument } from "./types.js";
+import { discoveryLedgerIssues } from "./discovery-ledger.js";
 import {
   isRecord,
   parseWorkSpec,
@@ -951,9 +952,14 @@ async function validateBundle(
       issues.push(`${required}: required bundle file is missing`);
     }
   }
-  if (![2, 3, 4].includes(Number(change.metadata.workflow_version))) {
+  if (![2, 3, 4, 5].includes(Number(change.metadata.workflow_version))) {
     issues.push("change.md: unsupported workflow_version");
   }
+  issues.push(...discoveryLedgerIssues(
+    change.body,
+    "change.md",
+    Number(change.metadata.workflow_version) >= 5,
+  ));
   const repositoryIds = new Set(
     recordArray(change.metadata.repositories).map((entry) => stringValue(entry.repository)),
   );
@@ -1016,9 +1022,14 @@ async function validateBundle(
         }
       }
     }
-    if (![1, 2].includes(Number(entry.document.metadata.workflow_version))) {
-      issues.push(`${summary.id}: workflow_version must be 1 or 2`);
+    if (![1, 2, 3].includes(Number(entry.document.metadata.workflow_version))) {
+      issues.push(`${summary.id}: workflow_version must be 1, 2, or 3`);
     }
+    issues.push(...discoveryLedgerIssues(
+      entry.document.body,
+      summary.id,
+      Number(entry.document.metadata.workflow_version) >= 3,
+    ));
     if (entry.document.metadata.kind !== "work-issue") {
       issues.push(`${summary.id}: kind must be work-issue`);
     }

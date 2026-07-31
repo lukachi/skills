@@ -1,5 +1,5 @@
 ---
-workflow_version: 4
+workflow_version: 5
 id: "{{WORK_ID}}"
 title: "{{TITLE}}"
 mode: "{{MODE}}"
@@ -109,6 +109,28 @@ Record Graphify queries, the source locations they led to, and direct inspection
 of the actual code. Graph output is navigation evidence, never the authority for
 an implementation claim. Add supplementary text-search findings only after
 graph analysis.
+
+# Discovery ledger
+
+Preserve newly learned information when losing it could make a future session
+repeat material investigation, choose differently, misunderstand the work, or
+act unsafely. This is an information-acquisition ledger, not an activity log and
+not a closed list of "findings" categories.
+
+Append one durable block per discovery, replacing the placeholders:
+
+```markdown
+## DISC-NNN — Concise title
+
+- **Observation:** What was learned, including uncertainty when unverified.
+- **Evidence:** Direct basis, or the evidence that is still missing.
+- **Implication:** What this changes for understanding or action.
+- **Scope:** Where it applies and any lifetime or invalidation condition.
+- **Disposition:** What now owns it or must happen next, in plain language.
+```
+
+Preserve superseded or disproven entries and update their disposition instead
+of deleting the path by which the team learned.
 
 # Knowledge alignment
 

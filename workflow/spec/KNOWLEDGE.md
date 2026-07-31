@@ -175,6 +175,22 @@ Raw is optional during reconstruction. If a case declares raw reviewed, its
 frozen snapshot must converge to zero unseen, changed, active, blocked,
 unresolved, or uncommitted selected inputs.
 
+## Active case continuity
+
+Current intake and reconstruction cases are operational working-memory owners,
+not truth surfaces. Each contains a consequence-driven discovery ledger.
+Reconstruction additionally places repository-local discoveries in dossiers
+and cross-repository discoveries in its parent case.
+
+Each active case has one hash-bound checkpoint with current state, last
+material action, next action, blockers, actor, and stage. Intake hashes its
+case. Reconstruction hashes its parent case, every dossier, and every coverage
+ledger. A changed owner makes the checkpoint stale. Clean sessions auto-select
+only one active case, enumerate required complete reads, and expose exact
+frontier state; several active cases require a human-outcome choice. Neither a
+discovery ledger nor a checkpoint is promoted into `knowledge/` or accepted as
+evidence.
+
 ## Retrieval
 
 QMD is a rebuildable retrieval cache:

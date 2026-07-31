@@ -51,8 +51,14 @@ Tests must derive expected behavior from the approved contract or an
 independent authority, never from the implementation they are meant to test.
 Do not over-mock the behavior under review.
 
-After every material turn, update the issue evidence and notes, then refresh
-its single structured checkpoint last:
+After every material maintainer turn or meaningful investigation cycle, apply
+the preservation test from `manage-project-work`: if losing newly learned
+information could cause repeated material investigation, a different choice,
+misunderstanding, or unsafe action in a fresh session, append a complete entry
+to the issue's `Discovery ledger`. Record observation, evidence, implication,
+scope, and disposition without forcing it into a predefined finding category.
+Update evidence and current understanding next, then refresh the issue's single
+structured checkpoint last:
 
 ```sh
 wfctl work checkpoint <change-id> --issue <issue-id> \
@@ -66,6 +72,11 @@ Use `--status blocked --blocker "<reason>"` when progress genuinely cannot
 continue. Record deviations in the parent `change.md` when they affect approved
 scope, acceptance, or decisions; refresh the parent checkpoint and reopen
 framing review before continuing materially different work.
+
+The checkpoint may identify the latest discovery and its effect on the next
+action, but the full information stays in the semantic record or a linked
+artifact. Never hide a discovery only in checkpoint prose, command output, or
+conversation memory.
 
 ## Resolve honestly
 
@@ -82,7 +93,10 @@ wfctl work issue complete <change-id> <issue-id> \
   --evidence "<direct inspection or command result>"
 ```
 
-If interrupted, refresh the claimed issue checkpoint before stopping. If
+If interrupted, refresh the claimed issue checkpoint before stopping. A fresh
+session begins with `wfctl work context --stage resume`, reads every required
+file and discovery entry completely, and resumes the existing exact claim; it
+does not infer another issue, actor, checkout, or code root. If
 deliberately giving the issue back, run `wfctl work issue release`; it resets
 the issue checkpoint to ready. Completion makes the issue checkpoint terminal;
 then refresh the parent checkpoint with the next frontier action. Do not mark a

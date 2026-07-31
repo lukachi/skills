@@ -15,8 +15,10 @@ repository owns significant-work bundles and current project knowledge.
 7. Use `implement-work-item` for one frontier issue. Read every required file,
    record current receipts, and claim the issue from this exact checkout before
    implementation.
-8. After material turns, update the owning issue or parent change, then refresh
-   its structured checkpoint last. Never copy active progress into the inbox.
+8. After material discussion or investigation, preserve consequential new
+   understanding in the owning record's broad `Discovery ledger`, update the
+   affected semantic state, then refresh its structured checkpoint last. Never
+   copy active progress into the inbox.
 9. Verify behavior through direct production-path inspection and fresh checks.
 10. Preserve implementation in the exact clean Git commit only with normal
     maintainer authorization.
@@ -24,10 +26,14 @@ repository owns significant-work bundles and current project knowledge.
     revision, promote verified durable truth, obtain completion approval, and
     close honestly.
 
-Before code edits, after any directory or branch change, after compaction, and
-before verification, re-run work status. Every reported code root is an exact
-workspace. The returned bundle/spec path is for records only. A worktree is not
-interchangeable with another checkout of the same repository.
+On a clean session or resume, run `wfctl work context --stage resume` without an
+ID. It may auto-select only one bound active record; multiple records require a
+maintainer choice. Read its complete required-file set and discovery ledgers,
+then verify status. Before code edits, after any directory or branch change,
+after compaction, and before verification, re-run work status. Every reported
+code root is an exact workspace. The returned bundle/spec path is for records
+only. A worktree is not interchangeable with another checkout of the same
+repository.
 
 Do not claim completion with unseen or stale bundle files, open issues or
 claims, uncovered acceptance IDs, unresolved Wayfinder fog, dirty checkouts, or

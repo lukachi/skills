@@ -101,7 +101,8 @@ test("runs the completed central work lifecycle", async () => {
   assert.equal(started.knowledgeRoot, knowledgeRoot);
   assert.match(started.specPath, /changes\/active\/2026-07-28-world-loop\/change\.md$/);
   assert.equal(document.metadata.status, "shaping");
-  assert.equal(document.metadata.workflow_version, 4);
+  assert.equal(document.metadata.workflow_version, 5);
+  assert.match(document.body, /^# Discovery ledger\s*$/m);
   assert.equal(document.metadata.checkpoint_version, 1);
   assert.equal(
     (document.metadata.checkpoint as Record<string, unknown>).status,
@@ -117,6 +118,7 @@ test("runs the completed central work lifecycle", async () => {
   );
   const status = await workStatus(leaf, started.id);
   assert.equal(status[0]?.valid, true);
+  assert.equal(status[0]?.title, "World loop");
   assert.equal(status[0]?.codeRoot, leafRoot);
   assert.equal(status[0]?.specPath, started.specPath);
   document.metadata.status = "completed";
@@ -693,6 +695,105 @@ test("detects a branch switch until the work is explicitly rebound", async () =>
   assert.equal((await workStatus(leaf, started.id))[0]?.valid, true);
 });
 
+test("clean-session context discovers only an unambiguous active binding", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-context-discovery-"));
+  const knowledge = join(root, "knowledge");
+  const leaf = join(root, "leaf");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  initializeGit(knowledge);
+  initializeGit(leaf);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+
+  await assert.rejects(
+    workBundleContext(leaf, undefined, "resume"),
+    /No active work records are bound/,
+  );
+
+  const first = await beginWork({
+    target: leaf,
+    slug: "first-resume",
+    title: "First resumable outcome",
+    mode: "full",
+    distributionRoot,
+  });
+  const discovered = await workBundleContext(leaf, undefined, "resume");
+  assert.equal(discovered.id, first.id);
+  assert.deepEqual(
+    discovered.requiredFiles.map((entry) => entry.path),
+    ["change.md"],
+  );
+  const firstDocument = parseWorkSpec(await readFile(first.specPath, "utf8"));
+  firstDocument.body = firstDocument.body.replace(
+    "# Knowledge alignment",
+    "## DISC-001 — Incomplete discovery\n\n- **Observation:** A consequential fact.\n\n# Knowledge alignment",
+  );
+  await writeFile(first.specPath, serializeWorkSpec(firstDocument), "utf8");
+  assert.ok(
+    (await workBundleContext(leaf, first.id, "resume")).validationIssues.some(
+      (issue) => /DISC-001 requires a non-empty Evidence field/.test(issue),
+    ),
+  );
+  firstDocument.body = firstDocument.body.replace(
+    "## DISC-001 — Incomplete discovery\n\n- **Observation:** A consequential fact.",
+    `## DISC-001 — Complete discovery
+
+- **Observation:** A consequential fact.
+- **Evidence:** Direct inspection at the bound revision.
+- **Implication:** The next action must change.
+- **Scope:** This active change until the invariant is replaced.
+- **Disposition:** Owned by this change and pending verification.`,
+  );
+  await writeFile(first.specPath, serializeWorkSpec(firstDocument), "utf8");
+  assert.equal(
+    (await workBundleContext(leaf, first.id, "resume")).validationIssues.some(
+      (issue) => /DISC-001 requires/.test(issue),
+    ),
+    false,
+  );
+  firstDocument.body = firstDocument.body.replace(
+    /^# Discovery ledger\s*$/m,
+    "# Removed discovery ledger",
+  );
+  await writeFile(first.specPath, serializeWorkSpec(firstDocument), "utf8");
+  assert.ok(
+    (await workBundleContext(leaf, first.id, "resume")).validationIssues.some(
+      (issue) => /Discovery ledger section is required/.test(issue),
+    ),
+  );
+  firstDocument.metadata.workflow_version = 4;
+  await writeFile(first.specPath, serializeWorkSpec(firstDocument), "utf8");
+  assert.equal(
+    (await workBundleContext(leaf, first.id, "resume")).validationIssues.some(
+      (issue) => /Discovery ledger section is required/.test(issue),
+    ),
+    false,
+  );
+
+  const second = await beginWork({
+    target: leaf,
+    slug: "second-resume",
+    title: "Second resumable outcome",
+    mode: "full",
+    distributionRoot,
+  });
+  await assert.rejects(
+    workBundleContext(leaf, undefined, "resume"),
+    new RegExp(`Multiple active work records.*${first.id}.*${second.id}.*do not guess`),
+  );
+  assert.equal((await workBundleContext(leaf, second.id, "resume")).id, second.id);
+});
+
 test("enforces full bundle reads, exact claims, dependency frontier, and stale review", async () => {
   const root = await mkdtemp(join(tmpdir(), "wfctl-bundle-"));
   const knowledge = join(root, "knowledge");
@@ -759,6 +860,10 @@ test("enforces full bundle reads, exact claims, dependency frontier, and stale r
     repositories: [repository],
     distributionRoot,
   });
+  assert.match(
+    (await readFile(join(started.bundleRoot, first.path), "utf8")),
+    /^# Discovery ledger\s*$/m,
+  );
   const second = await createWorkIssue({
     target: leaf,
     id: started.id,

@@ -1,5 +1,6 @@
 ---
 reconstruction_version: 3
+session_record_version: 1
 id: "<case-id>"
 title: "<title>"
 mode: baseline
@@ -42,6 +43,16 @@ maintainer_review:
   by: ""
   at: ""
   notes: []
+checkpoint:
+  status: active
+  stage: setup
+  actor: system:wfctl
+  current_state: Reconstruction case created.
+  last_completed: Exact repository revisions and coverage ledgers were frozen.
+  next_action: Inspect the case, every repository dossier, and the complete coverage frontier.
+  blockers: []
+  updated_at: "<ISO-8601>"
+  basis_sha256: "<sha256>"
 ---
 
 # Reconstruction question
@@ -106,6 +117,27 @@ preserve cross-source lineage.
 For every conflict, separate observed implementation, accepted product intent,
 historical evidence, and unsupported explanation. Record the exact maintainer
 decision when evidence cannot choose the current intended truth.
+
+# Discovery ledger
+
+Record consequential information as soon as losing it would make a later
+session repeat work, miss a constraint, or choose a materially different
+course. This is working memory, not curated truth. Use stable IDs and keep the
+evidence boundary explicit:
+
+```markdown
+## DISC-001 — Short descriptive title
+
+- **Observation:** What was learned, including important conditions or alternatives.
+- **Evidence:** Exact dossier, pinned source receipt, test, command result, or maintainer statement.
+- **Implication:** Why future reconstruction work must know this.
+- **Scope:** Affected repositories, Areas, capabilities, flows, candidates, or decisions.
+- **Disposition:** Next action, candidate link, maintainer question, destination, or explicit no-action result.
+```
+
+Keep cross-repository discoveries and claims that alter the whole-project
+interpretation here. Repository-local discoveries belong in that repository's
+dossier and may be promoted here when they affect reconciliation.
 
 # Promotion map
 

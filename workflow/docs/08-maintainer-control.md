@@ -52,7 +52,7 @@ unresolved.
 | The agent misunderstood the goal | Correct it immediately. It must update the living record before continuing. |
 | Product intent is unknown | Decide it or explicitly defer it. Do not let implementation become intent by default. |
 | Code and knowledge disagree | Ask for a conflict packet, then identify whether implementation, recorded intent, or both are stale. |
-| The session was compacted or restarted | Ask to resume. The agent reads the current checkpoint, canonical record, and exact workflow context. |
+| The session was compacted or restarted | Ask to resume. The agent discovers the bound work without requiring an ID, reads the current checkpoint, complete canonical record, discovery ledger, and exact workflow context. If several records are active, choose the human outcome after the agent explains them. |
 | You changed branch or worktree | Tell the agent. It must stop until you approve an explicit rebind. |
 | The task cannot be completed | Accept a truthful partial or abandoned outcome with gaps preserved. |
 | New raw files appeared | Ask the knowledge agent to process the new raw material. |
@@ -71,6 +71,12 @@ Do not accept “done” without:
 
 Deterministic checks prove structure and accounting. The agent still has to
 perform semantic verification against the real implementation.
+
+The same limit applies to discoveries: the workflow can require a preservation
+check, provide a durable ledger, detect stale checkpoints, and test recovery
+behavior. It cannot prove that a model noticed every meaningful fact. Review a
+critical discovery when omission would materially change project direction or
+safety.
 
 ## Recover from a wrong checkout
 

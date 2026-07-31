@@ -65,6 +65,12 @@ been covered, what remains, what is blocked, and which decision it needs from
 you. Internal ledgers remain available for audit but are not your normal
 interface.
 
+If a session compacts or you open a new one, ask it to continue in plain
+language. You do not need the case ID. The workflow auto-resumes only a single
+active case; with several, the agent shows their human titles and asks which
+outcome you mean. It rereads the complete owning records and rejects a stale
+checkpoint instead of silently trusting an old next step.
+
 ## Pending captures
 
 `changes/inbox/` is a queue for useful material that does not yet belong to an

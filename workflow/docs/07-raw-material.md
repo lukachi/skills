@@ -48,6 +48,13 @@ The agent:
 
 You do not need to choose files blindly or operate case IDs.
 
+If the session is interrupted, the agent discovers the sole active intake case
+and rereads it completely. Consequential review discoveries stay in that case;
+the checkpoint keeps only the current state and next safe action. A change to
+the case makes the checkpoint stale until the agent reconstructs the frontier
+and refreshes it. With several active cases, the agent asks which human-titled
+batch you want to continue instead of guessing.
+
 ## How candidates are separated
 
 | Candidate meaning | Destination |

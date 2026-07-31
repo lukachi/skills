@@ -78,6 +78,24 @@
     "should_not_trigger": ["split-project-change", "shape-project-direction"]
   },
   {
+    "id": "clean-session-resume",
+    "prompt": "Resume the active work in this checkout. This is a fresh session and I do not know the work ID.",
+    "should_trigger": ["manage-project-work"],
+    "should_not_trigger": ["shape-project-direction", "reconstruct-project-knowledge"]
+  },
+  {
+    "id": "clean-session-reconstruction-resume",
+    "prompt": "Continue the active reconstruction in this knowledge repository after compaction. I do not know its case ID.",
+    "should_trigger": ["reconstruct-project-knowledge"],
+    "should_not_trigger": ["manage-project-work", "process-raw-intake"]
+  },
+  {
+    "id": "clean-session-intake-resume",
+    "prompt": "Continue the active raw-intake batch after compaction. I do not know its case ID.",
+    "should_trigger": ["process-raw-intake"],
+    "should_not_trigger": ["reconstruct-project-knowledge", "manage-project-work"]
+  },
+  {
     "id": "explicit-external-research",
     "prompt": "Research the current primary standards that constrain passkey recovery and preserve the result for our architecture decision.",
     "should_trigger": ["research-project-context"],

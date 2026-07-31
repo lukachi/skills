@@ -99,6 +99,14 @@ knowledge.
 The agent shows a reconstruction frontier: repositories, coverage, active
 themes, blockers, decisions needed, and the remaining completion condition.
 
+The parent case retains cross-project discoveries; each repository dossier
+retains consequential local discoveries. A checkpoint records only the current
+frontier and next safe action. On a new session, one active reconstruction is
+discovered automatically and every case/dossier is reread. If any semantic or
+coverage record changed after the checkpoint, it is marked stale and the agent
+rebuilds the frontier before continuing. With several active reconstructions,
+you choose by human title rather than remembering an ID.
+
 Correct product intent where code cannot establish it. If the evidence remains
 insufficient, keep the claim unresolved or close the reconstruction as partial.
 

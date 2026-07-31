@@ -1,5 +1,6 @@
 ---
 reconstruction_repository_version: 2
+session_record_version: 1
 case_id: "<case-id>"
 repository: "<repository>"
 commit: "<full-git-commit>"
@@ -60,6 +61,13 @@ why a maintainer intended it. If history is shallow or unavailable, say so.>
 
 <List conflicting implementations, stale documentation, missing ownership,
 unexplained behavior, and maintainer questions.>
+
+# Discovery ledger
+
+Persist repository-local information whose loss could change later analysis or
+force it to be repeated. Use `DISC-NNN — title` headings and the five required
+fields: `Observation`, `Evidence`, `Implication`, `Scope`, and `Disposition`.
+This ledger is operational memory; it does not make an observation true.
 
 # Candidate claims
 

@@ -100,6 +100,25 @@ code proves observed implementation, not intended meaning or correctness.
 Record optional raw, documentation, and change inputs explicitly without
 assuming any of them exist.
 
+For reconstruction or raw intake, the active case is the working-memory owner;
+stable `knowledge/` pages are never session scratchpads. On a fresh session or
+after compaction, run `wfctl knowledge reconstruct context --json` or `wfctl
+knowledge case context --json` without an ID. Auto-select only when exactly one
+active case exists. With several, identify the human outcome by title and ask
+the maintainer if ambiguity remains; never guess from timestamps or directory
+order. Read every returned semantic record completely. For reconstruction,
+consume the complete JSON coverage frontier and exact local binding as well.
+
+Persist consequential discoveries immediately in the owning case or
+repository dossier using `DISC-NNN` plus Observation, Evidence, Implication,
+Scope, and Disposition. Use the repository dossier for local findings and the
+parent reconstruction case for cross-repository meaning. Do not add this
+operational ledger to curated concepts. After semantic and coverage updates,
+refresh the owning case checkpoint last; do so after material maintainer turns,
+repository passes, before compaction, and before stopping. A stale checkpoint
+is only a hint: rebuild the frontier from the full case, dossiers, and machine
+ledgers before continuing.
+
 Reconstruction uses the complete pinned Git tree as its enumeration authority.
 After start, operate the CLI-owned coverage ledger through `wfctl knowledge
 reconstruct coverage|read|files|community|surface|surfaces`; never edit its

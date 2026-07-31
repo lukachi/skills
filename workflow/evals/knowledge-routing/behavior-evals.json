@@ -75,6 +75,36 @@
     ]
   },
   {
+    "id": "material-discovery-survives-session",
+    "prompt": "While implementing an active issue, you discover an undocumented invariant, a misleading test fixture, and a possible product implication. Preserve whatever a fresh session will need.",
+    "required": [
+      "uses consequence of information loss rather than a closed finding taxonomy",
+      "records each consequential observation with evidence or missing evidence, implication, scope, and disposition in the owning discovery ledger",
+      "keeps uncertain observations uncertain and preserves later invalidation as lineage",
+      "updates semantic state before refreshing the checkpoint last"
+    ],
+    "forbidden": [
+      "stores full discoveries only in checkpoint prose",
+      "creates an inbox capture for material already owned by the active issue",
+      "turns routine command history into a discovery log"
+    ]
+  },
+  {
+    "id": "clean-session-resume-discovery",
+    "prompt": "I opened a clean agent session in this repository. Resume the active work; I do not know its workflow ID.",
+    "required": [
+      "runs work context in resume mode without requiring an ID",
+      "auto-selects only one bound active record and asks the maintainer when several exist",
+      "reads every required file and discovery entry completely",
+      "verifies the exact claim and code roots before acting"
+    ],
+    "forbidden": [
+      "asks the user for a workflow ID",
+      "selects work from recency, branch name, or a sibling checkout",
+      "resumes from checkpoint prose without reading its semantic owner"
+    ]
+  },
+  {
     "id": "pending-capture-lifecycle",
     "prompt": "A lightweight investigation found a reusable constraint, but no active change or knowledge concept owns it yet.",
     "required": [
@@ -192,6 +222,53 @@
       "uses a percentage to hide pending items",
       "mistakes one completed dossier for whole-project completion",
       "reconstructs state from chat memory"
+    ]
+  },
+  {
+    "id": "reconstruction-clean-session-owner",
+    "prompt": "I opened a clean session in the knowledge repository. Continue the active reconstruction; I do not know its ID.",
+    "required": [
+      "runs reconstruction context in JSON mode without requiring an ID",
+      "auto-selects only one active reconstruction and asks by human outcome when several exist",
+      "reads the complete parent case, every repository dossier, and local binding",
+      "recovers the complete coverage frontier including items absent from prose",
+      "treats a stale checkpoint as a hint and rebuilds state before refreshing it"
+    ],
+    "forbidden": [
+      "selects a case by recency or directory order",
+      "reads only dossier headings or coverage summaries",
+      "copies operational discoveries into curated knowledge",
+      "trusts checkpoint prose after its basis becomes stale"
+    ]
+  },
+  {
+    "id": "knowledge-case-discovery-ownership",
+    "prompt": "During reconstruction we found a repository-local invariant and a cross-repository product implication. Preserve them before compaction.",
+    "required": [
+      "records the local invariant in its repository dossier discovery ledger",
+      "records the cross-repository implication in the parent case discovery ledger",
+      "preserves observation, evidence boundary, implication, scope, and disposition",
+      "updates semantic records before refreshing the reconstruction checkpoint last"
+    ],
+    "forbidden": [
+      "stores both discoveries only in checkpoint prose",
+      "promotes either discovery as truth without adjudication",
+      "uses curated knowledge as a reconstruction scratchpad"
+    ]
+  },
+  {
+    "id": "intake-clean-session-owner",
+    "prompt": "Continue the active raw-intake batch in this clean session; I do not remember the case ID.",
+    "required": [
+      "runs intake case context in JSON mode without requiring an ID",
+      "reads the complete case and recovers every pending or blocked frozen source",
+      "preserves consequential discoveries in the case rather than checkpoint-only prose",
+      "asks by human batch title when several cases are active"
+    ],
+    "forbidden": [
+      "guesses the case from timestamps",
+      "uses QMD snippets as complete source review",
+      "treats the intake case or its discoveries as curated truth"
     ]
   },
   {

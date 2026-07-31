@@ -40,11 +40,15 @@ The agent must never infer another checkout from repository name, branch, Git
 common directory, or spec location. A worktree or branch mismatch blocks
 verification and close until an explicit `wfctl work rebind`.
 
-During discussion, every material change to requirements, constraints,
-alternatives, decisions, scope, risk, questions, or next action is written to
-the owning bundle record, then its checkpoint is refreshed last. On resume, the
-agent inspects that checkpoint and reads every file listed by the current
-context rather than relying on remembered chat.
+During discussion or investigation, every material change and every newly
+learned fact whose loss could cause repeated work, a different decision,
+misunderstanding, or unsafe action is written to the owning bundle record. The
+record's `Discovery ledger` accepts any consequential observation with its
+basis, implication, scope, and destination; it is not restricted to named
+categories. The checkpoint is refreshed last. On resume, the agent discovers
+the one active binding when unambiguous, inspects its checkpoint, and reads
+every file and discovery entry listed by the current context rather than
+relying on remembered chat.
 
 When the completed change updates durable knowledge, review two separate
 results when both changed: the stakeholder-facing product behavior and the

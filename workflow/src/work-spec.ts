@@ -35,8 +35,14 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   const scope = stringValue(metadata.scope) || "leaf";
   const projectOnly = scope === "project";
 
-  if (![2, 3, 4].includes(Number(metadata.workflow_version))) {
-    issues.push("workflow_version must be 2, 3, or 4");
+  if (![2, 3, 4, 5].includes(Number(metadata.workflow_version))) {
+    issues.push("workflow_version must be 2, 3, 4, or 5");
+  }
+  if (
+    Number(metadata.workflow_version) >= 5
+    && !/^# Discovery ledger\s*$/m.test(document.body)
+  ) {
+    issues.push("Discovery ledger section is required");
   }
   if (requireCompleted && metadata.status !== "completed") {
     issues.push("status must be completed");

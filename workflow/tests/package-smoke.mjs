@@ -421,16 +421,16 @@ try {
       join(packaged, "dist/cli.js"),
       "work",
       "context",
-      startedWork.id,
       "--target",
       target,
       "--stage",
-      "shape",
+      "resume",
       "--json",
     ],
     { encoding: "utf8" },
   );
   assert.equal(workContext.status, 0, workContext.stderr || workContext.stdout);
+  assert.equal(JSON.parse(workContext.stdout).id, startedWork.id);
   assert.equal(JSON.parse(workContext.stdout).checkpoints[0].valid, true);
 
   const knowledgeHelp = spawnSync(

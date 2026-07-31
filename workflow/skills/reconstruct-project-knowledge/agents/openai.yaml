@@ -1,4 +1,4 @@
 interface:
   display_name: "Reconstruct Project Knowledge"
   short_description: "Build a verified project baseline from source"
-  default_prompt: "Use $reconstruct-project-knowledge for an explicit baseline or audit, resolve registered source worktrees, account for pinned repositories completely, and keep a human-readable frontier."
+  default_prompt: "Use $reconstruct-project-knowledge to start or safely resume an explicit baseline or audit, resolve exact source worktrees, read every owning record, preserve consequential discoveries, account for pinned repositories completely, and keep a checked frontier."

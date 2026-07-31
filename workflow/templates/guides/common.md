@@ -288,12 +288,16 @@ the living record before continuing.
 18. Run `wfctl work verify`, and archive the honest
     outcome with `wfctl work close`.
 
-A material turn changes a requirement, constraint, alternative, decision,
-scope, evidence, risk, question, or next action. The agent updates mutable
-current sections and appends a proposed/approved/rejected/deferred/superseded
-ledger entry before continuing. After interruption or compaction, it runs
-`wfctl work context` and `wfctl work status`, reads every required bundle file,
-and resumes from recorded state instead of chat memory.
+A material turn may come from discussion or investigation. It changes a
+requirement, constraint, alternative, decision, scope, evidence, risk,
+question, next action, or consequential understanding. The agent preserves new
+information in the owning `Discovery ledger` when losing it could cause
+repeated material investigation, a different choice, misunderstanding, or
+unsafe action; then it updates mutable state and any decision lineage. After
+interruption, compaction, or a clean-session start, it runs `wfctl work context
+--stage resume` without an ID, accepts automatic selection only for one bound
+record, reads every required bundle file completely, and resumes from recorded
+state instead of chat memory.
 
 Partial or abandoned outcomes are valid historical records. They must never be
 relabeled as completed. A completed close also requires a clean bound checkout,

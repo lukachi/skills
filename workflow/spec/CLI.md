@@ -80,6 +80,11 @@ Installed knowledge agents own these commands.
   identities with active and archived intake coverage.
 - `wfctl knowledge case start` freezes explicit raw pathspecs at one full Git
   commit.
+- `wfctl knowledge case context [id]` auto-selects only one active case and
+  returns its complete file, source frontier, discovery validation, and
+  hash-bound checkpoint for clean-session resume.
+- `wfctl knowledge case checkpoint <id>` refreshes current state and the next
+  safe action after semantic case updates.
 - `wfctl knowledge case mark` records complete review of one frozen file and
   its candidate claims.
 - `wfctl knowledge case migrate` converts an active v3 case to conservative v4
@@ -93,6 +98,8 @@ Example:
 
 ```sh
 wfctl knowledge raw inventory
+
+wfctl knowledge case context --json
 
 wfctl knowledge case start world-loop-notes \
   --title "Review world-loop notes" \
@@ -116,6 +123,11 @@ Tracked registry state contains no absolute local paths.
 - `wfctl knowledge reconstruct start` binds every default repository selection
   or an explicit reviewed scope, refreshes Graphify, and creates dossiers and
   complete coverage ledgers.
+- `context [id]` auto-selects only one active reconstruction and returns the
+  exact full-read case, dossiers, local binding, complete coverage frontier,
+  discovery validation, and hash-bound checkpoint.
+- `checkpoint <id>` refreshes current state and the next safe action after the
+  case, dossiers, and coverage have been updated.
 - `coverage`, `files`, and `read` expose outstanding Git inventory and bounded
   pinned source ranges.
 - `community` records Graphify-community review.
@@ -130,6 +142,7 @@ wfctl knowledge reconstruct start project-baseline \
   --title "Reconstruct the current project baseline" \
   --mode baseline
 
+wfctl knowledge reconstruct context --json
 wfctl knowledge reconstruct coverage <case-id>
 wfctl knowledge reconstruct check <case-id>
 wfctl knowledge reconstruct close <case-id> --outcome completed
@@ -161,9 +174,11 @@ Installed agents own these commands.
   a deprecated compatibility alias for `capture add`.
 - `wfctl work start <slug>` creates one project-only, single-leaf, or
   multi-repository bundle in `full`, `slice`, or deliberate `wayfinder` mode.
-- `wfctl work context <id>` inventories the complete bundle and returns the
+- `wfctl work context [id]` inventories the complete bundle and returns the
   exact full-read set plus relevant structured checkpoints for shaping,
-  Wayfinder, implementation, review, or resume.
+  Wayfinder, implementation, review, or resume. When the ID is omitted it
+  selects exactly one active binding; zero records fail explicitly and several
+  records require inspection and a maintainer choice.
 - `wfctl work checkpoint <id>` refreshes the one hash-bound resumable state
   owned by the change or a selected claimed issue after semantic edits.
 - `wfctl work issue create|list|show` operates the dependency graph and
@@ -187,6 +202,7 @@ Example:
 ```sh
 wfctl work start world-loop --title "Implement the world loop" --mode full
 wfctl work status
+wfctl work context --stage resume
 wfctl work context <id> --stage shape
 wfctl work checkpoint <id> --actor "agent:session" --state "Framing is current" --last "Scope reviewed" --next "Request framing approval"
 wfctl work issue list <id>

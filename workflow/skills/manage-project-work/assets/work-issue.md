@@ -1,5 +1,5 @@
 ---
-workflow_version: 2
+workflow_version: 3
 kind: work-issue
 id: "{{ISSUE_ID}}"
 title: "{{TITLE}}"
@@ -41,6 +41,28 @@ Wayfinder issue, state the precise question it resolves instead.
 
 Record relevant project knowledge, approved decisions, repository scope, and
 explicit exclusions. Do not copy the parent specification.
+
+# Discovery ledger
+
+Preserve newly learned information when losing it could make a future session
+repeat material investigation, choose differently, misunderstand the work, or
+act unsafely. Do not use this as a chronological activity log or restrict it to
+a predefined class of findings.
+
+Append one durable block per discovery, replacing the placeholders:
+
+```markdown
+## DISC-NNN — Concise title
+
+- **Observation:** What was learned and its uncertainty.
+- **Evidence:** Direct basis or missing evidence.
+- **Implication:** What this changes.
+- **Scope:** Where and for how long it applies.
+- **Disposition:** Its current owner or next destination in plain language.
+```
+
+Preserve an invalidated entry and update its disposition rather than deleting
+it.
 
 # Verification
 

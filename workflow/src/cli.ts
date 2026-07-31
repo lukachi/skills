@@ -36,11 +36,13 @@ import { installSkillsTransactional } from "./skill-installer.js";
 import {
   beginIntakeCase,
   closeIntakeCase,
+  intakeContext,
   inspectIntakeCase,
   inventoryRaw,
   markIntakeSource,
   migrateIntakeCase,
   recordIntakeProbe,
+  updateIntakeCheckpoint,
 } from "./intake.js";
 import { writeClaimLedger } from "./claim-ledger.js";
 import { hashKnowledgeConcept, validateKnowledge } from "./knowledge.js";
@@ -56,6 +58,7 @@ import { initializeGitRepository, isGitRepository } from "./git.js";
 import {
   beginProjectReconstruction,
   closeProjectReconstruction,
+  reconstructionContext,
   inspectProjectReconstruction,
   inspectReconstructionCoverage,
   markReconstructionCommunity,
@@ -63,6 +66,7 @@ import {
   readReconstructionSource,
   recordReconstructionSurface,
   reviewReconstructionSurfaces,
+  updateReconstructionCheckpoint,
 } from "./reconstruction.js";
 import type {
   CoverageState,
@@ -587,7 +591,7 @@ function workCommand() {
           } else {
             for (const result of results) {
               process.stdout.write(
-                `${result.valid ? "VALID" : "INVALID"} ${result.id}\n`
+                `${result.valid ? "VALID" : "INVALID"} ${result.id} — ${result.title}\n`
                   + `Scope: ${result.scope}\n`
                   + `Code roots: ${
                     result.codeRoots.length > 0 ? result.codeRoots.join(", ") : "none"
@@ -859,9 +863,9 @@ function workCheckpointCommand() {
 function workContextCommand() {
   return new Command()
     .description(
-      "List the exact bundle files and code context an agent must read for one stage.",
+      "Discover and list the exact bundle files and code context an agent must read for one stage.",
     )
-    .arguments("<id:string>")
+    .arguments("[id:string]")
     .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", {
       default: ".",
     })
@@ -882,7 +886,8 @@ function workContextCommand() {
         return;
       }
       process.stdout.write(
-        `Work bundle: ${result.root}\n`
+        `Work: ${result.id}\n`
+          + `Work bundle: ${result.root}\n`
           + `Stage: ${result.stage}${result.selectedIssue ? ` (${result.selectedIssue})` : ""}\n`
           + `Mode: ${result.mode}${result.mapStatus ? `; map ${result.mapStatus}` : ""}\n`
           + `Frontier: ${result.frontier.length > 0 ? result.frontier.join(", ") : "none"}\n`,
@@ -1462,6 +1467,106 @@ function knowledgeReconstructCommand() {
         }),
     )
     .command(
+      "context",
+      new Command()
+        .description(
+          "Discover the active reconstruction and emit the complete clean-session resume context.",
+        )
+        .arguments("[id:string]")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--json", "Print machine-readable JSON with every outstanding coverage item.")
+        .action(async (options, id) => {
+          const result = await reconstructionContext(options.target, id);
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Reconstruction: ${result.id} — ${result.title}\n`
+                + `Mode: ${result.mode}\n`
+                + `Root: ${result.root}\n`
+                + `Checkpoint: ${
+                  result.checkpoint
+                    ? `${result.checkpoint.valid ? "current" : "stale/invalid"}; `
+                      + `${result.checkpoint.status}/${result.checkpoint.stage}`
+                    : "legacy record without structured checkpoint"
+                }\n`,
+            );
+            if (result.checkpoint) {
+              process.stdout.write(
+                `Current: ${result.checkpoint.currentState || "missing"}\n`
+                  + `Last: ${result.checkpoint.lastCompleted || "missing"}\n`
+                  + `Next: ${result.checkpoint.nextAction || "missing"}\n`
+                  + `Blockers: ${
+                    result.checkpoint.blockers.length > 0
+                      ? result.checkpoint.blockers.join(", ")
+                      : "none"
+                  }\n`,
+              );
+            }
+            process.stdout.write("Required complete reads/state:\n");
+            for (const file of result.requiredFiles) {
+              process.stdout.write(
+                `- ${file.path} [${file.role}; ${file.bytes} bytes; ${file.sha256.slice(0, 12)}]\n`,
+              );
+            }
+            process.stdout.write("Complete coverage frontier:\n");
+            for (const summary of result.coverage) {
+              printCoverageSummary(summary, true);
+            }
+            if (result.validationIssues.length > 0) {
+              process.stdout.write("Resume validation issues:\n");
+              for (const issue of result.validationIssues) {
+                process.stdout.write(`- ${issue}\n`);
+              }
+            }
+          }
+          if (result.validationIssues.length > 0) {
+            process.exitCode = 2;
+          }
+        }),
+    )
+    .command(
+      "checkpoint",
+      new Command()
+        .description("Refresh the resumable reconstruction checkpoint after material progress.")
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--actor <identity:string>", "Agent or maintainer identity.", { required: true })
+        .option("--status <status:string>", "active or blocked.", { default: "active" })
+        .option(
+          "--stage <stage:string>",
+          "setup, repository-analysis, reconciliation, promotion, or review.",
+          { required: true },
+        )
+        .option("--state <text:string>", "Concise current reconstruction state.", { required: true })
+        .option("--last <text:string>", "Last material action completed.", { required: true })
+        .option("--next <text:string>", "Exact next action for a fresh session.", { required: true })
+        .option("--blocker <text:string>", "Current blocker; repeat as needed.", { collect: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await updateReconstructionCheckpoint({
+            target: options.target,
+            id,
+            status: parseKnowledgeSessionStatus(options.status),
+            stage: parseReconstructionCheckpointStage(options.stage),
+            actor: options.actor,
+            currentState: options.state,
+            lastCompleted: options.last,
+            nextAction: options.next,
+            blockers: collectedStrings(options.blocker),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Reconstruction checkpoint refreshed: ${result.status}/${result.stage}\n`
+                + `Current: ${result.currentState}\n`
+                + `Next: ${result.nextAction}\n`,
+            );
+          }
+        }),
+    )
+    .command(
       "coverage",
       new Command()
         .description(
@@ -1975,6 +2080,109 @@ function knowledgeCaseCommand() {
         }),
     )
     .command(
+      "context",
+      new Command()
+        .description(
+          "Discover the active raw-intake case and emit the complete clean-session resume context.",
+        )
+        .arguments("[id:string]")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await intakeContext(options.target, id);
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Raw-intake case: ${result.id} — ${result.title}\n`
+                + `Root: ${result.root}\n`
+                + `Sources: ${result.reviewed}/${result.files} reviewed; `
+                + `${result.pendingSources.length} pending; ${result.blockedSources.length} blocked\n`
+                + `Checkpoint: ${
+                  result.checkpoint
+                    ? `${result.checkpoint.valid ? "current" : "stale/invalid"}; `
+                      + `${result.checkpoint.status}/${result.checkpoint.stage}`
+                    : "legacy record without structured checkpoint"
+                }\n`,
+            );
+            if (result.checkpoint) {
+              process.stdout.write(
+                `Current: ${result.checkpoint.currentState || "missing"}\n`
+                  + `Last: ${result.checkpoint.lastCompleted || "missing"}\n`
+                  + `Next: ${result.checkpoint.nextAction || "missing"}\n`
+                  + `Blockers: ${
+                    result.checkpoint.blockers.length > 0
+                      ? result.checkpoint.blockers.join(", ")
+                      : "none"
+                  }\n`,
+              );
+            }
+            process.stdout.write("Required complete reads:\n");
+            for (const file of result.requiredFiles) {
+              process.stdout.write(
+                `- ${file.path} [${file.role}; ${file.bytes} bytes; ${file.sha256.slice(0, 12)}]\n`,
+              );
+            }
+            if (result.pendingSources.length > 0) {
+              process.stdout.write("Pending frozen sources:\n");
+              for (const path of result.pendingSources) {
+                process.stdout.write(`- ${path}\n`);
+              }
+            }
+            if (result.validationIssues.length > 0) {
+              process.stdout.write("Resume validation issues:\n");
+              for (const issue of result.validationIssues) {
+                process.stdout.write(`- ${issue}\n`);
+              }
+            }
+          }
+          if (result.validationIssues.length > 0) {
+            process.exitCode = 2;
+          }
+        }),
+    )
+    .command(
+      "checkpoint",
+      new Command()
+        .description("Refresh the resumable raw-intake checkpoint after material progress.")
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--actor <identity:string>", "Agent or maintainer identity.", { required: true })
+        .option("--status <status:string>", "active or blocked.", { default: "active" })
+        .option(
+          "--stage <stage:string>",
+          "source-review, adjudication, promotion, omission-audit, or review.",
+          { required: true },
+        )
+        .option("--state <text:string>", "Concise current intake state.", { required: true })
+        .option("--last <text:string>", "Last material action completed.", { required: true })
+        .option("--next <text:string>", "Exact next action for a fresh session.", { required: true })
+        .option("--blocker <text:string>", "Current blocker; repeat as needed.", { collect: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await updateIntakeCheckpoint({
+            target: options.target,
+            id,
+            status: parseKnowledgeSessionStatus(options.status),
+            stage: parseIntakeCheckpointStage(options.stage),
+            actor: options.actor,
+            currentState: options.state,
+            lastCompleted: options.last,
+            nextAction: options.next,
+            blockers: collectedStrings(options.blocker),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Raw-intake checkpoint refreshed: ${result.status}/${result.stage}\n`
+                + `Current: ${result.currentState}\n`
+                + `Next: ${result.nextAction}\n`,
+            );
+          }
+        }),
+    )
+    .command(
       "mark",
       new Command()
         .description("Record the complete review result for one frozen source file.")
@@ -2340,6 +2548,47 @@ function parseCheckpointStatus(value: string): WorkCheckpointStatus {
     );
   }
   return value as WorkCheckpointStatus;
+}
+
+function parseKnowledgeSessionStatus(value: string): "active" | "blocked" {
+  if (value !== "active" && value !== "blocked") {
+    throw new Error(`Invalid knowledge-session status "${value}"; expected active or blocked`);
+  }
+  return value;
+}
+
+function parseReconstructionCheckpointStage(
+  value: string,
+): "setup" | "repository-analysis" | "reconciliation" | "promotion" | "review" {
+  if (![
+    "setup",
+    "repository-analysis",
+    "reconciliation",
+    "promotion",
+    "review",
+  ].includes(value)) {
+    throw new Error(
+      `Invalid reconstruction checkpoint stage "${value}"; expected setup, repository-analysis, reconciliation, promotion, or review`,
+    );
+  }
+  return value as "setup" | "repository-analysis" | "reconciliation" | "promotion" | "review";
+}
+
+function parseIntakeCheckpointStage(
+  value: string,
+): "source-review" | "adjudication" | "promotion" | "omission-audit" | "review" {
+  if (![
+    "source-review",
+    "adjudication",
+    "promotion",
+    "omission-audit",
+    "review",
+  ].includes(value)) {
+    throw new Error(
+      `Invalid intake checkpoint stage "${value}"; expected source-review, adjudication, promotion, omission-audit, or review`,
+    );
+  }
+  return value as "source-review" | "adjudication" | "promotion" | "omission-audit" | "review";
 }
 
 function parseCaptureOutcome(value: string): CaptureOutcome {

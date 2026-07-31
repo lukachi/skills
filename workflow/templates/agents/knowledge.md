@@ -61,6 +61,23 @@ accepted intent. Never edit the machine-owned coverage JSON manually.
 Optional raw, documentation, and change records supplement this process but
 are never assumed to exist or promoted without their own authority.
 
+For reconstruction and raw intake, the active case is the session-memory
+owner; curated `knowledge/` pages are not scratchpads. On a fresh session or
+after compaction, run `wfctl knowledge reconstruct context --json` or `wfctl
+knowledge case context --json` without an ID. Auto-select only one active case;
+with several, identify the intended outcome from human titles and ask the
+maintainer if ambiguity remains. Read every returned case and dossier in full,
+plus the complete reconstruction coverage frontier and local binding.
+
+Persist consequential discoveries immediately in the owning case or dossier
+using `DISC-NNN` with Observation, Evidence, Implication, Scope, and
+Disposition. Repository-local discoveries stay in their dossier;
+cross-repository discoveries belong in the parent case. Never put this working
+ledger in curated knowledge. Refresh the owning checkpoint after semantic and
+coverage changes, after material maintainer turns, before compaction, and
+before stopping. A stale checkpoint is a hint only; rebuild the frontier from
+the complete durable records before continuing.
+
 Use `shape-project-direction` for an explicitly selected broad initiative whose
 dependent decisions are not yet bounded enough for implementation planning.
 Keep one Wayfinder map and its question issues in the same central bundle later
@@ -82,4 +99,9 @@ For significant product, architecture, or decision discussion, run
 `--leaf` only when implementation is genuinely scoped across exact source
 checkouts. `wfctl work status` is the authority for every code root and bundle;
 `wfctl work context` enumerates the exact files and checkpoints required for
-each stage. After material record edits, refresh the owning checkpoint last.
+each stage. On an unspecified resume, invoke `wfctl work context --stage
+resume` without an ID; auto-select only one active record, otherwise ask the
+maintainer which human outcome to resume. After material discussion or
+investigation, preserve consequential new understanding in the owning
+`Discovery ledger`, update semantic state, and refresh the owning checkpoint
+last.

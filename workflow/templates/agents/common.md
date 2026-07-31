@@ -30,10 +30,18 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   human meaning, evidence, and recommendation; after the maintainer chooses,
   execute the corresponding commands yourself.
 - For significant multi-turn work, create the central bundle early. After every
-  material maintainer turn, update the owning semantic record and refresh its
-  structured checkpoint last. On resume, ask `wfctl work context` for the
-  checkpoint and stage-specific inventory, read every required file completely,
-  and recover from the bundle and exact claim rather than conversation memory.
+  material maintainer turn or agent investigation cycle, preserve
+  consequential new understanding in the owning record's broad `Discovery
+  ledger`, update the affected semantic state, and refresh its structured
+  checkpoint last. The preservation trigger is consequence of information
+  loss, not a fixed category of findings.
+- On resume, compaction, or a clean-session start, run `wfctl work context
+  --stage resume` without an ID. Auto-select only when exactly one active record
+  is bound to the current checkout. If several exist, inspect `wfctl work
+  status` and ask the maintainer which human outcome to resume; never guess.
+  Read every required file and discovery entry completely, then recover from
+  the bundle, current checkpoint, and exact claim rather than conversation
+  memory.
 - Use `changes/inbox/` only for pending captures that have no active or curated
   owner. Resolve each capture to existing destinations or discard it with a
   reason; never duplicate active progress there.

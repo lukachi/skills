@@ -22,8 +22,10 @@ Run QMD from the configured knowledge repository for knowledge retrieval. Do
 not query `raw/` or `intake/` to fill gaps in current project truth.
 
 After `wfctl work start`, run `wfctl work status <id>` and the stage-specific
-`wfctl work context <id>` before any code edit,
-after changing directories, after resuming, and before verification or close.
+`wfctl work context <id>` before any code edit, after changing directories,
+and before verification or close. On a clean session or unspecified resume,
+start with `wfctl work context --stage resume` without an ID; it may select only
+one bound active record and otherwise requires a maintainer choice.
 Use only the reported `Code roots` for their respective code operations and
 the reported `Spec` only for record updates. Refresh the owning change or issue
 checkpoint after every material edit. A worktree is a distinct
@@ -33,9 +35,11 @@ before any code edit.
 
 Keep one canonical change bundle in the knowledge repository. `change.md` owns
 the parent contract, optional `map.md` owns Wayfinder lineage, and `issues/`
-owns bounded progress. Update it after every material maintainer turn, claim
-one frontier issue from the exact leaf before implementation, then refresh that
-record's checkpoint last. Verify the whole bundle with `verify-project-work`,
+owns bounded progress. After material discussion or investigation, preserve
+consequential new understanding in the current owner's `Discovery ledger`,
+update its semantic state, and refresh that record's checkpoint last. Claim one
+frontier issue from the exact leaf before implementation. Verify the whole
+bundle with `verify-project-work`,
 promote durable truth separately, then archive the directory intact.
 
 During promotion, keep linked product and engineering views separate. Invoke

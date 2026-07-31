@@ -11,7 +11,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { findDistributionRoot } from "./assets.js";
 import {
   commandFailure,
@@ -52,6 +52,19 @@ import {
 } from "./reconstruction-coverage.js";
 import { resolveReconstructionLeaves } from "./repository-registry.js";
 import { compileClaimLedger } from "./claim-ledger.js";
+import { discoveryLedgerIssues } from "./discovery-ledger.js";
+import {
+  inspectSessionCheckpoint,
+  selectActiveCase,
+  sessionBasis,
+  sessionFile,
+  writeSessionCheckpoint,
+  type KnowledgeSessionCheckpointInput,
+  type KnowledgeSessionCheckpointSummary,
+  type KnowledgeSessionFile,
+  type KnowledgeSessionStatus,
+  type RelatedSessionContent,
+} from "./knowledge-session.js";
 import type { WorkOutcome } from "./types.js";
 import {
   isRecord,
@@ -60,6 +73,14 @@ import {
 } from "./work-spec.js";
 
 const RECONSTRUCTION_VERSION = 3;
+const RECONSTRUCTION_SESSION_VERSION = 1;
+const RECONSTRUCTION_CHECKPOINT_STAGES = [
+  "setup",
+  "repository-analysis",
+  "reconciliation",
+  "promotion",
+  "review",
+] as const;
 const FINAL_REVIEW_STATES = new Set(["reviewed", "not-available", "not-relevant"]);
 const CANDIDATE_DISPOSITIONS = new Set([
   "confirmed",
@@ -163,6 +184,30 @@ export interface CloseReconstructionResult {
 export interface ReconstructionCoverageInspection {
   id: string;
   repositories: CoverageSummary[];
+}
+
+export interface ReconstructionContext {
+  id: string;
+  title: string;
+  mode: string;
+  root: string;
+  requiredFiles: KnowledgeSessionFile[];
+  coverage: CoverageSummary[];
+  checkpoint?: KnowledgeSessionCheckpointSummary;
+  validationIssues: string[];
+}
+
+export interface UpdateReconstructionCheckpointOptions {
+  target: string;
+  id: string;
+  status: KnowledgeSessionStatus;
+  stage: typeof RECONSTRUCTION_CHECKPOINT_STAGES[number];
+  actor: string;
+  currentState: string;
+  lastCompleted: string;
+  nextAction: string;
+  blockers?: string[];
+  now?: Date;
 }
 
 export interface MarkReconstructionFilesOptions {
@@ -408,6 +453,18 @@ export async function beginProjectReconstruction(
       encoding: "utf8",
       flag: "wx",
     });
+    await updateReconstructionCheckpoint({
+      target,
+      id,
+      status: "active",
+      stage: "setup",
+      actor: "system:wfctl",
+      currentState: "Reconstruction case created from exact clean repository revisions.",
+      lastCompleted: "Repository dossiers, coverage ledgers, and local checkout bindings were frozen.",
+      nextAction: "Read the complete case and every dossier, then inspect the full coverage frontier.",
+      blockers: [],
+      now,
+    });
   } catch (error) {
     await rm(directory, { recursive: true, force: true });
     try {
@@ -433,6 +490,111 @@ export async function beginProjectReconstruction(
       trackedFiles: coverageLedgers[index]!.manifest.files.length,
     })),
   };
+}
+
+export async function reconstructionContext(
+  targetInput: string,
+  requestedId?: string,
+): Promise<ReconstructionContext> {
+  const target = await requireKnowledgeRepository(targetInput);
+  const selected = await selectActiveCase(
+    join(target, "reconstruction/active"),
+    requestedId,
+    "reconstruction",
+  );
+  const document = parseWorkSpec(await readFile(selected.path, "utf8"));
+  const session = await reconstructionSessionState(target, selected.id, document);
+  const issues: string[] = [];
+  const sessionVersion = Number(document.metadata.session_record_version);
+  if (sessionVersion === RECONSTRUCTION_SESSION_VERSION) {
+    issues.push(...discoveryLedgerIssues(document.body, "case.md", true));
+  }
+  for (const dossier of session.dossiers) {
+    const parsed = parseWorkSpec(dossier.content.toString("utf8"));
+    if (Number(parsed.metadata.session_record_version) === RECONSTRUCTION_SESSION_VERSION) {
+      issues.push(...discoveryLedgerIssues(parsed.body, dossier.path, true));
+    }
+  }
+  const checkpoint = inspectSessionCheckpoint(
+    document,
+    session.basis,
+    RECONSTRUCTION_CHECKPOINT_STAGES,
+    sessionVersion === RECONSTRUCTION_SESSION_VERSION,
+  );
+  if (checkpoint) {
+    issues.push(...checkpoint.issues);
+  }
+  const bindingIssues: string[] = [];
+  const binding = await readBinding(target, selected.id, bindingIssues);
+  if (binding) {
+    if (binding.caseId !== selected.id || binding.knowledgeRoot !== target) {
+      bindingIssues.push("local reconstruction binding does not match this knowledge checkout");
+    }
+    const durableRepositories = recordArray(document.metadata.repositories);
+    for (const repository of durableRepositories) {
+      const repositoryId = stringValue(repository.repository);
+      const local = binding.repositories.find((entry) => entry.repository === repositoryId);
+      if (
+        !local
+        || local.commit !== stringValue(repository.commit)
+        || local.worktreeId !== stringValue(repository.worktree_id)
+      ) {
+        bindingIssues.push(`${repositoryId}: local checkout binding does not match the durable case`);
+      }
+    }
+    for (const local of binding.repositories) {
+      if (!durableRepositories.some((entry) => entry.repository === local.repository)) {
+        bindingIssues.push(`${local.repository}: local binding is outside the durable case scope`);
+      }
+    }
+  }
+  issues.push(...bindingIssues);
+  return {
+    id: selected.id,
+    title: stringValue(document.metadata.title) || selected.title,
+    mode: stringValue(document.metadata.mode),
+    root: dirname(selected.path),
+    requiredFiles: session.files,
+    coverage: session.coverage,
+    ...(checkpoint ? { checkpoint } : {}),
+    validationIssues: [...new Set(issues)].sort(),
+  };
+}
+
+export async function updateReconstructionCheckpoint(
+  options: UpdateReconstructionCheckpointOptions,
+): Promise<KnowledgeSessionCheckpointSummary> {
+  const target = await requireKnowledgeRepository(options.target);
+  const casePath = reconstructionCasePath(target, "active", options.id);
+  const document = parseWorkSpec(await readFile(casePath, "utf8"));
+  if (Number(document.metadata.session_record_version) !== RECONSTRUCTION_SESSION_VERSION) {
+    throw new Error(
+      "This legacy reconstruction has no resumable session contract; preserve it as-is or restart it with the current workflow.",
+    );
+  }
+  const session = await reconstructionSessionState(target, options.id, document);
+  const checkpointInput: KnowledgeSessionCheckpointInput = {
+    status: options.status,
+    stage: options.stage,
+    actor: options.actor,
+    currentState: options.currentState,
+    lastCompleted: options.lastCompleted,
+    nextAction: options.nextAction,
+    blockers: options.blockers ?? [],
+    ...(options.now ? { now: options.now } : {}),
+  };
+  writeSessionCheckpoint(document, checkpointInput, session.basis);
+  await writeFile(casePath, serializeWorkSpec(document), "utf8");
+  const summary = inspectSessionCheckpoint(
+    document,
+    sessionBasis(document, session.related),
+    RECONSTRUCTION_CHECKPOINT_STAGES,
+    true,
+  );
+  if (!summary) {
+    throw new Error("Failed to persist reconstruction checkpoint");
+  }
+  return summary;
 }
 
 export async function inspectReconstructionCoverage(
@@ -624,6 +786,15 @@ export async function inspectProjectReconstructionReceipt(
     lifecycle,
     allowPendingPromotionValidation,
   );
+  if (
+    document.metadata.session_record_version !== undefined
+    && document.metadata.session_record_version !== RECONSTRUCTION_SESSION_VERSION
+  ) {
+    issues.push(`session_record_version must be ${RECONSTRUCTION_SESSION_VERSION}`);
+  }
+  if (document.metadata.session_record_version === RECONSTRUCTION_SESSION_VERSION) {
+    issues.push(...discoveryLedgerIssues(document.body, "case.md", true));
+  }
   issues.push(
     ...await supplementalInputIssues(target, document.metadata, lifecycle),
   );
@@ -861,6 +1032,19 @@ export async function closeProjectReconstruction(
   document.metadata.outcome = options.outcome;
   document.metadata.closed_at = now.toISOString();
   document.metadata.updated_at = now.toISOString();
+  if (document.metadata.session_record_version === RECONSTRUCTION_SESSION_VERSION) {
+    const session = await reconstructionSessionState(target, options.id, document);
+    writeSessionCheckpoint(document, {
+      status: "complete",
+      stage: "review",
+      actor: "system:wfctl",
+      currentState: `Reconstruction archived with outcome ${options.outcome}.`,
+      lastCompleted: "The reconstruction close gate recorded its honest outcome.",
+      nextAction: "No active reconstruction continuation remains; use the archive as an audit trail.",
+      blockers: [],
+      now,
+    }, session.basis);
+  }
   await mkdir(dirname(archivePath), { recursive: true });
   await rename(directory, archivePath);
   try {
@@ -1196,6 +1380,15 @@ function dossierIssues(
   if (metadata.reconstruction_repository_version !== 2) {
     issues.push(`${id}: reconstruction_repository_version must be 2`);
   }
+  if (
+    metadata.session_record_version !== undefined
+    && metadata.session_record_version !== RECONSTRUCTION_SESSION_VERSION
+  ) {
+    issues.push(`${id}: session_record_version must be ${RECONSTRUCTION_SESSION_VERSION}`);
+  }
+  if (metadata.session_record_version === RECONSTRUCTION_SESSION_VERSION) {
+    issues.push(...discoveryLedgerIssues(body, `${id}: dossier`, true));
+  }
   if (metadata.status !== "reviewed") {
     issues.push(`${id}: dossier status must be reviewed`);
   }
@@ -1393,6 +1586,71 @@ async function readBinding(
     );
     return undefined;
   }
+}
+
+async function reconstructionSessionState(
+  target: string,
+  id: string,
+  document: ReturnType<typeof parseWorkSpec>,
+): Promise<{
+  basis: string;
+  related: RelatedSessionContent[];
+  dossiers: RelatedSessionContent[];
+  files: KnowledgeSessionFile[];
+  coverage: CoverageSummary[];
+}> {
+  const caseDirectory = dirname(reconstructionCasePath(target, "active", id));
+  const caseContent = serializeWorkSpec(document);
+  const related: RelatedSessionContent[] = [];
+  const dossiers: RelatedSessionContent[] = [];
+  const files: KnowledgeSessionFile[] = [
+    sessionFile(relative(target, join(caseDirectory, "case.md")), "case-full-read", caseContent),
+  ];
+  const coverage: CoverageSummary[] = [];
+  for (const repository of recordArray(document.metadata.repositories)) {
+    const dossierPath = resolveCaseFile(caseDirectory, stringValue(repository.dossier));
+    const dossierContent = await readFile(dossierPath);
+    const dossierRelative = relative(target, dossierPath);
+    const dossier = { path: dossierRelative, content: dossierContent };
+    dossiers.push(dossier);
+    related.push(dossier);
+    files.push(sessionFile(dossierRelative, "repository-dossier-full-read", dossierContent));
+
+    const coveragePath = resolveCaseJson(caseDirectory, stringValue(repository.coverage));
+    const coverageContent = await readFile(coveragePath);
+    const coverageRelative = relative(target, coveragePath);
+    related.push({ path: coverageRelative, content: coverageContent });
+    files.push(sessionFile(
+      coverageRelative,
+      "machine-coverage-read-via-context-json",
+      coverageContent,
+    ));
+    coverage.push(
+      summarizeReconstructionCoverage(
+        JSON.parse(coverageContent.toString("utf8")) as ReconstructionCoverageLedger,
+      ),
+    );
+  }
+  const bindingPath = reconstructionBindingPath(target, id);
+  try {
+    const bindingContent = await readFile(bindingPath);
+    files.push(sessionFile(
+      relative(target, bindingPath),
+      "local-checkout-binding-full-read",
+      bindingContent,
+    ));
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      throw error;
+    }
+  }
+  return {
+    basis: sessionBasis(document, related),
+    related,
+    dossiers,
+    files,
+    coverage,
+  };
 }
 
 interface ReconstructionCoverageContext {

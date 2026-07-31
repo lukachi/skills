@@ -46,35 +46,77 @@ Use the returned bundle in knowledge for records and only the returned code
 roots for implementation. Never create a competing spec or issue tracker in a
 leaf.
 
-## Persist the conversation
+## Persist material change and discovery
 
-A turn is material when it changes a requirement, constraint, idea,
-alternative, decision, rejection, deferral, scope boundary, evidence, risk,
-question, or next action. Before continuing after such a turn, first update the
-owning semantic record, then refresh its checkpoint last:
+A turn is material whether it comes from the maintainer or the agent. It is
+material when it changes a requirement, constraint, idea, alternative,
+decision, rejection, deferral, scope boundary, evidence, risk, question, next
+action, or the agent's understanding of the work.
+
+Before continuing, apply this preservation test:
+
+> If this newly learned information disappeared, could a fresh session repeat
+> material investigation, choose differently, misunderstand the work, or act
+> unsafely?
+
+If yes, append a complete entry to the owning record's `Discovery ledger`.
+Record the observation, evidence or missing evidence, implication, applicable
+scope or lifetime, and current disposition. Do not constrain discoveries to a
+fixed taxonomy. Use the claimed issue during execution, `change.md` during
+shaping/direct work/final review, or a linked artifact when the supporting
+material is too large; the owning ledger must link that artifact. If the
+discovery changes parent scope, acceptance, or decisions, update `change.md`
+as well. Preserve invalidated discoveries with a corrected disposition rather
+than erasing them.
+
+Then update the rest of the semantic record and checkpoint:
 
 1. append a concise proposed, approved, rejected, deferred, or superseded
-   ledger entry;
-2. update affected current state, scope, acceptance, issues, decisions, and
-   evidence;
-3. preserve rationale without copying the chat transcript;
-4. run `wfctl work checkpoint <id>` for bundle-level discussion, or add
+   decision-ledger entry when a choice changed;
+2. update affected current state, scope, acceptance, issues, decisions,
+   progress, evidence, and discovery implications;
+3. preserve rationale without copying the chat transcript or turning the
+   discovery ledger into an activity log;
+4. run `wfctl work checkpoint <id>` for bundle-level work, or add
    `--issue <issue-id>` for a claimed issue. Supply current state, last
    completed action, exact next action, blockers, and actor.
+
+The checkpoint may mention a discovery ID and its effect on the frontier, but
+must not duplicate the discovery. If useful material has no active or curated
+owner, follow the pending-capture route instead.
+
+New bundle schemas require the ledger section. When an entry exists, workflow
+context validates its stable `DISC-*` ID and non-empty observation, evidence,
+implication, scope, and disposition. Fix malformed entries before continuing;
+do not satisfy the gate with placeholders.
 
 The checkpoint hash binds the record after those edits. Never edit its YAML by
 hand. If any owned record changes afterward, `wfctl work context` reports the
 checkpoint stale and the agent must refresh it before claiming or closing work.
 
-After compaction or interruption, run context/status, read every required file
-in full, inspect the checkpoint shown first, and resume from recorded state and
-exact worktree claims. A checkpoint locates the frontier; it never replaces the
-required full reads. Never reconstruct the task from conversation memory.
+After compaction, interruption, or a clean-session start, first run `wfctl work
+context --stage resume` without an ID. It auto-selects only when exactly one
+active record is bound to the current checkout. If none exists, do not invent
+one. If several exist, run `wfctl work status`, present their human outcomes,
+and ask the maintainer which one to resume; never guess from recency, branch, or
+directory name.
+
+For the selected record, inspect status and the reported checkpoints, then
+read every required file completely, including the entire discovery ledger,
+before acting. Continue only in the exact reported code roots and existing
+claim. If a binding or checkpoint is invalid, stop and reconcile it rather
+than reconstructing state from chat memory. A checkpoint locates the frontier;
+it never replaces the required full reads.
 
 If an upgraded legacy bundle has no structured checkpoint, read its current
 record and former Progress/Handoff sections completely, then run `wfctl work
 checkpoint` once to adopt the new model. Preserve the old prose as lineage, but
 do not maintain a second resume state afterward.
+
+If a pre-ledger bundle has no `Discovery ledger`, do not fabricate past
+discoveries. Add the section when material work next changes that owner and
+preserve new discoveries from that point forward; old bundle versions remain
+readable for compatibility.
 
 ## Route the active bundle
 

@@ -1,5 +1,6 @@
 ---
 intake_case_version: 4
+session_record_version: 1
 id: "<case-id>"
 title: "<bounded topic>"
 status: active
@@ -27,6 +28,16 @@ omission_audit:
   result: pending
   notes: []
   probes: []
+checkpoint:
+  status: active
+  stage: source-review
+  actor: system:wfctl
+  current_state: Intake case created from frozen Git blobs.
+  last_completed: Exact raw scope was frozen into the source ledger.
+  next_action: Read every frozen source completely and classify its atomic candidates.
+  blockers: []
+  updated_at: "<ISO-8601>"
+  basis_sha256: "<sha256>"
 ---
 
 # Question
@@ -97,6 +108,15 @@ Preserve atomic conflicting accounts through claim relations. Record asserted
 and effective time when known. Capture order and file order do not establish
 truth. If independent evidence and maintainer authority cannot resolve the
 conflict, keep the candidate unresolved.
+
+# Discovery ledger
+
+Persist consequential review information as soon as losing it would make a
+later session repeat work, omit a condition, or route a candidate differently.
+Use `DISC-NNN — title` headings with non-empty `Observation`, `Evidence`,
+`Implication`, `Scope`, and `Disposition` fields. Raw locations may identify
+what triggered the discovery, but they are never authoritative evidence. This
+ledger remains operational case memory and is not curated truth.
 
 # Promotion
 
