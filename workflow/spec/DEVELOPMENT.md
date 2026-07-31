@@ -76,7 +76,8 @@ The package includes:
 - numbered user guides under `docs/`;
 - normative contracts under `spec/`;
 - bundled CLI under `dist/`;
-- rules, skills, templates, and eval corpora.
+- rules, skills, templates, and eval corpora;
+- third-party provenance, pinned source mappings, and retained licenses.
 
 The package is the only canonical distribution source. Do not make consumer
 repositories fetch mutable workflow assets from a branch.
@@ -115,28 +116,36 @@ reconstruction, and durable project research.
 The pinned `skills` CLI installs independent copies in each selected agent's
 native location. `wfctl` must not create cross-agent symlinks.
 
-## Upstream skill influences
+## Upstream skill derivations
 
-Third-party skill suites are design inputs, not runtime dependencies or a
-second consumer workflow. Pin the exact reviewed upstream revision under
-`vendor/`, retain its license, and document the local skills influenced by the
-review. Integrate selected behavior deliberately into wfctl's own bundle,
-commands, rules, tests, and skills. Consumers must never fetch mutable upstream
-prompts during installation or maintain two competing issue trackers.
+Some third-party skills are direct modified sources; others supply only a
+bounded behavior or vocabulary. State that relationship precisely instead of
+flattening both into “inspiration.” They remain source inputs, not mutable
+runtime dependencies or a second consumer workflow.
 
-When refreshing an influence:
+For every direct derivation:
+
+- pin the exact reviewed upstream revision and source path under `vendor/`;
+- record retained and modified behavior in the machine-readable mapping;
+- retain the upstream license once under `vendor/` and keep the detailed
+  mapping in `THIRD_PARTY.md` instead of duplicating notices across skills;
+- describe the relationship in `THIRD_PARTY.md` and the user skill guide;
+- install only the integrated local skill, never an ambiguous parallel tracker.
+
+When refreshing a derivation or influence:
 
 1. inspect the complete relevant upstream skills and references;
 2. update the pinned revision and review scope;
 3. preserve wfctl ownership, knowledge authority, and worktree invariants;
-4. adapt useful behavior instead of overwriting local skills wholesale;
+4. update the local derivation deliberately instead of overwriting it from
+   mutable upstream;
 5. rerun deterministic and black-box behavior verification.
 
 ## Documentation ownership
 
 - `README.md` is a short project introduction and route map.
 - `IDEA.md` explains purpose, method, goals, and non-goals.
-- `docs/01…07` is the sequential user journey.
+- `docs/01…08` is the sequential user journey.
 - `spec/` owns normative implementation behavior.
 - installed `PROJECT_WORKFLOW.md` owns consumer-local operating guidance.
 

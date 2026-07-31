@@ -6945,7 +6945,7 @@ var WORKFLOW_VERSION, CONFIG_SCHEMA_VERSION, STATE_SCHEMA_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    WORKFLOW_VERSION = "0.7.0";
+    WORKFLOW_VERSION = "0.7.1";
     CONFIG_SCHEMA_VERSION = 1;
     STATE_SCHEMA_VERSION = 1;
   }

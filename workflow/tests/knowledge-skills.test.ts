@@ -211,6 +211,57 @@ test("project work skills share one bundle, explicit frontier, and full-file gat
   assert.match(contents.get("verify-project-work")!, /changed-after-review/i);
 });
 
+test("directly derived project-work skills retain exact centralized provenance", async () => {
+  const manifest = JSON.parse(await readFile(
+    join(root, "vendor/mattpocock/upstream.json"),
+    "utf8",
+  )) as {
+    source: { revision: string };
+    distribution: {
+      strategy: string;
+      installOriginalSuite: boolean;
+      fetchMutableUpstreamAtInstall: boolean;
+    };
+    derivations: Array<{
+      upstream: string[];
+      local: string[];
+      relationship: string;
+      retained: string[];
+      modified: string[];
+    }>;
+  };
+  assert.match(manifest.source.revision, /^[0-9a-f]{40}$/);
+  assert.equal(manifest.distribution.strategy, "integrated-derived-skills");
+  assert.equal(manifest.distribution.installOriginalSuite, false);
+  assert.equal(manifest.distribution.fetchMutableUpstreamAtInstall, false);
+  const thirdParty = await readFile(join(root, "THIRD_PARTY.md"), "utf8");
+  const upstreamLicense = await readFile(
+    join(root, "vendor/mattpocock/LICENSE"),
+    "utf8",
+  );
+  assert.match(thirdParty, /single human-readable attribution/i);
+  assert.match(upstreamLicense, /Copyright \(c\) 2026 Matt Pocock/);
+
+  const expected = new Map([
+    ["skills/shape-project-direction/SKILL.md", "skills/engineering/wayfinder/SKILL.md"],
+    ["skills/specify-project-change/SKILL.md", "skills/engineering/to-spec/SKILL.md"],
+    ["skills/split-project-change/SKILL.md", "skills/engineering/to-tickets/SKILL.md"],
+    ["skills/implement-work-item/SKILL.md", "skills/engineering/implement/SKILL.md"],
+    ["skills/verify-project-work/SKILL.md", "skills/engineering/code-review/SKILL.md"],
+  ]);
+  assert.equal(manifest.derivations.length, expected.size);
+  for (const derivation of manifest.derivations) {
+    assert.ok(derivation.retained.length > 0);
+    assert.ok(derivation.modified.length > 0);
+    for (const local of derivation.local) {
+      const upstream = expected.get(local);
+      assert.ok(upstream, `unexpected local derivation ${local}`);
+      assert.ok(derivation.upstream.includes(upstream));
+      assert.match(thirdParty, new RegExp(local.split("/")[1]!));
+    }
+  }
+});
+
 test("trigger and behavior eval corpora cover positives and near misses", async () => {
   const trigger = JSON.parse(await readFile(
     join(root, "evals/knowledge-views/trigger-evals.json"),

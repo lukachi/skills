@@ -1,4 +1,4 @@
-# 05 — Adopt an existing project
+# 06 — Adopt an existing project
 
 ## Use this when
 
@@ -110,4 +110,4 @@ normal reading surface.
 
 ## Next
 
-Continue with [06 — Process raw material](06-raw-material.md).
+Continue with [07 — Process raw material](07-raw-material.md).

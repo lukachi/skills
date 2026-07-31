@@ -1,4 +1,4 @@
-# 03 — Use the knowledge repository
+# 04 — Use the knowledge repository
 
 ## Use this when
 
@@ -90,4 +90,4 @@ You receive either:
 ## Next
 
 Continue with
-[04 — Read project knowledge](04-reading-project-knowledge.md).
+[05 — Read project knowledge](05-reading-project-knowledge.md).

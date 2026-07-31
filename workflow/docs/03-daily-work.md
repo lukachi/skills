@@ -1,4 +1,4 @@
-# 02 — Work day to day
+# 03 — Work day to day
 
 ## Use this when
 
@@ -129,4 +129,4 @@ scope until everything appears complete.
 ## Next
 
 Continue with
-[03 — Use the knowledge repository](03-knowledge-repository.md).
+[04 — Use the knowledge repository](04-knowledge-repository.md).

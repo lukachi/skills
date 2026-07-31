@@ -15,6 +15,22 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sandbox = mkdtempSync(join(tmpdir(), "wfctl-package-"));
 const stripAnsi = (value) => value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
 
+function assertLocalMarkdownLinks(path) {
+  const content = readFileSync(path, "utf8");
+  for (const match of content.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+    const target = match[1];
+    if (!target || /^(?:https?:|mailto:|#)/.test(target)) {
+      continue;
+    }
+    const local = target.split("#", 1)[0];
+    assert.equal(
+      existsSync(resolve(dirname(path), local)),
+      true,
+      `${path} links to missing ${target}`,
+    );
+  }
+}
+
 try {
   const packed = spawnSync(
     "bun",
@@ -38,7 +54,7 @@ try {
   assert.equal(existsSync(join(packaged, "IDEA.md")), true);
   assert.equal(existsSync(join(packaged, "THIRD_PARTY.md")), true);
   assert.equal(existsSync(join(packaged, "docs/01-installation.md")), true);
-  assert.equal(existsSync(join(packaged, "docs/07-maintainer-control.md")), true);
+  assert.equal(existsSync(join(packaged, "docs/08-maintainer-control.md")), true);
   assert.equal(existsSync(join(packaged, "spec/ENGINE.md")), true);
   assert.equal(existsSync(join(packaged, "spec/KNOWLEDGE.md")), true);
   assert.equal(existsSync(join(packaged, "spec/WORK.md")), true);
@@ -52,12 +68,13 @@ try {
     .sort();
   assert.deepEqual(userGuides, [
     "01-installation.md",
-    "02-daily-work.md",
-    "03-knowledge-repository.md",
-    "04-reading-project-knowledge.md",
-    "05-existing-project.md",
-    "06-raw-material.md",
-    "07-maintainer-control.md",
+    "02-skills-and-provenance.md",
+    "03-daily-work.md",
+    "04-knowledge-repository.md",
+    "05-reading-project-knowledge.md",
+    "06-existing-project.md",
+    "07-raw-material.md",
+    "08-maintainer-control.md",
   ]);
 
   const packageReadme = readFileSync(join(packaged, "README.md"), "utf8");
@@ -68,6 +85,8 @@ try {
   assert.match(packageReadme, /project collaboration and knowledge workflow/i);
   assert.match(packageReadme, /maintainer\/product road/i);
   assert.match(packageReadme, /engineering road/i);
+  assert.match(packageReadme, /Matt Pocock/i);
+  assert.match(packageReadme.replaceAll("\n", " "), /one attributed workflow/i);
   for (const guide of userGuides) {
     const content = readFileSync(join(packaged, "docs", guide), "utf8");
     assert.match(content, /## Use this when/);
@@ -77,7 +96,10 @@ try {
       content.split("\n").length <= 180,
       `${guide} must remain a focused user guide`,
     );
+    assertLocalMarkdownLinks(join(packaged, "docs", guide));
   }
+  assertLocalMarkdownLinks(join(packaged, "README.md"));
+  assertLocalMarkdownLinks(join(packaged, "THIRD_PARTY.md"));
   assert.equal(
     existsSync(join(packaged, "evals/knowledge-views/trigger-evals.json")),
     true,
@@ -140,6 +162,12 @@ try {
   assert.equal(existsSync(join(packaged, "templates/guides/common.md")), true);
   assert.equal(existsSync(join(packaged, "vendor/mattpocock/upstream.json")), true);
   assert.equal(existsSync(join(packaged, "vendor/mattpocock/LICENSE")), true);
+  const upstream = JSON.parse(
+    readFileSync(join(packaged, "vendor/mattpocock/upstream.json"), "utf8"),
+  );
+  assert.equal(upstream.distribution.installOriginalSuite, false);
+  assert.equal(upstream.distribution.fetchMutableUpstreamAtInstall, false);
+  assert.equal(upstream.derivations.length, 5);
 
   const target = join(sandbox, "consumer");
   const mainHelp = spawnSync(

@@ -1,25 +1,81 @@
 {
-  "repository": "https://github.com/mattpocock/skills.git",
-  "revision": "2ab958093e83e0ec752e6c1c5932da465bf23e0c",
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/mattpocock/skills.git",
+    "revision": "2ab958093e83e0ec752e6c1c5932da465bf23e0c",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Matt Pocock"
+  },
   "reviewedAt": "2026-07-31",
-  "integration": "adapted-not-vendored",
-  "reviewedSkills": [
-    "wayfinder",
-    "to-spec",
-    "to-tickets",
-    "implement",
-    "tdd",
-    "code-review",
-    "domain-modeling",
-    "grilling",
-    "grill-with-docs",
-    "handoff"
+  "distribution": {
+    "strategy": "integrated-derived-skills",
+    "installOriginalSuite": false,
+    "fetchMutableUpstreamAtInstall": false
+  },
+  "derivations": [
+    {
+      "upstream": ["skills/engineering/wayfinder/SKILL.md"],
+      "local": ["skills/shape-project-direction/SKILL.md"],
+      "relationship": "derived",
+      "retained": ["destination-first map", "decision issues", "fog", "frontier", "chart and work modes"],
+      "modified": ["central bundle", "local issue graph", "hash review receipts", "specification exit gate", "no product implementation"]
+    },
+    {
+      "upstream": ["skills/engineering/to-spec/SKILL.md"],
+      "local": ["skills/specify-project-change/SKILL.md"],
+      "relationship": "derived",
+      "retained": ["synthesize existing discussion", "product outcome", "implementation decisions", "testing seams", "out of scope"],
+      "modified": ["canonical change.md", "stable acceptance IDs", "knowledge alignment", "maintainer framing review", "Wayfinder synthesis"]
+    },
+    {
+      "upstream": ["skills/engineering/to-tickets/SKILL.md"],
+      "local": ["skills/split-project-change/SKILL.md"],
+      "relationship": "derived",
+      "retained": ["tracer-bullet issues", "blocking edges", "complete issue briefs", "maintainer granularity review"],
+      "modified": ["bundle-local tracker", "acceptance coverage", "repository scope", "cycle validation", "explicit frontier"]
+    },
+    {
+      "upstream": [
+        "skills/engineering/implement/SKILL.md",
+        "skills/engineering/tdd/SKILL.md"
+      ],
+      "local": ["skills/implement-work-item/SKILL.md"],
+      "relationship": "combined-derivation",
+      "retained": ["implement approved work", "behavior-first test cycle", "focused checks", "broad final checks", "review after implementation"],
+      "modified": ["exact leaf and worktree claim", "Graphify-first inspection", "durable progress", "evidence-backed completion", "no automatic commit"]
+    },
+    {
+      "upstream": ["skills/engineering/code-review/SKILL.md"],
+      "local": ["skills/verify-project-work/SKILL.md"],
+      "relationship": "derived",
+      "retained": ["separate spec axis", "separate engineering standards axis", "independent findings"],
+      "modified": ["complete bundle accounting", "acceptance matrix", "exact revision receipts", "knowledge promotion", "maintainer completion gate"]
+    }
   ],
-  "localSkills": [
-    "shape-project-direction",
-    "specify-project-change",
-    "split-project-change",
-    "implement-work-item",
-    "verify-project-work"
+  "embeddedInfluences": [
+    {
+      "upstream": "skills/engineering/domain-modeling/SKILL.md",
+      "usedIn": ["shape-project-direction", "specify-project-change", "curation skills"]
+    },
+    {
+      "upstream": "skills/engineering/grill-with-docs/SKILL.md",
+      "usedIn": ["shape-project-direction"]
+    },
+    {
+      "upstream": "skills/productivity/grilling/SKILL.md",
+      "usedIn": ["shape-project-direction", "specify-project-change"]
+    },
+    {
+      "upstream": "skills/engineering/research/SKILL.md",
+      "usedIn": ["shape-project-direction", "research-project-context"]
+    },
+    {
+      "upstream": "skills/engineering/prototype/SKILL.md",
+      "usedIn": ["shape-project-direction"]
+    },
+    {
+      "upstream": "skills/productivity/handoff/SKILL.md",
+      "usedIn": ["manage-project-work", "implement-work-item"]
+    }
   ]
 }

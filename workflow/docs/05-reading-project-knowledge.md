@@ -1,4 +1,4 @@
-# 04 — Read project knowledge
+# 05 — Read project knowledge
 
 ## Use this when
 
@@ -144,4 +144,4 @@ Choose one naturally; you do not need to know the taxonomy in advance.
 
 ## Next
 
-Continue with [05 — Adopt an existing project](05-existing-project.md).
+Continue with [06 — Adopt an existing project](06-existing-project.md).

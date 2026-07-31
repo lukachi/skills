@@ -1,10 +1,8 @@
 # wfctl
 
 `wfctl` is a project collaboration and knowledge workflow that keeps
-maintainers and coding agents aligned from product intent to verified delivery.
-
-It gives both people and agents a durable, navigable project model without
-pretending that code, old notes, or generated indexes are automatically true.
+maintainers and agents aligned through a durable, navigable project model
+without treating code, old notes, or generated indexes as automatically true.
 
 ## Why use it?
 
@@ -29,6 +27,13 @@ It creates two linked, first-class roads through the same project:
 
 Both maintainers and agents may follow either road. Neither is a derivative of
 the other, and shared Areas, changes, and decision history keep them aligned.
+
+## Built on reviewed skill practice
+
+The leaf flow openly reuses and modifies selected skills from Matt Pocock's
+MIT-licensed [`mattpocock/skills`](https://github.com/mattpocock/skills). `wfctl` integrates
+them with central knowledge, exact worktrees, and verification as one attributed
+workflow. See the [skill guide](docs/02-skills-and-provenance.md) and [exact provenance](THIRD_PARTY.md).
 
 ## What you get
 
@@ -99,21 +104,16 @@ knowledge remains directly readable without an agent.
 
 1. [Why this workflow exists](IDEA.md)
 2. [Install it in a project](docs/01-installation.md)
-3. [Work with it day to day](docs/02-daily-work.md)
-4. [Use the knowledge repository](docs/03-knowledge-repository.md)
-5. [Read project knowledge](docs/04-reading-project-knowledge.md)
-6. [Adopt an existing project](docs/05-existing-project.md)
-7. [Process raw material](docs/06-raw-material.md)
-8. [Review, correct, and recover](docs/07-maintainer-control.md)
+3. [Understand the installed skills](docs/02-skills-and-provenance.md)
+4. [Work with it day to day](docs/03-daily-work.md)
+5. [Use the knowledge repository](docs/04-knowledge-repository.md)
+6. [Read project knowledge](docs/05-reading-project-knowledge.md)
+7. [Adopt an existing project](docs/06-existing-project.md)
+8. [Process raw material](docs/07-raw-material.md)
+9. [Review, correct, and recover](docs/08-maintainer-control.md)
 
 Workflow authors can continue with the
 [engine contract](spec/ENGINE.md),
 [project work contract](spec/WORK.md),
 [knowledge contract](spec/KNOWLEDGE.md), and
 [verification guide](spec/VERIFICATION.md).
-
-## Current scope
-
-`wfctl` distributes instructions and skills through `AGENTS.md`/`.agents` and
-`CLAUDE.md`/`.claude`; any compatible agent can use the workflow. It runs on
-Node.js, Bun, or Deno; QMD and Graphify remain external tools with native skills.

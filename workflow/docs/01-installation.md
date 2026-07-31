@@ -79,6 +79,13 @@ The interactive installer:
 5. preserves existing instructions outside managed blocks;
 6. builds the initial knowledge indexes.
 
+The default project scope creates independent copies under `.agents/skills`
+and/or `.claude/skills` in this repository and records them in
+`skills-lock.json`. User scope installs into the corresponding user-level
+stores; `none` skips skills. The installer selects the knowledge or leaf
+profile from `wfctl` itself and never downloads mutable third-party prompts.
+The next guide explains the exact profiles, provenance, and upgrade behavior.
+
 If the directory is not a Git repository, interactive setup can initialize it.
 Review and commit the installed baseline before reconstructing an existing
 project.
@@ -122,4 +129,5 @@ conflicts stop installation instead of guessing.
 
 ## Next
 
-Continue with [02 — Work day to day](02-daily-work.md).
+Continue with
+[02 — Understand the installed skills](02-skills-and-provenance.md).

@@ -1,4 +1,4 @@
-# 06 — Process raw material
+# 07 — Process raw material
 
 ## Use this when
 
@@ -94,4 +94,4 @@ of truth or a permanent reading surface.
 ## Next
 
 Continue with
-[07 — Review, correct, and recover](07-maintainer-control.md).
+[08 — Review, correct, and recover](08-maintainer-control.md).

@@ -37,6 +37,21 @@ agents, automation, diagnostics, recovery, and workflow contributors. You
 review framing, missing authority, material choices, completion, and current
 knowledge claims.
 
+## Installed skill lineage
+
+The leaf delivery flow directly reuses and modifies selected MIT-licensed
+skills from `mattpocock/skills`: Wayfinder, To Spec, To Tickets, Implement,
+TDD, and Code Review. `wfctl` integrates them into its own central bundle,
+worktree claims, knowledge alignment, and completion gates; it does not install
+the original suite or a second tracker beside them.
+
+Project-scope copies live under `.agents/skills/` and/or `.claude/skills/` and
+are recorded by `skills-lock.json`. These are generated consumer copies: update
+the canonical `wfctl` package, then run `wfctl upgrade` here instead of editing
+them locally. The canonical distribution keeps one third-party provenance
+record and one upstream license instead of repeating them in every skill.
+User-scope locations follow the selected agent convention.
+
 After initialization, ask in ordinary language: “help me understand this
 project,” “process raw,” “reconstruct the baseline,” “explain this Area,”
 “shape this broad direction,” “research this external constraint,” “implement
