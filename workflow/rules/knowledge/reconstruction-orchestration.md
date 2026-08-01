@@ -52,6 +52,13 @@ or resuming `reconstruct-project-knowledge`.
 - Treat worker output as an untrusted evidence packet. The orchestrator checks
   its exact receipts, rejects overclaims, merges accepted findings into the
   owning dossier or parent case, and then updates final coverage states.
+- When adjudication yields "it should work differently," establish whether that
+  is intent the project always held or a decision the maintainer is making now.
+  The first is recovered history and belongs in the baseline as accepted intent
+  against drifted delivery. The second records the existing behavior honestly
+  and leaves the case as a capture or a change bundle; writing it as recovered
+  intent asserts the project always meant it and erases the lineage. Unsure
+  stays `unknown`.
 - A finding that one lane is unreliable narrows that lane and widens no other.
   Reject any packet or plan that answers a degraded source by making a different
   source authoritative for intent; that is the ranked-source error with a new

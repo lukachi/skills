@@ -79,6 +79,36 @@ Examples:
 Document lifecycle (`draft`, `stable`, `deprecated`) is separate. It describes
 the knowledge file, not product delivery.
 
+## When the maintainer says it should work differently
+
+This is the most common adjudication answer and it carries two different
+meanings. Ask which one before recording anything:
+
+> Was it always meant to work that way, or is that a change you want now?
+
+**It was always meant to be Y.** The code drifted, or was never finished.
+Record `intent: accepted` on the maintainer's authority with this adjudication
+as its provenance, `delivery` as whatever the source actually shows, and
+`alignment: drifted`. The gap is a fact about the project and belongs in the
+baseline. Do not soften the delivery claim to make the two agree.
+
+**It works as intended, and you want Y now.** That is a new decision, not
+recovered history. Record the existing behavior honestly — `intent: accepted`
+or `unknown`, `delivery: implemented`, `alignment: aligned` — and route the
+want to `changes/inbox/` as a capture, or to a change bundle if the maintainer
+wants to pursue it immediately. It never enters the baseline as intent.
+Recording a want as historical intent tells every later reader that the project
+always meant Y, and erases the fact that it was decided here, on this date, by
+this person. That is the decision lineage the product road exists to carry.
+
+**The maintainer is not sure.** Common, and not a failure. `intent: unknown`
+with the observed delivery, and the desire captured separately if there is one.
+
+Reconstruction never edits source, so no answer here produces a fix. Drift
+becomes curated knowledge that a later change bundle acts on; a want becomes a
+capture that someone triages. Say that plainly rather than leaving the
+maintainer expecting the code to move.
+
 ## Candidate classes and gates
 
 - `implementation` needs pinned source code. An `absent` delivery claim uses a

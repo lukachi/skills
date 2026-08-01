@@ -128,6 +128,29 @@ Manufacturing intent from the least-bad remaining source launders a guess into
 curated knowledge. Only maintainer adjudication moves a claim from `unknown` to
 `accepted`.
 
+## Recovered intent and new decisions
+
+Adjudication regularly produces "it should work differently." A reconstruction
+must establish which of two things that means before recording it, because they
+are opposite claims about the past.
+
+Intent the project always held, which the implementation never reached or later
+lost, is recovered history: record it as accepted on maintainer authority, keep
+the delivery claim as the source actually shows it, and mark the alignment
+drifted. The divergence is part of the baseline.
+
+Intent the maintainer forms during the reconstruction is a new decision. The
+baseline records the existing behavior as it stands; the want leaves the case
+as a pending capture or an explicit change bundle. It must never be written as
+recovered intent. Doing so asserts that the project always meant it and destroys
+the decision lineage that separates the two roads — a later reader can no longer
+tell an original commitment from one made while reading the code.
+
+When the maintainer cannot tell the two apart, intent stays `unknown`.
+
+Reconstruction never edits source. Neither answer changes the implementation,
+and the agent must say so rather than leave the maintainer expecting it.
+
 ## File dispositions
 
 Every tracked file receives one semantic category and one state:
