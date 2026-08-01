@@ -3,7 +3,7 @@
 ## Audience
 
 Use this guide when changing `wfctl`, its installed assets, or its package
-contract. End users should follow the numbered [user guides](../docs/).
+contract. End users should follow the [user guides](../docs/).
 
 ## Requirements
 
@@ -83,7 +83,7 @@ knowledge. Use [VERIFICATION.md](VERIFICATION.md) for black-box behavior.
 The package includes:
 
 - the short package `README.md` and `IDEA.md`;
-- numbered user guides under `docs/`;
+- user guides under `docs/`;
 - normative contracts under `spec/`;
 - bundled CLI under `dist/`;
 - rules, skills, templates, and eval corpora;
@@ -139,7 +139,7 @@ For every direct derivation:
 - record retained and modified behavior in the machine-readable mapping;
 - retain the upstream license once under `vendor/` and keep the detailed
   mapping in `THIRD_PARTY.md` instead of duplicating notices across skills;
-- describe the relationship in `THIRD_PARTY.md` and the user skill guide;
+- describe the relationship in `THIRD_PARTY.md`, which the setup guide links;
 - install only the integrated local skill, never an ambiguous parallel tracker.
 
 When refreshing a derivation or influence:
@@ -155,7 +155,11 @@ When refreshing a derivation or influence:
 
 - `README.md` is a short project introduction and route map.
 - `IDEA.md` explains purpose, method, goals, and non-goals.
-- `docs/01…08` is the sequential user journey.
+- `docs/01…04` is the user journey, organized by the situation the maintainer
+  is in — setting up, working in knowledge, working in a source repository, and
+  deciding — not by workflow entity. Guides describe what happens and what the
+  maintainer decides; they link normative behavior instead of restating it, and
+  they say plainly which guarantees are mechanical and which are judgment.
 - `spec/` owns normative implementation behavior.
 - installed `PROJECT_WORKFLOW.md` owns consumer-local operating guidance.
 

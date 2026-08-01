@@ -69,7 +69,7 @@ central knowledge repository.
 
 Start with [`workflow/README.md`](workflow/README.md), then read the
 [project idea](workflow/IDEA.md) and the numbered
-[user guides](workflow/docs/01-installation.md).
+[user guides](workflow/docs/01-setup.md).
 
 Workflow authors should use the
 [engine contract](workflow/spec/ENGINE.md),

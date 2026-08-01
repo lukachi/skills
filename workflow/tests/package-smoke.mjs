@@ -53,8 +53,8 @@ try {
   assert.equal(existsSync(join(packaged, "README.md")), true);
   assert.equal(existsSync(join(packaged, "IDEA.md")), true);
   assert.equal(existsSync(join(packaged, "THIRD_PARTY.md")), true);
-  assert.equal(existsSync(join(packaged, "docs/01-installation.md")), true);
-  assert.equal(existsSync(join(packaged, "docs/08-maintainer-control.md")), true);
+  assert.equal(existsSync(join(packaged, "docs/01-setup.md")), true);
+  assert.equal(existsSync(join(packaged, "docs/04-your-part.md")), true);
   assert.equal(existsSync(join(packaged, "spec/ENGINE.md")), true);
   assert.equal(existsSync(join(packaged, "spec/KNOWLEDGE.md")), true);
   assert.equal(existsSync(join(packaged, "spec/WORK.md")), true);
@@ -66,15 +66,13 @@ try {
   const userGuides = readdirSync(join(packaged, "docs"))
     .filter((entry) => entry.endsWith(".md"))
     .sort();
+  // Four guides, one per situation the maintainer is actually in: setting up,
+  // working in knowledge, working in a source repository, and deciding.
   assert.deepEqual(userGuides, [
-    "01-installation.md",
-    "02-skills-and-provenance.md",
-    "03-daily-work.md",
-    "04-knowledge-repository.md",
-    "05-reading-project-knowledge.md",
-    "06-existing-project.md",
-    "07-raw-material.md",
-    "08-maintainer-control.md",
+    "01-setup.md",
+    "02-knowledge-repository.md",
+    "03-leaf-repository.md",
+    "04-your-part.md",
   ]);
 
   const packageReadme = readFileSync(join(packaged, "README.md"), "utf8");
@@ -89,11 +87,12 @@ try {
   assert.match(packageReadme.replaceAll("\n", " "), /one attributed workflow/i);
   for (const guide of userGuides) {
     const content = readFileSync(join(packaged, "docs", guide), "utf8");
+    // Every guide must say when it applies and what the maintainer decides in
+    // it. Normative behavior belongs in spec/, not restated here.
     assert.match(content, /## Use this when/);
-    assert.match(content, /## Problem/);
-    assert.match(content, /## Outcome/);
+    assert.match(content, /## What you decide|^- what the project is for/m);
     assert.ok(
-      content.split("\n").length <= 180,
+      content.split("\n").length <= 260,
       `${guide} must remain a focused user guide`,
     );
     assertLocalMarkdownLinks(join(packaged, "docs", guide));

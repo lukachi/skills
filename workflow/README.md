@@ -32,7 +32,7 @@ the other, and shared Areas, changes, and decision history keep them aligned.
 
 The leaf flow openly reuses selected MIT-licensed skills from Matt Pocock's
 [`mattpocock/skills`](https://github.com/mattpocock/skills), modified and integrated as one attributed
-workflow with central knowledge, exact worktrees, and verification. See the [skill guide](docs/02-skills-and-provenance.md) and [provenance](THIRD_PARTY.md).
+workflow with central knowledge, exact worktrees, and verification. See [provenance](THIRD_PARTY.md) and [setup](docs/01-setup.md).
 
 ## What you get
 
@@ -78,7 +78,7 @@ results remain evidence, not project truth, until they are reviewed and curated.
 
 Install `wfctl` from source, then connect the repositories. Git, QMD 2.5.3+,
 and — for source repositories — Graphify with its native agent skill are also
-required; [installation](docs/01-installation.md) covers each.
+required; [setup](docs/01-setup.md) covers each.
 
 ```sh
 git clone https://github.com/lukachi/skills.git
@@ -105,14 +105,10 @@ knowledge remains directly readable without an agent.
 ## Read next
 
 1. [Why this workflow exists](IDEA.md)
-2. [Install it in a project](docs/01-installation.md)
-3. [Understand the installed skills](docs/02-skills-and-provenance.md)
-4. [Work with it day to day](docs/03-daily-work.md)
-5. [Use the knowledge repository](docs/04-knowledge-repository.md)
-6. [Read project knowledge](docs/05-reading-project-knowledge.md)
-7. [Adopt an existing project](docs/06-existing-project.md)
-8. [Process raw material](docs/07-raw-material.md)
-9. [Review, correct, and recover](docs/08-maintainer-control.md)
+2. [Set it up](docs/01-setup.md)
+3. [Work in the knowledge repository](docs/02-knowledge-repository.md)
+4. [Work in a source repository](docs/03-leaf-repository.md)
+5. [Your part](docs/04-your-part.md)
 
 Workflow authors can continue with the [engine](spec/ENGINE.md),
 [project work](spec/WORK.md), [knowledge](spec/KNOWLEDGE.md), and

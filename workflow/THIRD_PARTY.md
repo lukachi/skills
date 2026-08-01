@@ -61,5 +61,4 @@ This file is the single human-readable attribution and modification record.
 The upstream license is retained once at
 [`vendor/mattpocock/LICENSE`](vendor/mattpocock/LICENSE); exact machine-readable
 lineage remains in the pinned manifest. See
-[the installed-skills guide](docs/02-skills-and-provenance.md) for consumer
-paths and update behavior.
+[the setup guide](docs/01-setup.md) for consumer paths and update behavior.
