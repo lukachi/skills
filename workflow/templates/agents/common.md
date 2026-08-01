@@ -38,7 +38,8 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   ledger`, update the affected semantic state, and refresh its structured
   checkpoint last. The preservation trigger is consequence of information
   loss, not a fixed category of findings.
-- Run `wfctl brief --json` before anything else in a session. It is the
+- Run `wfctl brief --json` before anything else in a session, unless a session
+  brief was already delivered as context, in which case use that one. It is the
   authoritative current state of this repository: signals are observed facts and
   capabilities are derived from them. Do not rediscover that state by scanning
   records, and do not read the list back to the maintainer. Compose one short

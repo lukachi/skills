@@ -106,6 +106,30 @@ Adding a new observable state means adding a collector. It must not mean adding
 a branch to a renderer, and no consumer may reintroduce per-scenario handling
 of these signals.
 
+### Delivering the brief automatically
+
+Installed agent instructions ask every agent to run `brief` first, which is the
+portable path and the only one available to hosts without an event model. Claude
+Code can also deliver it mechanically:
+
+```sh
+wfctl hooks install
+wfctl hooks status
+wfctl hooks remove
+```
+
+`hooks install` adds one `SessionStart` entry running `wfctl brief --hook` to
+the repository's `.claude/settings.json`. That file belongs to the maintainer,
+so installation is explicit rather than part of `init`, edits exactly one entry,
+preserves every other key and every unrelated hook, and is idempotent by command
+identity. Removal drops only its own entry, and prunes the event or the `hooks`
+key only when nothing else remains.
+
+`brief --hook` prints the host's `SessionStart` envelope with the report as
+`additionalContext`. It always exits successfully: a collection failure becomes
+a note inside the envelope, because a hook that fails costs the session rather
+than one command.
+
 ## Knowledge operations
 
 Installed knowledge agents own these commands.

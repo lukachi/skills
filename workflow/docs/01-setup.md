@@ -114,6 +114,17 @@ wfctl brief
 It only reads. It starts nothing, and a capability it reports as available is a
 possibility, not a plan.
 
+Asking the agent to read the state is an instruction, and instructions can be
+skipped. On Claude Code you can make it mechanical instead:
+
+```sh
+wfctl hooks install
+```
+
+That adds one session-start entry to this repository's `.claude/settings.json`,
+leaving your other settings and hooks alone; `wfctl hooks remove` takes it back
+out. It is deliberately not part of installation — that file is yours.
+
 ## What got installed
 
 Both repository kinds receive a managed block in `AGENTS.md` and `CLAUDE.md`,

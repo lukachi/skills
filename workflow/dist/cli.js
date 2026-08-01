@@ -37110,11 +37110,134 @@ function sortSignals(signals2) {
   );
 }
 
+// src/hooks.ts
+init_config();
+import { mkdir as mkdir12, readFile as readFile21, rename as rename10, writeFile as writeFile12 } from "node:fs/promises";
+import { randomUUID as randomUUID4 } from "node:crypto";
+import { dirname as dirname13, join as join19 } from "node:path";
+var SESSION_BRIEF_COMMAND = "wfctl brief --hook";
+var SESSION_START_EVENT = "SessionStart";
+async function installSessionBriefHook(target, command = SESSION_BRIEF_COMMAND) {
+  const path = settingsPath(target);
+  const settings = await readSettings(path);
+  const hooks = asRecord(settings.hooks) ?? {};
+  const event = asMatchers(hooks[SESSION_START_EVENT]);
+  if (event.some((matcher) => runsCommand(matcher, command))) {
+    return { path, outcome: "already-installed", command };
+  }
+  const next = {
+    ...settings,
+    hooks: {
+      ...hooks,
+      [SESSION_START_EVENT]: [
+        ...event,
+        { matcher: "*", hooks: [{ type: "command", command }] }
+      ]
+    }
+  };
+  await writeSettings(path, next);
+  return { path, outcome: "installed", command };
+}
+async function removeSessionBriefHook(target, command = SESSION_BRIEF_COMMAND) {
+  const path = settingsPath(target);
+  const settings = await readSettings(path);
+  const hooks = asRecord(settings.hooks);
+  if (!hooks) {
+    return { path, outcome: "absent", command };
+  }
+  const event = asMatchers(hooks[SESSION_START_EVENT]);
+  const before = countEntries(event);
+  const kept = event.map((matcher) => ({
+    ...matcher,
+    hooks: (matcher.hooks ?? []).filter((entry) => entry.command !== command)
+  })).filter((matcher) => (matcher.hooks ?? []).length > 0);
+  if (countEntries(kept) === before) {
+    return { path, outcome: "absent", command };
+  }
+  const remaining = { ...hooks };
+  if (kept.length > 0) {
+    remaining[SESSION_START_EVENT] = kept;
+  } else {
+    delete remaining[SESSION_START_EVENT];
+  }
+  const next = { ...settings };
+  if (Object.keys(remaining).length > 0) {
+    next.hooks = remaining;
+  } else {
+    delete next.hooks;
+  }
+  await writeSettings(path, next);
+  return { path, outcome: "removed", command };
+}
+async function sessionBriefHookInstalled(target, command = SESSION_BRIEF_COMMAND) {
+  const settings = await readSettings(settingsPath(target));
+  const hooks = asRecord(settings.hooks);
+  return asMatchers(hooks?.[SESSION_START_EVENT]).some((matcher) => runsCommand(matcher, command));
+}
+function sessionStartEnvelope(context) {
+  return `${JSON.stringify(
+    {
+      hookSpecificOutput: {
+        hookEventName: SESSION_START_EVENT,
+        additionalContext: context
+      }
+    },
+    null,
+    2
+  )}
+`;
+}
+function settingsPath(target) {
+  return join19(target, ".claude/settings.json");
+}
+async function readSettings(path) {
+  let content3;
+  try {
+    content3 = await readFile21(path, "utf8");
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return {};
+    }
+    throw error2;
+  }
+  if (content3.trim() === "") {
+    return {};
+  }
+  const parsed = JSON.parse(content3);
+  const settings = asRecord(parsed);
+  if (!settings) {
+    throw new Error(`${path} must contain a JSON object`);
+  }
+  return settings;
+}
+async function writeSettings(path, settings) {
+  await mkdir12(dirname13(path), { recursive: true });
+  const temporary = join19(dirname13(path), `.wfctl-${randomUUID4()}.tmp`);
+  await writeFile12(temporary, `${JSON.stringify(settings, null, 2)}
+`, "utf8");
+  await rename10(temporary, path);
+}
+function countEntries(matchers) {
+  return matchers.reduce((total, matcher) => total + (matcher.hooks ?? []).length, 0);
+}
+function runsCommand(matcher, command) {
+  return (matcher.hooks ?? []).some((entry) => entry.command === command);
+}
+function asMatchers(value) {
+  return Array.isArray(value) ? value.filter(isRecord8) : [];
+}
+function asRecord(value) {
+  return isRecord8(value) ? value : void 0;
+}
+function isRecord8(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 // src/cli.ts
 setColorEnabled(process.stdout.isTTY === true && !("NO_COLOR" in process.env));
 var main = new Command().name("wfctl").version(WORKFLOW_VERSION).description(
-  "Install and operate a shared project workflow.\nMaintainers normally use init; installed agents own the remaining commands.\n\nSetup:\n  init       Install or repair a knowledge or leaf repository\n  check      Validate the current workflow installation\n\nMaintenance:\n  upgrade    Upgrade installed rules, skills, templates, and guides\n\nOrientation:\n  brief      Report current repository state at session start\n\nKnowledge operations:\n  knowledge  Process raw input, validate knowledge, and build its graph\n\nProject work:\n  work       Operate captures, checkpoints, change bundles, issues, and closure"
-).throwErrors().command("init", initCommand()).command("check", checkCommand()).command("upgrade", upgradeCommand()).command("brief", briefCommand()).command("knowledge", knowledgeCommand()).command("work", workCommand());
+  "Install and operate a shared project workflow.\nMaintainers normally use init; installed agents own the remaining commands.\n\nSetup:\n  init       Install or repair a knowledge or leaf repository\n  check      Validate the current workflow installation\n\nMaintenance:\n  upgrade    Upgrade installed rules, skills, templates, and guides\n\nOrientation:\n  brief      Report current repository state at session start\n  hooks      Install or remove the session-start brief hook\n\nKnowledge operations:\n  knowledge  Process raw input, validate knowledge, and build its graph\n\nProject work:\n  work       Operate captures, checkpoints, change bundles, issues, and closure"
+).throwErrors().command("init", initCommand()).command("check", checkCommand()).command("upgrade", upgradeCommand()).command("brief", briefCommand()).command("hooks", hooksCommand()).command("knowledge", knowledgeCommand()).command("work", workCommand());
 try {
   await main.parse(process.argv.slice(2));
 } catch (error2) {
@@ -37416,7 +37539,11 @@ function checkCommand() {
 function briefCommand() {
   return new Command().description(
     "Report current repository state at session start.\nReads only durable records; never starts work, writes, or contacts a tool.\nSignals are facts, capabilities are derived; composing advice is the agent's job."
-  ).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+  ).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").option("--hook", "Emit a Claude Code SessionStart envelope; never fails.").action(async (options) => {
+    if (options.hook) {
+      process.stdout.write(sessionStartEnvelope(await briefContext(options.target)));
+      return;
+    }
     const report = await collectWorkflowState(options.target);
     if (options.json) {
       printJson(report);
@@ -37424,6 +37551,68 @@ function briefCommand() {
       printBrief(report);
     }
   });
+}
+async function briefContext(target) {
+  try {
+    const report = await collectWorkflowState(target);
+    return [
+      "Workflow session brief from `wfctl brief`. This is the authoritative",
+      "current state of this repository: signals are observed facts and",
+      "capabilities are derived from them. Do not run the command again, do not",
+      "rediscover this by scanning records, and do not read it back as a list.",
+      "Open with one short orientation and offer what is available.",
+      "",
+      JSON.stringify(report, null, 2)
+    ].join("\n");
+  } catch (error2) {
+    return `The workflow session brief could not be collected: ${errorMessage(error2)}`;
+  }
+}
+function hooksCommand() {
+  return new Command().description(
+    "Install or remove the session-start brief in this repository's Claude Code settings."
+  ).command(
+    "install",
+    new Command().description(`Add a SessionStart hook that runs \`${SESSION_BRIEF_COMMAND}\`.`).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+      const result = await installSessionBriefHook(resolve20(options.target));
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `${result.outcome}: ${result.command}
+${dim(result.path)}
+${dim("Restart the agent session for the hook to take effect.")}
+`
+        );
+      }
+    })
+  ).command(
+    "remove",
+    new Command().description("Remove the session-start brief hook and leave every other setting intact.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+      const result = await removeSessionBriefHook(resolve20(options.target));
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(`${result.outcome}: ${result.command}
+${dim(result.path)}
+`);
+      }
+    })
+  ).command(
+    "status",
+    new Command().description("Report whether the session-start brief hook is installed.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+      const target = resolve20(options.target);
+      const installed = await sessionBriefHookInstalled(target);
+      if (options.json) {
+        printJson({ target, installed, command: SESSION_BRIEF_COMMAND });
+      } else {
+        process.stdout.write(
+          `${installed ? green("installed") : yellow("not installed")}  ${SESSION_BRIEF_COMMAND}
+`
+        );
+      }
+    })
+  );
 }
 function printBrief(report) {
   const header = [

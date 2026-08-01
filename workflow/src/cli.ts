@@ -142,6 +142,13 @@ import {
 } from "./assets.js";
 import { collectWorkflowState } from "./state.js";
 import type { StateLevel, StateReport } from "./state.js";
+import {
+  installSessionBriefHook,
+  removeSessionBriefHook,
+  SESSION_BRIEF_COMMAND,
+  sessionBriefHookInstalled,
+  sessionStartEnvelope,
+} from "./hooks.js";
 
 setColorEnabled(process.stdout.isTTY === true && !("NO_COLOR" in process.env));
 
@@ -157,7 +164,8 @@ const main = new Command()
       + "Maintenance:\n"
       + "  upgrade    Upgrade installed rules, skills, templates, and guides\n\n"
       + "Orientation:\n"
-      + "  brief      Report current repository state at session start\n\n"
+      + "  brief      Report current repository state at session start\n"
+      + "  hooks      Install or remove the session-start brief hook\n\n"
       + "Knowledge operations:\n"
       + "  knowledge  Process raw input, validate knowledge, and build its graph\n\n"
       + "Project work:\n"
@@ -168,6 +176,7 @@ const main = new Command()
   .command("check", checkCommand())
   .command("upgrade", upgradeCommand())
   .command("brief", briefCommand())
+  .command("hooks", hooksCommand())
   .command("knowledge", knowledgeCommand())
   .command("work", workCommand());
 
@@ -557,7 +566,12 @@ function briefCommand() {
     )
     .option("-t, --target <path:string>", "Target repository.", { default: "." })
     .option("--json", "Print machine-readable JSON.")
+    .option("--hook", "Emit a Claude Code SessionStart envelope; never fails.")
     .action(async (options) => {
+      if (options.hook) {
+        process.stdout.write(sessionStartEnvelope(await briefContext(options.target)));
+        return;
+      }
       const report = await collectWorkflowState(options.target);
       if (options.json) {
         printJson(report);
@@ -565,6 +579,86 @@ function briefCommand() {
         printBrief(report);
       }
     });
+}
+
+/**
+ * Hook stdout reaches the agent, not the maintainer, so it carries the machine
+ * report plus the one instruction the agent needs about what to do with it. A
+ * failure here would cost a whole session, so it degrades into a note.
+ */
+async function briefContext(target: string): Promise<string> {
+  try {
+    const report = await collectWorkflowState(target);
+    return [
+      "Workflow session brief from `wfctl brief`. This is the authoritative",
+      "current state of this repository: signals are observed facts and",
+      "capabilities are derived from them. Do not run the command again, do not",
+      "rediscover this by scanning records, and do not read it back as a list.",
+      "Open with one short orientation and offer what is available.",
+      "",
+      JSON.stringify(report, null, 2),
+    ].join("\n");
+  } catch (error) {
+    return `The workflow session brief could not be collected: ${errorMessage(error)}`;
+  }
+}
+
+function hooksCommand() {
+  return new Command()
+    .description(
+      "Install or remove the session-start brief in this repository's Claude Code settings.",
+    )
+    .command(
+      "install",
+      new Command()
+        .description(`Add a SessionStart hook that runs \`${SESSION_BRIEF_COMMAND}\`.`)
+        .option("-t, --target <path:string>", "Target repository.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const result = await installSessionBriefHook(resolve(options.target));
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `${result.outcome}: ${result.command}\n${dim(result.path)}\n`
+                + `${dim("Restart the agent session for the hook to take effect.")}\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "remove",
+      new Command()
+        .description("Remove the session-start brief hook and leave every other setting intact.")
+        .option("-t, --target <path:string>", "Target repository.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const result = await removeSessionBriefHook(resolve(options.target));
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(`${result.outcome}: ${result.command}\n${dim(result.path)}\n`);
+          }
+        }),
+    )
+    .command(
+      "status",
+      new Command()
+        .description("Report whether the session-start brief hook is installed.")
+        .option("-t, --target <path:string>", "Target repository.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const target = resolve(options.target);
+          const installed = await sessionBriefHookInstalled(target);
+          if (options.json) {
+            printJson({ target, installed, command: SESSION_BRIEF_COMMAND });
+          } else {
+            process.stdout.write(
+              `${installed ? green("installed") : yellow("not installed")}  ${SESSION_BRIEF_COMMAND}\n`,
+            );
+          }
+        }),
+    );
 }
 
 function printBrief(report: StateReport): void {
