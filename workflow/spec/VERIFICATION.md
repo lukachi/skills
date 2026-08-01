@@ -21,11 +21,16 @@ bun run check
 Expected:
 
 - type checking and isolated unit tests pass;
+- the eval corpora are structurally valid and every recorded behavior run
+  passed;
+- the committed `dist/` bundle matches the rebuilt one;
 - QMD, Graphify, reconstruction, and preflight integrations pass;
 - every skill passes structural validation;
 - the CLI runs under Bun, Node.js, and Deno;
 - the packed artifact includes all guides, contracts, skills, evals, and
   templates.
+
+CI runs the same gate on every push and pull request touching `workflow/`.
 
 Focused knowledge regressions:
 
@@ -160,9 +165,31 @@ another.
 Hidden assertions live in:
 
 ```text
-evals/knowledge-routing/
-evals/knowledge-views/
+evals/knowledge-routing/     knowledge-repository mode selection
+evals/knowledge-views/       progressive, read-only, audience-correct answers
+evals/work-lifecycle/        significant-work routing, claims, honest completion
+evals/session-recovery/      clean-session recovery of work, cases, discoveries
 ```
+
+## Recording and scoring behavior runs
+
+Execution stays outside this repository: a harness that both supplies and judges
+routing proves nothing. Scoring does not. Record every run into
+`evals/results/<date>-<agent>-<model>.json` using the schema in
+[`evals/README.md`](../evals/README.md), then run:
+
+```sh
+bun run test:evals                     # validate corpora, score recorded runs
+bun run test:evals -- --require-runs   # release gate: missing coverage fails
+```
+
+The scorer fails on a malformed corpus, on any recorded run whose expectations
+were unmet, and — with `--require-runs` — on any eval lacking the required three
+repetitions. With no recorded runs it says plainly that agent behavior is
+unproven for the build rather than reporting a pass.
+
+A recorded run proves that a review happened at a stated agent and version. It
+does not prove the reviewer judged correctly.
 
 ## 8. Test clean-session recovery and discovery preservation
 

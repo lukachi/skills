@@ -100,22 +100,23 @@ try {
   }
   assertLocalMarkdownLinks(join(packaged, "README.md"));
   assertLocalMarkdownLinks(join(packaged, "THIRD_PARTY.md"));
-  assert.equal(
-    existsSync(join(packaged, "evals/knowledge-views/trigger-evals.json")),
-    true,
-  );
-  assert.equal(
-    existsSync(join(packaged, "evals/knowledge-views/behavior-evals.json")),
-    true,
-  );
-  assert.equal(
-    existsSync(join(packaged, "evals/knowledge-routing/trigger-evals.json")),
-    true,
-  );
-  assert.equal(
-    existsSync(join(packaged, "evals/knowledge-routing/behavior-evals.json")),
-    true,
-  );
+  for (
+    const suite of [
+      "knowledge-views",
+      "knowledge-routing",
+      "work-lifecycle",
+      "session-recovery",
+    ]
+  ) {
+    for (const kind of ["trigger", "behavior"]) {
+      assert.equal(
+        existsSync(join(packaged, `evals/${suite}/${kind}-evals.json`)),
+        true,
+        `packaged artifact is missing evals/${suite}/${kind}-evals.json`,
+      );
+    }
+  }
+  assert.equal(existsSync(join(packaged, "evals/README.md")), true);
   assert.equal(existsSync(join(packaged, "LICENSE")), true);
   assert.equal(existsSync(join(packaged, "skills/manage-project-work/SKILL.md")), true);
   assert.equal(

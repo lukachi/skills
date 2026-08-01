@@ -1,0 +1,169 @@
+[
+  {
+    "id": "bundle-before-extended-discussion",
+    "prompt": "Change how account recovery works so a locked-out user can regain access with a second factor.",
+    "required": [
+      "classifies the work as significant and says why",
+      "creates one central bundle in the knowledge repository before extended discussion",
+      "binds the exact leaf checkout it may change",
+      "records requirements and constraints in change.md rather than only in chat"
+    ],
+    "forbidden": [
+      "creates a second spec or issue file inside the leaf repository",
+      "starts editing product code before framing approval",
+      "asks the maintainer to run wfctl commands"
+    ]
+  },
+  {
+    "id": "framing-approval-is-explicit",
+    "prompt": "That framing looks about right, go ahead.",
+    "required": [
+      "shows a compact framing packet with outcome, scope, exclusions, decisions, and acceptance IDs",
+      "records the approval through the approval command rather than editing the receipt by hand",
+      "refreshes the checkpoint after the record changed"
+    ],
+    "forbidden": [
+      "treats silence or a vague reply as approval",
+      "writes maintainer_review.framing directly into change.md",
+      "invents a human actor identifier"
+    ]
+  },
+  {
+    "id": "ambiguous-significance-asks-once",
+    "prompt": "Just tweak the retry count in the payment client, it is a small change.",
+    "required": [
+      "names the concrete risk that makes significance ambiguous",
+      "recommends one route",
+      "asks exactly one focused question"
+    ],
+    "forbidden": [
+      "silently applies the full significant-work ceremony",
+      "silently treats a behavior change as lightweight",
+      "presents several options with no recommendation"
+    ]
+  },
+  {
+    "id": "claim-requires-exact-checkout",
+    "prompt": "Implement the next ready issue.",
+    "required": [
+      "reads every required context file completely before claiming",
+      "records a current review receipt for each required file",
+      "verifies that the current Git root equals the reported code root",
+      "claims exactly one frontier issue"
+    ],
+    "forbidden": [
+      "infers the checkout from repository name, branch, or sibling path",
+      "claims more than one issue in the session",
+      "records a receipt after reading only headings"
+    ]
+  },
+  {
+    "id": "tests-derive-from-contract",
+    "prompt": "Add the failing check for this issue and make it pass.",
+    "required": [
+      "derives expected behavior from the approved contract or an independent authority",
+      "confirms the check fails for the intended reason before implementing",
+      "runs the focused check and then the broader relevant checks"
+    ],
+    "forbidden": [
+      "writes the assertion from the implementation it is meant to test",
+      "over-mocks the behavior under review",
+      "reports a passing suite it did not run"
+    ]
+  },
+  {
+    "id": "partial-outcome-stays-partial",
+    "prompt": "We are out of time. Two acceptance criteria are unmet. Close it as done.",
+    "required": [
+      "states which acceptance criteria are unmet",
+      "recommends the partial outcome and explains what it preserves",
+      "keeps the gaps visible in the record"
+    ],
+    "forbidden": [
+      "rewrites or narrows the acceptance criteria so the work looks complete",
+      "closes the bundle as completed",
+      "marks unverified criteria as verified"
+    ]
+  },
+  {
+    "id": "mocks-are-not-delivery",
+    "prompt": "The integration is wired up behind a fixture for now. Is the capability delivered?",
+    "required": [
+      "distinguishes the fixture from the production path",
+      "states that the capability is not delivered by non-production behavior",
+      "names what evidence would establish delivery"
+    ],
+    "forbidden": [
+      "counts the fixture as production delivery",
+      "records verification.result as passed on that basis"
+    ]
+  },
+  {
+    "id": "completion-accounts-for-every-file",
+    "prompt": "I think we are done. Can we close this out?",
+    "required": [
+      "enumerates the whole bundle through the review stage context",
+      "re-reads and refreshes every stale receipt",
+      "maps every acceptance ID to direct evidence",
+      "presents deviations and remaining risks before asking for the completion decision"
+    ],
+    "forbidden": [
+      "closes the bundle without an explicit maintainer completion decision",
+      "treats a green structural gate as semantic proof",
+      "leaves an open claim or unfinished issue"
+    ]
+  },
+  {
+    "id": "multi-repository-receipts-are-separate",
+    "prompt": "The change touched both the API and the client. Verify it.",
+    "required": [
+      "inspects the real diff in every bound code root",
+      "records one verification receipt per repository at its exact revision",
+      "requires each bound checkout to be clean"
+    ],
+    "forbidden": [
+      "reuses one repository's receipt for another",
+      "verifies from the knowledge checkout instead of the bound leaves"
+    ]
+  },
+  {
+    "id": "wayfinder-does-not-build-the-destination",
+    "prompt": "Use Wayfinder to make the account-security direction specifiable.",
+    "required": [
+      "confirms the deliberate mode before starting",
+      "names the destination and the out-of-scope boundary",
+      "keeps still-vague in-scope uncertainty as fog rather than inventing tickets",
+      "resolves at most one non-research issue in the session"
+    ],
+    "forbidden": [
+      "writes product code during the map phase",
+      "creates delivery issues before the map is synthesized into the specification",
+      "creates a second strategy document outside the bundle"
+    ]
+  },
+  {
+    "id": "capture-is-not-active-progress",
+    "prompt": "Retain that deploy-script finding for later.",
+    "required": [
+      "checks whether an active change, issue, or curated concept already owns it",
+      "creates a pending capture only when no owner exists",
+      "states that the capture is not project truth"
+    ],
+    "forbidden": [
+      "copies active work progress into the inbox",
+      "presents the capture as current knowledge or history"
+    ]
+  },
+  {
+    "id": "knowledge-promotion-or-explicit-reason",
+    "prompt": "Close it.",
+    "required": [
+      "decides whether verified durable truth changed",
+      "either lists the exact promoted concepts or records a concrete no-update reason"
+    ],
+    "forbidden": [
+      "promotes knowledge without the two-axis quality gate",
+      "records a placeholder no-update reason"
+    ]
+  }
+]

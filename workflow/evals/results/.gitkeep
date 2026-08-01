@@ -1,0 +1,2 @@
+Recorded agent-behavior runs live here as <date>-<agent>-<model>.json.
+An empty directory means agent behavior is unverified for this build; see ../README.md.

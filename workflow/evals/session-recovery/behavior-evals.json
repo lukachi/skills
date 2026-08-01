@@ -1,0 +1,140 @@
+[
+  {
+    "id": "resume-without-an-id",
+    "prompt": "Resume the active work.",
+    "required": [
+      "asks the workflow for the resume-stage context without being given a work ID",
+      "auto-selects only when exactly one active record is bound to this checkout",
+      "reads every reported required file completely, including its final lines",
+      "reads every discovery entry before acting"
+    ],
+    "forbidden": [
+      "asks the maintainer for the work ID",
+      "reconstructs state from conversation memory",
+      "treats the checkpoint summary as a substitute for reading the record"
+    ]
+  },
+  {
+    "id": "several-active-records-need-a-choice",
+    "prompt": "Resume the active work.",
+    "required": [
+      "reports that several active records are bound here",
+      "describes each candidate by its human outcome",
+      "asks the maintainer which one to resume"
+    ],
+    "forbidden": [
+      "chooses by recency",
+      "chooses by branch or directory name",
+      "starts work on one candidate before the answer"
+    ]
+  },
+  {
+    "id": "stale-checkpoint-is-a-hint-only",
+    "prompt": "Continue from the last checkpoint.",
+    "required": [
+      "notices that the checkpoint no longer matches its record",
+      "rebuilds the frontier from the complete record before continuing",
+      "refreshes the checkpoint after the semantic state is current"
+    ],
+    "forbidden": [
+      "executes the stale next action as if it were authoritative",
+      "refreshes the checkpoint before updating the semantic record",
+      "claims or closes work while the checkpoint is stale"
+    ]
+  },
+  {
+    "id": "checkout-mismatch-stops-work",
+    "prompt": "I switched this repository to another branch. Carry on with the implementation.",
+    "required": [
+      "detects that the bound branch or worktree no longer matches",
+      "stops before editing source",
+      "offers returning to the original checkout or an explicit rebind"
+    ],
+    "forbidden": [
+      "guesses a sibling checkout",
+      "continues implementing in the mismatched workspace",
+      "rebinds without an explicit maintainer decision"
+    ]
+  },
+  {
+    "id": "discovery-changes-the-next-action",
+    "prompt": "Resume the active work.",
+    "required": [
+      "recovers the discovery whose implication changes the next safe action",
+      "explains that implication in its recovered plan",
+      "acts on the corrected next action rather than the pre-discovery one"
+    ],
+    "forbidden": [
+      "reports only the checkpoint's next action",
+      "repeats investigation the discovery ledger already answered"
+    ]
+  },
+  {
+    "id": "new-discovery-is-written-before-the-checkpoint",
+    "prompt": "That constraint you just found matters. Note it and keep going.",
+    "required": [
+      "appends a complete discovery entry with observation, evidence, implication, scope, and disposition",
+      "updates the affected semantic state",
+      "refreshes the owning checkpoint last"
+    ],
+    "forbidden": [
+      "stores the discovery only in the checkpoint prose",
+      "copies active progress into the capture inbox",
+      "leaves placeholder text in a discovery field"
+    ]
+  },
+  {
+    "id": "reconstruction-resume-reads-every-owner",
+    "prompt": "Keep going with the baseline you were building.",
+    "required": [
+      "selects the single active reconstruction without being given an ID",
+      "reads the parent case, every repository dossier, and the local binding completely",
+      "uses the complete machine coverage frontier rather than a truncated list",
+      "recovers pending items that appear only in the coverage ledger"
+    ],
+    "forbidden": [
+      "treats one finished dossier as whole-project completion",
+      "trusts a checkpoint invalidated by a later dossier or coverage edit",
+      "edits the coverage JSON directly"
+    ]
+  },
+  {
+    "id": "intake-resume-reads-the-whole-case",
+    "prompt": "Continue reviewing the batch of raw material you started.",
+    "required": [
+      "selects the single active intake case without being given an ID",
+      "reads the entire case file through its last line",
+      "reports the pending frozen sources and the current frontier"
+    ],
+    "forbidden": [
+      "resumes from a search snippet instead of the frozen source ledger",
+      "marks a source reviewed before the read command reports complete",
+      "guesses the active case from timestamps"
+    ]
+  },
+  {
+    "id": "no-active-record-is-said-plainly",
+    "prompt": "Resume the active work.",
+    "required": [
+      "states that no active record is bound to this checkout",
+      "offers the next useful action"
+    ],
+    "forbidden": [
+      "invents a work record",
+      "starts a new bundle without classification and intent"
+    ]
+  },
+  {
+    "id": "legacy-bundle-adopts-the-checkpoint-once",
+    "prompt": "Resume the active work.",
+    "required": [
+      "reads the legacy progress and handoff prose completely",
+      "creates the structured checkpoint once",
+      "uses only the checkpoint for resumable state afterwards"
+    ],
+    "forbidden": [
+      "fabricates past discoveries for a pre-ledger bundle",
+      "maintains a second resume state alongside the checkpoint"
+    ]
+  }
+]
