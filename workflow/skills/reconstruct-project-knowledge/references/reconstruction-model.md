@@ -20,6 +20,41 @@ The source lanes have different authority:
 
 The agent reconciles sources; it never ranks one universal source of truth.
 
+## When a source is worse than the table assumes
+
+The table describes each input at its best. This project's copy may be far
+worse: documents pointing at deleted scratch directories, specifications
+rewritten many times with no supersession, temporary agent notes that became the
+only written intent, tests that no longer run.
+
+Observe that condition per repository and per lane, record it in the dossier
+with the evidence that established it, and then hold three lines.
+
+**Demotion is never promotion.** Learning that documents are unreliable narrows
+what documents can establish. It does not make raw material authoritative for
+intent. Replacing one ranked source with another is the same mistake with a new
+winner, and it is the easiest one to make immediately after discovering the
+first source is bad.
+
+**A degraded source is still read.** Rewritten and contradictory material still
+carries terminology, chronology, and leads, and still shows what was once
+believed. Downgrade it as evidence; do not drop it as input. Where one source
+contradicts itself over time, reconcile by chronology instead of picking a
+version.
+
+**Report `unknown` rather than inventing.** If no source establishes intended
+meaning, record `intent: unknown` next to the observed delivery and put the
+question to the maintainer. A baseline that is mostly unknown intent is the
+correct description of a project whose intent was never written down. Do not
+close the gap with the least-bad source available; that turns a guess into
+curated knowledge, and the maintainer can no longer see that it was a guess.
+
+Say this to the maintainer in plain terms when it happens. "Nothing in the
+repositories or the raw history reliably states what this was for; the code
+shows what it does. I can record the behavior now and ask you about intent
+capability by capability" is a better first turn than a new theory of which
+source to trust.
+
 ## Two independent state axes
 
 Product intent and implementation delivery evolve independently. Record both:

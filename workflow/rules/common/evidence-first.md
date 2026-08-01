@@ -32,4 +32,20 @@ reconciliation, and maintainer adjudication. Curated trust comes from OKF
 metadata, authoritative provenance, and current verification. QMD rank,
 snippets, and its index are never authority.
 
+Assume no source is in good condition. Documents may reference deleted paths,
+specifications may have been rewritten without supersession, notes meant to be
+temporary may be the only written intent, and history may record file moves
+rather than decisions. Judge each source as it actually is in this project, not
+as its kind is supposed to be.
+
+When a source turns out to be unreliable, that narrows what it can establish and
+widens nothing else. Do not answer it by electing a replacement authority: every
+source stays a witness, and reconciling them is the work. Keep reading the
+degraded source for terminology, chronology, and leads. Where it contradicts
+itself over time, reconcile by chronology rather than choosing a version.
+
+When no source can establish something, say so and record it as unknown. An
+honest unknown is a result; a plausible answer assembled from the least-bad
+source available is a guess the maintainer can no longer see through.
+
 Do not turn mocks, fixtures, fakes, placeholders, disabled checks, or partial wiring into production completion claims. Name missing evidence and unfinished work directly.

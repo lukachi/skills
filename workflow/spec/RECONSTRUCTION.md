@@ -92,6 +92,42 @@ explore with any safe read-only tool, but final workstream evidence must resolve
 to a receipt owned by that worker. Confirmed source-code evidence must resolve
 to an inspected file.
 
+## Degraded sources
+
+The lanes describe what a kind of input can establish in a well-formed project.
+Real projects are not well-formed. Documentation references paths that were
+deleted, specifications were rewritten many times without supersession, temporary
+scratch files became the only written intent, tests no longer run, and history
+records the file moves rather than the decisions.
+
+Source condition is therefore a property of this project's artifacts, not of the
+artifact class. A reconstruction must observe it, record it with evidence in the
+owning dossier, and carry it into review. It is not a conclusion to reach in
+conversation and forget.
+
+Three rules govern what happens next.
+
+**Demotion is never promotion.** Finding one lane unreliable narrows what that
+lane can establish. It never widens another. "The documents cannot be trusted,
+so intent must come from raw material" is the same error as trusting the README:
+one universal source of truth, re-ranked. Every source stays a witness, and
+reconciling them is the work rather than a step before it.
+
+**A degraded source is still a source.** Contradictory, rewritten, or abandoned
+material still carries terminology, chronology, and leads, and it still shows
+what was once believed. It is downgraded as evidence, not discarded as input,
+and a source that contradicts itself across time is reconciled by that
+chronology rather than by choosing one version.
+
+**`unknown` is a result.** When no source can establish intended meaning, the
+correct baseline records `intent: unknown` beside its observed delivery. A
+baseline where most capabilities carry unknown intent is an accurate description
+of a project whose intent was never written down, and it is more useful than a
+plausible one, because it names exactly what only the maintainer can supply.
+Manufacturing intent from the least-bad remaining source launders a guess into
+curated knowledge. Only maintainer adjudication moves a claim from `unknown` to
+`accepted`.
+
 ## File dispositions
 
 Every tracked file receives one semantic category and one state:

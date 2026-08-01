@@ -52,6 +52,12 @@ or resuming `reconstruct-project-knowledge`.
 - Treat worker output as an untrusted evidence packet. The orchestrator checks
   its exact receipts, rejects overclaims, merges accepted findings into the
   owning dossier or parent case, and then updates final coverage states.
+- A finding that one lane is unreliable narrows that lane and widens no other.
+  Reject any packet or plan that answers a degraded source by making a different
+  source authoritative for intent; that is the ranked-source error with a new
+  winner. Keep reading the degraded lane for terminology, chronology, and leads,
+  and where no lane establishes intended meaning, carry `intent: unknown` to
+  maintainer adjudication instead of assembling intent from what remains.
 - Preserve every dispatched packet. If evidence makes one unnecessary, keep it
   referenced as `cancelled` and record an accepted orchestrator review; never
   delete or unreference it to manufacture a clean frontier.

@@ -57,6 +57,21 @@ Explain what tests or fresh runtime checks establish and what they do not.>
 <Trace only history supported by Git. Separate observed code evolution from
 why a maintainer intended it. If history is shallow or unavailable, say so.>
 
+# Source condition
+
+<Judge each lane as it actually is in this repository, not as its kind is
+supposed to be: pinned source, tests and runtime checks, Git history, change
+records, in-repository documentation, and any raw material bound to this case.
+Give the evidence that established the judgement — a document citing deleted
+paths, specifications rewritten without supersession, tests that no longer run.
+
+A lane found unreliable establishes less. No other lane establishes more
+because of it. Keep reading a degraded lane for terminology, chronology, and
+leads, and where it contradicts itself over time, reconcile by chronology
+rather than choosing a version. If no lane can establish intended meaning,
+record that here and carry `intent: unknown` into the claims instead of
+assembling intent from whatever is left.>
+
 # Contradictions and unknowns
 
 <List conflicting implementations, stale documentation, missing ownership,
