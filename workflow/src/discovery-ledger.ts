@@ -40,7 +40,9 @@ export function discoveryLedgerIssues(
       continue;
     }
     const title = markdownNodeText(node).trim();
-    const match = /^(DISC-\d{3,})\s+(?:—|-)\s+\S/.exec(title);
+    // Accept the em dash the templates use plus the hyphen and colon agents
+    // reach for by habit; the separator carries no meaning.
+    const match = /^(DISC-\d{3,})\s*(?:—|–|-|:)\s+\S/.exec(title);
     if (!match) {
       issues.push(`${label}: discovery entry heading is invalid: ${title || "empty heading"}`);
       continue;
