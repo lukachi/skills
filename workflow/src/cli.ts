@@ -74,6 +74,7 @@ import {
   reviewReconstructionSurfaces,
   submitReconstructionWorkstream,
   updateReconstructionCheckpoint,
+  ReconstructionDependencyError,
   type ReconstructionRawScopeMode,
 } from "./reconstruction.js";
 import {
@@ -105,6 +106,7 @@ import type {
 } from "./types.js";
 import { WORKFLOW_VERSION } from "./types.js";
 import {
+  approveWork,
   beginWork,
   claimWorkIssue,
   closeWork,
@@ -121,6 +123,10 @@ import {
   workStatus,
   updateWorkCheckpoint,
 } from "./work.js";
+import type {
+  ApprovalMethod,
+  MaintainerReviewStage,
+} from "./work-spec.js";
 import type {
   BundleReviewStatus,
   WorkBundleStage,
@@ -590,6 +596,7 @@ function workCommand() {
     )
     .command("context", workContextCommand())
     .command("checkpoint", workCheckpointCommand())
+    .command("approve", workApproveCommand())
     .command("issue", workIssueCommand())
     .command("map", workMapCommand())
     .command("review", workReviewCommand())
@@ -706,6 +713,106 @@ function workCommand() {
           }
         }),
     );
+}
+
+function workApproveCommand() {
+  return new Command()
+    .description(
+      "Record a maintainer framing or completion approval outside the agent's normal record edits.",
+    )
+    .arguments("<id:string>")
+    .option("-t, --target <path:string>", "Bound checkout.", { default: "." })
+    .option("--stage <stage:string>", "framing or completion.", { required: true })
+    .option("--by <actor:string>", "Approving maintainer as human:<id>.", { required: true })
+    .option("--note <note:string>", "What was approved, in project language.")
+    .option(
+      "--token <token:string>",
+      "Out-of-band approval token; required when no interactive terminal is available. "
+        + "Must equal WFCTL_APPROVAL_TOKEN.",
+    )
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      const stage = parseApprovalStage(options.stage);
+      const method = await resolveApprovalMethod({
+        id,
+        stage,
+        by: options.by,
+        ...(options.note ? { note: options.note } : {}),
+        ...(options.token ? { token: options.token } : {}),
+      });
+      const result = await approveWork({
+        target: options.target,
+        id,
+        stage,
+        by: options.by,
+        method,
+        ...(options.note ? { note: options.note } : {}),
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Recorded ${result.stage} approval for ${result.id}\n`
+            + `By: ${result.by}\n`
+            + `Method: ${result.method}\n`
+            + `Receipt: ${result.receipt}\n`
+            + `Spec: ${result.specPath}\n`
+            + "The change record changed: re-read it, refresh its review receipt and checkpoint.\n",
+        );
+      }
+    });
+}
+
+function parseApprovalStage(value: string): MaintainerReviewStage {
+  if (value === "framing" || value === "completion") {
+    return value;
+  }
+  throw new Error(`Approval stage must be framing or completion, not ${value}`);
+}
+
+/**
+ * Approval must not be producible by the same unattended path that writes the
+ * rest of the record. Interactive use requires a typed confirmation; automation
+ * requires a token supplied out of band through the environment.
+ */
+async function resolveApprovalMethod(input: {
+  id: string;
+  stage: MaintainerReviewStage;
+  by: string;
+  note?: string;
+  token?: string;
+}): Promise<ApprovalMethod> {
+  const expected = process.env.WFCTL_APPROVAL_TOKEN?.trim();
+  if (input.token) {
+    if (!expected) {
+      throw new Error(
+        "WFCTL_APPROVAL_TOKEN is not set; a supplied --token cannot be verified",
+      );
+    }
+    if (input.token !== expected) {
+      throw new Error("Supplied --token does not match WFCTL_APPROVAL_TOKEN");
+    }
+    return "token";
+  }
+  if (!interactive()) {
+    throw new Error(
+      "Maintainer approval requires an interactive terminal, or --token with a matching "
+        + "WFCTL_APPROVAL_TOKEN. wfctl does not record approval from an unattended session.",
+    );
+  }
+  process.stdout.write(
+    `\nMaintainer approval requested\n`
+      + `  Change: ${input.id}\n`
+      + `  Stage:  ${input.stage}\n`
+      + `  Actor:  ${input.by}\n`
+      + `  Note:   ${input.note ?? "(none)"}\n\n`
+      + "This records a durable human decision. Only you should answer.\n",
+  );
+  const answer = await ask(`Type "approve" to record it, anything else to abort: `);
+  if (answer.toLowerCase() !== "approve") {
+    throw new Error("Maintainer approval was not confirmed; nothing was recorded");
+  }
+  return "interactive";
 }
 
 function workCaptureCommand() {
@@ -1463,7 +1570,23 @@ function knowledgeReconstructCommand() {
             title: options.title,
             mode: options.mode,
             leaves,
+            agents: await recordedAgents(options.target),
+          }).catch((error: unknown) => {
+            if (error instanceof ReconstructionDependencyError) {
+              if (options.json) {
+                printJson({ error: error.message, check: error.check });
+              } else {
+                process.stderr.write(`wfctl: ${error.message}\n`);
+                printRemediations([error.check]);
+              }
+              process.exitCode = 1;
+              return undefined;
+            }
+            throw error;
           });
+          if (!result) {
+            return;
+          }
           if (options.json) {
             printJson(result);
           } else {
@@ -3159,6 +3282,21 @@ function printCheck(report: DoctorReport): void {
   printRemediations(report.checks);
   printQmdSetup(report.checks);
   printCheckSummary(report.checks);
+}
+
+/**
+ * Agent platforms recorded at installation, used to render native-skill
+ * remediation steps. Falls back to every supported target when the repository
+ * chose not to install skills.
+ */
+async function recordedAgents(target: string): Promise<AgentTarget[]> {
+  try {
+    const config = await readConfig(resolve(target));
+    const agents = config.skills?.agents ?? [];
+    return agents.length > 0 ? agents : ["codex", "claude"];
+  } catch {
+    return ["codex", "claude"];
+  }
 }
 
 function printRemediations(checks: DoctorCheck[]): void {

@@ -23,10 +23,19 @@ Present a compact review packet containing the exact decision, evidence,
 conflicts, recommendation, and requested response. Record approve, correct, or
 defer. Ask one focused question at a time. Silence is not approval.
 
-For significant work, record framing and completion decisions in the living
-spec under `maintainer_review`. Existing explicit maintainer instructions may
-satisfy the framing gate; do not ask for the same decision twice. Reopen the
-gate when the approved framing changes materially.
+For significant work, record framing and completion decisions with `wfctl work
+approve <id> --stage framing|completion --by human:<maintainer-id>`. That
+command needs an interactive terminal, or an out-of-band `--token` matching
+`WFCTL_APPROVAL_TOKEN`; it writes both the `maintainer_review` receipt and the
+durable approval record the completion gate checks. Never hand-write
+`maintainer_review.status`, `by`, `at`, `method`, or `receipt`: a hand-written
+receipt fails verification. Existing explicit maintainer instructions may
+satisfy the framing decision, but still record it through the command; do not
+ask for the same decision twice. Reopen the gate when the approved framing
+changes materially.
+
+Approving edits the change record, so re-read it, refresh its review receipt,
+and refresh the checkpoint afterwards.
 
 After every material maintainer turn, update the spec's mutable current state
 and append the decision/discussion ledger before continuing. Preserve proposed,

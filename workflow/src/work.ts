@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { approvalIssues, recordApproval } from "./approval.js";
 import { findDistributionRoot } from "./assets.js";
 import {
   errorMessage,
@@ -21,7 +22,13 @@ import {
 import { readRepositoryMetadata } from "./git.js";
 import { validateKnowledge } from "./knowledge.js";
 import { resolveReconstructionLeaves } from "./repository-registry.js";
-import { completionIssues, parseWorkSpec, serializeWorkSpec } from "./work-spec.js";
+import {
+  completionIssues,
+  parseWorkSpec,
+  serializeWorkSpec,
+  type ApprovalMethod,
+  type MaintainerReviewStage,
+} from "./work-spec.js";
 import {
   bundleCompletionIssues,
   carryForwardCloseReview,
@@ -369,11 +376,85 @@ export async function verifyWork(
   const issues = completionIssues(document, false);
   issues.push(...await bundleCompletionIssues(dirname(context.specPath), document));
   issues.push(...repositoryVerificationIssues(document, context.currentSources));
+  issues.push(...await approvalIssues(context.knowledgeRoot, context.id, document));
   return {
     id,
     specPath: context.specPath,
     issues: [...new Set(issues)],
   };
+}
+
+export interface ApproveWorkOptions {
+  target: string;
+  id: string;
+  stage: MaintainerReviewStage;
+  by: string;
+  method: ApprovalMethod;
+  note?: string;
+  now?: Date;
+}
+
+export interface ApproveWorkResult {
+  id: string;
+  stage: MaintainerReviewStage;
+  by: string;
+  at: string;
+  method: ApprovalMethod;
+  receipt: string;
+  specPath: string;
+}
+
+/**
+ * Record one maintainer approval. The caller is responsible for obtaining the
+ * out-of-band confirmation that selects `method`; this function only binds the
+ * resulting receipt to the change record and the ignored runtime approval file.
+ */
+export async function approveWork(
+  options: ApproveWorkOptions,
+): Promise<ApproveWorkResult> {
+  const context = await requireWorkContext(options.target, options.id);
+  const record = await recordApproval({
+    knowledgeRoot: context.knowledgeRoot,
+    id: context.id,
+    stage: options.stage,
+    by: options.by,
+    method: options.method,
+    ...(options.note ? { note: options.note } : {}),
+    ...(options.now ? { now: options.now } : {}),
+  });
+  const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
+  const review = record_(document.metadata.maintainer_review) ?? {};
+  const previous = record_(review[options.stage]) ?? {};
+  review[options.stage] = {
+    ...previous,
+    status: "approved",
+    by: record.by,
+    at: record.at,
+    method: record.method,
+    receipt: record.receipt,
+    notes: uniqueNotes(previous.notes, record.note),
+  };
+  document.metadata.maintainer_review = review;
+  document.metadata.updated_at = record.at;
+  await writeFile(context.specPath, serializeWorkSpec(document), "utf8");
+  return {
+    id: context.id,
+    stage: options.stage,
+    by: record.by,
+    at: record.at,
+    method: record.method,
+    receipt: record.receipt,
+    specPath: context.specPath,
+  };
+}
+
+function record_(value: unknown): Record<string, unknown> | undefined {
+  return record(value);
+}
+
+function uniqueNotes(existing: unknown, note: string): string[] {
+  const notes = stringArray(existing);
+  return note && !notes.includes(note) ? [...notes, note] : notes;
 }
 
 export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkResult> {
@@ -386,6 +467,7 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
       ...completionIssues(document, true),
       ...await bundleCompletionIssues(activeDirectory, document),
       ...repositoryVerificationIssues(document, context.currentSources),
+      ...await approvalIssues(context.knowledgeRoot, context.id, document),
     ];
     if (issues.length > 0) {
       throw new Error(`Completed close is blocked: ${[...new Set(issues)].join("; ")}`);

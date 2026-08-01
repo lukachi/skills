@@ -191,6 +191,27 @@ closure fail on missing or stale receipts, malformed issues, cycles, open
 claims, incomplete issues, uncovered acceptance criteria, or unresolved
 Wayfinder state.
 
+Every change schema that carries the bundle layout is subject to this gate. A
+new schema version that is not listed as gated would silently disable
+acceptance, issue, receipt, and checkpoint checking, so the supported and gated
+version sets are single constants with a regression test binding them to the
+distributed bundle template.
+
+## Maintainer approval
+
+Framing and completion approvals are recorded by `wfctl work approve`, not by
+editing `maintainer_review`. The command requires an interactive terminal, or an
+out-of-band token supplied through `WFCTL_APPROVAL_TOKEN`, and writes both the
+receipt in `change.md` and a durable approval record under ignored runtime
+state. Verification and completed closure reject a receipt whose approval record
+is missing or inconsistent.
+
+This is provenance, not authentication. Nothing here proves which person typed
+the confirmation. What it does establish is that the approval was produced by a
+separate deliberate command rather than by the same unattended edit that wrote
+the work being approved. Bundles created before approval receipts existed keep
+their original contract so an upgrade cannot invalidate completed work.
+
 ## Concurrency and worktree safety
 
 An issue claim records the exact repository, branch, commit, worktree ID, and

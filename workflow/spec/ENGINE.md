@@ -39,7 +39,9 @@ across:
 The knowledge profile owns shared project understanding and central work
 records. It installs knowledge operation, exploration, reconstruction, raw
 intake, project research, direction shaping, curation, work management, and
-verification skills.
+verification skills. It also installs the work-item execution skill, because
+project-only and Wayfinder issues are legitimately claimed from knowledge; that
+skill still never authorizes source edits from this repository.
 
 The leaf profile owns source implementation. It installs Graphify-first
 analysis, knowledge alignment, exploration, direction shaping, curation,
@@ -74,7 +76,9 @@ The normal maintainer CLI surface is:
 
 - `wfctl init knowledge`;
 - `wfctl init leaf`;
-- `wfctl upgrade` when the maintainer chooses to run it directly.
+- `wfctl upgrade` when the maintainer chooses to run it directly;
+- `wfctl work approve` for framing and completion decisions, which the agent
+  may prepare and explain but cannot satisfy on its own.
 
 After initialization, installed agents own routine `wfctl`, QMD, Graphify,
 validation, registry, case, and work-record operations. Users express desired

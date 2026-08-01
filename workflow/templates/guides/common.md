@@ -237,8 +237,19 @@ map or creates a parallel strategy source.
    fresh checks, deviations, risks, and the knowledge delta or no-update reason.
 
 An approval is explicit. Silence and continued conversation are not approval.
-The agent records a stable `human:<reviewer-id>` and timestamp; you do not edit
-YAML manually.
+You never edit YAML manually.
+
+Framing and completion approvals for significant work are recorded by you, with
+`wfctl work approve <change-id> --stage framing|completion --by
+human:<your-id>`. The command prints the decision and waits for you to type
+`approve`; the agent can prepare it but cannot answer that prompt, and a
+receipt written into the record by hand fails verification. Automation may
+substitute `--token` matching a `WFCTL_APPROVAL_TOKEN` you set out of band.
+
+This records provenance, not identity. It shows the approval came from a
+deliberate separate step, not that a specific person typed it. Every other
+review decision the agent records as a stable `human:<reviewer-id>` and
+timestamp after you answer.
 
 ## Review packet
 

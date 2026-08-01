@@ -15,6 +15,9 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   index, ranking, and snippets as navigation only; verify by direct reading and
   authoritative sources.
 - Present bounded review packets and require explicit maintainer decisions at the gates defined by the workflow.
+- Record framing and completion approvals with `wfctl work approve`, never by
+  editing `maintainer_review`. The maintainer confirms in their own terminal;
+  a hand-written approval receipt fails verification.
 - Ask one material question at a time, include a recommendation, and update
   the durable record before continuing.
 - Preserve uncertainty and report missing evidence instead of guessing.

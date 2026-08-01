@@ -46,16 +46,22 @@ For significant work, the agent must:
    knowledge.
 5. Show a short framing packet: outcome, scope, exclusions, decisions,
    unknowns, and acceptance criteria.
-6. Wait for your explicit framing approval.
+6. Wait for your explicit framing approval, which you record yourself with
+   `wfctl work approve <change-id> --stage framing --by human:<your-id>`. The
+   command asks for a typed confirmation in your terminal; the agent cannot
+   record the decision for you.
 7. For multi-session work, split the approved contract into bounded issues with
    explicit blockers and acceptance coverage.
 8. Claim one ready issue and implement only in the bound leaf checkout—not in
    the knowledge repository.
 9. Verify the actual implementation and every bundle file, then show evidence,
    deviations, and risks.
-10. Ask for your completion decision and archive the real outcome.
+10. Ask for your completion decision, which you record the same way with
+    `--stage completion`, then archive the real outcome.
 
-Correct the framing as soon as something is wrong. Silence is not approval.
+Correct the framing as soon as something is wrong. Silence is not approval, and
+neither is an agent-written receipt: verification rejects an approval that no
+`wfctl work approve` run produced.
 
 ## Where the record and code live
 

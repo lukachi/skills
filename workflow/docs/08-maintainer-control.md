@@ -45,6 +45,27 @@ investigation. It should show:
 Approve, correct, reject, or explicitly defer. An unanswered question remains
 unresolved.
 
+## How approval is recorded
+
+Two decisions are recorded through a command instead of an ordinary record
+edit: the implementation framing and the completion of significant work.
+
+```sh
+wfctl work approve <change-id> --stage framing --by human:<your-id> \
+  --note "What you accepted"
+```
+
+It prints the decision and waits for you to type `approve` in your terminal.
+The agent can prepare the packet and the command, but it cannot answer that
+prompt: without an interactive terminal the command refuses, and a receipt
+written by hand fails verification. Automation may pass `--token` matching a
+`WFCTL_APPROVAL_TOKEN` you set out of band.
+
+This is provenance, not a signature. It does not prove who typed the word — it
+proves the approval came from a deliberate separate step rather than from the
+same unattended edit that produced the work. Treat it as a speed bump against
+silent self-approval, not as authentication.
+
 ## Common situations
 
 | Situation | What to do |

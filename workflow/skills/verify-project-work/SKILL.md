@@ -57,8 +57,19 @@ concepts under `knowledge_promotion`. Otherwise record a concrete no-update
 reason.
 
 Present acceptance results, engineering findings, checks, deviations, risks,
-and knowledge delta as one completion review packet. Record only explicit
-maintainer approval. Finish all semantic edits to `change.md`, then refresh its
+and knowledge delta as one completion review packet. Record the maintainer's
+explicit decision through the approval command; never write the receipt by
+hand:
+
+```sh
+wfctl work approve <id> --stage completion \
+  --by human:<maintainer-id> \
+  --note "<what the maintainer accepted>"
+```
+
+It requires an interactive terminal, or `--token` matching
+`WFCTL_APPROVAL_TOKEN`. `wfctl work verify` rejects a receipt with no matching
+approval record. Finish all semantic edits to `change.md`, then refresh its
 checkpoint in review stage **before** recording the final hash receipt:
 
 ```sh

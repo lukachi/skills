@@ -57,7 +57,20 @@ binds the current `change.md` rather than an earlier draft.
 
 Present a compact framing packet: outcome, scope, exclusions, decisions,
 acceptance IDs, test seams, risks, and unresolved work. Record only explicit
-maintainer approval under `maintainer_review.framing`.
+maintainer approval, and record it through the approval command rather than by
+editing the receipt:
+
+```sh
+wfctl work approve <id> --stage framing \
+  --by human:<maintainer-id> \
+  --note "<what was approved>"
+```
+
+The command requires an interactive terminal, or `--token` matching
+`WFCTL_APPROVAL_TOKEN` in unattended use. A hand-written
+`maintainer_review.framing` receipt fails verification. Approving rewrites
+`change.md`, so re-read it, refresh its review receipt, and refresh the
+checkpoint afterwards.
 
 For Wayfinder, read every resolved issue in full, collapse its linked detail
 into the specification, clear all legitimate fog, review every current bundle

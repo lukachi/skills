@@ -131,6 +131,11 @@ readable for compatibility.
 - Use `verify-project-work` for complete file accounting, spec/implementation
   reconciliation, knowledge promotion, completion review, and archival.
 
+Framing and completion decisions are recorded with `wfctl work approve <id>
+--stage framing|completion --by human:<maintainer-id>`, never by editing
+`maintainer_review` directly. The command requires an interactive terminal or
+an out-of-band `--token`; a hand-written receipt fails the completion gate.
+
 `changes/active/<id>/` is already the knowledge-side living record. There is
 no final dump into `raw/`. Completed closure moves the entire bundle intact to
 `changes/archive/<id>/`; verified durable truth is separately curated into
