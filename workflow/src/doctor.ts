@@ -26,12 +26,12 @@ import {
   type ClaimLedger,
 } from "./claim-ledger.js";
 import { listCaptures } from "./capture.js";
-import { buildInstallPlan, skillsForProfile } from "./planner.js";
+import { buildInstallPlan, graphifyIgnoreEntries, skillsForProfile } from "./planner.js";
 import {
   listRepositoryConnections,
   repositoryRegistryIssues,
 } from "./repository-registry.js";
-import type { DoctorCheck, DoctorReport } from "./types.js";
+import type { DoctorCheck, DoctorReport, Profile } from "./types.js";
 import { listInstalledSkills } from "./skill-installer.js";
 
 export interface DoctorOptions {
@@ -69,7 +69,7 @@ export async function runDoctor(
       runner,
     }));
     checks.push(await graphifyGraphCheck(join(target, "graphify-out/graph.json")));
-    checks.push(await graphifyScopeCheck(join(target, ".graphifyignore")));
+    checks.push(await graphifyScopeCheck(join(target, ".graphifyignore"), config.profile));
     const ignored = runner(
       "git",
       ["check-ignore", "-q", "graphify-out/graph.json"],
@@ -379,22 +379,30 @@ function repositoryConnectionMessage(
   return `Leaf is registered as ${repository}; reconstruction checkout selection is deferred until reconstruction starts`;
 }
 
-async function graphifyScopeCheck(path: string): Promise<DoctorCheck> {
+async function graphifyScopeCheck(path: string, profile: Profile): Promise<DoctorCheck> {
   try {
     const content = await readFile(path, "utf8");
-    const required = [
-      ".agents/",
-      ".claude/",
-      ".workflow/",
-      "graphify-out/",
-      "skills-lock.json",
-    ];
-    const missing = required.filter((entry) => !content.includes(entry));
+    const missing = graphifyIgnoreEntries(profile)
+      .filter((entry) => !content.includes(entry));
+    // A leaf installed before the scope narrowed still carries the blanket
+    // entries, which over-exclude project files instead of leaving workflow
+    // files in the graph. Name that as the upgrade it is, not as a failure.
+    const blanket = [".agents/", ".claude/"]
+      .filter((entry) => new RegExp(`^${entry.replace(".", "\\.")}$`, "m").test(content));
+    if (blanket.length > 0) {
+      return {
+        name: "graphify-scope",
+        status: "warn",
+        message:
+          `Graphify scope excludes all of ${blanket.join(" and ")}, which hides `
+          + "project-authored skills and instructions from the source graph; run wfctl upgrade",
+      };
+    }
     return {
       name: "graphify-scope",
       status: missing.length === 0 ? "pass" : "fail",
       message: missing.length === 0
-        ? "Workflow and agent files are excluded from the source graph"
+        ? "Only wfctl-installed files are excluded from the source graph"
         : `Graphify scope includes workflow artifacts; run wfctl upgrade (missing: ${missing.join(", ")})`,
     };
   } catch (error) {

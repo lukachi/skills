@@ -7140,16 +7140,7 @@ async function buildInstallPlan(options) {
     operations.push(await planManagedBlock(
       target,
       ".graphifyignore",
-      [
-        ".agents/",
-        ".claude/",
-        ".workflow/",
-        "graphify-out/",
-        "AGENTS.md",
-        "CLAUDE.md",
-        "PROJECT_WORKFLOW.md",
-        "skills-lock.json"
-      ].join("\n"),
+      graphifyIgnoreEntries(options.profile).join("\n"),
       GITIGNORE_MARKERS
     ));
   }
@@ -7634,6 +7625,21 @@ async function planObsoleteOwnedFile(target, relativePath2, installedHash) {
       reason: `cannot inspect obsolete owned file: ${errorMessage(error2)}`
     };
   }
+}
+function graphifyIgnoreEntries(profile) {
+  return [
+    ".workflow/",
+    ".claude/rules/",
+    "graphify-out/",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "PROJECT_WORKFLOW.md",
+    "skills-lock.json",
+    ...skillsForProfile(profile).flatMap((skill) => [
+      `.agents/skills/${skill}/`,
+      `.claude/skills/${skill}/`
+    ])
+  ];
 }
 function skillsForProfile(profile) {
   return [...workflowSkillsForProfile(profile), "qmd"].sort();
@@ -19886,7 +19892,7 @@ var init_reconstruction_coverage = __esm({
     WORKFLOW_STATE_PATH = ".workflow/state.json";
     SKILLS_LOCK_PATH = "skills-lock.json";
     SKILL_ROOTS = [".claude/skills/", ".agents/skills/"];
-    WORKFLOW_SKILL_NAMES = new Set(allWorkflowSkills());
+    WORKFLOW_SKILL_NAMES = /* @__PURE__ */ new Set([...allWorkflowSkills(), "qmd"]);
   }
 });
 
@@ -35131,7 +35137,7 @@ async function runDoctor(targetInput, options = {}) {
       runner
     }));
     checks.push(await graphifyGraphCheck(join15(target, "graphify-out/graph.json")));
-    checks.push(await graphifyScopeCheck(join15(target, ".graphifyignore")));
+    checks.push(await graphifyScopeCheck(join15(target, ".graphifyignore"), config.profile));
     const ignored = runner(
       "git",
       ["check-ignore", "-q", "graphify-out/graph.json"],
@@ -35392,21 +35398,22 @@ function repositoryConnectionMessage(repository, selection) {
   }
   return `Leaf is registered as ${repository}; reconstruction checkout selection is deferred until reconstruction starts`;
 }
-async function graphifyScopeCheck(path) {
+async function graphifyScopeCheck(path, profile) {
   try {
     const content3 = await readFile17(path, "utf8");
-    const required = [
-      ".agents/",
-      ".claude/",
-      ".workflow/",
-      "graphify-out/",
-      "skills-lock.json"
-    ];
-    const missing = required.filter((entry) => !content3.includes(entry));
+    const missing = graphifyIgnoreEntries(profile).filter((entry) => !content3.includes(entry));
+    const blanket = [".agents/", ".claude/"].filter((entry) => new RegExp(`^${entry.replace(".", "\\.")}$`, "m").test(content3));
+    if (blanket.length > 0) {
+      return {
+        name: "graphify-scope",
+        status: "warn",
+        message: `Graphify scope excludes all of ${blanket.join(" and ")}, which hides project-authored skills and instructions from the source graph; run wfctl upgrade`
+      };
+    }
     return {
       name: "graphify-scope",
       status: missing.length === 0 ? "pass" : "fail",
-      message: missing.length === 0 ? "Workflow and agent files are excluded from the source graph" : `Graphify scope includes workflow artifacts; run wfctl upgrade (missing: ${missing.join(", ")})`
+      message: missing.length === 0 ? "Only wfctl-installed files are excluded from the source graph" : `Graphify scope includes workflow artifacts; run wfctl upgrade (missing: ${missing.join(", ")})`
     };
   } catch (error2) {
     return {

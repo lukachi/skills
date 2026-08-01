@@ -160,9 +160,19 @@ test("renders a profile-specific leaf guide with the configured knowledge path",
     await readFile(join(leaf, ".gitignore"), "utf8"),
     "node_modules/\n\n# wfctl:begin\ngraphify-out/\n# wfctl:end\n",
   );
-  assert.match(
-    await readFile(join(leaf, ".graphifyignore"), "utf8"),
-    /\.agents\/[\s\S]*\.claude\/[\s\S]*\.workflow\/[\s\S]*skills-lock\.json/,
+  const graphifyIgnore = await readFile(join(leaf, ".graphifyignore"), "utf8");
+  assert.match(graphifyIgnore, /^\.workflow\/$/m);
+  assert.match(graphifyIgnore, /^skills-lock\.json$/m);
+  assert.match(graphifyIgnore, /^\.claude\/skills\/implement-work-item\/$/m);
+  assert.match(graphifyIgnore, /^\.agents\/skills\/implement-work-item\/$/m);
+  // A project may keep its own skills and instructions in the same directories,
+  // so wfctl must never exclude those directories wholesale.
+  assert.doesNotMatch(graphifyIgnore, /^\.agents\/$/m);
+  assert.doesNotMatch(graphifyIgnore, /^\.claude\/$/m);
+  assert.doesNotMatch(
+    graphifyIgnore,
+    /^\.claude\/skills\/$/m,
+    "excluding the skills root would hide project-authored skills",
   );
 });
 

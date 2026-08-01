@@ -135,16 +135,7 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
     operations.push(await planManagedBlock(
       target,
       ".graphifyignore",
-      [
-        ".agents/",
-        ".claude/",
-        ".workflow/",
-        "graphify-out/",
-        "AGENTS.md",
-        "CLAUDE.md",
-        "PROJECT_WORKFLOW.md",
-        "skills-lock.json",
-      ].join("\n"),
+      graphifyIgnoreEntries(options.profile).join("\n"),
       GITIGNORE_MARKERS,
     ));
   }
@@ -684,6 +675,31 @@ async function planObsoleteOwnedFile(
       reason: `cannot inspect obsolete owned file: ${errorMessage(error)}`,
     };
   }
+}
+
+/**
+ * Directories wfctl created, plus the exact skills wfctl installed.
+ *
+ * Blanket-ignoring `.agents/` and `.claude/` also hid project-authored skills
+ * and agent instructions from the source graph — in one real project, 180
+ * engineering documents describing service layout and contracts, written long
+ * before the workflow was installed. wfctl excludes what wfctl owns and nothing
+ * else; the Git manifest still accounts for every file either way.
+ */
+export function graphifyIgnoreEntries(profile: PlanOptions["profile"]): string[] {
+  return [
+    ".workflow/",
+    ".claude/rules/",
+    "graphify-out/",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "PROJECT_WORKFLOW.md",
+    "skills-lock.json",
+    ...skillsForProfile(profile).flatMap((skill) => [
+      `.agents/skills/${skill}/`,
+      `.claude/skills/${skill}/`,
+    ]),
+  ];
 }
 
 export function skillsForProfile(profile: PlanOptions["profile"]): string[] {

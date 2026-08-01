@@ -1183,8 +1183,10 @@ const WORKFLOW_SHARED_PATHS = [
 const WORKFLOW_STATE_PATH = ".workflow/state.json";
 const SKILLS_LOCK_PATH = "skills-lock.json";
 const SKILL_ROOTS = [".claude/skills/", ".agents/skills/"];
-// A skill this wfctl does not ship is the project's own and stays in scope.
-const WORKFLOW_SKILL_NAMES = new Set(allWorkflowSkills());
+// A skill this wfctl does not install is the project's own and stays in scope.
+// QMD's native skill is version-matched and installed by wfctl; Graphify's is
+// installed by Graphify itself, so it is not claimed here.
+const WORKFLOW_SKILL_NAMES = new Set([...allWorkflowSkills(), "qmd"]);
 
 interface WorkflowOwnership {
   owned: Set<string>;

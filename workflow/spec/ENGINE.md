@@ -207,7 +207,17 @@ architecture choice, or implementation state.
 - support non-interactive and JSON output for agents and CI;
 - default skills to project scope while allowing explicit user scope or none;
 - remove only obsolete project skills still attributable to this package;
-- keep generated caches and machine-local bindings out of Git.
+- keep generated caches and machine-local bindings out of Git;
+- exclude only its own installed files from the source graph.
+
+The last rule is not cosmetic. `.agents/` and `.claude/` are the agent's
+configuration directories, owned by the project, and a project may keep its own
+skills, rules, and instructions there — in one real case, engineering documents
+describing service layout and contracts, written long before the workflow
+arrived. Excluding those directories wholesale hid that material from every
+graph-first traversal the workflow itself prescribes. wfctl therefore lists the
+exact skill directories it installed. Ownership is an identity wfctl records,
+never a path pattern, in the graph scope and in reconstruction coverage alike.
 
 Knowledge initialization may offer interactive `git init`; automation must use
 an explicit opt-in. Leaf initialization requires an existing Git repository.
