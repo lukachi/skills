@@ -141,7 +141,7 @@ import {
   renderMaintainerGuide,
 } from "./assets.js";
 import { collectWorkflowState } from "./state.js";
-import type { StateLevel, StateReport } from "./state.js";
+import type { CapabilityState, StateLevel, StateReport } from "./state.js";
 import {
   installSessionBriefHook,
   removeSessionBriefHook,
@@ -693,14 +693,9 @@ function printBrief(report: StateReport): void {
   if (report.capabilities.length > 0) {
     process.stdout.write("\n");
     for (const capability of report.capabilities) {
-      const reasons = [
-        ...capability.blockedBy,
-        ...capability.missing.map((signal) => `no ${signal}`),
-      ];
-      const state = capability.available
-        ? green("available")
-        : `${red("blocked")} ${dim(`← ${reasons.join(", ")}`)}`;
-      process.stdout.write(`${capability.id.padEnd(22)} ${state}\n`);
+      process.stdout.write(
+        `${capability.id.padEnd(22)} ${capabilityState(capability)}\n`,
+      );
     }
   }
 
@@ -709,6 +704,24 @@ function printBrief(report: StateReport): void {
       `${yellow("degraded")}   ${failure.collector}  ${failure.reason}\n`,
     );
   }
+}
+
+/**
+ * An unmet requirement means the operation has no subject yet, which reads as an
+ * obstacle if it is printed the same way as something actually in the way.
+ */
+function capabilityState(capability: CapabilityState): string {
+  if (capability.available) {
+    return green("available");
+  }
+  if (capability.blockedBy.length > 0) {
+    const reasons = [
+      ...capability.blockedBy,
+      ...capability.missing.map((signal) => `needs ${signal}`),
+    ];
+    return `${red("blocked")} ${dim(`← ${reasons.join(", ")}`)}`;
+  }
+  return dim(`n/a       ← needs ${capability.missing.join(", ")}`);
 }
 
 function levelTag(level: StateLevel): string {

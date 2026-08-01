@@ -37835,13 +37835,10 @@ function printBrief(report) {
   if (report.capabilities.length > 0) {
     process.stdout.write("\n");
     for (const capability of report.capabilities) {
-      const reasons = [
-        ...capability.blockedBy,
-        ...capability.missing.map((signal) => `no ${signal}`)
-      ];
-      const state = capability.available ? green("available") : `${red("blocked")} ${dim(`\u2190 ${reasons.join(", ")}`)}`;
-      process.stdout.write(`${capability.id.padEnd(22)} ${state}
-`);
+      process.stdout.write(
+        `${capability.id.padEnd(22)} ${capabilityState(capability)}
+`
+      );
     }
   }
   for (const failure of report.degraded) {
@@ -37850,6 +37847,19 @@ function printBrief(report) {
 `
     );
   }
+}
+function capabilityState(capability) {
+  if (capability.available) {
+    return green("available");
+  }
+  if (capability.blockedBy.length > 0) {
+    const reasons = [
+      ...capability.blockedBy,
+      ...capability.missing.map((signal) => `needs ${signal}`)
+    ];
+    return `${red("blocked")} ${dim(`\u2190 ${reasons.join(", ")}`)}`;
+  }
+  return dim(`n/a       \u2190 needs ${capability.missing.join(", ")}`);
 }
 function levelTag(level2) {
   const label = level2.padEnd(9);

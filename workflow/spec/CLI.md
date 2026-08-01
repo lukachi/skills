@@ -91,7 +91,10 @@ Its output has two parts and no third:
 - **capabilities** — deliberate operations whose preconditions are mechanical.
   Availability is derived: a capability is available when no collected signal
   blocks it and every signal it `requires` is present. `blockedBy` and `missing`
-  name the exact reasons.
+  name the exact reasons, and they mean different things: `blockedBy` is
+  something in the way, `missing` is an operation with no subject yet. Human
+  output must keep them distinct, because an unmet requirement printed as a
+  blocker reads as a problem the maintainer has to solve.
 
 The command composes no advice and describes no scenario. Ranking facts into a
 short human orientation is the agent's work, not the CLI's.
