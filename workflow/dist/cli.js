@@ -7179,7 +7179,7 @@ function graphifyCliCheck(input) {
   return {
     name: "graphify-cli",
     status: "fail",
-    message: "Graphify is not installed; leaf initialization cannot continue",
+    message: `Graphify is not installed; ${input.blocks ?? "leaf initialization"} cannot continue`,
     remediation: {
       title: "Install Graphify",
       steps: [
@@ -15423,7 +15423,38 @@ var init_pinned_git_read = __esm({
   }
 });
 
+// src/untrusted-paths.ts
+function containsUntrustedIntakeReference(content3) {
+  return CITATION_PATTERNS.some((pattern) => pattern.test(content3));
+}
+var UNTRUSTED_ROOT, UNTRUSTED_SCHEME, UNTRUSTED_TARGET, CITATION_PATTERNS;
+var init_untrusted_paths = __esm({
+  "src/untrusted-paths.ts"() {
+    "use strict";
+    UNTRUSTED_ROOT = String.raw`(?:\.{1,2}\/)*(?:raw|intake)\/[^\s)>"'\`\]]+`;
+    UNTRUSTED_SCHEME = String.raw`(?:raw|intake):[^\s)>"'\`\]]+`;
+    UNTRUSTED_TARGET = `(?:${UNTRUSTED_ROOT}|${UNTRUSTED_SCHEME})`;
+    CITATION_PATTERNS = [
+      // [text](raw/notes.md) and ![alt](intake/cases/...)
+      new RegExp(String.raw`\]\(\s*<?${UNTRUSTED_TARGET}`, "i"),
+      // [label]: raw/notes.md
+      new RegExp(String.raw`^[^\S\n]*\[[^\]\n]+\]:[^\S\n]*<?${UNTRUSTED_TARGET}`, "im"),
+      // <raw/notes.md>
+      new RegExp(String.raw`<\s*${UNTRUSTED_TARGET}\s*>`, "i"),
+      // YAML/JSON scalar whose entire value is the path, quoted or bare.
+      new RegExp(String.raw`(?::|=)[^\S\n]*"${UNTRUSTED_TARGET}"`, "i"),
+      new RegExp(String.raw`(?::|=)[^\S\n]*'${UNTRUSTED_TARGET}'`, "i"),
+      new RegExp(String.raw`(?::|=)[^\S\n]*${UNTRUSTED_TARGET}[^\S\n]*$`, "im"),
+      // Bare list item that is only a path: "- raw/notes.md"
+      new RegExp(String.raw`^[^\S\n]*-[^\S\n]+${UNTRUSTED_TARGET}[^\S\n]*$`, "im")
+    ];
+  }
+});
+
 // src/work-spec.ts
+function includesVersion(allowed, value) {
+  return allowed.includes(Number(value));
+}
 function parseWorkSpec(content3) {
   const lines = content3.split(/\r?\n/);
   if (lines[0] !== "---") {
@@ -15459,8 +15490,10 @@ function completionIssues(document3, requireCompleted) {
   const promotion = recordValue2(metadata.knowledge_promotion);
   const scope = stringValue2(metadata.scope) || "leaf";
   const projectOnly = scope === "project";
-  if (![2, 3, 4, 5].includes(Number(metadata.workflow_version))) {
-    issues.push("workflow_version must be 2, 3, 4, or 5");
+  if (!includesVersion(SUPPORTED_CHANGE_VERSIONS, metadata.workflow_version)) {
+    issues.push(
+      `workflow_version must be one of ${SUPPORTED_CHANGE_VERSIONS.join(", ")}`
+    );
   }
   if (Number(metadata.workflow_version) >= 5 && !/^# Discovery ledger\s*$/m.test(document3.body)) {
     issues.push("Discovery ledger section is required");
@@ -15504,8 +15537,12 @@ function completionIssues(document3, requireCompleted) {
   if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
     issues.push("knowledge_alignment.conflicts must be resolved");
   }
-  reviewIssues("framing", maintainerReview, issues);
-  reviewIssues("completion", maintainerReview, issues);
+  const requiresApprovalReceipt2 = includesVersion(
+    APPROVAL_RECEIPT_CHANGE_VERSIONS,
+    metadata.workflow_version
+  );
+  reviewIssues("framing", maintainerReview, requiresApprovalReceipt2, issues);
+  reviewIssues("completion", maintainerReview, requiresApprovalReceipt2, issues);
   if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
     issues.push("knowledge_promotion.status must be applied or not-needed");
   } else if (promotion.status === "applied" && !nonEmptyStringArray(promotion.concepts)) {
@@ -15515,10 +15552,19 @@ function completionIssues(document3, requireCompleted) {
   } else if (promotion.status === "not-needed" && !stringValue2(promotion.reason).trim()) {
     issues.push("knowledge_promotion.reason must explain why no current knowledge changed");
   }
-  if (containsUntrustedIntakePath(document3.body) || containsUntrustedIntakePath(JSON.stringify(document3.metadata))) {
+  if (containsUntrustedIntakeReference(document3.body) || containsUntrustedIntakeReference(JSON.stringify(document3.metadata))) {
     issues.push("project change records must not cite raw/ or intake/ paths");
   }
   return issues;
+}
+function maintainerReviewEntry(document3, stage) {
+  return recordValue2(recordValue2(document3.metadata.maintainer_review)?.[stage]);
+}
+function requiresApprovalReceipt(document3) {
+  return includesVersion(
+    APPROVAL_RECEIPT_CHANGE_VERSIONS,
+    document3.metadata.workflow_version
+  );
 }
 function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -15535,10 +15581,7 @@ function nonEmptyStringArray(value) {
 function stringValue2(value) {
   return typeof value === "string" ? value : "";
 }
-function containsUntrustedIntakePath(content3) {
-  return /(?:^|[\s("'`:=])(?:(?:\.\.\/|\.\/|\/)*(?:raw|intake)\/|(?:raw|intake):)[^\s)"'`]*/im.test(content3);
-}
-function reviewIssues(stage, review, issues) {
+function reviewIssues(stage, review, requireReceipt, issues) {
   const entry = recordValue2(review?.[stage]);
   const prefix = `maintainer_review.${stage}`;
   if (entry?.status !== "approved") {
@@ -15550,14 +15593,35 @@ function reviewIssues(stage, review, issues) {
   if (!isIsoDateTime(stringValue2(entry?.at))) {
     issues.push(`${prefix}.at must be an ISO 8601 datetime`);
   }
+  if (!requireReceipt) {
+    return;
+  }
+  const method = stringValue2(entry?.method);
+  if (!APPROVAL_METHODS.includes(method)) {
+    issues.push(
+      `${prefix}.method must be recorded by wfctl work approve (${APPROVAL_METHODS.join(" or ")})`
+    );
+  }
+  if (!/^[0-9a-f]{64}$/.test(stringValue2(entry?.receipt))) {
+    issues.push(`${prefix}.receipt must be the wfctl work approve receipt digest`);
+  }
 }
 function isIsoDateTime(value) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
+var SUPPORTED_CHANGE_VERSIONS, GATED_CHANGE_VERSIONS, APPROVAL_RECEIPT_CHANGE_VERSIONS, SUPPORTED_ISSUE_VERSIONS, SUPPORTED_MAP_VERSION, SUPPORTED_REVIEW_VERSION, APPROVAL_METHODS;
 var init_work_spec = __esm({
   "src/work-spec.ts"() {
     "use strict";
     init_browser();
+    init_untrusted_paths();
+    SUPPORTED_CHANGE_VERSIONS = [2, 3, 4, 5];
+    GATED_CHANGE_VERSIONS = [3, 4, 5];
+    APPROVAL_RECEIPT_CHANGE_VERSIONS = [5];
+    SUPPORTED_ISSUE_VERSIONS = [1, 2, 3];
+    SUPPORTED_MAP_VERSION = 1;
+    SUPPORTED_REVIEW_VERSION = 1;
+    APPROVAL_METHODS = ["interactive", "token"];
   }
 });
 
@@ -15941,7 +16005,7 @@ function discoveryLedgerIssues(body, label, required) {
       continue;
     }
     const title = markdownNodeText(node2).trim();
-    const match = /^(DISC-\d{3,})\s+(?:—|-)\s+\S/.exec(title);
+    const match = /^(DISC-\d{3,})\s*(?:—|–|-|:)\s+\S/.exec(title);
     if (!match) {
       issues.push(`${label}: discovery entry heading is invalid: ${title || "empty heading"}`);
       continue;
@@ -20273,6 +20337,18 @@ async function beginProjectReconstruction(options) {
     repositoryInputs.push({ root, metadata });
   }
   const runner = options.runner ?? runTool;
+  const firstRepository = repositoryInputs[0];
+  if (firstRepository) {
+    const graphifyAvailable = graphifyCliCheck({
+      target: firstRepository.root,
+      agents: options.agents ?? [],
+      runner,
+      blocks: "reconstruction"
+    });
+    if (graphifyAvailable.status !== "pass") {
+      throw new ReconstructionDependencyError(graphifyAvailable);
+    }
+  }
   const graphResults = [];
   for (const input of repositoryInputs) {
     const updated = updateGraphifyGraph(input.root, runner);
@@ -22651,7 +22727,7 @@ function nonEmptyStringArray4(value) {
 function isIsoDateTime6(value) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
-var RECONSTRUCTION_VERSION, RAW_SCOPE_RECONSTRUCTION_VERSION, LEGACY_RECONSTRUCTION_VERSION, RECONSTRUCTION_SESSION_VERSION, RAW_SCOPE_MODES, RECONSTRUCTION_CHECKPOINT_STAGES, FINAL_REVIEW_STATES, CANDIDATE_DISPOSITIONS, CLAIM_CLASSES2, INTENT_STATES2, DELIVERY_STATES2, ALIGNMENT_STATES2;
+var RECONSTRUCTION_VERSION, RAW_SCOPE_RECONSTRUCTION_VERSION, LEGACY_RECONSTRUCTION_VERSION, RECONSTRUCTION_SESSION_VERSION, RAW_SCOPE_MODES, RECONSTRUCTION_CHECKPOINT_STAGES, FINAL_REVIEW_STATES, CANDIDATE_DISPOSITIONS, CLAIM_CLASSES2, INTENT_STATES2, DELIVERY_STATES2, ALIGNMENT_STATES2, ReconstructionDependencyError;
 var init_reconstruction = __esm({
   "src/reconstruction.ts"() {
     "use strict";
@@ -22720,6 +22796,14 @@ var init_reconstruction = __esm({
       "unknown",
       "not-applicable"
     ]);
+    ReconstructionDependencyError = class extends Error {
+      check;
+      constructor(check) {
+        super(check.message);
+        this.name = "ReconstructionDependencyError";
+        this.check = check;
+      }
+    };
   }
 });
 
@@ -23315,7 +23399,7 @@ async function finishWayfinder(bundleRoot, deliveryMode, now = /* @__PURE__ */ n
   return { mapPath, changePath, mode: deliveryMode };
 }
 async function bundleCompletionIssues(bundleRoot, change) {
-  if (![3, 4].includes(Number(change.metadata.workflow_version))) {
+  if (!includesVersion(GATED_CHANGE_VERSIONS, change.metadata.workflow_version)) {
     return [];
   }
   const issues = [];
@@ -23405,7 +23489,7 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
       issues.push(`${required}: required bundle file is missing`);
     }
   }
-  if (![2, 3, 4, 5].includes(Number(change.metadata.workflow_version))) {
+  if (!includesVersion(SUPPORTED_CHANGE_VERSIONS, change.metadata.workflow_version)) {
     issues.push("change.md: unsupported workflow_version");
   }
   issues.push(...discoveryLedgerIssues(
@@ -23475,8 +23559,10 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
         }
       }
     }
-    if (![1, 2, 3].includes(Number(entry.document.metadata.workflow_version))) {
-      issues.push(`${summary.id}: workflow_version must be 1, 2, or 3`);
+    if (!includesVersion(SUPPORTED_ISSUE_VERSIONS, entry.document.metadata.workflow_version)) {
+      issues.push(
+        `${summary.id}: workflow_version must be ${SUPPORTED_ISSUE_VERSIONS.join(", ")}`
+      );
     }
     issues.push(...discoveryLedgerIssues(
       entry.document.body,
@@ -23503,8 +23589,8 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
   if (map2 && map2.metadata.kind !== "wayfinder-map") {
     issues.push("map.md: kind must be wayfinder-map");
   }
-  if (map2 && map2.metadata.workflow_version !== 1) {
-    issues.push("map.md: workflow_version must be 1");
+  if (map2 && map2.metadata.workflow_version !== SUPPORTED_MAP_VERSION) {
+    issues.push(`map.md: workflow_version must be ${SUPPORTED_MAP_VERSION}`);
   }
   if (map2 && !["charting", "resolved"].includes(stringValue8(map2.metadata.status))) {
     issues.push("map.md: status must be charting or resolved");
@@ -23537,8 +23623,8 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
   }
   const review = await optionalDocument(join11(bundleRoot, "review.md"));
   if (review) {
-    if (review.metadata.workflow_version !== 1) {
-      issues.push("review.md: workflow_version must be 1");
+    if (review.metadata.workflow_version !== SUPPORTED_REVIEW_VERSION) {
+      issues.push(`review.md: workflow_version must be ${SUPPORTED_REVIEW_VERSION}`);
     }
     if (review.metadata.kind !== "bundle-review") {
       issues.push("review.md: kind must be bundle-review");
@@ -24204,7 +24290,7 @@ async function validateKnowledge(targetInput, conceptPaths) {
       errors.push({ path: displayPath, message: `cannot read UTF-8 Markdown: ${errorMessage(error2)}` });
       continue;
     }
-    if (containsUntrustedIntakePath2(content3)) {
+    if (containsUntrustedIntakeReference(content3)) {
       errors.push({
         path: displayPath,
         message: "trusted knowledge must not reference raw/ or intake/ paths"
@@ -24817,7 +24903,7 @@ async function projectChangeRecords(root) {
           );
           result.set(entry.name, {
             ...document3.metadata,
-            __untrustedIntakeReference: containsUntrustedIntakePath2(content3),
+            __untrustedIntakeReference: containsUntrustedIntakeReference(content3),
             __receiptReady: completionIssues(document3, true).length === 0 && bundleIssues.length === 0 && document3.metadata.status === "completed" && (!root.endsWith(`${sep7}archive`) || document3.metadata.outcome === "completed")
           });
         }
@@ -24893,9 +24979,6 @@ function footnoteData(body) {
     [...counts].filter(([id, count2]) => count2 > (definitions.has(id) ? 1 : 0)).map(([id]) => id)
   );
   return { references, definitions };
-}
-function containsUntrustedIntakePath2(content3) {
-  return /(?:^|[\s("'`:=])(?:(?:\.\.\/|\.\/|\/)*(?:raw|intake)\/|(?:raw|intake):)[^\s)"'`]*/im.test(content3);
 }
 function isPinnedCodeResource3(value) {
   return /^git:.+@[0-9a-f]{40}#[^#\s]+$/i.test(value);
@@ -25359,6 +25442,7 @@ var init_knowledge = __esm({
     init_config();
     init_knowledge_graph();
     init_reconstruction();
+    init_untrusted_paths();
     init_work_spec();
     init_work_bundle();
     KNOWLEDGE_VIEW_PURPOSE = /* @__PURE__ */ new Map([
@@ -35107,6 +35191,21 @@ async function runDoctor(targetInput, options = {}) {
         status: registryIssues.length > 0 ? "fail" : connections.length === 0 ? "warn" : "pass",
         message: registryIssues.length > 0 ? registryIssues.join("; ") : connections.length === 0 ? "No leaf repositories registered; baseline reconstruction cannot start yet" : `${connections.length} repository registration(s), ${checkouts} known worktree(s), ${active} default reconstruction checkout(s)${active < connections.length ? "; remaining selection is deferred until reconstruction starts" : ""}`
       });
+      if (connections.length > 0) {
+        const graphify = graphifyCliCheck({
+          target,
+          agents: config.skills?.agents ?? [],
+          runner
+        });
+        checks.push(
+          graphify.status === "pass" ? { ...graphify, name: "graphify-reconstruction" } : {
+            ...graphify,
+            name: "graphify-reconstruction",
+            status: "warn",
+            message: "Graphify is not installed; baseline reconstruction of the registered repositories cannot start until it is"
+          }
+        );
+      }
     } catch (error2) {
       checks.push({
         name: "repository-registry",
@@ -35427,6 +35526,129 @@ init_reconstruction_orchestration();
 init_types();
 
 // src/work.ts
+import { constants as constants7 } from "node:fs";
+import {
+  access as access7,
+  mkdir as mkdir11,
+  readFile as readFile19,
+  readdir as readdir11,
+  realpath as realpath5,
+  rename as rename9,
+  rm as rm4,
+  writeFile as writeFile11
+} from "node:fs/promises";
+import { dirname as dirname12, join as join17, resolve as resolve18, sep as sep9 } from "node:path";
+
+// src/approval.ts
+init_config();
+init_work_spec();
+import { createHash as createHash10 } from "node:crypto";
+import { mkdir as mkdir10, readFile as readFile18, writeFile as writeFile10 } from "node:fs/promises";
+import { dirname as dirname11, join as join16 } from "node:path";
+function approvalReceiptDigest(input) {
+  return createHash10("sha256").update(
+    [input.id, input.stage, input.by, input.at, input.method].join("\0"),
+    "utf8"
+  ).digest("hex");
+}
+function approvalRecordPath(knowledgeRoot, id, stage) {
+  return join16(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
+}
+async function recordApproval(options) {
+  if (!options.by.startsWith("human:") || options.by.trim().length <= "human:".length) {
+    throw new Error("Maintainer approval requires --by human:<maintainer-id>");
+  }
+  if (!APPROVAL_METHODS.includes(options.method)) {
+    throw new Error(`Unsupported approval method: ${options.method}`);
+  }
+  const at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+  const record2 = {
+    schemaVersion: 1,
+    id: options.id,
+    stage: options.stage,
+    by: options.by.trim(),
+    at,
+    method: options.method,
+    note: (options.note ?? "").trim(),
+    receipt: approvalReceiptDigest({
+      id: options.id,
+      stage: options.stage,
+      by: options.by.trim(),
+      at,
+      method: options.method
+    })
+  };
+  const path = approvalRecordPath(options.knowledgeRoot, options.id, options.stage);
+  await mkdir10(dirname11(path), { recursive: true });
+  await writeFile10(path, `${JSON.stringify(record2, null, 2)}
+`, "utf8");
+  return record2;
+}
+async function readApproval(knowledgeRoot, id, stage) {
+  try {
+    const raw = JSON.parse(
+      await readFile18(approvalRecordPath(knowledgeRoot, id, stage), "utf8")
+    );
+    return isApprovalRecord(raw) ? raw : void 0;
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return void 0;
+    }
+    throw error2;
+  }
+}
+async function approvalIssues(knowledgeRoot, id, document3) {
+  if (!requiresApprovalReceipt(document3)) {
+    return [];
+  }
+  const issues = [];
+  for (const stage of ["framing", "completion"]) {
+    const entry = maintainerReviewEntry(document3, stage);
+    const prefix = `maintainer_review.${stage}`;
+    const receipt = typeof entry?.receipt === "string" ? entry.receipt : "";
+    if (!receipt) {
+      continue;
+    }
+    const record2 = await readApproval(knowledgeRoot, id, stage);
+    if (!record2) {
+      issues.push(
+        `${prefix}.receipt has no recorded approval; re-run wfctl work approve --stage ${stage}`
+      );
+      continue;
+    }
+    if (record2.receipt !== receipt) {
+      issues.push(`${prefix}.receipt does not match the recorded approval`);
+    }
+    if (record2.by !== (typeof entry?.by === "string" ? entry.by : "")) {
+      issues.push(`${prefix}.by does not match the recorded approval actor`);
+    }
+    if (record2.at !== (typeof entry?.at === "string" ? entry.at : "")) {
+      issues.push(`${prefix}.at does not match the recorded approval time`);
+    }
+    if (record2.method !== (typeof entry?.method === "string" ? entry.method : "")) {
+      issues.push(`${prefix}.method does not match the recorded approval method`);
+    }
+    if (record2.receipt !== approvalReceiptDigest({
+      id,
+      stage,
+      by: record2.by,
+      at: record2.at,
+      method: record2.method
+    })) {
+      issues.push(`${prefix}: the recorded approval digest is inconsistent`);
+    }
+  }
+  return issues;
+}
+function isApprovalRecord(value) {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record2 = value;
+  return record2.schemaVersion === 1 && typeof record2.id === "string" && (record2.stage === "framing" || record2.stage === "completion") && typeof record2.by === "string" && typeof record2.at === "string" && APPROVAL_METHODS.includes(record2.method) && typeof record2.note === "string" && typeof record2.receipt === "string";
+}
+
+// src/work.ts
 init_assets();
 init_config();
 init_git();
@@ -35434,18 +35656,6 @@ init_knowledge();
 init_repository_registry();
 init_work_spec();
 init_work_bundle();
-import { constants as constants7 } from "node:fs";
-import {
-  access as access7,
-  mkdir as mkdir10,
-  readFile as readFile18,
-  readdir as readdir11,
-  realpath as realpath5,
-  rename as rename9,
-  rm as rm4,
-  writeFile as writeFile10
-} from "node:fs/promises";
-import { dirname as dirname11, join as join16, resolve as resolve18, sep as sep9 } from "node:path";
 async function beginWork(options) {
   const target = await realpath5(resolve18(options.target));
   const config = await readConfig(target);
@@ -35493,17 +35703,17 @@ async function beginWork(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const date = now.toISOString().slice(0, 10);
   const id = await uniqueWorkId(
-    join16(knowledgeRoot, "changes/active"),
+    join17(knowledgeRoot, "changes/active"),
     `${date}-${normalizeSlug5(options.slug)}`
   );
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile18(
-    join16(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
+  const template = parseWorkSpec(await readFile19(
+    join17(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
     "utf8"
   ));
   const createdAt = now.toISOString();
-  const activeDirectory = join16(knowledgeRoot, "changes/active", id);
-  const specPath = join16(activeDirectory, "change.md");
+  const activeDirectory = join17(knowledgeRoot, "changes/active", id);
+  const specPath = join17(activeDirectory, "change.md");
   const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
   const pointerPaths = boundRepositories.map(
     (entry) => leafPointerPath(entry.root, id)
@@ -35553,8 +35763,8 @@ async function beginWork(options) {
     repositories: boundRepositories
   };
   try {
-    await mkdir10(activeDirectory, { recursive: false });
-    await writeFile10(specPath, serializeWorkSpec(template), {
+    await mkdir11(activeDirectory, { recursive: false });
+    await writeFile11(specPath, serializeWorkSpec(template), {
       encoding: "utf8",
       flag: "wx"
     });
@@ -35585,25 +35795,70 @@ async function beginWork(options) {
 }
 async function verifyWork(targetInput, id) {
   const context = await requireWorkContext(targetInput, id);
-  const document3 = parseWorkSpec(await readFile18(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile19(context.specPath, "utf8"));
   const issues = completionIssues(document3, false);
-  issues.push(...await bundleCompletionIssues(dirname11(context.specPath), document3));
+  issues.push(...await bundleCompletionIssues(dirname12(context.specPath), document3));
   issues.push(...repositoryVerificationIssues(document3, context.currentSources));
+  issues.push(...await approvalIssues(context.knowledgeRoot, context.id, document3));
   return {
     id,
     specPath: context.specPath,
     issues: [...new Set(issues)]
   };
 }
+async function approveWork(options) {
+  const context = await requireWorkContext(options.target, options.id);
+  const record2 = await recordApproval({
+    knowledgeRoot: context.knowledgeRoot,
+    id: context.id,
+    stage: options.stage,
+    by: options.by,
+    method: options.method,
+    ...options.note ? { note: options.note } : {},
+    ...options.now ? { now: options.now } : {}
+  });
+  const document3 = parseWorkSpec(await readFile19(context.specPath, "utf8"));
+  const review = record_(document3.metadata.maintainer_review) ?? {};
+  const previous2 = record_(review[options.stage]) ?? {};
+  review[options.stage] = {
+    ...previous2,
+    status: "approved",
+    by: record2.by,
+    at: record2.at,
+    method: record2.method,
+    receipt: record2.receipt,
+    notes: uniqueNotes(previous2.notes, record2.note)
+  };
+  document3.metadata.maintainer_review = review;
+  document3.metadata.updated_at = record2.at;
+  await writeFile11(context.specPath, serializeWorkSpec(document3), "utf8");
+  return {
+    id: context.id,
+    stage: options.stage,
+    by: record2.by,
+    at: record2.at,
+    method: record2.method,
+    receipt: record2.receipt,
+    specPath: context.specPath
+  };
+}
+function record_(value) {
+  return record(value);
+}
+function uniqueNotes(existing, note) {
+  const notes = stringArray9(existing);
+  return note && !notes.includes(note) ? [...notes, note] : notes;
+}
 async function closeWork(options) {
   const context = await requireWorkContext(options.target, options.id);
-  const activeDirectory = dirname11(context.specPath);
-  const document3 = parseWorkSpec(await readFile18(context.specPath, "utf8"));
+  const activeDirectory = dirname12(context.specPath);
+  const document3 = parseWorkSpec(await readFile19(context.specPath, "utf8"));
   if (options.outcome === "completed") {
     const issues = [
       ...completionIssues(document3, true),
       ...await bundleCompletionIssues(activeDirectory, document3),
-      ...repositoryVerificationIssues(document3, context.currentSources)
+      ...repositoryVerificationIssues(document3, context.currentSources),
+      ...await approvalIssues(context.knowledgeRoot, context.id, document3)
     ];
     if (issues.length > 0) {
       throw new Error(`Completed close is blocked: ${[...new Set(issues)].join("; ")}`);
@@ -35621,7 +35876,7 @@ async function closeWork(options) {
       }
     }
   }
-  const archivePath = join16(context.knowledgeRoot, "changes/archive", options.id);
+  const archivePath = join17(context.knowledgeRoot, "changes/archive", options.id);
   await assertAbsent2(archivePath, "archive");
   const now = options.now ?? /* @__PURE__ */ new Date();
   document3.metadata.status = options.outcome;
@@ -35639,11 +35894,11 @@ async function closeWork(options) {
     blockers: [],
     now
   });
-  await mkdir10(dirname11(archivePath), { recursive: true });
+  await mkdir11(dirname12(archivePath), { recursive: true });
   await rename9(activeDirectory, archivePath);
   try {
-    await writeFile10(
-      join16(archivePath, "change.md"),
+    await writeFile11(
+      join17(archivePath, "change.md"),
       serializeWorkSpec(document3),
       "utf8"
     );
@@ -35663,13 +35918,13 @@ async function workBundleContext(target, id, stage, issueId) {
   const context = await requireWorkContext(target, id);
   return {
     id: context.id,
-    ...await inspectWorkBundle(dirname11(context.specPath), stage, issueId)
+    ...await inspectWorkBundle(dirname12(context.specPath), stage, issueId)
   };
 }
 async function updateWorkCheckpoint(options) {
   const context = await requireWorkContext(options.target, options.id);
   return await updateBundleCheckpoint({
-    bundleRoot: dirname11(context.specPath),
+    bundleRoot: dirname12(context.specPath),
     ...options.issueId ? { issueId: options.issueId } : {},
     actor: options.actor,
     status: options.status,
@@ -35685,7 +35940,7 @@ async function createWorkIssue2(input) {
   const context = await requireWorkContext(input.target, input.id);
   const distributionRoot = input.distributionRoot ?? await findDistributionRoot();
   return await createWorkIssue({
-    bundleRoot: dirname11(context.specPath),
+    bundleRoot: dirname12(context.specPath),
     slug: input.slug,
     title: input.title,
     phase: input.phase,
@@ -35704,7 +35959,7 @@ async function claimWorkIssue2(input) {
   const context = await requireWorkContext(target, input.id);
   const source = config.profile === "leaf" ? context.currentSources.find((entry) => entry.root === target) : void 0;
   return await claimWorkIssue({
-    bundleRoot: dirname11(context.specPath),
+    bundleRoot: dirname12(context.specPath),
     issueId: input.issueId,
     actor: input.actor,
     ...source ? { source } : {},
@@ -35717,7 +35972,7 @@ async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new 
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await releaseWorkIssue(
-    dirname11(context.specPath),
+    dirname12(context.specPath),
     issueId,
     claimContext,
     now
@@ -35728,7 +35983,7 @@ async function completeWorkIssue(input) {
   const context = await requireWorkContext(target, input.id);
   const claimContext = await claimContextForTarget(target, context);
   return await resolveWorkIssue({
-    bundleRoot: dirname11(context.specPath),
+    bundleRoot: dirname12(context.specPath),
     issueId: input.issueId,
     summary: input.summary,
     evidence: input.evidence,
@@ -35741,7 +35996,7 @@ async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await dropWorkIssue(
-    dirname11(context.specPath),
+    dirname12(context.specPath),
     issueId,
     reason,
     claimContext,
@@ -35751,7 +36006,7 @@ async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */
 async function setWorkIssueBlocker2(target, id, issueId, blockerId, blocked, now = /* @__PURE__ */ new Date()) {
   const context = await requireWorkContext(target, id);
   return await setWorkIssueBlocker(
-    dirname11(context.specPath),
+    dirname12(context.specPath),
     issueId,
     blockerId,
     blocked,
@@ -35760,11 +36015,11 @@ async function setWorkIssueBlocker2(target, id, issueId, blockerId, blocked, now
 }
 async function reviewWorkBundleFile(target, id, path, status, reason, now = /* @__PURE__ */ new Date()) {
   const context = await requireWorkContext(target, id);
-  return await reviewBundleFile(dirname11(context.specPath), path, status, reason, now);
+  return await reviewBundleFile(dirname12(context.specPath), path, status, reason, now);
 }
 async function finishWayfinder2(target, id, mode, now = /* @__PURE__ */ new Date()) {
   const context = await requireWorkContext(target, id);
-  return await finishWayfinder(dirname11(context.specPath), mode, now);
+  return await finishWayfinder(dirname12(context.specPath), mode, now);
 }
 async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   const target = await realpath5(resolve18(targetInput));
@@ -35787,7 +36042,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   const previous2 = binding.repositories[index2];
   binding.repositories[index2] = { root: target, source: current };
   const specPath = resolve18(knowledgeRoot, binding.spec);
-  const document3 = parseWorkSpec(await readFile18(specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile19(specPath, "utf8"));
   const repositories = recordArray6(document3.metadata.repositories);
   const durableIndex = repositories.findIndex(
     (entry) => entry.repository === current.repository
@@ -35811,7 +36066,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   ];
   const previousPointer = leafPointerPath(previous2.root, id);
   const currentPointer = leafPointerPath(target, id);
-  await writeFile10(specPath, serializeWorkSpec(document3), "utf8");
+  await writeFile11(specPath, serializeWorkSpec(document3), "utf8");
   await writeBinding(bindingPath, binding, true);
   await writeBinding(currentPointer, binding, true);
   if (previousPointer !== currentPointer) {
@@ -35829,7 +36084,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
 async function workStatus(targetInput, id) {
   const target = await realpath5(resolve18(targetInput));
   const config = await readConfig(target);
-  const pointerRoot = config.profile === "knowledge" ? join16(target, ".workflow/current/work") : join16(target, ".workflow/current");
+  const pointerRoot = config.profile === "knowledge" ? join17(target, ".workflow/current/work") : join17(target, ".workflow/current");
   const ids = id ? [id] : await pointerIds(pointerRoot);
   const results = [];
   for (const workId of ids) {
@@ -35917,13 +36172,13 @@ async function inspectWorkContext(target, profile, id) {
     }
   }
   const specPath = resolve18(knowledgeRoot, binding.spec);
-  const activeRoot = join16(knowledgeRoot, "changes/active");
+  const activeRoot = join17(knowledgeRoot, "changes/active");
   let title = id;
   if (!inside(activeRoot, specPath)) {
     issues.push(`spec path is outside the active work root: ${specPath}`);
   }
   try {
-    const document3 = parseWorkSpec(await readFile18(specPath, "utf8"));
+    const document3 = parseWorkSpec(await readFile19(specPath, "utf8"));
     title = typeof document3.metadata.title === "string" ? document3.metadata.title.trim() || id : id;
     if (document3.metadata.scope !== binding.scope) {
       issues.push("spec scope does not match the local binding");
@@ -35940,7 +36195,7 @@ async function inspectWorkContext(target, profile, id) {
         issues.push(`${entry.source.repository}: durable repository binding is inconsistent`);
       }
     }
-    const serialized = await readFile18(specPath, "utf8");
+    const serialized = await readFile19(specPath, "utf8");
     for (const entry of binding.repositories) {
       if (serialized.includes(entry.root)) {
         issues.push("durable work record leaks a local checkout path");
@@ -35965,7 +36220,7 @@ async function inspectWorkContext(target, profile, id) {
     ...codeRoots[0] ? { codeRoot: codeRoots[0] } : {},
     knowledgeRoot,
     specPath,
-    bundleRoot: dirname11(specPath),
+    bundleRoot: dirname12(specPath),
     pointerPaths,
     pointerPath: profile === "leaf" ? preferred : knowledgeBindingPath(knowledgeRoot, id),
     sources,
@@ -36025,7 +36280,7 @@ function durableRepository(source) {
 }
 async function assertKnowledgeRoot(root) {
   try {
-    await access7(join16(root, "knowledge/index.md"), constants7.R_OK);
+    await access7(join17(root, "knowledge/index.md"), constants7.R_OK);
   } catch {
     throw new Error(`Knowledge repository is not initialized: ${root}`);
   }
@@ -36033,7 +36288,7 @@ async function assertKnowledgeRoot(root) {
 async function assertKnowledgeReference(root, reference) {
   const normalized = reference.replace(/^\/+/, "");
   const absolute = resolve18(root, normalized);
-  const knowledgeRoot = join16(root, "knowledge");
+  const knowledgeRoot = join17(root, "knowledge");
   if (!inside(knowledgeRoot, absolute) || !absolute.toLowerCase().endsWith(".md")) {
     throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
   }
@@ -36045,22 +36300,22 @@ async function assertKnowledgeReference(root, reference) {
 }
 function knowledgeBindingPath(knowledgeRoot, id) {
   assertId(id);
-  return join16(knowledgeRoot, ".workflow/current/work", `${id}.json`);
+  return join17(knowledgeRoot, ".workflow/current/work", `${id}.json`);
 }
 function leafPointerPath(root, id) {
   assertId(id);
-  return join16(root, ".workflow/current", `${id}.json`);
+  return join17(root, ".workflow/current", `${id}.json`);
 }
 async function writeBinding(path, binding, replace = false) {
-  await mkdir10(dirname11(path), { recursive: true });
-  await writeFile10(path, `${JSON.stringify(binding, null, 2)}
+  await mkdir11(dirname12(path), { recursive: true });
+  await writeFile11(path, `${JSON.stringify(binding, null, 2)}
 `, {
     encoding: "utf8",
     flag: replace ? "w" : "wx"
   });
 }
 async function readBinding2(path) {
-  const raw = JSON.parse(await readFile18(path, "utf8"));
+  const raw = JSON.parse(await readFile19(path, "utf8"));
   if (!isRecord6(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
     (entry) => isRecord6(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
   )) {
@@ -36110,7 +36365,7 @@ async function uniqueWorkId(activeRoot, base) {
   for (let index2 = 1; index2 < 1e3; index2 += 1) {
     const candidate = index2 === 1 ? base : `${base}-${index2}`;
     try {
-      await access7(join16(activeRoot, candidate), constants7.F_OK);
+      await access7(join17(activeRoot, candidate), constants7.F_OK);
     } catch (error2) {
       if (isMissingFileError(error2)) {
         return candidate;
@@ -36488,7 +36743,7 @@ Bindings: ${result.pointerPaths.join(", ")}
         );
       }
     })
-  ).command("context", workContextCommand()).command("checkpoint", workCheckpointCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
+  ).command("context", workContextCommand()).command("checkpoint", workCheckpointCommand()).command("approve", workApproveCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
     "status",
     new Command().description("Show and validate the code-root/bundle binding.").arguments("[id:string]").option("-t, --target <path:string>", "Leaf checkout.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
       const results = await workStatus(options.target, id);
@@ -36582,6 +36837,85 @@ Archive: ${result.archivePath}
       }
     })
   );
+}
+function workApproveCommand() {
+  return new Command().description(
+    "Record a maintainer framing or completion approval outside the agent's normal record edits."
+  ).arguments("<id:string>").option("-t, --target <path:string>", "Bound checkout.", { default: "." }).option("--stage <stage:string>", "framing or completion.", { required: true }).option("--by <actor:string>", "Approving maintainer as human:<id>.", { required: true }).option("--note <note:string>", "What was approved, in project language.").option(
+    "--token <token:string>",
+    "Out-of-band approval token; required when no interactive terminal is available. Must equal WFCTL_APPROVAL_TOKEN."
+  ).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+    const stage = parseApprovalStage(options.stage);
+    const method = await resolveApprovalMethod({
+      id,
+      stage,
+      by: options.by,
+      ...options.note ? { note: options.note } : {},
+      ...options.token ? { token: options.token } : {}
+    });
+    const result = await approveWork({
+      target: options.target,
+      id,
+      stage,
+      by: options.by,
+      method,
+      ...options.note ? { note: options.note } : {}
+    });
+    if (options.json) {
+      printJson(result);
+    } else {
+      process.stdout.write(
+        `Recorded ${result.stage} approval for ${result.id}
+By: ${result.by}
+Method: ${result.method}
+Receipt: ${result.receipt}
+Spec: ${result.specPath}
+The change record changed: re-read it, refresh its review receipt and checkpoint.
+`
+      );
+    }
+  });
+}
+function parseApprovalStage(value) {
+  if (value === "framing" || value === "completion") {
+    return value;
+  }
+  throw new Error(`Approval stage must be framing or completion, not ${value}`);
+}
+async function resolveApprovalMethod(input) {
+  const expected = process.env.WFCTL_APPROVAL_TOKEN?.trim();
+  if (input.token) {
+    if (!expected) {
+      throw new Error(
+        "WFCTL_APPROVAL_TOKEN is not set; a supplied --token cannot be verified"
+      );
+    }
+    if (input.token !== expected) {
+      throw new Error("Supplied --token does not match WFCTL_APPROVAL_TOKEN");
+    }
+    return "token";
+  }
+  if (!interactive()) {
+    throw new Error(
+      "Maintainer approval requires an interactive terminal, or --token with a matching WFCTL_APPROVAL_TOKEN. wfctl does not record approval from an unattended session."
+    );
+  }
+  process.stdout.write(
+    `
+Maintainer approval requested
+  Change: ${input.id}
+  Stage:  ${input.stage}
+  Actor:  ${input.by}
+  Note:   ${input.note ?? "(none)"}
+
+This records a durable human decision. Only you should answer.
+`
+  );
+  const answer = await ask(`Type "approve" to record it, anything else to abort: `);
+  if (answer.toLowerCase() !== "approve") {
+    throw new Error("Maintainer approval was not confirmed; nothing was recorded");
+  }
+  return "interactive";
 }
 function workCaptureCommand() {
   return new Command().description("Capture, inspect, and resolve unassigned non-authoritative material.").command(
@@ -37170,8 +37504,25 @@ function knowledgeReconstructCommand() {
         slug,
         title: options.title,
         mode: options.mode,
-        leaves
+        leaves,
+        agents: await recordedAgents(options.target)
+      }).catch((error2) => {
+        if (error2 instanceof ReconstructionDependencyError) {
+          if (options.json) {
+            printJson({ error: error2.message, check: error2.check });
+          } else {
+            process.stderr.write(`wfctl: ${error2.message}
+`);
+            printRemediations([error2.check]);
+          }
+          process.exitCode = 1;
+          return void 0;
+        }
+        throw error2;
       });
+      if (!result) {
+        return;
+      }
       if (options.json) {
         printJson(result);
       } else {
@@ -38449,6 +38800,15 @@ ${cyan(bold(section.title))}
   printRemediations(report.checks);
   printQmdSetup(report.checks);
   printCheckSummary(report.checks);
+}
+async function recordedAgents(target) {
+  try {
+    const config = await readConfig(resolve19(target));
+    const agents = config.skills?.agents ?? [];
+    return agents.length > 0 ? agents : ["codex", "claude"];
+  } catch {
+    return ["codex", "claude"];
+  }
 }
 function printRemediations(checks) {
   for (const check of checks) {
