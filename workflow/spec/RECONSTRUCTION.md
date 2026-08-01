@@ -65,6 +65,16 @@ mapping is appropriate.
 
 Graphify absence never proves project absence.
 
+Graphify writes `graph.json` only when code topology changed, and
+`built_at_commit` is stamped only by that write. A commit touching solely
+excluded or non-code files therefore leaves the graph pinned to an earlier
+revision, and `--force` overrides the shrink guard rather than this short
+circuit. Verified against graphify 0.9.26. The CLI must reject the stale pin
+rather than reconstruct against it, must not repair third-party state on its
+own, and must say what happened and that removing `graph.json` and re-running
+`graphify update .` rebuilds it while preserving the AST cache. An agent should
+not have to rediscover this.
+
 ### Direct-reading lane
 
 Source and test evidence comes from pinned Git blobs. Reading receipts record:
@@ -97,6 +107,28 @@ require an explanation.
 
 Product-bearing source, tests, contracts, configuration, product data, and
 documentation cannot finish as `structural-only`.
+
+### Workflow assets
+
+A leaf commits the workflow wfctl installed into it, so those files enter the
+frontier as tracked project files. They describe agent behavior, not the
+project, and a reviewer must never read installed instructions as accepted
+product intent.
+
+The CLI categorizes them as `workflow-asset` when the ledger is frozen, from the
+identity wfctl already recorded in the pinned tree — `.workflow/state.json` and
+the skills the pinned `skills-lock.json` confirms wfctl installed. Ownership is
+never inferred from a path pattern: a project may keep its own skills, rules,
+and agent instructions in the same directories, and those stay in scope with a
+`pending` state.
+
+Wholly owned files are frozen as `irrelevant` with a machine-written reason, so
+complete accounting still counts them. Files wfctl only writes a managed block
+into carry the category but keep `pending`, because maintainer text may live
+outside the markers and only a reader can tell.
+
+An agent may re-disposition any of them; automatic classification is a starting
+state, not a verdict.
 
 ## Communities and runtime surfaces
 

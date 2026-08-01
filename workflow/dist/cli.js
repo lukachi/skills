@@ -7036,6 +7036,747 @@ var init_config = __esm({
   }
 });
 
+// src/managed-block.ts
+function renderManagedBlock(body, markers = MARKDOWN_MARKERS) {
+  return `${markers.start}
+${body.trim()}
+${markers.end}`;
+}
+function upsertManagedBlock(existing, body, markers = MARKDOWN_MARKERS) {
+  const startCount = count(existing, markers.start);
+  const endCount = count(existing, markers.end);
+  if (startCount === 0 && endCount === 0) {
+    const prefix = existing.trimEnd();
+    const separator = prefix.length === 0 ? "" : "\n\n";
+    return {
+      content: `${prefix}${separator}${renderManagedBlock(body, markers)}
+`
+    };
+  }
+  if (startCount !== 1 || endCount !== 1) {
+    return { error: "managed block markers are malformed or duplicated" };
+  }
+  const start = existing.indexOf(markers.start);
+  const end = existing.indexOf(markers.end);
+  if (end < start) {
+    return { error: "managed block end marker appears before its start marker" };
+  }
+  const after = end + markers.end.length;
+  return {
+    content: `${existing.slice(0, start)}${renderManagedBlock(body, markers)}${existing.slice(after)}`
+  };
+}
+function count(value, needle) {
+  return value.split(needle).length - 1;
+}
+var MARKDOWN_MARKERS, GITIGNORE_MARKERS;
+var init_managed_block = __esm({
+  "src/managed-block.ts"() {
+    "use strict";
+    MARKDOWN_MARKERS = {
+      start: "<!-- wfctl:begin -->",
+      end: "<!-- wfctl:end -->"
+    };
+    GITIGNORE_MARKERS = {
+      start: "# wfctl:begin",
+      end: "# wfctl:end"
+    };
+  }
+});
+
+// src/planner.ts
+import { createHash } from "node:crypto";
+import { lstat, readFile as readFile3, readlink } from "node:fs/promises";
+import { join as join2, resolve as resolve3, sep as sep2 } from "node:path";
+async function buildInstallPlan(options) {
+  const target = resolve3(options.target);
+  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+  const state = await readState(target);
+  const config = createConfig(
+    options.profile,
+    target,
+    options.knowledge,
+    options.skills
+  );
+  const operations = [];
+  for (const directory of REQUIRED_DIRECTORIES) {
+    operations.push(await planDirectory(target, directory));
+  }
+  if (options.profile === "knowledge") {
+    for (const directory of KNOWLEDGE_DIRECTORIES) {
+      operations.push(await planDirectory(target, directory));
+    }
+  }
+  operations.push(
+    await planOwnedFile(
+      target,
+      ".workflow/.gitignore",
+      "backups/\ncurrent/\n",
+      state
+    )
+  );
+  if (options.profile === "knowledge") {
+    operations.push(
+      await planOwnedFile(
+        target,
+        ".qmd/.gitignore",
+        "*\n!.gitignore\n",
+        state
+      )
+    );
+    operations.push(
+      await planOwnedFile(
+        target,
+        ".qmd/index.yml",
+        renderQmdConfig(target),
+        state
+      )
+    );
+    operations.push(await planRepositoryRegistry(target));
+  }
+  operations.push(await planConfig(target, config));
+  if (options.profile === "leaf") {
+    operations.push(await planLeafGitignore(target));
+    operations.push(await planManagedBlock(
+      target,
+      ".graphifyignore",
+      [
+        ".agents/",
+        ".claude/",
+        ".workflow/",
+        "graphify-out/",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "PROJECT_WORKFLOW.md",
+        "skills-lock.json"
+      ].join("\n"),
+      GITIGNORE_MARKERS
+    ));
+  }
+  const instructions = await renderAgentInstructions(
+    distributionRoot,
+    options.profile,
+    config.knowledge?.path
+  );
+  operations.push(await planManagedBlock(target, "AGENTS.md", instructions));
+  operations.push(await planClaudeInstructions(target, instructions));
+  const guide = await renderMaintainerGuide(
+    distributionRoot,
+    options.profile,
+    config.knowledge?.path
+  );
+  operations.push(await planManagedBlock(target, "PROJECT_WORKFLOW.md", guide));
+  const ruleRoots = [
+    join2(distributionRoot, "rules/common"),
+    join2(distributionRoot, `rules/${options.profile}`)
+  ];
+  for (const ruleRoot of ruleRoots) {
+    await planOwnedTree({
+      sourceRoot: ruleRoot,
+      destinationRoot: ".workflow/rules",
+      target,
+      state,
+      operations
+    });
+    await planOwnedTree({
+      sourceRoot: ruleRoot,
+      destinationRoot: ".claude/rules",
+      target,
+      state,
+      operations
+    });
+  }
+  if (options.profile === "knowledge") {
+    await planOwnedTree({
+      sourceRoot: join2(distributionRoot, "templates/knowledge"),
+      destinationRoot: ".",
+      target,
+      state,
+      operations
+    });
+  }
+  const desiredOwnedPaths = new Set(
+    operations.filter((operation) => operation.track).map((operation) => operation.path)
+  );
+  for (const [path, installed] of Object.entries(state?.files ?? {})) {
+    if (!desiredOwnedPaths.has(path)) {
+      operations.push(await planObsoleteOwnedFile(target, path, installed.sha256));
+    }
+  }
+  return {
+    target,
+    profile: options.profile,
+    ...config.knowledge ? { knowledgePath: config.knowledge.path } : {},
+    operations: sortOperations(operations)
+  };
+}
+function summarizePlan(plan) {
+  const counts = Object.fromEntries(
+    ["create", "update", "delete", "unchanged", "conflict"].map((status) => [
+      status,
+      plan.operations.filter((operation) => operation.status === status).length
+    ])
+  );
+  return {
+    target: plan.target,
+    profile: plan.profile,
+    ...plan.knowledgePath ? { knowledgePath: plan.knowledgePath } : {},
+    counts,
+    operations: plan.operations.map(
+      ({ content: _content, expectedHash: _expected, ...operation }) => operation
+    )
+  };
+}
+function hashContent(content3) {
+  return createHash("sha256").update(content3).digest("hex");
+}
+async function planConfig(target, desired) {
+  const relativePath2 = ".workflow/config.json";
+  const absolute = join2(target, relativePath2);
+  const content3 = `${JSON.stringify(desired, null, 2)}
+`;
+  try {
+    const existing = await readFile3(absolute, "utf8");
+    const parsed = JSON.parse(existing);
+    const sameKnowledge = desired.profile !== "leaf" || parsed.knowledge?.path === desired.knowledge?.path;
+    const sameIdentity = parsed.schemaVersion === desired.schemaVersion && parsed.profile === desired.profile && sameKnowledge;
+    const sameSkills = parsed.skills?.scope === desired.skills?.scope && JSON.stringify(parsed.skills?.agents) === JSON.stringify(desired.skills?.agents);
+    const sameVersion = parsed.installedVersion === desired.installedVersion;
+    if (sameIdentity && sameSkills && sameVersion) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "unchanged",
+        reason: "existing workflow configuration is compatible",
+        content: existing
+      };
+    }
+    if (sameIdentity && !parsed.skills) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "update",
+        reason: "record skill installation settings",
+        content: content3,
+        expectedHash: hashContent(existing)
+      };
+    }
+    if (sameIdentity && sameSkills && !sameVersion) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "update",
+        reason: `record workflow version ${desired.installedVersion}`,
+        content: content3,
+        expectedHash: hashContent(existing)
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath2,
+      status: "conflict",
+      reason: "existing workflow configuration differs; update it explicitly",
+      content: content3,
+      expectedHash: hashContent(existing),
+      replaceable: true
+    };
+  } catch (error2) {
+    if (!isMissingFileError(error2)) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "conflict",
+        reason: `cannot inspect configuration: ${errorMessage(error2)}`
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath2,
+      status: "create",
+      reason: "workflow configuration is absent",
+      content: content3
+    };
+  }
+}
+async function planRepositoryRegistry(target) {
+  const relativePath2 = ".workflow/repositories.json";
+  const absolute = join2(target, relativePath2);
+  const empty = `${JSON.stringify({ schemaVersion: 1, repositories: [] }, null, 2)}
+`;
+  try {
+    const existing = await readFile3(absolute, "utf8");
+    const value = JSON.parse(existing);
+    if (value.schemaVersion !== 1 || !Array.isArray(value.repositories)) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "conflict",
+        reason: "repository registry has an unsupported shape"
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath2,
+      status: "unchanged",
+      reason: "dynamic repository registry is valid",
+      content: existing
+    };
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "create",
+        reason: "repository registry is absent",
+        content: empty
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath2,
+      status: "conflict",
+      reason: `cannot inspect repository registry: ${errorMessage(error2)}`
+    };
+  }
+}
+async function planDirectory(target, relativePath2) {
+  try {
+    const stat4 = await lstat(join2(target, relativePath2));
+    if (stat4.isDirectory()) {
+      return {
+        kind: "directory",
+        path: relativePath2,
+        status: "unchanged",
+        reason: "directory exists"
+      };
+    }
+    return {
+      kind: "directory",
+      path: relativePath2,
+      status: "conflict",
+      reason: "path exists and is not a directory"
+    };
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return {
+        kind: "directory",
+        path: relativePath2,
+        status: "create",
+        reason: "directory is absent"
+      };
+    }
+    return {
+      kind: "directory",
+      path: relativePath2,
+      status: "conflict",
+      reason: `cannot inspect directory: ${errorMessage(error2)}`
+    };
+  }
+}
+async function planManagedBlock(target, relativePath2, body, markers) {
+  const absolute = join2(target, relativePath2);
+  try {
+    const stat4 = await lstat(absolute);
+    if (stat4.isSymbolicLink()) {
+      return {
+        kind: "managed-block",
+        path: relativePath2,
+        status: "conflict",
+        reason: "instruction file is a symlink not owned by this operation"
+      };
+    }
+    if (!stat4.isFile()) {
+      return {
+        kind: "managed-block",
+        path: relativePath2,
+        status: "conflict",
+        reason: "instruction path exists and is not a regular file"
+      };
+    }
+    const existing = await readFile3(absolute, "utf8");
+    const merged = upsertManagedBlock(existing, body, markers);
+    if (!merged.content) {
+      return {
+        kind: "managed-block",
+        path: relativePath2,
+        status: "conflict",
+        reason: merged.error ?? "cannot update managed block"
+      };
+    }
+    const status = merged.content === existing ? "unchanged" : "update";
+    return {
+      kind: "managed-block",
+      path: relativePath2,
+      status,
+      reason: status === "unchanged" ? "managed block is current" : "managed block will be updated",
+      content: merged.content,
+      expectedHash: hashContent(existing)
+    };
+  } catch (error2) {
+    if (!isMissingFileError(error2)) {
+      return {
+        kind: "managed-block",
+        path: relativePath2,
+        status: "conflict",
+        reason: `cannot inspect instruction file: ${errorMessage(error2)}`
+      };
+    }
+    const merged = upsertManagedBlock("", body, markers);
+    return {
+      kind: "managed-block",
+      path: relativePath2,
+      status: "create",
+      reason: "instruction file is absent",
+      content: merged.content ?? ""
+    };
+  }
+}
+async function planLeafGitignore(target) {
+  const relativePath2 = ".gitignore";
+  const absolute = join2(target, relativePath2);
+  try {
+    const stat4 = await lstat(absolute);
+    if (stat4.isFile() && !stat4.isSymbolicLink()) {
+      const existing = await readFile3(absolute, "utf8");
+      if (!existing.includes(GITIGNORE_MARKERS.start) && ignoresGraphifyOutput(existing)) {
+        return {
+          kind: "managed-block",
+          path: relativePath2,
+          status: "unchanged",
+          reason: "Graphify output is already ignored",
+          content: existing,
+          expectedHash: hashContent(existing)
+        };
+      }
+    }
+  } catch (error2) {
+    if (!isMissingFileError(error2)) {
+      return {
+        kind: "managed-block",
+        path: relativePath2,
+        status: "conflict",
+        reason: `cannot inspect .gitignore: ${errorMessage(error2)}`
+      };
+    }
+  }
+  return planManagedBlock(
+    target,
+    relativePath2,
+    "graphify-out/",
+    GITIGNORE_MARKERS
+  );
+}
+function ignoresGraphifyOutput(content3) {
+  return content3.split(/\r?\n/).some(
+    (line) => /^(?:\/)?graphify-out\/?$/.test(line.trim())
+  );
+}
+async function planClaudeInstructions(target, body) {
+  const path = "CLAUDE.md";
+  const absolute = join2(target, path);
+  try {
+    const stat4 = await lstat(absolute);
+    if (stat4.isSymbolicLink()) {
+      const current = await readlink(absolute);
+      return current === "AGENTS.md" ? {
+        kind: "symlink",
+        path,
+        status: "unchanged",
+        reason: "CLAUDE.md already links to AGENTS.md",
+        linkTarget: current
+      } : {
+        kind: "symlink",
+        path,
+        status: "conflict",
+        reason: `CLAUDE.md links to ${current}, not AGENTS.md`
+      };
+    }
+    return await planManagedBlock(target, path, body);
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return {
+        kind: "symlink",
+        path,
+        status: "create",
+        reason: "CLAUDE.md is absent",
+        linkTarget: "AGENTS.md"
+      };
+    }
+    return {
+      kind: "symlink",
+      path,
+      status: "conflict",
+      reason: `cannot inspect CLAUDE.md: ${errorMessage(error2)}`
+    };
+  }
+}
+async function planOwnedTree(input) {
+  for (const sourceRelative of await collectFiles(input.sourceRoot)) {
+    const destination = normalizeRelative(join2(input.destinationRoot, sourceRelative));
+    const content3 = await readFile3(join2(input.sourceRoot, sourceRelative), "utf8");
+    input.operations.push(
+      await planOwnedFile(input.target, destination, content3, input.state)
+    );
+  }
+}
+async function planOwnedFile(target, relativePath2, content3, state) {
+  const absolute = join2(target, relativePath2);
+  const desiredHash = hashContent(content3);
+  try {
+    const stat4 = await lstat(absolute);
+    if (!stat4.isFile() || stat4.isSymbolicLink()) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "conflict",
+        reason: "owned destination exists and is not a regular file"
+      };
+    }
+    const existing = await readFile3(absolute);
+    const currentHash = hashContent(existing);
+    if (currentHash === desiredHash) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "unchanged",
+        reason: "owned file is current",
+        content: content3,
+        expectedHash: currentHash,
+        track: true
+      };
+    }
+    const installedHash = state?.files[relativePath2]?.sha256;
+    if (installedHash && installedHash === currentHash) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "update",
+        reason: "owned file matches the previous installed version",
+        content: content3,
+        expectedHash: currentHash,
+        track: true
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath2,
+      status: "conflict",
+      reason: installedHash ? "owned file was locally modified" : "destination exists without wfctl ownership",
+      content: content3,
+      expectedHash: currentHash,
+      track: true,
+      replaceable: true
+    };
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "create",
+        reason: "owned file is absent",
+        content: content3,
+        track: true
+      };
+    }
+    return {
+      kind: "file",
+      path: relativePath2,
+      status: "conflict",
+      reason: `cannot inspect owned file: ${errorMessage(error2)}`
+    };
+  }
+}
+async function planObsoleteOwnedFile(target, relativePath2, installedHash) {
+  const absolute = join2(target, relativePath2);
+  try {
+    const stat4 = await lstat(absolute);
+    if (!stat4.isFile() || stat4.isSymbolicLink()) {
+      return {
+        kind: "delete",
+        path: relativePath2,
+        status: "conflict",
+        reason: "obsolete owned path is no longer a regular file"
+      };
+    }
+    const currentHash = hashContent(await readFile3(absolute));
+    if (currentHash !== installedHash) {
+      return {
+        kind: "delete",
+        path: relativePath2,
+        status: "conflict",
+        reason: "obsolete owned file was locally modified",
+        expectedHash: currentHash,
+        replaceable: true,
+        backup: true
+      };
+    }
+    return {
+      kind: "delete",
+      path: relativePath2,
+      status: "delete",
+      reason: "file was owned by the previous workflow version and is no longer distributed",
+      expectedHash: currentHash,
+      backup: true
+    };
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return {
+        kind: "delete",
+        path: relativePath2,
+        status: "unchanged",
+        reason: "obsolete owned file is already absent"
+      };
+    }
+    return {
+      kind: "delete",
+      path: relativePath2,
+      status: "conflict",
+      reason: `cannot inspect obsolete owned file: ${errorMessage(error2)}`
+    };
+  }
+}
+function skillsForProfile(profile) {
+  return [...workflowSkillsForProfile(profile), "qmd"].sort();
+}
+function workflowSkillsForProfile(profile) {
+  return [...COMMON_SKILLS, ...PROFILE_SKILLS[profile]].sort();
+}
+function allWorkflowSkills() {
+  return [.../* @__PURE__ */ new Set([
+    ...COMMON_SKILLS,
+    ...Object.values(PROFILE_SKILLS).flat()
+  ])].sort();
+}
+function renderQmdConfig(target) {
+  const collection = (path, pattern, includeByDefault, context) => ({
+    path: join2(target, path),
+    pattern,
+    includeByDefault,
+    context: { "/": context }
+  });
+  return stringify3({
+    global_context: "Project knowledge retrieval. Curated knowledge is the only default truth surface. Changes and reconstruction are qualified opt-in records. Intake and raw are untrusted investigation inputs.",
+    collections: {
+      knowledge: collection(
+        "knowledge",
+        "**/*.md",
+        true,
+        "Curated OKF current project knowledge. Use this collection by default."
+      ),
+      changes: collection(
+        "changes",
+        "**/*.md",
+        false,
+        "Active and archived project change records. Outcomes and reviews qualify every claim."
+      ),
+      intake: collection(
+        "intake",
+        "**/*.md",
+        false,
+        "Operational raw-intake cases. Never treat these records as evidence."
+      ),
+      reconstruction: collection(
+        "reconstruction",
+        "**/*.md",
+        false,
+        "Reviewed source-first project baselines and audits. Use only when tracing reconstruction evidence and adjudication."
+      ),
+      raw: collection(
+        "raw",
+        "**/*.{md,markdown,mdown,txt,json,jsonl,yaml,yml,toml,js,mjs,cjs,ts,tsx,jsx}",
+        false,
+        "Continuous untrusted input used only to discover candidate claims and contradictions."
+      )
+    },
+    models: {
+      embed: "hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf",
+      generate: "hf:tobil/qmd-query-expansion-1.7B-gguf/qmd-query-expansion-1.7B-q4_k_m.gguf",
+      rerank: "hf:ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/qwen3-reranker-0.6b-q8_0.gguf"
+    }
+  }, { lineWidth: 0 });
+}
+function normalizeRelative(path) {
+  const normalized = path.split(sep2).join("/");
+  return normalized === "." ? normalized : normalized.replace(/^\.\//, "");
+}
+function sortOperations(operations) {
+  const kindOrder = {
+    directory: 0,
+    file: 1,
+    "managed-block": 2,
+    symlink: 3,
+    delete: 4
+  };
+  return operations.sort(
+    (left, right) => kindOrder[left.kind] - kindOrder[right.kind] || left.path.localeCompare(right.path)
+  );
+}
+var REQUIRED_DIRECTORIES, KNOWLEDGE_DIRECTORIES, COMMON_SKILLS, PROFILE_SKILLS;
+var init_planner = __esm({
+  "src/planner.ts"() {
+    "use strict";
+    init_browser();
+    init_assets();
+    init_config();
+    init_managed_block();
+    REQUIRED_DIRECTORIES = [
+      ".claude/rules",
+      ".workflow/rules",
+      ".workflow/current"
+    ];
+    KNOWLEDGE_DIRECTORIES = [
+      ".qmd",
+      "raw",
+      "intake/cases/active",
+      "intake/cases/archive",
+      "reconstruction/active",
+      "reconstruction/archive",
+      "changes/active",
+      "changes/archive",
+      "changes/archive/captures",
+      "changes/inbox"
+    ];
+    COMMON_SKILLS = [
+      "analyze-with-graphify",
+      "setup-workflow-environment"
+    ];
+    PROFILE_SKILLS = {
+      knowledge: [
+        "align-project-knowledge",
+        "curate-engineering-knowledge",
+        "curate-product-knowledge",
+        "curate-project-knowledge",
+        "explore-project-knowledge",
+        "implement-work-item",
+        "manage-project-work",
+        "operate-project-knowledge",
+        "process-raw-intake",
+        "reconstruct-project-knowledge",
+        "research-project-context",
+        "shape-project-direction",
+        "specify-project-change",
+        "split-project-change",
+        "verify-knowledge-quality",
+        "verify-project-work"
+      ],
+      leaf: [
+        "align-project-knowledge",
+        "curate-engineering-knowledge",
+        "curate-product-knowledge",
+        "curate-project-knowledge",
+        "explore-project-knowledge",
+        "implement-work-item",
+        "manage-project-work",
+        "shape-project-direction",
+        "specify-project-change",
+        "split-project-change",
+        "verify-knowledge-quality",
+        "verify-project-work"
+      ]
+    };
+  }
+});
+
 // src/git.ts
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
@@ -18088,21 +18829,24 @@ async function createReconstructionCoverage(root, repository, commit, graphPath,
     throw new Error(`${repository}: pinned Git tree contains no tracked entries`);
   }
   const graph = await readGraphSnapshot(root, graphPath, tree, commit);
+  const workflow = await readWorkflowOwnership(root, tree);
   const files = tree.map((entry) => {
     const communities = graph.indexedFiles.get(entry.path) ?? [];
+    const owned = workflow.owned.has(entry.path);
+    const shared = workflow.shared.has(entry.path);
     return {
       path: entry.path,
       mode: entry.mode,
       objectType: entry.objectType,
       objectId: entry.objectId,
       size: entry.size,
-      category: classifyFile(entry),
+      category: owned || shared ? "workflow-asset" : classifyFile(entry),
       graph: {
         indexed: communities.length > 0,
         communities
       },
-      status: "pending",
-      reason: "",
+      status: owned ? "irrelevant" : "pending",
+      reason: owned ? WORKFLOW_ASSET_REASON : "",
       receipts: []
     };
   });
@@ -18772,7 +19516,7 @@ async function readGraphSnapshot(root, graphPath, tree, commit) {
   }
   if (typeof value.built_at_commit === "string" && value.built_at_commit && value.built_at_commit !== commit) {
     throw new Error(
-      `Graphify graph pins ${value.built_at_commit}, expected ${commit}`
+      `Graphify graph pins ${value.built_at_commit} but the checkout is at ${commit}. This is Graphify leaving graph.json untouched when code topology did not change; the source is not corrupt and --force does not refresh the pin. Rebuild from a clean file, which preserves the AST cache: rm ${graphPath} && graphify update .`
     );
   }
   const treePaths = new Set(tree.map((entry) => entry.path));
@@ -18835,6 +19579,89 @@ function treeContentHash(entries) {
     );
   }
   return hash.digest("hex");
+}
+async function readWorkflowOwnership(root, tree) {
+  const byPath = new Map(tree.map((entry) => [entry.path, entry]));
+  const owned = /* @__PURE__ */ new Set();
+  const shared = /* @__PURE__ */ new Set();
+  const state = await readPinnedJson(root, byPath.get(WORKFLOW_STATE_PATH));
+  if (!state) {
+    return { owned, shared };
+  }
+  for (const path of Object.keys(recordValue5(state.files) ?? {})) {
+    if (byPath.has(path)) {
+      owned.add(path);
+    }
+  }
+  owned.add(WORKFLOW_STATE_PATH);
+  for (const path of [".workflow/config.json", ".workflow/state.json"]) {
+    if (byPath.has(path)) {
+      owned.add(path);
+    }
+  }
+  const lock = await readPinnedJson(root, byPath.get(SKILLS_LOCK_PATH));
+  const installed = new Set(
+    Object.keys(recordValue5(lock?.skills) ?? {}).filter((skill) => WORKFLOW_SKILL_NAMES.has(skill))
+  );
+  if (installed.size > 0) {
+    for (const entry of tree) {
+      const skill = workflowSkillOf(entry.path);
+      if (skill && installed.has(skill)) {
+        owned.add(entry.path);
+      }
+    }
+  }
+  for (const path of WORKFLOW_SHARED_PATHS) {
+    if (byPath.has(path) && !owned.has(path)) {
+      shared.add(path);
+    }
+  }
+  return { owned, shared };
+}
+function workflowSkillOf(path) {
+  for (const skillRoot of SKILL_ROOTS) {
+    if (path.startsWith(skillRoot)) {
+      return path.slice(skillRoot.length).split("/")[0];
+    }
+  }
+  return void 0;
+}
+async function readPinnedJson(root, entry) {
+  if (!entry || entry.objectType !== "blob") {
+    return void 0;
+  }
+  try {
+    const content3 = await readPinnedBlob(root, entry.objectId);
+    return recordValue5(JSON.parse(content3));
+  } catch {
+    return void 0;
+  }
+}
+async function readPinnedBlob(root, objectId) {
+  const child = spawn3("git", ["-C", root, "cat-file", "blob", objectId], {
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const completion = new Promise((resolve21, reject) => {
+    child.once("error", reject);
+    child.once("close", (code2) => resolve21(code2 ?? 1));
+  });
+  let content3 = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.resume();
+  for await (const chunk of child.stdout) {
+    content3 += chunk;
+    if (content3.length > 4 * 1024 * 1024) {
+      child.kill();
+      throw new Error(`Pinned blob ${objectId} is too large to parse`);
+    }
+  }
+  if (await completion !== 0) {
+    throw new Error(`Cannot read pinned blob ${objectId}`);
+  }
+  return content3;
+}
+function recordValue5(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
 }
 function classifyFile(entry) {
   const path = entry.path.toLowerCase();
@@ -19006,10 +19833,11 @@ function isRecord4(value) {
 function isIsoDateTime4(value) {
   return Boolean(value && !Number.isNaN(Date.parse(value)));
 }
-var RECONSTRUCTION_COVERAGE_VERSION, FILE_CATEGORIES, COVERAGE_STATES, SURFACE_KINDS, FINAL_TEXT_CATEGORIES;
+var RECONSTRUCTION_COVERAGE_VERSION, FILE_CATEGORIES, COVERAGE_STATES, SURFACE_KINDS, FINAL_TEXT_CATEGORIES, WORKFLOW_ASSET_REASON, WORKFLOW_SHARED_PATHS, WORKFLOW_STATE_PATH, SKILLS_LOCK_PATH, SKILL_ROOTS, WORKFLOW_SKILL_NAMES;
 var init_reconstruction_coverage = __esm({
   "src/reconstruction-coverage.ts"() {
     "use strict";
+    init_planner();
     init_pinned_git_read();
     RECONSTRUCTION_COVERAGE_VERSION = 1;
     FILE_CATEGORIES = [
@@ -19024,6 +19852,7 @@ var init_reconstruction_coverage = __esm({
       "binary-asset",
       "vendor",
       "submodule",
+      "workflow-asset",
       "other"
     ];
     COVERAGE_STATES = [
@@ -19046,6 +19875,18 @@ var init_reconstruction_coverage = __esm({
       "product-data",
       "documentation"
     ]);
+    WORKFLOW_ASSET_REASON = "Installed by wfctl and recorded in its own manifest; it describes agent behavior, not this project. Accounted here so the frontier stays complete.";
+    WORKFLOW_SHARED_PATHS = [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "PROJECT_WORKFLOW.md",
+      ".graphifyignore",
+      "skills-lock.json"
+    ];
+    WORKFLOW_STATE_PATH = ".workflow/state.json";
+    SKILLS_LOCK_PATH = "skills-lock.json";
+    SKILL_ROOTS = [".claude/skills/", ".agents/skills/"];
+    WORKFLOW_SKILL_NAMES = new Set(allWorkflowSkills());
   }
 });
 
@@ -19522,7 +20363,7 @@ var init_repository_registry = __esm({
 import { readFile as readFile12, readdir as readdir6 } from "node:fs/promises";
 import { basename as basename2, relative as relative4, resolve as resolve11, sep as sep4 } from "node:path";
 function orchestrationWorkstreamPaths(metadata) {
-  const orchestration = recordValue5(metadata.orchestration);
+  const orchestration = recordValue6(metadata.orchestration);
   return stringArray5(orchestration?.workstreams);
 }
 async function readReconstructionWorkstreams(caseDirectory, metadata) {
@@ -19563,7 +20404,7 @@ async function readReconstructionWorkstreams(caseDirectory, metadata) {
 }
 function reconstructionOrchestrationIssues(metadata) {
   const issues = [];
-  const orchestration = recordValue5(metadata.orchestration);
+  const orchestration = recordValue6(metadata.orchestration);
   if (!orchestration) {
     return ["orchestration is required for reconstruction version 5"];
   }
@@ -19587,7 +20428,7 @@ function reconstructionOrchestrationIssues(metadata) {
   if (!stringValue6(orchestration.reason).trim()) {
     issues.push("orchestration.reason must explain the selected execution mode");
   }
-  const budget = recordValue5(orchestration.budget);
+  const budget = recordValue6(orchestration.budget);
   const maxParallel = positiveInteger(budget?.max_parallel);
   const maxWorkstreams = nonNegativeInteger(budget?.max_workstreams);
   const maxRetries = nonNegativeInteger(budget?.max_retries_per_workstream);
@@ -19633,11 +20474,11 @@ function reconstructionOrchestrationIssues(metadata) {
       `orchestration has ${workstreams.length} workstreams but budget allows ${maxWorkstreams}`
     );
   }
-  const synthesis = recordValue5(orchestration.synthesis);
+  const synthesis = recordValue6(orchestration.synthesis);
   if (synthesis?.status !== "passed" || !stringValue6(synthesis.by).trim() || !nonEmptyStringArray3(synthesis.notes)) {
     issues.push("orchestration.synthesis must pass with an actor and notes");
   }
-  const review = recordValue5(orchestration.independent_review);
+  const review = recordValue6(orchestration.independent_review);
   if (review?.status !== "passed" || !stringValue6(review.by).trim() || !isIsoDateTime5(stringValue6(review.at)) || !nonEmptyStringArray3(review.notes)) {
     issues.push(
       "orchestration.independent_review must pass with a fresh actor, time, and notes"
@@ -19650,7 +20491,7 @@ function reconstructionOrchestrationIssues(metadata) {
     );
   } else if (assurance === "maintainer" && !stringValue6(review?.by).startsWith("human:")) {
     issues.push("maintainer assurance requires a human:<maintainer-id> reviewer");
-  } else if (assurance !== "maintainer" && (adaptiveOrchestration ? stringValue6(recordValue5(review?.routing)?.workload) !== "review" || stringValue6(recordValue5(review?.routing)?.requested_profile) !== "deep" || !stringValue6(recordValue5(review?.routing)?.reason).trim() || !stringValue6(review?.host).trim() || !stringValue6(review?.run_id).trim() || !stringValue6(review?.model).trim() || !stringValue6(review?.reasoning_effort).trim() : !stringValue6(review?.run_id).trim())) {
+  } else if (assurance !== "maintainer" && (adaptiveOrchestration ? stringValue6(recordValue6(review?.routing)?.workload) !== "review" || stringValue6(recordValue6(review?.routing)?.requested_profile) !== "deep" || !stringValue6(recordValue6(review?.routing)?.reason).trim() || !stringValue6(review?.host).trim() || !stringValue6(review?.run_id).trim() || !stringValue6(review?.model).trim() || !stringValue6(review?.reasoning_effort).trim() : !stringValue6(review?.run_id).trim())) {
     issues.push(
       adaptiveOrchestration ? "agent or separate-session assurance requires review/deep routing with a reason and the reported host, run ID, model, and reasoning effort" : "legacy agent or separate-session assurance requires the reported host run_id"
     );
@@ -19690,7 +20531,7 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
   if (!stringValue6(metadata.role).trim()) {
     issues.push(`${prefix}: role is required`);
   }
-  const routing = recordValue5(metadata.routing);
+  const routing = recordValue6(metadata.routing);
   const workload = stringValue6(routing?.workload);
   const initialProfile = stringValue6(routing?.initial_profile);
   const requestedProfile = stringValue6(routing?.requested_profile);
@@ -19794,7 +20635,7 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
   if (!cancelled && !owner.trim()) {
     issues.push(`${prefix}: owner is required`);
   }
-  const executionRecord = recordValue5(metadata.execution);
+  const executionRecord = recordValue6(metadata.execution);
   if (status !== "planned" && !cancelled && (!stringValue6(executionRecord?.host).trim() || !stringValue6(executionRecord?.run_id).trim() || adaptiveRouting && (!PROFILES.has(stringValue6(executionRecord?.profile)) || !stringValue6(executionRecord?.model).trim() || !stringValue6(executionRecord?.reasoning_effort).trim()) || !isIsoDateTime5(stringValue6(executionRecord?.claimed_at)))) {
     issues.push(
       adaptiveRouting ? `${prefix}: claimed work requires execution host, run ID, requested profile, model selection, reasoning effort, and claimed time` : `${prefix}: legacy claimed work requires execution host, run ID, and claimed time`
@@ -19878,7 +20719,7 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
       issues.push(`${prefix}: repository is outside the reconstruction: ${repository}`);
     }
   }
-  const slice = recordValue5(metadata.coverage_slice);
+  const slice = recordValue6(metadata.coverage_slice);
   issues.push(...coverageReferenceIssues({
     prefix,
     fieldPrefix: "coverage_slice",
@@ -19887,7 +20728,7 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
     rawCaseIds,
     allowedRepositories: scopedRepositories
   }));
-  const explored = recordValue5(metadata.explored_context);
+  const explored = recordValue6(metadata.explored_context);
   issues.push(...coverageReferenceIssues({
     prefix,
     fieldPrefix: "explored_context",
@@ -19903,7 +20744,7 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
       `${prefix}: explored_context.notes must explain why analysis crossed the assigned slice`
     );
   }
-  const result = recordValue5(metadata.result);
+  const result = recordValue6(metadata.result);
   if (!cancelled && !stringValue6(result?.summary).trim()) {
     issues.push(`${prefix}: result.summary is required`);
   }
@@ -19947,7 +20788,7 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
       );
     }
   }
-  const review = recordValue5(metadata.review);
+  const review = recordValue6(metadata.review);
   const reviewHistory = adaptiveRouting ? recordArray3(metadata.review_history) : [];
   if (adaptiveRouting && !Array.isArray(metadata.review_history)) {
     issues.push(`${prefix}: review_history must be a list`);
@@ -20097,7 +20938,7 @@ function reconstructionWorkstreamSetIssues(records, metadata) {
         );
       }
     }
-    const routing = recordValue5(record2.document.metadata.routing);
+    const routing = recordValue6(record2.document.metadata.routing);
     for (const escalation of recordArray3(routing?.escalation_history)) {
       if (escalation.action !== "new-workstream") {
         continue;
@@ -20146,9 +20987,9 @@ function reconstructionWorkstreamSetIssues(records, metadata) {
   for (const id of byId.keys()) {
     visit3(id, []);
   }
-  const orchestration = recordValue5(metadata.orchestration);
-  const synthesis = recordValue5(orchestration?.synthesis);
-  const review = recordValue5(orchestration?.independent_review);
+  const orchestration = recordValue6(metadata.orchestration);
+  const synthesis = recordValue6(orchestration?.synthesis);
+  const review = recordValue6(orchestration?.independent_review);
   const owners = new Set(
     records.map((record2) => stringValue6(record2.document.metadata.owner)).filter(Boolean)
   );
@@ -20163,7 +21004,7 @@ function reconstructionWorkstreamSetIssues(records, metadata) {
   const reviewHostRun = `${stringValue6(review?.host)}\0${stringValue6(review?.run_id)}`;
   const workerHostRuns = new Set(
     records.flatMap((record2) => {
-      const routing = recordValue5(record2.document.metadata.routing);
+      const routing = recordValue6(record2.document.metadata.routing);
       return recordArray3(routing?.execution_history).map(
         (execution) => `${stringValue6(execution.host)}\0${stringValue6(execution.run_id)}`
       );
@@ -20189,7 +21030,7 @@ function resolveWorkstreamPath(caseDirectory, input) {
   }
   return path;
 }
-function recordValue5(value) {
+function recordValue6(value) {
   return isRecord2(value) ? value : void 0;
 }
 function recordArray3(value) {
@@ -20382,8 +21223,8 @@ async function beginProjectReconstruction(options) {
   );
   const document3 = parseWorkSpec(caseTemplate);
   const createdAt = now.toISOString();
-  const supplementalInputs = recordValue6(document3.metadata.supplemental_inputs) ?? {};
-  const rawInput = recordValue6(supplementalInputs.raw) ?? {};
+  const supplementalInputs = recordValue7(document3.metadata.supplemental_inputs) ?? {};
+  const rawInput = recordValue7(supplementalInputs.raw) ?? {};
   const initialRawInventory = await inventoryRaw({
     target,
     baseline: knowledgeMetadata.commit
@@ -20565,7 +21406,7 @@ async function createReconstructionWorkstream(options) {
     options.target,
     options.id,
     async ({ target, casePath, caseDirectory, document: document3 }) => {
-      const orchestration = recordValue6(document3.metadata.orchestration);
+      const orchestration = recordValue7(document3.metadata.orchestration);
       if (!orchestration) {
         throw new Error("Reconstruction orchestration must be planned before creating workstreams");
       }
@@ -20580,7 +21421,7 @@ async function createReconstructionWorkstream(options) {
       if (registered.includes(relativePath2)) {
         throw new Error(`Reconstruction workstream already exists: ${options.workstream}`);
       }
-      const budget = recordValue6(orchestration.budget);
+      const budget = recordValue7(orchestration.budget);
       const maxWorkstreams = Number(budget?.max_workstreams);
       if (!Number.isInteger(maxWorkstreams) || maxWorkstreams < 1) {
         throw new Error(
@@ -20734,7 +21575,7 @@ async function claimReconstructionWorkstream(options) {
       if (workstreamVersion !== RECONSTRUCTION_WORKSTREAM_VERSION) {
         throw new Error(`Unsupported reconstruction workstream version: ${workstreamVersion}`);
       }
-      const routing = recordValue6(document3.metadata.routing);
+      const routing = recordValue7(document3.metadata.routing);
       if (!routing) {
         throw new Error("Workstream routing metadata is missing");
       }
@@ -20806,7 +21647,7 @@ async function escalateReconstructionWorkstream(options) {
       if (options.trigger === "review-rework" && status !== "rework") {
         throw new Error("review-rework escalation requires a recorded rework review");
       }
-      const routing = recordValue6(document3.metadata.routing);
+      const routing = recordValue7(document3.metadata.routing);
       if (!routing) {
         throw new Error("Workstream routing metadata is missing");
       }
@@ -21049,10 +21890,10 @@ async function reconstructionContext(targetInput, requestedId) {
     }
   }
   issues.push(...bindingIssues);
-  const raw = recordValue6(recordValue6(document3.metadata.supplemental_inputs)?.raw);
-  const rawScope = recordValue6(raw?.scope);
-  const orchestration = recordValue6(document3.metadata.orchestration);
-  const orchestrationBudget = recordValue6(orchestration?.budget);
+  const raw = recordValue7(recordValue7(document3.metadata.supplemental_inputs)?.raw);
+  const rawScope = recordValue7(raw?.scope);
+  const orchestration = recordValue7(document3.metadata.orchestration);
+  const orchestrationBudget = recordValue7(orchestration?.budget);
   const reconstructionVersion = Number(document3.metadata.reconstruction_version);
   if (reconstructionVersion === LEGACY_RECONSTRUCTION_VERSION) {
     issues.push(
@@ -21074,26 +21915,26 @@ async function reconstructionContext(targetInput, requestedId) {
       maxParallel: Number(orchestrationBudget?.max_parallel) || 0,
       maxWorkstreams: Number(orchestrationBudget?.max_workstreams) || 0,
       maxRetriesPerWorkstream: Number(orchestrationBudget?.max_retries_per_workstream) || 0,
-      synthesisStatus: stringValue7(recordValue6(orchestration?.synthesis)?.status),
+      synthesisStatus: stringValue7(recordValue7(orchestration?.synthesis)?.status),
       independentReviewStatus: stringValue7(
-        recordValue6(orchestration?.independent_review)?.status
+        recordValue7(orchestration?.independent_review)?.status
       ),
       independentReviewAssurance: stringValue7(
-        recordValue6(orchestration?.independent_review)?.assurance
+        recordValue7(orchestration?.independent_review)?.assurance
       ),
       independentReviewRunId: stringValue7(
-        recordValue6(orchestration?.independent_review)?.run_id
+        recordValue7(orchestration?.independent_review)?.run_id
       ),
       independentReviewProfile: stringValue7(
-        recordValue6(
-          recordValue6(orchestration?.independent_review)?.routing
+        recordValue7(
+          recordValue7(orchestration?.independent_review)?.routing
         )?.requested_profile
       ),
       independentReviewModel: stringValue7(
-        recordValue6(orchestration?.independent_review)?.model
+        recordValue7(orchestration?.independent_review)?.model
       ),
       independentReviewReasoningEffort: stringValue7(
-        recordValue6(orchestration?.independent_review)?.reasoning_effort
+        recordValue7(orchestration?.independent_review)?.reasoning_effort
       )
     },
     workstreams: session.workstreams.map(({ path, document: document4 }) => ({
@@ -21101,22 +21942,22 @@ async function reconstructionContext(targetInput, requestedId) {
       title: stringValue7(document4.metadata.title),
       wave: Number(document4.metadata.wave),
       role: stringValue7(document4.metadata.role),
-      workload: stringValue7(recordValue6(document4.metadata.routing)?.workload),
+      workload: stringValue7(recordValue7(document4.metadata.routing)?.workload),
       requestedProfile: stringValue7(
-        recordValue6(document4.metadata.routing)?.requested_profile
+        recordValue7(document4.metadata.routing)?.requested_profile
       ),
-      executionProfile: stringValue7(recordValue6(document4.metadata.execution)?.profile),
-      executionModel: stringValue7(recordValue6(document4.metadata.execution)?.model),
+      executionProfile: stringValue7(recordValue7(document4.metadata.execution)?.profile),
+      executionModel: stringValue7(recordValue7(document4.metadata.execution)?.model),
       executionReasoningEffort: stringValue7(
-        recordValue6(document4.metadata.execution)?.reasoning_effort
+        recordValue7(document4.metadata.execution)?.reasoning_effort
       ),
       escalationCount: recordArray4(
-        recordValue6(document4.metadata.routing)?.escalation_history
+        recordValue7(document4.metadata.routing)?.escalation_history
       ).length,
       status: stringValue7(document4.metadata.status),
       owner: stringValue7(document4.metadata.owner),
       path,
-      reviewStatus: stringValue7(recordValue6(document4.metadata.review)?.status)
+      reviewStatus: stringValue7(recordValue7(document4.metadata.review)?.status)
     })),
     coverage: session.coverage,
     rawScope: {
@@ -21152,8 +21993,8 @@ async function approveReconstructionRawScope(options) {
       `Raw scope decisions require reconstruction version ${LEGACY_RECONSTRUCTION_VERSION}, ${RAW_SCOPE_RECONSTRUCTION_VERSION}, or ${RECONSTRUCTION_VERSION}`
     );
   }
-  const supplemental = recordValue6(document3.metadata.supplemental_inputs) ?? {};
-  const raw = recordValue6(supplemental.raw) ?? {};
+  const supplemental = recordValue7(document3.metadata.supplemental_inputs) ?? {};
+  const raw = recordValue7(supplemental.raw) ?? {};
   const baseline = stringValue7(raw.baseline);
   if (!/^[0-9a-f]{40,64}$/i.test(baseline)) {
     throw new Error("Reconstruction raw scope requires a pinned raw baseline");
@@ -21234,7 +22075,7 @@ async function approveReconstructionRawScope(options) {
     approvedBy: decidedBy,
     approvedAt,
     rawFiles: scopedInventory.entries.length,
-    status: stringValue7(recordValue6(supplemental.raw)?.status)
+    status: stringValue7(recordValue7(supplemental.raw)?.status)
   };
 }
 async function updateReconstructionCheckpoint(options) {
@@ -21399,7 +22240,7 @@ async function inspectProjectReconstruction(targetInput, id) {
   const target = await requireKnowledgeRepository4(targetInput);
   const document3 = parseWorkSpec(await readFile13(receipt.path, "utf8"));
   const issues = [...receipt.issues];
-  const promotion = recordValue6(document3.metadata.promotion);
+  const promotion = recordValue7(document3.metadata.promotion);
   if (promotion?.status === "applied" && stringArray6(promotion.concepts).length > 0) {
     const { validateKnowledge: validateKnowledge2 } = await Promise.resolve().then(() => (init_knowledge(), knowledge_exports));
     const validation = await validateKnowledge2(target, stringArray6(promotion.concepts));
@@ -21471,7 +22312,7 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
         if (graph.nodes === 0) {
           issues.push(`${repositoryId2}: Graphify graph contains no nodes`);
         }
-        if (graph.contentHash !== stringValue7(recordValue6(repository.graphify)?.content_hash)) {
+        if (graph.contentHash !== stringValue7(recordValue7(repository.graphify)?.content_hash)) {
           issues.push(`${repositoryId2}: Graphify graph changed after the case was bound`);
         }
         const coveragePath = resolveCaseJson(
@@ -21564,11 +22405,11 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
       );
       const rawCaseIds = new Set(
         stringArray6(
-          recordValue6(recordValue6(document3.metadata.supplemental_inputs)?.raw)?.case_ids
+          recordValue7(recordValue7(document3.metadata.supplemental_inputs)?.raw)?.case_ids
         )
       );
-      const orchestration = recordValue6(document3.metadata.orchestration);
-      const budget = recordValue6(orchestration?.budget);
+      const orchestration = recordValue7(document3.metadata.orchestration);
+      const budget = recordValue7(orchestration?.budget);
       const maxRetries = Number.isInteger(budget?.max_retries_per_workstream) ? Number(budget?.max_retries_per_workstream) : 0;
       const receiptIndex = /* @__PURE__ */ new Map();
       for (const [repositoryId2, coverage] of coverageByRepository) {
@@ -21608,9 +22449,9 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
       issues.push(`cannot inspect reconstruction workstreams: ${errorMessage(error2)}`);
     }
   }
-  const supplemental = recordValue6(document3.metadata.supplemental_inputs);
+  const supplemental = recordValue7(document3.metadata.supplemental_inputs);
   for (const input of ["raw", "documentation", "change_records"]) {
-    for (const candidateId of stringArray6(recordValue6(supplemental?.[input])?.candidate_ids)) {
+    for (const candidateId of stringArray6(recordValue7(supplemental?.[input])?.candidate_ids)) {
       linkedCandidateIds.add(candidateId);
     }
   }
@@ -21756,11 +22597,11 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
   const mode = stringValue7(metadata.mode);
   const repositories = recordArray4(metadata.repositories);
   const candidates = recordArray4(metadata.candidate_claims);
-  const promotion = recordValue6(metadata.promotion);
-  const coverage = recordValue6(metadata.coverage_audit);
-  const reconciliation = recordValue6(metadata.reconciliation_audit);
-  const crossRepository = recordValue6(metadata.cross_repository_analysis);
-  const maintainerReview = recordValue6(metadata.maintainer_review);
+  const promotion = recordValue7(metadata.promotion);
+  const coverage = recordValue7(metadata.coverage_audit);
+  const reconciliation = recordValue7(metadata.reconciliation_audit);
+  const crossRepository = recordValue7(metadata.cross_repository_analysis);
+  const maintainerReview = recordValue7(metadata.maintainer_review);
   const reconstructionVersion = Number(metadata.reconstruction_version);
   if (reconstructionVersion === LEGACY_RECONSTRUCTION_VERSION) {
     issues.push(
@@ -21809,14 +22650,14 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
     if (!isCaseRelativeJson(stringValue7(repository.coverage))) {
       issues.push(`${prefix}.coverage must be a case-relative JSON path`);
     }
-    const graphify = recordValue6(repository.graphify);
+    const graphify = recordValue7(repository.graphify);
     if (graphify?.status !== "ready" || typeof graphify.nodes !== "number" || graphify.nodes < 1 || !/^[0-9a-f]{64}$/i.test(stringValue7(graphify.content_hash))) {
       issues.push(`${prefix}.graphify must record a non-empty ready graph and content hash`);
     }
   }
-  const supplemental = recordValue6(metadata.supplemental_inputs);
+  const supplemental = recordValue7(metadata.supplemental_inputs);
   for (const input of ["raw", "documentation", "change_records"]) {
-    const entry = recordValue6(supplemental?.[input]);
+    const entry = recordValue7(supplemental?.[input]);
     const status = stringValue7(entry?.status);
     if (!FINAL_REVIEW_STATES.has(status)) {
       issues.push(`supplemental_inputs.${input}.status must be reviewed, not-available, or not-relevant`);
@@ -21825,7 +22666,7 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
       issues.push(`supplemental_inputs.${input}.notes must explain ${status || "its final state"}`);
     }
   }
-  const rawInput = recordValue6(supplemental?.raw);
+  const rawInput = recordValue7(supplemental?.raw);
   if (!/^[0-9a-f]{40,64}$/i.test(stringValue7(rawInput?.baseline))) {
     issues.push("supplemental_inputs.raw.baseline must pin the reconstruction-start Git snapshot");
   }
@@ -21933,13 +22774,13 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
       issues.push(`${prefix}: confirmed history requires pinned version-control evidence`);
     }
     if (disposition === "confirmed" && normativeClaim) {
-      const decision = recordValue6(candidate.maintainer_decision);
+      const decision = recordValue7(candidate.maintainer_decision);
       if (decision?.status !== "approved" || !stringValue7(decision.by).startsWith("human:") || !isIsoDateTime6(stringValue7(decision.at))) {
         issues.push(`${prefix}.maintainer_decision must record explicit human approval`);
       }
     }
     if (disposition === "confirmed") {
-      const routing = recordValue6(candidate.routing);
+      const routing = recordValue7(candidate.routing);
       const promotedTo = stringArray6(routing?.destinations).length > 0 ? stringArray6(routing?.destinations) : stringArray6(candidate.promoted_to);
       if (promotedTo.length === 0) {
         issues.push(`${prefix}.routing.destinations must identify the curated concepts`);
@@ -22002,7 +22843,7 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
 }
 function reconstructionRawScopeIssues(raw) {
   const issues = [];
-  const scope = recordValue6(raw?.scope);
+  const scope = recordValue7(raw?.scope);
   const mode = stringValue7(scope?.mode);
   const paths = stringArray6(scope?.paths);
   const decidedBy = stringValue7(scope?.decided_by);
@@ -22086,7 +22927,7 @@ function dossierIssues(repository, metadata, body) {
   if (!Array.isArray(metadata.candidate_ids)) {
     issues.push(`${id}: dossier candidate_ids must be a list`);
   }
-  const coverage = recordValue6(metadata.coverage);
+  const coverage = recordValue7(metadata.coverage);
   for (const dimension of [
     "purpose",
     "areas_capabilities",
@@ -22101,7 +22942,7 @@ function dossierIssues(repository, metadata, body) {
       issues.push(`${id}: dossier coverage.${dimension} must be reviewed or not-relevant`);
     }
   }
-  const history = recordValue6(metadata.history);
+  const history = recordValue7(metadata.history);
   if (!FINAL_REVIEW_STATES.has(stringValue7(history?.status))) {
     issues.push(`${id}: dossier history.status must be reviewed, not-available, or not-relevant`);
   }
@@ -22115,8 +22956,8 @@ function dossierIssues(repository, metadata, body) {
 }
 async function supplementalInputIssues(target, metadata, lifecycle) {
   const issues = [];
-  const raw = recordValue6(recordValue6(metadata.supplemental_inputs)?.raw);
-  const scope = recordValue6(raw?.scope);
+  const raw = recordValue7(recordValue7(metadata.supplemental_inputs)?.raw);
+  const scope = recordValue7(raw?.scope);
   const scopeMode = stringValue7(scope?.mode);
   const baseline = stringValue7(raw?.baseline);
   const inventoryPaths = scopeMode === "selected" ? stringArray6(scope?.paths) : ["raw"];
@@ -22163,11 +23004,11 @@ async function supplementalInputIssues(target, metadata, lifecycle) {
         if (intake.metadata.status !== "completed" || intake.metadata.outcome !== "completed") {
           issues.push(`raw-intake case is not completed: ${id}`);
         }
-        const intakeBaseline = recordValue6(intake.metadata.baseline);
+        const intakeBaseline = recordValue7(intake.metadata.baseline);
         if (stringValue7(intakeBaseline?.commit) !== baseline) {
           issues.push(`raw-intake case uses a different baseline: ${id}`);
         }
-        const intakeParent = recordValue6(intake.metadata.parent_reconstruction);
+        const intakeParent = recordValue7(intake.metadata.parent_reconstruction);
         if (stringValue7(intakeParent?.id) !== stringValue7(metadata.id)) {
           issues.push(`raw-intake case is not bound to this reconstruction: ${id}`);
         }
@@ -22239,7 +23080,7 @@ async function reconstructionIntakeChildren(target, reconstructionId) {
       const intake = parseWorkSpec(
         await readFile13(join10(root, entry.name, "case.md"), "utf8")
       );
-      if (stringValue7(recordValue6(intake.metadata.parent_reconstruction)?.id) === reconstructionId) {
+      if (stringValue7(recordValue7(intake.metadata.parent_reconstruction)?.id) === reconstructionId) {
         children.push(entry.name);
       }
     }
@@ -22416,7 +23257,7 @@ async function coverageContexts(targetInput, id, repository) {
       root: local.root,
       commit: stringValue7(entry.commit),
       worktreeId: local.worktreeId,
-      graphHash: stringValue7(recordValue6(entry.graphify)?.content_hash),
+      graphHash: stringValue7(recordValue7(entry.graphify)?.content_hash),
       coveragePath,
       ledger: await readReconstructionCoverage(coveragePath)
     });
@@ -22535,8 +23376,8 @@ async function workstreamValidationContext(target, id, caseDirectory, document3)
     caseDirectory,
     document3.metadata
   );
-  const orchestration = recordValue6(document3.metadata.orchestration);
-  const budget = recordValue6(orchestration?.budget);
+  const orchestration = recordValue7(document3.metadata.orchestration);
+  const budget = recordValue7(orchestration?.budget);
   return {
     repositoryIds,
     workstreamIds: new Set(
@@ -22546,7 +23387,7 @@ async function workstreamValidationContext(target, id, caseDirectory, document3)
     scopeIndex,
     rawCaseIds: new Set(
       stringArray6(
-        recordValue6(recordValue6(document3.metadata.supplemental_inputs)?.raw)?.case_ids
+        recordValue7(recordValue7(document3.metadata.supplemental_inputs)?.raw)?.case_ids
       )
     ),
     receiptIndex
@@ -22712,7 +23553,7 @@ function isVersionControlResource2(value) {
 function recordArray4(value) {
   return Array.isArray(value) ? value.filter(isRecord2) : [];
 }
-function recordValue6(value) {
+function recordValue7(value) {
   return isRecord2(value) ? value : void 0;
 }
 function stringValue7(value) {
@@ -22872,7 +23713,7 @@ async function updateBundleCheckpoint(options) {
         `${parsed.summary.id} must be claimed before recording an active checkpoint`
       );
     } else {
-      const claim = recordValue7(parsed.document.metadata.claim);
+      const claim = recordValue8(parsed.document.metadata.claim);
       const claimedBy = stringValue8(claim?.actor);
       if (claimedBy && normalizeActor(options.actor) !== claimedBy) {
         throw new Error(
@@ -23178,7 +24019,7 @@ async function resolveWorkIssue(options) {
     throw new Error("Issue completion requires at least one evidence entry");
   }
   const now = options.now ?? /* @__PURE__ */ new Date();
-  const completedClaim = recordValue7(parsed.document.metadata.claim);
+  const completedClaim = recordValue8(parsed.document.metadata.claim);
   parsed.document.metadata.status = "completed";
   parsed.document.metadata.claim = null;
   parsed.document.metadata.resolution = {
@@ -23221,7 +24062,7 @@ async function dropWorkIssue(bundleRoot, issueId, reason, claimContext, now = /*
   if (parsed.summary.status === "claimed") {
     assertClaimContext(parsed, claimContext);
   }
-  const droppedClaim = recordValue7(parsed.document.metadata.claim);
+  const droppedClaim = recordValue8(parsed.document.metadata.claim);
   parsed.document.metadata.status = "dropped";
   parsed.document.metadata.claim = null;
   parsed.document.metadata.resolution = {
@@ -23269,7 +24110,7 @@ async function setWorkIssueBlocker(bundleRoot, issueId, blockerId, blocked, now 
   writeCheckpoint(issue3.document, {
     status: claimed && next.length > 0 ? "blocked" : claimed ? "active" : "ready",
     stage: issue3.summary.phase === "wayfinding" ? "wayfind" : "implement",
-    actor: stringValue8(recordValue7(issue3.document.metadata.claim)?.actor) || "system:wfctl",
+    actor: stringValue8(recordValue8(issue3.document.metadata.claim)?.actor) || "system:wfctl",
     currentState: next.length > 0 ? `Issue depends on ${next.join(", ")}.` : claimed ? "Issue is claimed with no unresolved dependency blocker." : "Issue is ready but unclaimed.",
     lastCompleted: blocked ? `Added dependency ${blocker.summary.id}.` : `Removed dependency ${blocker.summary.id}.`,
     nextAction: next.length > 0 ? "Resolve the declared dependencies before continuing this issue." : claimed ? "Continue the claimed issue and refresh the checkpoint after material work." : "Review the required context and claim the issue.",
@@ -23423,7 +24264,7 @@ async function bundleCompletionIssues(bundleRoot, change) {
       issues.push(`acceptance ${criterion.id} must be verified`);
     }
   }
-  const verification = recordValue7(change.metadata.verification);
+  const verification = recordValue8(change.metadata.verification);
   const receipts = recordArray5(verification?.acceptance);
   const receiptIds = receipts.map((entry) => stringValue8(entry.id));
   if (new Set(receiptIds).size !== receiptIds.length) {
@@ -23539,14 +24380,14 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
         issues.push(`${summary.id}: referenced artifact does not exist: ${artifact}`);
       }
     }
-    if (summary.status === "claimed" && !recordValue7(entry.document.metadata.claim)) {
+    if (summary.status === "claimed" && !recordValue8(entry.document.metadata.claim)) {
       issues.push(`${summary.id}: claimed status requires claim metadata`);
     }
-    if (summary.status !== "claimed" && recordValue7(entry.document.metadata.claim)) {
+    if (summary.status !== "claimed" && recordValue8(entry.document.metadata.claim)) {
       issues.push(`${summary.id}: only a claimed issue may retain claim metadata`);
     }
     if (summary.status === "completed") {
-      const resolution = recordValue7(entry.document.metadata.resolution);
+      const resolution = recordValue8(entry.document.metadata.resolution);
       if (!stringValue8(resolution?.summary).trim()) {
         issues.push(`${summary.id}: completed issue requires a resolution summary`);
       }
@@ -23813,7 +24654,7 @@ function withGraphState(input) {
   });
 }
 function assertClaimContext(issue3, context) {
-  const claim = recordValue7(issue3.document.metadata.claim);
+  const claim = recordValue8(issue3.document.metadata.claim);
   if (!claim) {
     throw new Error(`${issue3.summary.id}: claim metadata is missing`);
   }
@@ -24140,7 +24981,7 @@ function checkpointSummary(document3, path, owner, issue3, required) {
   };
 }
 function checkpointRecord(document3) {
-  return recordValue7(document3.metadata.checkpoint);
+  return recordValue8(document3.metadata.checkpoint);
 }
 function checkpointBasis(document3) {
   const metadata = { ...document3.metadata };
@@ -24186,7 +25027,7 @@ function relativePath(root, path) {
 function sha256(content3) {
   return createHash8("sha256").update(content3).digest("hex");
 }
-function recordValue7(value) {
+function recordValue8(value) {
   return isRecord2(value) ? value : void 0;
 }
 function recordArray5(value) {
@@ -24346,12 +25187,12 @@ async function validateKnowledge(targetInput, conceptPaths) {
 function validateConcept(path, metadata, body, changeIndex, reconstructionIndex, errors, warnings) {
   const type = stringValue9(metadata.type);
   const status = stringValue9(metadata.status);
-  const generated = recordValue8(metadata.generated);
+  const generated = recordValue9(metadata.generated);
   const generatedAt = stringValue9(generated?.at);
   const sources = Array.isArray(metadata.sources) ? metadata.sources : [];
   const authority = stringArray8(metadata.authority);
   const verifications = normalizeVerifications(metadata.verified);
-  const realization = recordValue8(metadata.realization);
+  const realization = recordValue9(metadata.realization);
   const expectedContentHash = conceptDocumentHash(metadata, body);
   const view = stringValue9(metadata.view);
   const purpose = stringValue9(metadata.purpose);
@@ -24409,7 +25250,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
   let hasPinnedCode = false;
   let hasReconstructionReview = false;
   for (const [index2, value] of sources.entries()) {
-    const source = recordValue8(value);
+    const source = recordValue9(value);
     const prefix = `sources[${index2}]`;
     const id = stringValue9(source?.id);
     const resource = stringValue9(source?.resource);
@@ -24515,7 +25356,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
       errors.push({ path, message: `${prefix}.resource must point to a project-change receipt` });
     } else if (kind === "runtime-check" && !projectChangeRecord(resource, changeIndex, false)) {
       errors.push({ path, message: `${prefix}.resource points to a missing project change` });
-    } else if (kind === "runtime-check" && recordValue8(projectChangeRecord(resource, changeIndex, false)?.verification)?.result !== "passed") {
+    } else if (kind === "runtime-check" && recordValue9(projectChangeRecord(resource, changeIndex, false)?.verification)?.result !== "passed") {
       errors.push({ path, message: `${prefix}.resource has no passed verification receipt` });
     } else if (kind === "archived-change" && !projectChangeRecord(resource, changeIndex, true)) {
       errors.push({ path, message: `${prefix}.resource must point to an archived project change` });
@@ -24579,17 +25420,17 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
     });
   }
   if (authority.includes("history") && !sources.some(
-    (value) => recordValue8(value)?.kind === "archived-change" || recordValue8(value)?.kind === "reconstruction-review" || recordValue8(value)?.kind === "maintainer-decision" && isProjectReconstructionResource(stringValue9(recordValue8(value)?.resource))
+    (value) => recordValue9(value)?.kind === "archived-change" || recordValue9(value)?.kind === "reconstruction-review" || recordValue9(value)?.kind === "maintainer-decision" && isProjectReconstructionResource(stringValue9(recordValue9(value)?.resource))
   )) {
     errors.push({
       path,
       message: "history authority requires an archived change or reviewed reconstruction decision"
     });
   }
-  if (authority.includes("history") && !sources.some((value) => recordValue8(value)?.kind === "version-control")) {
+  if (authority.includes("history") && !sources.some((value) => recordValue9(value)?.kind === "version-control")) {
     errors.push({ path, message: "history authority requires pinned version-control history" });
   }
-  if (authority.includes("external") && !sources.some((value) => recordValue8(value)?.kind === "external-primary")) {
+  if (authority.includes("external") && !sources.some((value) => recordValue9(value)?.kind === "external-primary")) {
     errors.push({ path, message: "external authority requires an external-primary source" });
   }
   validateRealization(path, authority, realization, errors);
@@ -24637,7 +25478,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
       });
     }
   }
-  if (!hasPinnedCode && sources.some((value) => recordValue8(value)?.kind === "runtime-check")) {
+  if (!hasPinnedCode && sources.some((value) => recordValue9(value)?.kind === "runtime-check")) {
     warnings.push({
       path,
       message: "runtime evidence is present without a pinned source-code reference"
@@ -25023,20 +25864,20 @@ function projectReconstructionDecision(resource, index2) {
   return candidate ? { record: record2, candidate } : void 0;
 }
 function hasApprovedHumanReview(metadata, requiredStage, actor) {
-  const review = recordValue8(metadata.maintainer_review);
+  const review = recordValue9(metadata.maintainer_review);
   const stages = requiredStage ? [requiredStage] : ["framing", "completion"];
   return stages.some((stage) => {
-    const entry = recordValue8(review?.[stage]);
+    const entry = recordValue9(review?.[stage]);
     return entry?.status === "approved" && stringValue9(entry.by).startsWith("human:") && (!actor || entry.by === actor) && isIsoDateTime7(stringValue9(entry.at));
   });
 }
 function hasApprovedReconstructionReview(record2, candidate, actor) {
-  const review = recordValue8(record2.maintainer_review);
-  const decision = recordValue8(candidate.maintainer_decision);
+  const review = recordValue9(record2.maintainer_review);
+  const decision = recordValue9(candidate.maintainer_decision);
   return review?.status === "approved" && review.by === actor && isIsoDateTime7(stringValue9(review.at)) && decision?.status === "approved" && decision.by === actor && isIsoDateTime7(stringValue9(decision.at));
 }
 function hasApprovedReconstructionCaseReview(record2) {
-  const review = recordValue8(record2.maintainer_review);
+  const review = recordValue9(record2.maintainer_review);
   return review?.status === "approved" && stringValue9(review.by).startsWith("human:") && isIsoDateTime7(stringValue9(review.at));
 }
 function validateRealization(path, authority, realization, errors) {
@@ -25190,10 +26031,10 @@ function validateKnowledgeView(path, view, purpose, audience, authority, metadat
   }
   validateQualityReceipt(
     path,
-    recordValue8(recordValue8(metadata["x-wf"])?.quality),
+    recordValue9(recordValue9(metadata["x-wf"])?.quality),
     expectedContentHash,
     status,
-    stringValue9(recordValue8(metadata.generated)?.at),
+    stringValue9(recordValue9(metadata.generated)?.at),
     errors
   );
 }
@@ -25261,9 +26102,9 @@ function validateQualityReceipt(path, quality, expectedContentHash, lifecycle, g
       errors.push({ path, message: `unknown x-wf.quality check: ${check}` });
     }
   }
-  const axes = recordValue8(quality.axes);
+  const axes = recordValue9(quality.axes);
   for (const axis of QUALITY_AXES) {
-    const review = recordValue8(axes?.[axis]);
+    const review = recordValue9(axes?.[axis]);
     if (review?.status !== "passed") {
       errors.push({
         path,
@@ -25393,7 +26234,7 @@ async function hashKnowledgeConcept(targetInput, conceptPath) {
 function conceptDocumentHash(metadata, body) {
   const material = { ...metadata };
   delete material.verified;
-  const workflow = recordValue8(material["x-wf"]);
+  const workflow = recordValue9(material["x-wf"]);
   if (workflow) {
     const workflowMaterial = { ...workflow };
     delete workflowMaterial.quality;
@@ -25419,7 +26260,7 @@ function decodeUtf8(content3) {
 function portable2(path) {
   return path.split(sep7).join("/");
 }
-function recordValue8(value) {
+function recordValue9(value) {
   return isRecord5(value) ? value : void 0;
 }
 function isRecord5(value) {
@@ -33551,6 +34392,8 @@ import { createInterface } from "node:readline/promises";
 import { resolve as resolve20 } from "node:path";
 
 // src/applier.ts
+init_planner();
+init_types();
 import { randomUUID } from "node:crypto";
 import {
   copyFile,
@@ -33568,739 +34411,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname as dirname2, join as join3 } from "node:path";
-
-// src/planner.ts
-init_browser();
-init_assets();
-init_config();
-import { createHash } from "node:crypto";
-import { lstat, readFile as readFile3, readlink } from "node:fs/promises";
-import { join as join2, resolve as resolve3, sep as sep2 } from "node:path";
-
-// src/managed-block.ts
-var MARKDOWN_MARKERS = {
-  start: "<!-- wfctl:begin -->",
-  end: "<!-- wfctl:end -->"
-};
-var GITIGNORE_MARKERS = {
-  start: "# wfctl:begin",
-  end: "# wfctl:end"
-};
-function renderManagedBlock(body, markers = MARKDOWN_MARKERS) {
-  return `${markers.start}
-${body.trim()}
-${markers.end}`;
-}
-function upsertManagedBlock(existing, body, markers = MARKDOWN_MARKERS) {
-  const startCount = count(existing, markers.start);
-  const endCount = count(existing, markers.end);
-  if (startCount === 0 && endCount === 0) {
-    const prefix = existing.trimEnd();
-    const separator = prefix.length === 0 ? "" : "\n\n";
-    return {
-      content: `${prefix}${separator}${renderManagedBlock(body, markers)}
-`
-    };
-  }
-  if (startCount !== 1 || endCount !== 1) {
-    return { error: "managed block markers are malformed or duplicated" };
-  }
-  const start = existing.indexOf(markers.start);
-  const end = existing.indexOf(markers.end);
-  if (end < start) {
-    return { error: "managed block end marker appears before its start marker" };
-  }
-  const after = end + markers.end.length;
-  return {
-    content: `${existing.slice(0, start)}${renderManagedBlock(body, markers)}${existing.slice(after)}`
-  };
-}
-function count(value, needle) {
-  return value.split(needle).length - 1;
-}
-
-// src/planner.ts
-var REQUIRED_DIRECTORIES = [
-  ".claude/rules",
-  ".workflow/rules",
-  ".workflow/current"
-];
-var KNOWLEDGE_DIRECTORIES = [
-  ".qmd",
-  "raw",
-  "intake/cases/active",
-  "intake/cases/archive",
-  "reconstruction/active",
-  "reconstruction/archive",
-  "changes/active",
-  "changes/archive",
-  "changes/archive/captures",
-  "changes/inbox"
-];
-var COMMON_SKILLS = [
-  "analyze-with-graphify",
-  "setup-workflow-environment"
-];
-var PROFILE_SKILLS = {
-  knowledge: [
-    "align-project-knowledge",
-    "curate-engineering-knowledge",
-    "curate-product-knowledge",
-    "curate-project-knowledge",
-    "explore-project-knowledge",
-    "implement-work-item",
-    "manage-project-work",
-    "operate-project-knowledge",
-    "process-raw-intake",
-    "reconstruct-project-knowledge",
-    "research-project-context",
-    "shape-project-direction",
-    "specify-project-change",
-    "split-project-change",
-    "verify-knowledge-quality",
-    "verify-project-work"
-  ],
-  leaf: [
-    "align-project-knowledge",
-    "curate-engineering-knowledge",
-    "curate-product-knowledge",
-    "curate-project-knowledge",
-    "explore-project-knowledge",
-    "implement-work-item",
-    "manage-project-work",
-    "shape-project-direction",
-    "specify-project-change",
-    "split-project-change",
-    "verify-knowledge-quality",
-    "verify-project-work"
-  ]
-};
-async function buildInstallPlan(options) {
-  const target = resolve3(options.target);
-  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const state = await readState(target);
-  const config = createConfig(
-    options.profile,
-    target,
-    options.knowledge,
-    options.skills
-  );
-  const operations = [];
-  for (const directory of REQUIRED_DIRECTORIES) {
-    operations.push(await planDirectory(target, directory));
-  }
-  if (options.profile === "knowledge") {
-    for (const directory of KNOWLEDGE_DIRECTORIES) {
-      operations.push(await planDirectory(target, directory));
-    }
-  }
-  operations.push(
-    await planOwnedFile(
-      target,
-      ".workflow/.gitignore",
-      "backups/\ncurrent/\n",
-      state
-    )
-  );
-  if (options.profile === "knowledge") {
-    operations.push(
-      await planOwnedFile(
-        target,
-        ".qmd/.gitignore",
-        "*\n!.gitignore\n",
-        state
-      )
-    );
-    operations.push(
-      await planOwnedFile(
-        target,
-        ".qmd/index.yml",
-        renderQmdConfig(target),
-        state
-      )
-    );
-    operations.push(await planRepositoryRegistry(target));
-  }
-  operations.push(await planConfig(target, config));
-  if (options.profile === "leaf") {
-    operations.push(await planLeafGitignore(target));
-    operations.push(await planManagedBlock(
-      target,
-      ".graphifyignore",
-      [
-        ".agents/",
-        ".claude/",
-        ".workflow/",
-        "graphify-out/",
-        "AGENTS.md",
-        "CLAUDE.md",
-        "PROJECT_WORKFLOW.md",
-        "skills-lock.json"
-      ].join("\n"),
-      GITIGNORE_MARKERS
-    ));
-  }
-  const instructions = await renderAgentInstructions(
-    distributionRoot,
-    options.profile,
-    config.knowledge?.path
-  );
-  operations.push(await planManagedBlock(target, "AGENTS.md", instructions));
-  operations.push(await planClaudeInstructions(target, instructions));
-  const guide = await renderMaintainerGuide(
-    distributionRoot,
-    options.profile,
-    config.knowledge?.path
-  );
-  operations.push(await planManagedBlock(target, "PROJECT_WORKFLOW.md", guide));
-  const ruleRoots = [
-    join2(distributionRoot, "rules/common"),
-    join2(distributionRoot, `rules/${options.profile}`)
-  ];
-  for (const ruleRoot of ruleRoots) {
-    await planOwnedTree({
-      sourceRoot: ruleRoot,
-      destinationRoot: ".workflow/rules",
-      target,
-      state,
-      operations
-    });
-    await planOwnedTree({
-      sourceRoot: ruleRoot,
-      destinationRoot: ".claude/rules",
-      target,
-      state,
-      operations
-    });
-  }
-  if (options.profile === "knowledge") {
-    await planOwnedTree({
-      sourceRoot: join2(distributionRoot, "templates/knowledge"),
-      destinationRoot: ".",
-      target,
-      state,
-      operations
-    });
-  }
-  const desiredOwnedPaths = new Set(
-    operations.filter((operation) => operation.track).map((operation) => operation.path)
-  );
-  for (const [path, installed] of Object.entries(state?.files ?? {})) {
-    if (!desiredOwnedPaths.has(path)) {
-      operations.push(await planObsoleteOwnedFile(target, path, installed.sha256));
-    }
-  }
-  return {
-    target,
-    profile: options.profile,
-    ...config.knowledge ? { knowledgePath: config.knowledge.path } : {},
-    operations: sortOperations(operations)
-  };
-}
-function summarizePlan(plan) {
-  const counts = Object.fromEntries(
-    ["create", "update", "delete", "unchanged", "conflict"].map((status) => [
-      status,
-      plan.operations.filter((operation) => operation.status === status).length
-    ])
-  );
-  return {
-    target: plan.target,
-    profile: plan.profile,
-    ...plan.knowledgePath ? { knowledgePath: plan.knowledgePath } : {},
-    counts,
-    operations: plan.operations.map(
-      ({ content: _content, expectedHash: _expected, ...operation }) => operation
-    )
-  };
-}
-function hashContent(content3) {
-  return createHash("sha256").update(content3).digest("hex");
-}
-async function planConfig(target, desired) {
-  const relativePath2 = ".workflow/config.json";
-  const absolute = join2(target, relativePath2);
-  const content3 = `${JSON.stringify(desired, null, 2)}
-`;
-  try {
-    const existing = await readFile3(absolute, "utf8");
-    const parsed = JSON.parse(existing);
-    const sameKnowledge = desired.profile !== "leaf" || parsed.knowledge?.path === desired.knowledge?.path;
-    const sameIdentity = parsed.schemaVersion === desired.schemaVersion && parsed.profile === desired.profile && sameKnowledge;
-    const sameSkills = parsed.skills?.scope === desired.skills?.scope && JSON.stringify(parsed.skills?.agents) === JSON.stringify(desired.skills?.agents);
-    const sameVersion = parsed.installedVersion === desired.installedVersion;
-    if (sameIdentity && sameSkills && sameVersion) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "unchanged",
-        reason: "existing workflow configuration is compatible",
-        content: existing
-      };
-    }
-    if (sameIdentity && !parsed.skills) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "update",
-        reason: "record skill installation settings",
-        content: content3,
-        expectedHash: hashContent(existing)
-      };
-    }
-    if (sameIdentity && sameSkills && !sameVersion) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "update",
-        reason: `record workflow version ${desired.installedVersion}`,
-        content: content3,
-        expectedHash: hashContent(existing)
-      };
-    }
-    return {
-      kind: "file",
-      path: relativePath2,
-      status: "conflict",
-      reason: "existing workflow configuration differs; update it explicitly",
-      content: content3,
-      expectedHash: hashContent(existing),
-      replaceable: true
-    };
-  } catch (error2) {
-    if (!isMissingFileError(error2)) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "conflict",
-        reason: `cannot inspect configuration: ${errorMessage(error2)}`
-      };
-    }
-    return {
-      kind: "file",
-      path: relativePath2,
-      status: "create",
-      reason: "workflow configuration is absent",
-      content: content3
-    };
-  }
-}
-async function planRepositoryRegistry(target) {
-  const relativePath2 = ".workflow/repositories.json";
-  const absolute = join2(target, relativePath2);
-  const empty = `${JSON.stringify({ schemaVersion: 1, repositories: [] }, null, 2)}
-`;
-  try {
-    const existing = await readFile3(absolute, "utf8");
-    const value = JSON.parse(existing);
-    if (value.schemaVersion !== 1 || !Array.isArray(value.repositories)) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "conflict",
-        reason: "repository registry has an unsupported shape"
-      };
-    }
-    return {
-      kind: "file",
-      path: relativePath2,
-      status: "unchanged",
-      reason: "dynamic repository registry is valid",
-      content: existing
-    };
-  } catch (error2) {
-    if (isMissingFileError(error2)) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "create",
-        reason: "repository registry is absent",
-        content: empty
-      };
-    }
-    return {
-      kind: "file",
-      path: relativePath2,
-      status: "conflict",
-      reason: `cannot inspect repository registry: ${errorMessage(error2)}`
-    };
-  }
-}
-async function planDirectory(target, relativePath2) {
-  try {
-    const stat4 = await lstat(join2(target, relativePath2));
-    if (stat4.isDirectory()) {
-      return {
-        kind: "directory",
-        path: relativePath2,
-        status: "unchanged",
-        reason: "directory exists"
-      };
-    }
-    return {
-      kind: "directory",
-      path: relativePath2,
-      status: "conflict",
-      reason: "path exists and is not a directory"
-    };
-  } catch (error2) {
-    if (isMissingFileError(error2)) {
-      return {
-        kind: "directory",
-        path: relativePath2,
-        status: "create",
-        reason: "directory is absent"
-      };
-    }
-    return {
-      kind: "directory",
-      path: relativePath2,
-      status: "conflict",
-      reason: `cannot inspect directory: ${errorMessage(error2)}`
-    };
-  }
-}
-async function planManagedBlock(target, relativePath2, body, markers) {
-  const absolute = join2(target, relativePath2);
-  try {
-    const stat4 = await lstat(absolute);
-    if (stat4.isSymbolicLink()) {
-      return {
-        kind: "managed-block",
-        path: relativePath2,
-        status: "conflict",
-        reason: "instruction file is a symlink not owned by this operation"
-      };
-    }
-    if (!stat4.isFile()) {
-      return {
-        kind: "managed-block",
-        path: relativePath2,
-        status: "conflict",
-        reason: "instruction path exists and is not a regular file"
-      };
-    }
-    const existing = await readFile3(absolute, "utf8");
-    const merged = upsertManagedBlock(existing, body, markers);
-    if (!merged.content) {
-      return {
-        kind: "managed-block",
-        path: relativePath2,
-        status: "conflict",
-        reason: merged.error ?? "cannot update managed block"
-      };
-    }
-    const status = merged.content === existing ? "unchanged" : "update";
-    return {
-      kind: "managed-block",
-      path: relativePath2,
-      status,
-      reason: status === "unchanged" ? "managed block is current" : "managed block will be updated",
-      content: merged.content,
-      expectedHash: hashContent(existing)
-    };
-  } catch (error2) {
-    if (!isMissingFileError(error2)) {
-      return {
-        kind: "managed-block",
-        path: relativePath2,
-        status: "conflict",
-        reason: `cannot inspect instruction file: ${errorMessage(error2)}`
-      };
-    }
-    const merged = upsertManagedBlock("", body, markers);
-    return {
-      kind: "managed-block",
-      path: relativePath2,
-      status: "create",
-      reason: "instruction file is absent",
-      content: merged.content ?? ""
-    };
-  }
-}
-async function planLeafGitignore(target) {
-  const relativePath2 = ".gitignore";
-  const absolute = join2(target, relativePath2);
-  try {
-    const stat4 = await lstat(absolute);
-    if (stat4.isFile() && !stat4.isSymbolicLink()) {
-      const existing = await readFile3(absolute, "utf8");
-      if (!existing.includes(GITIGNORE_MARKERS.start) && ignoresGraphifyOutput(existing)) {
-        return {
-          kind: "managed-block",
-          path: relativePath2,
-          status: "unchanged",
-          reason: "Graphify output is already ignored",
-          content: existing,
-          expectedHash: hashContent(existing)
-        };
-      }
-    }
-  } catch (error2) {
-    if (!isMissingFileError(error2)) {
-      return {
-        kind: "managed-block",
-        path: relativePath2,
-        status: "conflict",
-        reason: `cannot inspect .gitignore: ${errorMessage(error2)}`
-      };
-    }
-  }
-  return planManagedBlock(
-    target,
-    relativePath2,
-    "graphify-out/",
-    GITIGNORE_MARKERS
-  );
-}
-function ignoresGraphifyOutput(content3) {
-  return content3.split(/\r?\n/).some(
-    (line) => /^(?:\/)?graphify-out\/?$/.test(line.trim())
-  );
-}
-async function planClaudeInstructions(target, body) {
-  const path = "CLAUDE.md";
-  const absolute = join2(target, path);
-  try {
-    const stat4 = await lstat(absolute);
-    if (stat4.isSymbolicLink()) {
-      const current = await readlink(absolute);
-      return current === "AGENTS.md" ? {
-        kind: "symlink",
-        path,
-        status: "unchanged",
-        reason: "CLAUDE.md already links to AGENTS.md",
-        linkTarget: current
-      } : {
-        kind: "symlink",
-        path,
-        status: "conflict",
-        reason: `CLAUDE.md links to ${current}, not AGENTS.md`
-      };
-    }
-    return await planManagedBlock(target, path, body);
-  } catch (error2) {
-    if (isMissingFileError(error2)) {
-      return {
-        kind: "symlink",
-        path,
-        status: "create",
-        reason: "CLAUDE.md is absent",
-        linkTarget: "AGENTS.md"
-      };
-    }
-    return {
-      kind: "symlink",
-      path,
-      status: "conflict",
-      reason: `cannot inspect CLAUDE.md: ${errorMessage(error2)}`
-    };
-  }
-}
-async function planOwnedTree(input) {
-  for (const sourceRelative of await collectFiles(input.sourceRoot)) {
-    const destination = normalizeRelative(join2(input.destinationRoot, sourceRelative));
-    const content3 = await readFile3(join2(input.sourceRoot, sourceRelative), "utf8");
-    input.operations.push(
-      await planOwnedFile(input.target, destination, content3, input.state)
-    );
-  }
-}
-async function planOwnedFile(target, relativePath2, content3, state) {
-  const absolute = join2(target, relativePath2);
-  const desiredHash = hashContent(content3);
-  try {
-    const stat4 = await lstat(absolute);
-    if (!stat4.isFile() || stat4.isSymbolicLink()) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "conflict",
-        reason: "owned destination exists and is not a regular file"
-      };
-    }
-    const existing = await readFile3(absolute);
-    const currentHash = hashContent(existing);
-    if (currentHash === desiredHash) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "unchanged",
-        reason: "owned file is current",
-        content: content3,
-        expectedHash: currentHash,
-        track: true
-      };
-    }
-    const installedHash = state?.files[relativePath2]?.sha256;
-    if (installedHash && installedHash === currentHash) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "update",
-        reason: "owned file matches the previous installed version",
-        content: content3,
-        expectedHash: currentHash,
-        track: true
-      };
-    }
-    return {
-      kind: "file",
-      path: relativePath2,
-      status: "conflict",
-      reason: installedHash ? "owned file was locally modified" : "destination exists without wfctl ownership",
-      content: content3,
-      expectedHash: currentHash,
-      track: true,
-      replaceable: true
-    };
-  } catch (error2) {
-    if (isMissingFileError(error2)) {
-      return {
-        kind: "file",
-        path: relativePath2,
-        status: "create",
-        reason: "owned file is absent",
-        content: content3,
-        track: true
-      };
-    }
-    return {
-      kind: "file",
-      path: relativePath2,
-      status: "conflict",
-      reason: `cannot inspect owned file: ${errorMessage(error2)}`
-    };
-  }
-}
-async function planObsoleteOwnedFile(target, relativePath2, installedHash) {
-  const absolute = join2(target, relativePath2);
-  try {
-    const stat4 = await lstat(absolute);
-    if (!stat4.isFile() || stat4.isSymbolicLink()) {
-      return {
-        kind: "delete",
-        path: relativePath2,
-        status: "conflict",
-        reason: "obsolete owned path is no longer a regular file"
-      };
-    }
-    const currentHash = hashContent(await readFile3(absolute));
-    if (currentHash !== installedHash) {
-      return {
-        kind: "delete",
-        path: relativePath2,
-        status: "conflict",
-        reason: "obsolete owned file was locally modified",
-        expectedHash: currentHash,
-        replaceable: true,
-        backup: true
-      };
-    }
-    return {
-      kind: "delete",
-      path: relativePath2,
-      status: "delete",
-      reason: "file was owned by the previous workflow version and is no longer distributed",
-      expectedHash: currentHash,
-      backup: true
-    };
-  } catch (error2) {
-    if (isMissingFileError(error2)) {
-      return {
-        kind: "delete",
-        path: relativePath2,
-        status: "unchanged",
-        reason: "obsolete owned file is already absent"
-      };
-    }
-    return {
-      kind: "delete",
-      path: relativePath2,
-      status: "conflict",
-      reason: `cannot inspect obsolete owned file: ${errorMessage(error2)}`
-    };
-  }
-}
-function skillsForProfile(profile) {
-  return [...workflowSkillsForProfile(profile), "qmd"].sort();
-}
-function workflowSkillsForProfile(profile) {
-  return [...COMMON_SKILLS, ...PROFILE_SKILLS[profile]].sort();
-}
-function allWorkflowSkills() {
-  return [.../* @__PURE__ */ new Set([
-    ...COMMON_SKILLS,
-    ...Object.values(PROFILE_SKILLS).flat()
-  ])].sort();
-}
-function renderQmdConfig(target) {
-  const collection = (path, pattern, includeByDefault, context) => ({
-    path: join2(target, path),
-    pattern,
-    includeByDefault,
-    context: { "/": context }
-  });
-  return stringify3({
-    global_context: "Project knowledge retrieval. Curated knowledge is the only default truth surface. Changes and reconstruction are qualified opt-in records. Intake and raw are untrusted investigation inputs.",
-    collections: {
-      knowledge: collection(
-        "knowledge",
-        "**/*.md",
-        true,
-        "Curated OKF current project knowledge. Use this collection by default."
-      ),
-      changes: collection(
-        "changes",
-        "**/*.md",
-        false,
-        "Active and archived project change records. Outcomes and reviews qualify every claim."
-      ),
-      intake: collection(
-        "intake",
-        "**/*.md",
-        false,
-        "Operational raw-intake cases. Never treat these records as evidence."
-      ),
-      reconstruction: collection(
-        "reconstruction",
-        "**/*.md",
-        false,
-        "Reviewed source-first project baselines and audits. Use only when tracing reconstruction evidence and adjudication."
-      ),
-      raw: collection(
-        "raw",
-        "**/*.{md,markdown,mdown,txt,json,jsonl,yaml,yml,toml,js,mjs,cjs,ts,tsx,jsx}",
-        false,
-        "Continuous untrusted input used only to discover candidate claims and contradictions."
-      )
-    },
-    models: {
-      embed: "hf:ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf",
-      generate: "hf:tobil/qmd-query-expansion-1.7B-gguf/qmd-query-expansion-1.7B-q4_k_m.gguf",
-      rerank: "hf:ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/qwen3-reranker-0.6b-q8_0.gguf"
-    }
-  }, { lineWidth: 0 });
-}
-function normalizeRelative(path) {
-  const normalized = path.split(sep2).join("/");
-  return normalized === "." ? normalized : normalized.replace(/^\.\//, "");
-}
-function sortOperations(operations) {
-  const kindOrder = {
-    directory: 0,
-    file: 1,
-    "managed-block": 2,
-    symlink: 3,
-    delete: 4
-  };
-  return operations.sort(
-    (left, right) => kindOrder[left.kind] - kindOrder[right.kind] || left.path.localeCompare(right.path)
-  );
-}
-
-// src/applier.ts
-init_types();
 async function applyInstallPlan(plan) {
   const conflicts = plan.operations.filter((operation) => operation.status === "conflict");
   if (conflicts.length > 0) {
@@ -34757,10 +34867,12 @@ function requireText2(value, label) {
 }
 
 // src/doctor.ts
+init_planner();
 init_repository_registry();
 
 // src/skill-installer.ts
 init_dependencies();
+init_planner();
 import { spawnSync as spawnSync4 } from "node:child_process";
 import { createRequire } from "node:module";
 import {
@@ -35515,6 +35627,7 @@ function stripAnsi2(value) {
 }
 
 // src/cli.ts
+init_planner();
 init_intake();
 init_claim_ledger();
 init_knowledge();
@@ -36548,7 +36661,7 @@ function corpusCollector() {
       }
       const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
       const concepts = nodes.filter(
-        (node2) => recordValue9(node2)?.kind === "concept"
+        (node2) => recordValue10(node2)?.kind === "concept"
       ).length;
       if (concepts === 0) {
         return [{
@@ -36599,8 +36712,8 @@ function reconstructionCollector() {
             continue;
           }
           const ledger = await readJson(join18(entry.root, relative9));
-          const manifest = recordValue9(ledger?.manifest);
-          const graphify = recordValue9(ledger?.graphify);
+          const manifest = recordValue10(ledger?.manifest);
+          const graphify = recordValue10(ledger?.graphify);
           const files = Array.isArray(manifest?.files) ? manifest.files : [];
           const communities = Array.isArray(graphify?.communities) ? graphify.communities : [];
           totals.files += files.length;
@@ -36627,8 +36740,8 @@ function reconstructionCollector() {
           awaits: "agent"
         });
         signals2.push(...checkpointSignals("reconstruction", entry.id, metadata, context));
-        const scope = recordValue9(
-          recordValue9(recordValue9(metadata.supplemental_inputs)?.raw)?.scope
+        const scope = recordValue10(
+          recordValue10(recordValue10(metadata.supplemental_inputs)?.raw)?.scope
         );
         if (scope && !stringValue10(scope.mode)) {
           signals2.push({
@@ -36745,9 +36858,9 @@ function workCollector() {
           ...stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {},
           awaits: "agent"
         });
-        const review = recordValue9(metadata.maintainer_review);
+        const review = recordValue10(metadata.maintainer_review);
         const outstanding = ["framing", "completion"].filter(
-          (stage) => stringValue10(recordValue9(review?.[stage])?.status) !== "approved"
+          (stage) => stringValue10(recordValue10(review?.[stage])?.status) !== "approved"
         );
         if (outstanding.length > 0) {
           signals2.push({
@@ -36764,7 +36877,7 @@ function workCollector() {
             blocks: ["close-work"]
           });
         }
-        if (stringValue10(recordValue9(metadata.verification)?.result) !== "passed") {
+        if (stringValue10(recordValue10(metadata.verification)?.result) !== "passed") {
           signals2.push({
             id: "work.verification-pending",
             domain: "work",
@@ -36805,7 +36918,7 @@ function inboxCollector() {
 }
 var STALE_CHECKPOINT_DAYS = 3;
 function checkpointSignals(domain, subject, metadata, context) {
-  const checkpoint = recordValue9(metadata.checkpoint);
+  const checkpoint = recordValue10(metadata.checkpoint);
   const updatedAt = stringValue10(checkpoint?.updated_at);
   if (!checkpoint || !updatedAt) {
     return [];
@@ -36955,18 +37068,18 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
 async function readJson(path) {
   try {
     const parsed = JSON.parse(await readFile20(path, "utf8"));
-    return recordValue9(parsed);
+    return recordValue10(parsed);
   } catch {
     return void 0;
   }
 }
 function isPending(value) {
-  return recordValue9(value)?.status === "pending";
+  return recordValue10(value)?.status === "pending";
 }
 function recordArray7(value) {
   return Array.isArray(value) ? value.filter(isRecord7) : [];
 }
-function recordValue9(value) {
+function recordValue10(value) {
   return isRecord7(value) ? value : void 0;
 }
 function isRecord7(value) {

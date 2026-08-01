@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
+import { allWorkflowSkills } from "./planner.js";
 import { readPinnedGitTextRange } from "./pinned-git-read.js";
 
 export const RECONSTRUCTION_COVERAGE_VERSION = 1;
@@ -18,6 +19,7 @@ export const FILE_CATEGORIES = [
   "binary-asset",
   "vendor",
   "submodule",
+  "workflow-asset",
   "other",
 ] as const;
 
@@ -196,21 +198,24 @@ export async function createReconstructionCoverage(
     throw new Error(`${repository}: pinned Git tree contains no tracked entries`);
   }
   const graph = await readGraphSnapshot(root, graphPath, tree, commit);
+  const workflow = await readWorkflowOwnership(root, tree);
   const files = tree.map((entry): ReconstructionCoverageFile => {
     const communities = graph.indexedFiles.get(entry.path) ?? [];
+    const owned = workflow.owned.has(entry.path);
+    const shared = workflow.shared.has(entry.path);
     return {
       path: entry.path,
       mode: entry.mode,
       objectType: entry.objectType,
       objectId: entry.objectId,
       size: entry.size,
-      category: classifyFile(entry),
+      category: owned || shared ? "workflow-asset" : classifyFile(entry),
       graph: {
         indexed: communities.length > 0,
         communities,
       },
-      status: "pending",
-      reason: "",
+      status: owned ? "irrelevant" : "pending",
+      reason: owned ? WORKFLOW_ASSET_REASON : "",
       receipts: [],
     };
   });
@@ -1073,8 +1078,18 @@ async function readGraphSnapshot(
     && value.built_at_commit
     && value.built_at_commit !== commit
   ) {
+    // Graphify skips the write when code topology is unchanged, so a commit
+    // touching only excluded or non-code files leaves the pin behind. Verified
+    // against graphify 0.9.26: the short circuit happens before export.to_json,
+    // which is the only place built_at_commit is stamped. `--force` overrides
+    // the shrink guard, not this. Repairing it silently is not this tool's
+    // call, so say exactly what happened and what fixes it.
     throw new Error(
-      `Graphify graph pins ${value.built_at_commit}, expected ${commit}`,
+      `Graphify graph pins ${value.built_at_commit} but the checkout is at ${commit}. `
+        + "This is Graphify leaving graph.json untouched when code topology did not "
+        + "change; the source is not corrupt and --force does not refresh the pin. "
+        + `Rebuild from a clean file, which preserves the AST cache: rm ${graphPath} `
+        + "&& graphify update .",
     );
   }
   const treePaths = new Set(tree.map((entry) => entry.path));
@@ -1145,6 +1160,140 @@ function treeContentHash(entries: GitTreeEntry[]): string {
     );
   }
   return hash.digest("hex");
+}
+
+const WORKFLOW_ASSET_REASON =
+  "Installed by wfctl and recorded in its own manifest; it describes agent "
+  + "behavior, not this project. Accounted here so the frontier stays complete.";
+
+/**
+ * Files wfctl writes into without owning outright: a maintainer's own text may
+ * live outside the managed markers. They are named as workflow assets so a
+ * reviewer never reads agent instructions as product intent, but they keep a
+ * pending disposition because only a reader can tell what else is in them.
+ */
+const WORKFLOW_SHARED_PATHS = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "PROJECT_WORKFLOW.md",
+  ".graphifyignore",
+  "skills-lock.json",
+];
+
+const WORKFLOW_STATE_PATH = ".workflow/state.json";
+const SKILLS_LOCK_PATH = "skills-lock.json";
+const SKILL_ROOTS = [".claude/skills/", ".agents/skills/"];
+// A skill this wfctl does not ship is the project's own and stays in scope.
+const WORKFLOW_SKILL_NAMES = new Set(allWorkflowSkills());
+
+interface WorkflowOwnership {
+  owned: Set<string>;
+  shared: Set<string>;
+}
+
+/**
+ * Ownership is an identity fact wfctl already records, never a path pattern.
+ * A project may legitimately keep its own skills, rules, and agent files in the
+ * same directories; those stay in scope and must still be reviewed.
+ */
+async function readWorkflowOwnership(
+  root: string,
+  tree: readonly GitTreeEntry[],
+): Promise<WorkflowOwnership> {
+  const byPath = new Map(tree.map((entry) => [entry.path, entry]));
+  const owned = new Set<string>();
+  const shared = new Set<string>();
+
+  const state = await readPinnedJson(root, byPath.get(WORKFLOW_STATE_PATH));
+  if (!state) {
+    return { owned, shared };
+  }
+  for (const path of Object.keys(recordValue(state.files) ?? {})) {
+    if (byPath.has(path)) {
+      owned.add(path);
+    }
+  }
+  owned.add(WORKFLOW_STATE_PATH);
+  for (const path of [".workflow/config.json", ".workflow/state.json"]) {
+    if (byPath.has(path)) {
+      owned.add(path);
+    }
+  }
+
+  const lock = await readPinnedJson(root, byPath.get(SKILLS_LOCK_PATH));
+  const installed = new Set(
+    Object.keys(recordValue(lock?.skills) ?? {})
+      .filter((skill) => WORKFLOW_SKILL_NAMES.has(skill)),
+  );
+  if (installed.size > 0) {
+    for (const entry of tree) {
+      const skill = workflowSkillOf(entry.path);
+      if (skill && installed.has(skill)) {
+        owned.add(entry.path);
+      }
+    }
+  }
+
+  for (const path of WORKFLOW_SHARED_PATHS) {
+    if (byPath.has(path) && !owned.has(path)) {
+      shared.add(path);
+    }
+  }
+  return { owned, shared };
+}
+
+function workflowSkillOf(path: string): string | undefined {
+  for (const skillRoot of SKILL_ROOTS) {
+    if (path.startsWith(skillRoot)) {
+      return path.slice(skillRoot.length).split("/")[0];
+    }
+  }
+  return undefined;
+}
+
+async function readPinnedJson(
+  root: string,
+  entry: GitTreeEntry | undefined,
+): Promise<Record<string, unknown> | undefined> {
+  if (!entry || entry.objectType !== "blob") {
+    return undefined;
+  }
+  try {
+    const content = await readPinnedBlob(root, entry.objectId);
+    return recordValue(JSON.parse(content));
+  } catch {
+    return undefined;
+  }
+}
+
+async function readPinnedBlob(root: string, objectId: string): Promise<string> {
+  const child = spawn("git", ["-C", root, "cat-file", "blob", objectId], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const completion = new Promise<number>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => resolve(code ?? 1));
+  });
+  let content = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.resume();
+  for await (const chunk of child.stdout) {
+    content += chunk as string;
+    if (content.length > 4 * 1024 * 1024) {
+      child.kill();
+      throw new Error(`Pinned blob ${objectId} is too large to parse`);
+    }
+  }
+  if (await completion !== 0) {
+    throw new Error(`Cannot read pinned blob ${objectId}`);
+  }
+  return content;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
 function classifyFile(entry: GitTreeEntry): FileCategory {
