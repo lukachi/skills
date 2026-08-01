@@ -272,6 +272,28 @@ export async function runDoctor(
                 : ""
             }`,
       });
+      // Baseline reconstruction drives Graphify from this repository, so a
+      // knowledge checkout that already knows leaves needs the CLI even though
+      // `wfctl init knowledge` deliberately does not require it.
+      if (connections.length > 0) {
+        const graphify = graphifyCliCheck({
+          target,
+          agents: config.skills?.agents ?? [],
+          runner,
+        });
+        checks.push(
+          graphify.status === "pass"
+            ? { ...graphify, name: "graphify-reconstruction" }
+            : {
+              ...graphify,
+              name: "graphify-reconstruction",
+              status: "warn",
+              message:
+                "Graphify is not installed; baseline reconstruction of the registered "
+                + "repositories cannot start until it is",
+            },
+        );
+      }
     } catch (error) {
       checks.push({
         name: "repository-registry",

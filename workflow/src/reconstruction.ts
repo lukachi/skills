@@ -15,6 +15,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { findDistributionRoot } from "./assets.js";
 import {
   commandFailure,
+  graphifyCliCheck,
   runTool,
   type ToolRunner,
   updateGraphifyGraph,
@@ -86,7 +87,7 @@ import {
   type KnowledgeSessionStatus,
   type RelatedSessionContent,
 } from "./knowledge-session.js";
-import type { WorkOutcome } from "./types.js";
+import type { AgentTarget, DoctorCheck, WorkOutcome } from "./types.js";
 import {
   isRecord,
   parseWorkSpec,
@@ -166,7 +167,24 @@ export interface BeginReconstructionOptions {
   mode?: "baseline" | "audit";
   distributionRoot?: string;
   runner?: ToolRunner;
+  /** Agent platforms used to render Graphify native-skill remediation steps. */
+  agents?: AgentTarget[];
   now?: Date;
+}
+
+/**
+ * Raised when reconstruction cannot start because an external tool is missing.
+ * It carries the same structured remediation as installation preflight so the
+ * CLI can print actionable steps instead of a bare subprocess failure.
+ */
+export class ReconstructionDependencyError extends Error {
+  readonly check: DoctorCheck;
+
+  constructor(check: DoctorCheck) {
+    super(check.message);
+    this.name = "ReconstructionDependencyError";
+    this.check = check;
+  }
 }
 
 export interface BeginReconstructionResult {
@@ -472,6 +490,22 @@ export async function beginProjectReconstruction(
   }
 
   const runner = options.runner ?? runTool;
+  // Reconstruction is the one knowledge-repository operation that drives
+  // Graphify itself, and `wfctl init knowledge` never preflights it. Fail with
+  // the same structured remediation as leaf initialization instead of leaking a
+  // bare spawn error, and fail before the case directory exists.
+  const firstRepository = repositoryInputs[0];
+  if (firstRepository) {
+    const graphifyAvailable = graphifyCliCheck({
+      target: firstRepository.root,
+      agents: options.agents ?? [],
+      runner,
+      blocks: "reconstruction",
+    });
+    if (graphifyAvailable.status !== "pass") {
+      throw new ReconstructionDependencyError(graphifyAvailable);
+    }
+  }
   const graphResults: Array<{ nodes: number; contentHash: string }> = [];
   for (const input of repositoryInputs) {
     const updated = updateGraphifyGraph(input.root, runner);

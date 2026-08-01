@@ -131,7 +131,9 @@ Tracked registry state contains no absolute local paths.
 
 - `wfctl knowledge reconstruct start` binds every default repository selection
   or an explicit reviewed scope, refreshes Graphify, and creates dossiers and
-  complete coverage ledgers.
+  complete coverage ledgers. It preflights the Graphify CLI first and fails with
+  the same structured remediation as leaf initialization, before any case
+  directory exists.
 - `context [id]` auto-selects only one active reconstruction and returns the
   exact full-read case, dossiers, local binding, complete coverage frontier,
   durable workstream frontier, discovery validation, and hash-bound checkpoint.
@@ -206,6 +208,12 @@ Installed agents own these commands.
   records require inspection and a maintainer choice.
 - `wfctl work checkpoint <id>` refreshes the one hash-bound resumable state
   owned by the change or a selected claimed issue after semantic edits.
+- `wfctl work approve <id> --stage framing|completion --by human:<id>` records a
+  maintainer decision. It requires an interactive terminal, or `--token`
+  matching `WFCTL_APPROVAL_TOKEN` for automation, and writes both the
+  `maintainer_review` receipt and an ignored durable approval record. This is a
+  maintainer-facing command an agent may prepare but must not satisfy on its
+  own; `verify` and completed `close` reject a receipt with no matching record.
 - `wfctl work issue create|list|show` operates the dependency graph and
   executable frontier inside the bundle.
 - `wfctl work issue block|unblock` updates dependency edges and rejects cycles.
@@ -230,6 +238,7 @@ wfctl work status
 wfctl work context --stage resume
 wfctl work context <id> --stage shape
 wfctl work checkpoint <id> --actor "agent:session" --state "Framing is current" --last "Scope reviewed" --next "Request framing approval"
+wfctl work approve <id> --stage framing --by human:<maintainer-id> --note "Framing accepted"
 wfctl work issue list <id>
 wfctl work verify <id>
 wfctl work close <id> --outcome completed

@@ -146,6 +146,8 @@ export function graphifyCliCheck(input: {
   target: string;
   agents: AgentTarget[];
   runner?: ToolRunner;
+  /** What is blocked when Graphify is missing, for the failure message. */
+  blocks?: string;
 }): DoctorCheck {
   const runner = input.runner ?? runTool;
   const graphify = runner("graphify", ["--version"], {
@@ -163,7 +165,9 @@ export function graphifyCliCheck(input: {
   return {
     name: "graphify-cli",
     status: "fail",
-    message: "Graphify is not installed; leaf initialization cannot continue",
+    message: `Graphify is not installed; ${
+      input.blocks ?? "leaf initialization"
+    } cannot continue`,
     remediation: {
       title: "Install Graphify",
       steps: [
