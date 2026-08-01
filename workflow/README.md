@@ -76,18 +76,16 @@ results remain evidence, not project truth, until they are reviewed and curated.
 
 ## Start in five minutes
 
-Install `wfctl`, then initialize the knowledge repository:
+Install `wfctl` from source, then connect the repositories. Git, QMD 2.5.3+,
+and — for source repositories — Graphify with its native agent skill are also
+required; [installation](docs/01-installation.md) covers each.
 
 ```sh
-cd /path/to/project-knowledge
-wfctl init knowledge
-```
+git clone https://github.com/lukachi/skills.git
+cd skills/workflow && bun install && bun run build && bun link
 
-Connect each source repository:
-
-```sh
-cd /path/to/source-repository
-wfctl init leaf --knowledge /path/to/project-knowledge
+cd /path/to/project-knowledge && wfctl init knowledge
+cd /path/to/source-repository && wfctl init leaf --knowledge /path/to/project-knowledge
 ```
 
 Restart your coding agent. The repository you open determines its role:
@@ -99,7 +97,9 @@ Restart your coding agent. The repository you open determines its role:
   that exact checkout while using the central knowledge and work record.
 
 The agent owns routine `wfctl`, Graphify, QMD, and validation commands. You own
-product intent, corrections, approvals, and completion decisions. The shared
+product intent, corrections, approvals, and completion decisions. Framing and
+completion approvals are recorded by `wfctl work approve`, which needs your
+terminal confirmation, so the agent cannot record them for you. The shared
 knowledge remains directly readable without an agent.
 
 ## Read next

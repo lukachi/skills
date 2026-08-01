@@ -175,259 +175,46 @@ a machine-local path.
 
 ## Plan adaptive execution before analysis
 
-The default strategy is one orchestrator with bounded workers, not a free-form
-swarm. Decide the execution only after inspecting the complete frozen frontier:
+Read [the adaptive execution plan](references/adaptive-execution.md) before
+dispatching anything, and [the routing contract](references/agent-routing.md)
+before choosing a worker profile.
 
-- choose `single-agent` when the work is small, tightly sequential, depends on
-  one shared context, or the current host has no safe subagent facility;
-- choose `orchestrator-workers` when there are genuinely independent read-heavy
-  repository, raw, structural, or review axes, or the corpus cannot fit one
-  context without material loss;
-- never use agent count as a goal. Record a proportional `max_parallel`, total
-  workstream cap, retry cap, and reason in `case.md` before dispatch.
-
-Use platform-native subagents when available. Keep durable routing host-neutral:
-classify each packet as `exploration`, `analysis`, `synthesis`, or `review` and
-request `fast`, `balanced`, or `deep` according to
-[the routing contract](references/agent-routing.md). Let the host map that
-profile to a concrete model and reasoning effort. Record the effective choice
-when known or the explicit `host-auto` / `profile-default` fallback. Do not
-hard-code an agent product, model name, worktree feature, or topology as a
-workflow requirement. A normal checkout is as valid as a worktree; every
-worker receives the exact already-bound source root at dispatch time.
-
-Partition research by independently reviewable semantic outcome, not by
-alphabetical file range. Suitable first-wave units include:
-
-- one cohesive repository/community and its entrypoints, runtime surfaces,
-  tests, and boundaries;
-- an unusual executable surface such as migrations, generators, background
-  jobs, protocols, plugins, or operations;
-- one bounded raw-intake or historical question after raw scope approval;
-- a structural coverage scout whose output is a map, not a product conclusion.
-
-After fan-in, create narrower units for discovered cross-repository flows,
-contracts, Areas, capabilities, contradictions, negative claims, or unexplained
-coverage. One repository's worker never defines the whole-project meaning.
-
-For every research worker, create and register a unique durable packet with `wfctl
-knowledge reconstruct workstream create`, then claim it for the concrete host
-run with `wfctl knowledge reconstruct workstream claim`. The CLI uses
-[the workstream template](assets/reconstruction-workstream.md), updates the
-parent list under a case lock, and records the reported host and run ID. The
-dispatch prompt must include:
-
-```sh
-wfctl knowledge reconstruct workstream create <case-id> <workstream-id> \
-  --title "<bounded outcome>" --objective "<semantic question>" \
-  --role <role> --workload <exploration|analysis|synthesis|review> \
-  --profile <fast|balanced|deep> --routing-reason "<why sufficient>" \
-  --wave <number> [--repository/--file/--community/--surface/--raw-case ...]
-wfctl knowledge reconstruct workstream claim <case-id> <workstream-id> \
-  --by <worker> --host <agent-host> --run-id <actual-session-id-or-unavailable:reason> \
-  --model <model-or-host-auto> --effort <effort-or-profile-default>
-```
-
-- exact knowledge root, case root, bound source root, repository identity, and
-  pinned commit;
-- the exact files, communities, surfaces, raw cases, or questions it owns;
-- the parent case, relevant dossier and frontier slice, and only explicit
-  prerequisite workstreams to read fully;
-- the objective, non-goals, required tools, evidence contract, output schema,
-  stop conditions, and effort boundary;
-- explicit permission to explore all connected evidence with safe read-only
-  tools, while updating only its own packet;
-- the requirement to record material cross-slice exploration in
-  `explored_context` and turn final source evidence into attributed receipt IDs
-  with `wfctl knowledge reconstruct read` or approved raw reads with `wfctl
-  knowledge case read`.
-
-Workers must not edit the parent case, repository dossiers, intake cases,
-other workstreams, coverage JSON directly, curated knowledge, or leaf source.
-Shared coverage and raw-read commands serialize their receipt updates, but
-only the orchestrator assigns final `files`, `community`, `surface`, and
-dossier dispositions. A worker summary is
-an untrusted research packet until the orchestrator checks its receipts and
-marks `review.status: accepted`. A dispatched packet that becomes unnecessary
-remains referenced as `status: cancelled` with an accepted review explaining
-why; never delete it or leave it unreferenced to hide work.
-
-Qualify every leaf coverage item in packet frontmatter as
-`<repository>#<exact-path-or-id>`. The close gate resolves files, communities,
-and surfaces against the frozen ledgers and resolves raw case IDs against the
-parent reconstruction. An unqualified, out-of-scope, or merely guessed item
-does not satisfy assignment accounting. The assigned slice is an ownership
-contract, not a search wall: follow relevant callers, callees, contracts, and
-cross-repository links, then record every material expansion and why it was
-needed. `result.evidence_refs` accepts only receipt IDs produced for that
-worker by a pinned read; prose paths and invented references are rejected.
-
-Every escalation answers one concrete attempt. Material `explored_context`,
-`result.authority_questions`, contradictions, negative claims, unexplained
-results, and review rework require their matching current-attempt response. A
-`new-workstream` target must still be planned, belong to a later wave, and name
-the originating packet as a dependency. Every review remains in
-`review_history`; accepting a retry never erases the review that returned it.
-
-Version 2 workstreams created by an earlier workflow remain valid under their
-original lifecycle and may be resumed without invented routing metadata. Apply
-adaptive escalation only to new version 3 packets.
-
-Run bounded waves:
-
-1. **Map:** reconcile the Git inventory, Graphify structure, runtime surfaces,
-   current knowledge, and approved optional-input frontier.
-2. **Breadth:** dispatch independent repository, structural, and raw workstreams.
-3. **Fan-in:** review every packet, update owning dossiers and coverage, record
-   cross-project discoveries, and expose gaps without smoothing conflicts.
-4. **Depth:** dispatch only the cross-repository, historical, contradiction, or
-   omission work now justified by evidence.
-5. **Synthesis:** one orchestrator constructs whole-project candidates and
-   records a claim-to-evidence and contradiction audit.
-6. **Independent review:** a fresh read-only critic checks coverage omissions,
-   unsupported claims, hidden conflicts, invalid negative claims, and unjustified
-   `structural-only` or `irrelevant` states. Reopen bounded workstreams for real
-   gaps; do not ask the critic to rewrite its own target. This final whole-case
-   critic returns a read-only verdict; the orchestrator attributes and records
-   it in `orchestration.independent_review`, not as a normal workstream, so the
-   critic remains outside the worker set it audits. Route an agent or
-   separate-session critic as `review` / `deep` and record its routing reason,
-   effective host, run ID, model, and reasoning effort.
-
-Use per-resource write barriers during fan-out: never overlap worker and
-orchestrator Markdown edits to the same intake case or packet. The orchestrator
-may validate a submitted packet while unrelated workers remain read-only, but
-must wait for every wave packet to be accepted, returned, blocked, or
-review-cancelled before final shared dossier, parent-case, candidate, or curated
-knowledge synthesis. CLI receipt mutations are locked; normal Markdown edits
-are not.
-
-If the host cannot supply a fresh critic, stop before completed close and ask
-the maintainer for review or continue in a fresh session. Record actual
-execution; never claim a worker or independent review that did not occur.
+- Inspect the complete frozen frontier first. Choose `single-agent` for small,
+  tightly sequential, or shared-context work, or when the host has no safe
+  subagent facility; choose `orchestrator-workers` only for genuinely
+  independent read-heavy axes. Agent count is never a goal.
+- Record `max_parallel`, the total workstream cap, the retry cap, and the
+  reason in `case.md` before dispatch.
+- Partition by independently reviewable semantic outcome, never by alphabetical
+  file range. One repository's worker never defines whole-project meaning.
+- Register every research worker as a durable packet, give it exact roots and
+  pinned identities, and treat its result as untrusted until you check its
+  receipts.
+- Run bounded waves: map, breadth, fan-in, evidence-driven depth, synthesis,
+  and a fresh independent review that is not one of the workers it audits.
+- Record what actually happened. Never claim a worker, profile, or independent
+  review that did not occur.
 
 ## Analyze every repository
 
-For each dossier, either the orchestrator works serially or it reviews and
-integrates accepted worker packets. In both modes:
+Read [the repository analysis procedure](references/repository-analysis.md)
+before the first repository pass and whenever a disposition must be recorded.
 
-1. Invoke `analyze-with-graphify`, which must load the official native
-   `graphify` skill in the current session.
-2. Run `wfctl knowledge reconstruct coverage <case-id> --repository
-   <repository-id>`. Treat its Git manifest as the enumeration authority:
-   every tracked file is present even when Graphify cannot parse it. When the
-   human view truncates a long outstanding list, rerun with `--json`; it
-   returns every pending or blocked file, community, and surface.
-3. Query the graph for repository purpose, entrypoints, every listed
-   community, boundaries, integrations, data/state/control flow, persistence,
-   contracts, invariants, failures, tests, and runtime surfaces. A Graphify
-   community is a technical cluster, not automatically an Area or capability.
-4. Record every material Graphify query in `graphify_queries`. Workers record
-   proposed dispositions in their own packet; the orchestrator alone applies
-   each reviewed community disposition through the CLI:
-
-   ```sh
-   wfctl knowledge reconstruct community <case-id> <community-id> \
-     --repository <repository-id> \
-     --status inspected \
-     --query "<material Graphify query>" \
-     --note "<product mapping, technical role, or explicit no-mapping result>"
-   ```
-
-   `structural-only` and `irrelevant` require an explanation. `pending` and
-   `blocked` prevent completed close.
-5. Explore actual source, tests, contracts, configuration, product data, and
-   repository documentation with Graphify and any safe read-only tools. This
-   exploration is deliberately unrestricted by packet boundaries. Before using
-   a source file in a final claim or marking it fully inspected, create bounded
-   reads from the pinned commit. Use the exact packet owner as `--by` so the
-   receipt can satisfy that workstream's evidence contract:
-
-   ```sh
-   wfctl knowledge reconstruct read <case-id> <path> \
-     --repository <repository-id> \
-     --start <first-line> --end <last-line> \
-     --by workflow-agent/<workstream-id>
-   ```
-
-   Cite the returned receipt ID in `result.evidence_refs`. Continue until the
-   command reports `complete` whenever the file itself is claimed as fully
-   inspected. This command records the exact blob and line ranges; a Graphify
-   result, search snippet, editor open, or dossier statement does not create a
-   read receipt. Read every material condition, branch, exception, and test body
-   rather than only headers.
-6. After reviewing worker evidence, classify or disposition remaining manifest
-   entries in explicit batches:
-
-   ```sh
-   wfctl knowledge reconstruct files <case-id> \
-     --repository <repository-id> \
-     --path "<exact path, directory, or glob>" \
-     --category generated \
-     --status structural-only \
-     --reason "<why byte-level semantic reading is not required>"
-   ```
-
-   Every file needs a category and final status. Textual product-bearing
-   categories (`source`, `test`, `contract`, `configuration`, `product-data`,
-   and `documentation`) cannot finish as `structural-only`. `irrelevant`
-   remains available only with a scoped reason. Never bulk-disposition an
-   unfamiliar directory merely to clear the gate.
-7. Record every discovered entrypoint, runtime surface, and boundary:
-
-   ```sh
-   wfctl knowledge reconstruct surface <case-id> <stable-surface-id> \
-     --repository <repository-id> \
-     --kind entrypoint \
-     --description "<externally meaningful surface>" \
-     --path <manifest-path> \
-     --status inspected \
-     --note "<what direct inspection established>"
-
-   wfctl knowledge reconstruct surfaces <case-id> \
-     --repository <repository-id> \
-     --status reviewed \
-     --note "<whole-repository surface omission audit>"
-   ```
-
-   Coverage starts with conservative `auto-*` candidates derived from tracked
-   paths. Inspect each one and either replace/confirm it with the real surface
-   record or mark it `irrelevant` with a specific reason. Auto-discovery is a
-   review queue, never evidence that the surface exists semantically.
-
-   An empty surface list is valid only after an explicit reviewed or
-   `not-relevant` explanation. Do not leave a surface only in dossier prose.
-8. Complete every dossier coverage dimension. Use `not-relevant` only with an
-   explanation; never convert a missing graph edge into proof of absence.
-9. Inspect Git history for meaningful evolution. Record `not-available` when
-   the clone is shallow or history is insufficient. Do not invent chronology
-   or rationale from commit order.
-10. Add atomic candidates to the parent case and link each dossier or
-   structured surface to those
-   candidate IDs through its structured `candidate_ids` field.
-
-While inspecting a repository, immediately add a dossier `DISC-NNN` entry
-whenever losing the information could change a later conclusion, omit a
-condition, repeat material investigation, or send the next agent down the
-wrong path. Record the observation, exact evidence boundary, implication,
-scope, and disposition through the required `Observation`, `Evidence`,
-`Implication`, `Scope`, and `Disposition` fields. Move or restate it in the
-parent case when it changes cross-repository reconciliation. Do not wait for a
-checkpoint and do not use the ledger as a diary of ordinary commands.
-
-Before leaving a repository, rerun `coverage`. Explain every Graphify-unindexed
-text file and every `unclassified`, `pending`, or `blocked` entry. A confirmed
-`source-code` candidate must cite a path whose full pinned read is complete.
-The ledger guarantees accounting and delivery of bytes to the agent; it does
-not prove correct semantic understanding, so the dossier and maintainer review
-remain mandatory.
-
-Refresh the reconstruction frontier before switching repositories and after
-every wave. A new worker or clean session must not mistake one submitted packet
-or local dossier completion for whole-project completion.
-
-Do not edit source code from the knowledge repository. If analysis discovers a
-needed change, identify the owning leaf and open normal significant work there.
+- Invoke `analyze-with-graphify`, then treat the CLI coverage ledger's Git
+  manifest as the enumeration authority; use `--json` when the human view
+  truncates.
+- Every tracked file needs a category and a final status. Product-bearing text
+  cannot finish as `structural-only`, and `irrelevant` needs a scoped reason.
+- Every Graphify community and every discovered entrypoint or runtime surface
+  needs a reviewed disposition and a note. Auto-discovered candidates are a
+  review queue, never evidence.
+- Only `wfctl knowledge reconstruct read` creates the pinned blob-and-line
+  receipt that a fully inspected file or a confirmed source-code claim requires.
+- Record consequential findings in the owning dossier as `DISC-NNN` immediately,
+  with Observation, Evidence, Implication, Scope, and Disposition.
+- Rerun `coverage` before leaving a repository and refresh the frontier before
+  switching. Never edit `*.coverage.json` by hand, and never edit source from
+  the knowledge repository.
 
 ## Reconcile the source lanes
 

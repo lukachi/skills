@@ -20,14 +20,19 @@ first broad discovery request in a session.
    the `knowledge` collection. If the native skill, CLI, or project index is
    unavailable, invoke `setup-workflow-environment`; do not substitute grep or
    pretend discovery was complete.
-4. Run `wfctl check` and `wfctl knowledge validate` from the knowledge root.
-   If curated knowledge is invalid, give only the bounded trustworthy
-   orientation still supported by readable current documents, state that the
-   map is incomplete, and offer a separate repair or audit.
+4. Answer from the documents first. Do not run `wfctl check` or
+   `wfctl knowledge validate` merely to answer a question: exploration is the
+   least expensive path, and both commands are diagnostics, not reading. Run
+   `wfctl knowledge validate` only when a document you read looks internally
+   inconsistent, a link you need is broken, or the reader asks how trustworthy
+   the map is. When it does fail, give only the bounded trustworthy orientation
+   still supported by readable current documents, state that the map is
+   incomplete, and offer a separate repair or audit.
 5. Start with `knowledge/index.md` and the reachable Area indexes. Use QMD and
    `.workflow/current/knowledge-graph.json` to find candidate paths, then read
-   every selected Markdown document directly. Use the compiled graph only when
-   `wfctl check` says it matches the current Markdown corpus.
+   every selected Markdown document directly. The compiled graph is a
+   navigation cache: when a path it suggests does not exist, fall back to
+   direct reading rather than trusting the graph or rebuilding it mid-answer.
 6. Treat curated knowledge as the answer surface, subject to its lifecycle,
    provenance, verification, realization, and uncertainty. Retrieval results
    and generated graphs are navigation, not evidence.
