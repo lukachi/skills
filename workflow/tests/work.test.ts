@@ -16,6 +16,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { applyInstallPlan } from "../src/applier.js";
+import { approvalRecordPath, recordApproval } from "../src/approval.js";
 import {
   createCapture,
   listCaptures,
@@ -25,8 +26,17 @@ import { readRepositoryMetadata } from "../src/git.js";
 import { hashKnowledgeConcept } from "../src/knowledge.js";
 import { buildInstallPlan } from "../src/planner.js";
 import { addLeafRepository } from "../src/repository-registry.js";
-import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 import {
+  CURRENT_CHANGE_VERSION,
+  GATED_CHANGE_VERSIONS,
+  includesVersion,
+  parseWorkSpec,
+  serializeWorkSpec,
+  SUPPORTED_CHANGE_VERSIONS,
+  SUPPORTED_ISSUE_VERSIONS,
+} from "../src/work-spec.js";
+import {
+  approveWork,
   beginWork,
   claimWorkIssue,
   closeWork,
@@ -142,20 +152,7 @@ test("runs the completed central work lifecycle", async () => {
     }],
     unresolved: [],
   };
-  document.metadata.maintainer_review = {
-    framing: {
-      status: "approved",
-      by: "human:test-maintainer",
-      at: "2026-07-28T10:05:00.000Z",
-      notes: [],
-    },
-    completion: {
-      status: "approved",
-      by: "human:test-maintainer",
-      at: "2026-07-28T11:55:00.000Z",
-      notes: [],
-    },
-  };
+  await recordMaintainerApprovals(document, knowledge, started.id);
   document.metadata.knowledge_promotion = {
     status: "applied",
     concepts: ["knowledge/decisions/world-loop.md"],
@@ -562,7 +559,7 @@ test("runs project-only knowledge work without inventing a code checkout", async
   assert.deepEqual(started.codeRoots, []);
   const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
   assert.deepEqual(document.metadata.repositories, []);
-  completeWorkDocument(document, "project");
+  await completeWorkDocument(document, "project", knowledge, started.id);
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
   await updateWorkCheckpoint({
     target: knowledge,
@@ -627,7 +624,7 @@ test("coordinates one project change across every selected leaf", async () => {
   assert.equal(started.codeRoots.length, 2);
   assert.equal(started.pointerPaths.length, 3);
   const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
-  completeWorkDocument(document, "multi-repo");
+  await completeWorkDocument(document, "multi-repo", knowledge, started.id);
   const sources = [readRepositoryMetadata(api), readRepositoryMetadata(client)];
   const verification = document.metadata.verification as Record<string, unknown>;
   verification.repositories = sources.map((source) => ({
@@ -1127,10 +1124,50 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function completeWorkDocument(
+/**
+ * Record both maintainer approvals through the approval module and mirror the
+ * resulting receipts into the in-memory document, so a test may keep editing
+ * the record without losing the receipt binding.
+ */
+async function recordMaintainerApprovals(
+  document: ReturnType<typeof parseWorkSpec>,
+  knowledge: string,
+  id: string,
+): Promise<void> {
+  const knowledgeRoot = await realpath(knowledge);
+  const review: Record<string, unknown> = {};
+  const stages = [
+    ["framing", "2026-07-28T10:05:00.000Z"],
+    ["completion", "2026-07-28T11:55:00.000Z"],
+  ] as const;
+  for (const [stage, at] of stages) {
+    const record = await recordApproval({
+      knowledgeRoot,
+      id,
+      stage,
+      by: "human:test-maintainer",
+      method: "token",
+      now: new Date(at),
+    });
+    review[stage] = {
+      status: "approved",
+      by: record.by,
+      at: record.at,
+      method: record.method,
+      receipt: record.receipt,
+      notes: [],
+    };
+  }
+  document.metadata.maintainer_review = review;
+}
+
+async function completeWorkDocument(
   document: ReturnType<typeof parseWorkSpec>,
   scope: "project" | "multi-repo",
-): void {
+  knowledge: string,
+  id: string,
+): Promise<void> {
+  await recordMaintainerApprovals(document, knowledge, id);
   document.metadata.status = "completed";
   document.metadata.acceptance = [{
     id: "AC-01",
@@ -1148,20 +1185,6 @@ function completeWorkDocument(
     status: "not-needed",
     concepts: [],
     reason: "The reviewed work changes no durable project meaning.",
-  };
-  document.metadata.maintainer_review = {
-    framing: {
-      status: "approved",
-      by: "human:test-maintainer",
-      at: "2026-07-28T10:05:00.000Z",
-      notes: [],
-    },
-    completion: {
-      status: "approved",
-      by: "human:test-maintainer",
-      at: "2026-07-28T11:55:00.000Z",
-      notes: [],
-    },
   };
   document.metadata.verification = {
     result: "passed",
@@ -1223,3 +1246,233 @@ function commitAll(root: string, message: string): void {
     ],
   );
 }
+
+test("keeps the bundle template inside the enforced completion gate", async () => {
+  const template = parseWorkSpec(
+    await readFile(
+      join(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
+      "utf8",
+    ),
+  );
+  const version = Number(template.metadata.workflow_version);
+  assert.equal(version, CURRENT_CHANGE_VERSION);
+  assert.ok(
+    includesVersion(SUPPORTED_CHANGE_VERSIONS, version),
+    `work-spec.md workflow_version ${version} is not a supported change schema`,
+  );
+  assert.ok(
+    includesVersion(GATED_CHANGE_VERSIONS, version),
+    `work-spec.md workflow_version ${version} is outside GATED_CHANGE_VERSIONS, so `
+      + "bundleCompletionIssues would silently skip the whole completion gate",
+  );
+
+  const issue = parseWorkSpec(
+    await readFile(
+      join(distributionRoot, "skills/manage-project-work/assets/work-issue.md"),
+      "utf8",
+    ),
+  );
+  assert.ok(
+    includesVersion(SUPPORTED_ISSUE_VERSIONS, Number(issue.metadata.workflow_version)),
+  );
+});
+
+test("enforces the bundle completion gate on the current schema", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-gate-"));
+  const knowledge = join(root, "knowledge");
+  const leaf = join(root, "leaf");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  initializeGit(knowledge);
+  initializeGit(leaf);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+  commitAll(leaf, "initialize workflow");
+
+  const started = await beginWork({
+    target: leaf,
+    slug: "gate-regression",
+    title: "Gate regression",
+    mode: "full",
+    distributionRoot,
+    now: new Date("2026-08-01T10:00:00.000Z"),
+  });
+  const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  assert.equal(Number(document.metadata.workflow_version), CURRENT_CHANGE_VERSION);
+  document.metadata.status = "completed";
+  document.metadata.acceptance = [{
+    id: "AC-01",
+    criterion: "Never actually delivered.",
+    status: "pending",
+  }];
+  const source = readRepositoryMetadata(leaf);
+  document.metadata.verification = {
+    result: "passed",
+    revision: source.commit,
+    worktree_id: source.worktreeId,
+    acceptance_reviewed: true,
+    implementation_reviewed: true,
+    checks: [{ command: "true", result: "passed" }],
+    acceptance: [],
+    unresolved: [],
+  };
+  await recordMaintainerApprovals(document, knowledge, started.id);
+  document.metadata.knowledge_promotion = {
+    status: "not-needed",
+    concepts: [],
+    reason: "Nothing durable changed.",
+  };
+  document.metadata.knowledge_alignment = {
+    reviewed: ["knowledge/index.md"],
+    conflicts: [],
+  };
+  document.metadata.graph_evidence = { queries: ["Trace the gate"] };
+  document.body = document.body.replaceAll("- [ ]", "- [x]");
+  await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+
+  const repository = String(
+    ((document.metadata.repositories as Record<string, unknown>[])[0]!).repository,
+  );
+  await createWorkIssue({
+    target: leaf,
+    id: started.id,
+    slug: "never-done",
+    title: "Never done",
+    phase: "delivery",
+    type: "delivery",
+    satisfies: ["AC-01"],
+    repositories: [repository],
+    distributionRoot,
+  });
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test",
+    status: "active",
+    stage: "review",
+    currentState: "Deliberately incomplete bundle awaiting the gate.",
+    lastCompleted: "Created one delivery issue and left it open.",
+    nextAction: "Confirm that the completion gate refuses this bundle.",
+    now: new Date("2026-08-01T10:07:00.000Z"),
+  });
+  await reviewWorkBundleFile(leaf, started.id, "change.md", "reviewed", "");
+
+  const verified = await verifyWork(leaf, started.id);
+  for (const expected of [
+    "acceptance AC-01 must be verified",
+    "verification.acceptance must contain passed evidence for AC-01",
+    "ISSUE-001 is not completed or dropped",
+    "issues/ISSUE-001-never-done.md is unseen in bundle review",
+  ]) {
+    assert.ok(
+      verified.issues.includes(expected),
+      `completion gate did not report "${expected}"; got ${JSON.stringify(verified.issues)}`,
+    );
+  }
+  await assert.rejects(
+    closeWork({
+      target: leaf,
+      id: started.id,
+      outcome: "completed",
+      now: new Date("2026-08-01T10:10:00.000Z"),
+    }),
+    /Completed close is blocked/,
+  );
+});
+
+test("binds maintainer approval to a receipt wfctl work approve produced", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-approval-"));
+  const knowledge = join(root, "knowledge");
+  const leaf = join(root, "leaf");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  initializeGit(knowledge);
+  initializeGit(leaf);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+  commitAll(leaf, "initialize workflow");
+
+  const started = await beginWork({
+    target: leaf,
+    slug: "approval-receipt",
+    title: "Approval receipt",
+    mode: "full",
+    distributionRoot,
+    now: new Date("2026-08-01T10:00:00.000Z"),
+  });
+
+  await assert.rejects(
+    approveWork({
+      target: leaf,
+      id: started.id,
+      stage: "framing",
+      by: "agent:impersonator",
+      method: "token",
+    }),
+    /requires --by human:/,
+  );
+
+  const approval = await approveWork({
+    target: leaf,
+    id: started.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "interactive",
+    note: "Framing accepted in a terminal.",
+    now: new Date("2026-08-01T10:05:00.000Z"),
+  });
+  assert.match(approval.receipt, /^[0-9a-f]{64}$/);
+  const approved = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  const framing = (approved.metadata.maintainer_review as Record<string, unknown>)
+    .framing as Record<string, unknown>;
+  assert.equal(framing.status, "approved");
+  assert.equal(framing.method, "interactive");
+  assert.equal(framing.receipt, approval.receipt);
+  assert.deepEqual(framing.notes, ["Framing accepted in a terminal."]);
+  await access(approvalRecordPath(await realpath(knowledge), started.id, "framing"));
+
+  // A hand-written receipt that no approval command produced must not pass.
+  framing.receipt = "f".repeat(64);
+  await writeFile(started.specPath, serializeWorkSpec(approved), "utf8");
+  assert.ok(
+    (await verifyWork(leaf, started.id)).issues.includes(
+      "maintainer_review.framing.receipt does not match the recorded approval",
+    ),
+  );
+
+  // So must a receipt whose recorded approval was never made at all.
+  const invented = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  (invented.metadata.maintainer_review as Record<string, unknown>).completion = {
+    status: "approved",
+    by: "human:test-maintainer",
+    at: "2026-08-01T11:00:00.000Z",
+    method: "interactive",
+    receipt: "a".repeat(64),
+    notes: [],
+  };
+  await writeFile(started.specPath, serializeWorkSpec(invented), "utf8");
+  assert.ok(
+    (await verifyWork(leaf, started.id)).issues.includes(
+      "maintainer_review.completion.receipt has no recorded approval; "
+        + "re-run wfctl work approve --stage completion",
+    ),
+  );
+});

@@ -3671,7 +3671,13 @@ function graphifyFixtureRunner(
   args: string[],
   options: { cwd?: string } = {},
 ) {
-  if (command !== "graphify" || args.join(" ") !== "update ." || !options.cwd) {
+  if (command !== "graphify") {
+    return { status: 1, stdout: "", stderr: "unexpected fixture command" };
+  }
+  if (args.join(" ") === "--version") {
+    return { status: 0, stdout: "graphify 0.0.0-fixture", stderr: "" };
+  }
+  if (args.join(" ") !== "update ." || !options.cwd) {
     return { status: 1, stdout: "", stderr: "unexpected fixture command" };
   }
   const graphDirectory = join(options.cwd, "graphify-out");

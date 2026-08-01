@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -112,10 +112,33 @@ test("knowledge view templates encode separate audiences and required sections",
 });
 
 test("knowledge-side cases preserve discoveries and clean-session resume state", async () => {
-  const reconstruction = await readFile(
+  // The reconstruction contract is split between a routing skill and its
+  // loaded-on-demand references. Assert the contract, not which file holds it.
+  const reconstructionSkill = await readFile(
     join(root, "skills/reconstruct-project-knowledge/SKILL.md"),
     "utf8",
   );
+  const reconstructionReferences = join(
+    root,
+    "skills/reconstruct-project-knowledge/references",
+  );
+  const reconstruction = [
+    reconstructionSkill,
+    ...await Promise.all(
+      (await readdir(reconstructionReferences))
+        .filter((entry) => entry.endsWith(".md"))
+        .sort()
+        .map((entry) => readFile(join(reconstructionReferences, entry), "utf8")),
+    ),
+  ].join("\n\n");
+  // Every reference must be reachable from the skill, or the split hides it.
+  for (const entry of await readdir(reconstructionReferences)) {
+    assert.match(
+      reconstructionSkill,
+      new RegExp(`references/${entry.replace(".", "\\.")}`),
+      `${entry} is not linked from reconstruct-project-knowledge/SKILL.md`,
+    );
+  }
   const intake = await readFile(
     join(root, "skills/process-raw-intake/SKILL.md"),
     "utf8",
