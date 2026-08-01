@@ -12,6 +12,13 @@ considered. Each intake case therefore freezes explicit `raw/` pathspecs at a
 full Git commit and records every tree entry with its blob ID, type, and mode.
 This is a corpus identity and file-coverage guarantee, not a semantic one.
 
+`wfctl knowledge case read` is the only accepted text-reading receipt. It
+returns bounded ranges from the frozen blob, merges gap-free line coverage,
+attributes each read, and serializes concurrent writers. A normal filesystem
+read or QMD retrieval may help analysis but cannot satisfy the gate. Binary or
+unsupported blobs receive an explicit reasoned disposition because line
+coverage cannot honestly describe them.
+
 QMD is a rebuildable retrieval cache over the working tree. The case gate
 requires the selected working files to still match the frozen baseline so QMD
 cannot silently search different content. BM25, embeddings, hybrid search, and
@@ -47,10 +54,11 @@ another source of state and never a semantic guess about unseen files.
 ## Source review statuses
 
 - `pending`: full-file review has not finished.
-- `reviewed`: the complete file was considered and every relevant candidate ID
-  was recorded.
-- `no-relevant-claims`: the complete file was considered and yielded no
-  project-knowledge candidate.
+- `reviewed`: the complete frozen text has gap-free receipts and every relevant
+  candidate ID was recorded.
+- `no-relevant-claims`: the complete frozen text has gap-free receipts and
+  yielded no project-knowledge candidate, or a non-text source has an explicit
+  disposition.
 - `needs-maintainer`: review found a question that cannot be resolved without
   current human authority.
 - `unreadable`: the file could not be inspected safely or completely.

@@ -141,9 +141,21 @@ through its last line before reviewing another raw source.
    do not rely on an unscoped query.
 2. Use returned QMD document IDs or URIs with `qmd get` to inspect relevant
    ranges and follow aliases, terminology, and contradictions.
-3. Then read every file listed under case `sources` completely, in bounded
-   chunks when necessary. Search hits and snippets do not establish coverage.
-4. For each file, run:
+3. Then read every file listed under case `sources` completely through the
+   frozen-blob receipt command. Use successive bounded ranges until it reports
+   `complete`; search hits, snippets, and ordinary filesystem reads do not
+   establish coverage:
+
+   ```sh
+   wfctl knowledge case read <case-id> raw/<path> \
+     --start <first-line> \
+     --end <last-line> \
+     --by workflow-agent/<reader-id>
+   ```
+
+   Omit the range on the first call to receive the first bounded chunk. The CLI
+   reports the total line count and serializes concurrent receipt updates.
+4. Only after the read command reports complete, record the semantic result:
 
    ```sh
    wfctl knowledge case mark <case-id> raw/<path> \
@@ -153,7 +165,9 @@ through its last line before reviewing another raw source.
    ```
 
    Use `no-relevant-claims` only after complete review. Use
-   `needs-maintainer` or `unreadable` when honest completion is blocked.
+   `needs-maintainer` or `unreadable` when honest completion is blocked. For a
+   binary or unsupported blob, do not invent a text review; pass
+   `--non-text-reason "<explicit disposition>"` to `case mark`.
 5. Add every material statement as an atomic `candidate_claims` entry. Never
    classify a whole file as “old,” “current,” “true,” or “a spec.” One file can
    contain several claims with different roles and states.

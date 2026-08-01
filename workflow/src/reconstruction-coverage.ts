@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
+import { readPinnedGitTextRange } from "./pinned-git-read.js";
 
 export const RECONSTRUCTION_COVERAGE_VERSION = 1;
 
@@ -61,6 +62,7 @@ interface GraphSnapshot {
 }
 
 export interface SourceReadReceipt {
+  id: string;
   objectId: string;
   startLine: number;
   endLine: number;
@@ -169,6 +171,7 @@ export interface ReadPinnedSourceResult {
   endLine: number;
   totalLines: number;
   complete: boolean;
+  receiptId: string;
   content: string;
 }
 
@@ -188,7 +191,7 @@ export async function createReconstructionCoverage(
   graphPath: string,
   now: Date,
 ): Promise<ReconstructionCoverageLedger> {
-  const tree = readGitTree(root, commit);
+  const tree = await readGitTree(root, commit);
   if (tree.length === 0) {
     throw new Error(`${repository}: pinned Git tree contains no tracked entries`);
   }
@@ -236,7 +239,7 @@ export async function createReconstructionCoverage(
       status: "pending",
       note: "",
     },
-    surfaces: [],
+    surfaces: inferSurfaceCandidates(tree),
   };
 }
 
@@ -268,7 +271,7 @@ export async function validateReconstructionCoverage(
     commit,
   );
 
-  const expectedTree = readGitTree(root, commit);
+  const expectedTree = await readGitTree(root, commit);
   const expectedGraph = await readGraphSnapshot(
     root,
     graphPath,
@@ -378,7 +381,17 @@ export function validateReconstructionCoverageReceipt(
     if (file.status === "inspected") {
       if (
         file.receipts.some((receipt) =>
-          receipt.objectId !== file.objectId
+          receipt.id !== sourceReadReceiptId({
+            repository: ledger.repository,
+            commit: ledger.commit,
+            path: file.path,
+            objectId: receipt.objectId,
+            startLine: receipt.startLine,
+            endLine: receipt.endLine,
+            totalLines: receipt.totalLines,
+            actor: receipt.actor,
+          })
+          || receipt.objectId !== file.objectId
           || !Number.isInteger(receipt.totalLines)
           || receipt.totalLines < 0
           || !Number.isInteger(receipt.startLine)
@@ -617,7 +630,16 @@ export function recordCoverageSurface(
     note: input.note.trim(),
     candidateIds: uniqueStrings(input.candidateIds),
   };
-  const index = ledger.surfaces.findIndex((entry) => entry.id === input.id);
+  let index = ledger.surfaces.findIndex((entry) => entry.id === input.id);
+  if (index === -1) {
+    index = ledger.surfaces.findIndex(
+      (entry) =>
+        entry.status === "pending"
+        && entry.id.startsWith("auto-")
+        && entry.kind === input.kind
+        && sameStrings(entry.paths, paths),
+    );
+  }
   if (index === -1) {
     ledger.surfaces.push(surface);
   } else {
@@ -637,7 +659,7 @@ export function markSurfaceAudit(
   ledger.surfaceAudit = { status, note: note.trim() };
 }
 
-export function readPinnedSource(
+export async function readPinnedSource(
   ledger: ReconstructionCoverageLedger,
   root: string,
   path: string,
@@ -647,7 +669,7 @@ export function readPinnedSource(
     actor?: string;
     now?: Date;
   } = {},
-): ReadPinnedSourceResult {
+): Promise<ReadPinnedSourceResult> {
   const file = ledger.manifest.files.find((entry) => entry.path === path);
   if (!file) {
     throw new Error(`Source path is outside the pinned manifest: ${path}`);
@@ -655,41 +677,44 @@ export function readPinnedSource(
   if (file.objectType !== "blob") {
     throw new Error(`Pinned entry is not a readable blob: ${path}`);
   }
-  const content = readGitBlob(root, ledger.commit, path);
-  if (content.includes("\0")) {
+  const read = await readPinnedGitTextRange(
+    root,
+    ["show", `${ledger.commit}:${path}`],
+    {
+      ...(input.startLine === undefined ? {} : { startLine: input.startLine }),
+      ...(input.endLine === undefined ? {} : { endLine: input.endLine }),
+      operationName: `${path}: pinned source read`,
+    },
+  );
+  if (read.kind === "binary") {
     throw new Error(
       `${path} appears binary; classify it explicitly instead of recording a text receipt`,
     );
   }
-  const lines = splitLines(content);
-  const totalLines = lines.length;
-  const startLine = input.startLine ?? (totalLines === 0 ? 0 : 1);
-  const defaultEnd = totalLines === 0
-    ? 0
-    : Math.min(totalLines, Math.max(startLine, startLine + 199));
-  const endLine = input.endLine ?? defaultEnd;
-  if (
-    totalLines === 0
-      ? startLine !== 0 || endLine !== 0
-      : !Number.isInteger(startLine)
-        || !Number.isInteger(endLine)
-        || startLine < 1
-        || endLine < startLine
-        || endLine > totalLines
-  ) {
-    throw new Error(
-      `${path}: requested line range ${startLine}-${endLine} is outside 1-${totalLines}`,
-    );
+  if (read.kind !== "text") {
+    throw new Error(`${path}: ${read.reason}`);
   }
-  if (totalLines > 0 && endLine - startLine + 1 > 400) {
-    throw new Error("A reconstruction read is limited to 400 lines; use bounded ranges");
-  }
-  const receipt: SourceReadReceipt = {
+  const totalLines = read.totalLines;
+  const startLine = read.startLine;
+  const endLine = read.endLine;
+  const actor = input.actor?.trim() || "workflow-agent/1";
+  const receiptId = sourceReadReceiptId({
+    repository: ledger.repository,
+    commit: ledger.commit,
+    path,
     objectId: file.objectId,
     startLine,
     endLine,
     totalLines,
-    actor: input.actor?.trim() || "workflow-agent/1",
+    actor,
+  });
+  const receipt: SourceReadReceipt = {
+    id: receiptId,
+    objectId: file.objectId,
+    startLine,
+    endLine,
+    totalLines,
+    actor,
     readAt: (input.now ?? new Date()).toISOString(),
   };
   file.receipts = mergeReceipts([...file.receipts, receipt]);
@@ -705,10 +730,32 @@ export function readPinnedSource(
     endLine,
     totalLines,
     complete: receiptsCoverFile(file.receipts),
-    content: totalLines === 0
-      ? ""
-      : lines.slice(startLine - 1, endLine).join("\n"),
+    receiptId,
+    content: read.content,
   };
+}
+
+export function sourceReadReceiptId(input: {
+  repository: string;
+  commit: string;
+  path: string;
+  objectId: string;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  actor: string;
+}): string {
+  const digest = createHash("sha256").update([
+    input.repository,
+    input.commit,
+    input.path,
+    input.objectId,
+    String(input.startLine),
+    String(input.endLine),
+    String(input.totalLines),
+    input.actor,
+  ].join("\0")).digest("hex");
+  return `source-read:${digest.slice(0, 32)}`;
 }
 
 export function evidencePathFromResource(
@@ -916,44 +963,95 @@ function parseCoverage(content: string): ReconstructionCoverageLedger {
   ) {
     throw new Error("Invalid reconstruction coverage ledger");
   }
-  return value as ReconstructionCoverageLedger;
+  const ledger = value as ReconstructionCoverageLedger;
+  for (const file of ledger.manifest.files) {
+    file.receipts = (file.receipts ?? []).map((receipt) => ({
+      ...receipt,
+      id: typeof receipt.id === "string" && receipt.id
+        ? receipt.id
+        : sourceReadReceiptId({
+          repository: ledger.repository,
+          commit: ledger.commit,
+          path: file.path,
+          objectId: receipt.objectId,
+          startLine: receipt.startLine,
+          endLine: receipt.endLine,
+          totalLines: receipt.totalLines,
+          actor: receipt.actor,
+        }),
+    }));
+  }
+  return ledger;
 }
 
-function readGitTree(root: string, commit: string): GitTreeEntry[] {
-  const output = gitBuffer(root, [
-    "ls-tree",
-    "-r",
-    "-z",
-    "--full-tree",
-    "-l",
-    commit,
-  ]).toString("utf8");
+async function readGitTree(root: string, commit: string): Promise<GitTreeEntry[]> {
+  const args = ["ls-tree", "-r", "-z", "--full-tree", "-l", commit];
+  const child = spawn("git", ["-C", root, ...args], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    if (stderr.length < 64 * 1024) {
+      stderr += chunk.slice(0, 64 * 1024 - stderr.length);
+    }
+  });
+  const completion = new Promise<number>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => resolve(code ?? 1));
+  });
   const entries: GitTreeEntry[] = [];
-  for (const record of output.split("\0")) {
-    if (!record) {
-      continue;
+  let pending = Buffer.alloc(0);
+  try {
+    for await (const value of child.stdout) {
+      const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+      pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk]);
+      let terminator = pending.indexOf(0);
+      while (terminator >= 0) {
+        if (terminator > 0) {
+          entries.push(parseGitTreeRecord(pending.subarray(0, terminator)));
+        }
+        pending = pending.subarray(terminator + 1);
+        terminator = pending.indexOf(0);
+      }
     }
-    const separator = record.indexOf("\t");
-    if (separator < 0) {
-      throw new Error(`Cannot parse Git tree entry: ${record}`);
-    }
-    const header = record.slice(0, separator).trim().split(/\s+/);
-    const mode = header[0];
-    const objectType = header[1];
-    const objectId = header[2];
-    const sizeText = header[3];
-    if (!mode || !objectType || !objectId || !sizeText) {
-      throw new Error(`Cannot parse Git tree entry: ${record}`);
-    }
-    entries.push({
-      mode,
-      objectType,
-      objectId,
-      size: sizeText === "-" ? null : Number(sizeText),
-      path: record.slice(separator + 1),
-    });
+  } catch (error) {
+    child.kill();
+    throw error;
+  }
+  const status = await completion;
+  if (status !== 0) {
+    throw new Error(
+      `Git coverage data unavailable: ${stderr.trim() || args.join(" ")}`,
+    );
+  }
+  if (pending.length > 0) {
+    throw new Error("Git coverage data ended with an incomplete tree record");
   }
   return entries.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function parseGitTreeRecord(input: Buffer): GitTreeEntry {
+  const separator = input.indexOf(9);
+  const record = input.toString("utf8");
+  if (separator < 0) {
+    throw new Error(`Cannot parse Git tree entry: ${record}`);
+  }
+  const header = input.subarray(0, separator).toString("utf8").trim().split(/\s+/);
+  const mode = header[0];
+  const objectType = header[1];
+  const objectId = header[2];
+  const sizeText = header[3];
+  if (!mode || !objectType || !objectId || !sizeText) {
+    throw new Error(`Cannot parse Git tree entry: ${record}`);
+  }
+  return {
+    mode,
+    objectType,
+    objectId,
+    size: sizeText === "-" ? null : Number(sizeText),
+    path: input.subarray(separator + 1).toString("utf8"),
+  };
 }
 
 async function readGraphSnapshot(
@@ -1039,33 +1137,14 @@ async function readGraphSnapshot(
   };
 }
 
-function readGitBlob(root: string, commit: string, path: string): string {
-  const content = gitBuffer(root, ["show", `${commit}:${path}`]);
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(content);
-  } catch {
-    throw new Error(`${path}: pinned blob is not valid UTF-8 text`);
-  }
-}
-
-function gitBuffer(root: string, args: string[]): Buffer {
-  const result = spawnSync("git", ["-C", root, ...args], {
-    encoding: "buffer",
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: 256 * 1024 * 1024,
-  });
-  if (result.status !== 0) {
-    const detail = result.stderr.toString("utf8").trim() || args.join(" ");
-    throw new Error(`Git coverage data unavailable: ${detail}`);
-  }
-  return result.stdout;
-}
-
 function treeContentHash(entries: GitTreeEntry[]): string {
-  const serialized = entries.map((entry) =>
-    `${entry.mode}\0${entry.objectType}\0${entry.objectId}\0${entry.size ?? "-"}\0${entry.path}\0`
-  ).join("");
-  return createHash("sha256").update(serialized).digest("hex");
+  const hash = createHash("sha256");
+  for (const entry of entries) {
+    hash.update(
+      `${entry.mode}\0${entry.objectType}\0${entry.objectId}\0${entry.size ?? "-"}\0${entry.path}\0`,
+    );
+  }
+  return hash.digest("hex");
 }
 
 function classifyFile(entry: GitTreeEntry): FileCategory {
@@ -1174,10 +1253,7 @@ function splitLines(content: string): string[] {
 function mergeReceipts(receipts: SourceReadReceipt[]): SourceReadReceipt[] {
   const unique = new Map<string, SourceReadReceipt>();
   for (const receipt of receipts) {
-    unique.set(
-      `${receipt.objectId}:${receipt.startLine}:${receipt.endLine}`,
-      receipt,
-    );
+    unique.set(receipt.id, receipt);
   }
   return [...unique.values()].sort(
     (left, right) =>
@@ -1247,6 +1323,68 @@ function normalizeGraphPath(root: string, value: string): string | undefined {
 
 function shortHash(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function inferSurfaceCandidates(
+  tree: GitTreeEntry[],
+): ReconstructionCoverageSurface[] {
+  const candidates: ReconstructionCoverageSurface[] = [];
+  for (const entry of tree) {
+    if (entry.objectType !== "blob") {
+      continue;
+    }
+    const path = entry.path.replaceAll("\\", "/");
+    const kinds = inferredSurfaceKinds(path);
+    for (const kind of kinds) {
+      const label = path
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(-54) || "surface";
+      candidates.push({
+        id: `auto-${kind}-${label}-${shortHash(`${kind}:${path}`).slice(0, 8)}`,
+        kind,
+        description: `Probable ${kind} discovered from the pinned Git path ${path}.`,
+        paths: [path],
+        status: "pending",
+        note: "Automatically discovered candidate; inspect it or explicitly mark it irrelevant.",
+        candidateIds: [],
+      });
+    }
+  }
+  return candidates.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function inferredSurfaceKinds(path: string): SurfaceKind[] {
+  const normalized = path.toLowerCase();
+  const basename = normalized.slice(normalized.lastIndexOf("/") + 1);
+  const kinds = new Set<SurfaceKind>();
+  if (
+    /^(?:main|app|server|cli|worker)\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|swift|rb|php)$/.test(basename)
+    || /(?:^|\/)bin\//.test(normalized)
+    || /(?:^|\/)cmd\/[^/]+\/main\.go$/.test(normalized)
+    || /^(?:dockerfile|procfile)$/.test(basename)
+  ) {
+    kinds.add("entrypoint");
+  }
+  if (
+    /(?:^|\/)(?:routes?|routers?|controllers?|handlers?|rpc|graphql)(?:\/|\.)/.test(normalized)
+    || /^(?:routes?|routers?|controllers?|handlers?|rpc|graphql|schema)\.[^.]+$/.test(basename)
+  ) {
+    kinds.add("boundary");
+  }
+  if (
+    /(?:^|\/)(?:migrations?|jobs?|workers?|cron|schedulers?)(?:\/|\.)/.test(normalized)
+    || /^(?:dockerfile|procfile|compose(?:\.[^.]+)?\.ya?ml)$/.test(basename)
+  ) {
+    kinds.add("runtime");
+  }
+  return [...kinds];
+}
+
+function sameStrings(left: string[], right: string[]): boolean {
+  return left.length === right.length
+    && left.every((value, index) => value === right[index]);
 }
 
 function naturalCompare(left: string, right: string): number {

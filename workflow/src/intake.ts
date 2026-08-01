@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { constants } from "node:fs";
 import {
@@ -14,6 +15,8 @@ import { parse, stringify } from "yaml";
 import { findDistributionRoot } from "./assets.js";
 import { errorMessage, isMissingFileError, readConfig } from "./config.js";
 import { readRepositoryMetadata } from "./git.js";
+import { withFileLock } from "./file-lock.js";
+import { readPinnedGitTextRange } from "./pinned-git-read.js";
 import { validateKnowledge } from "./knowledge.js";
 import { compileClaimLedger } from "./claim-ledger.js";
 import { discoveryLedgerIssues } from "./discovery-ledger.js";
@@ -167,6 +170,7 @@ export interface MarkIntakeSourceOptions {
   status: string;
   candidateIds?: string[];
   note: string;
+  nonTextReason?: string;
   reviewedBy?: string;
   now?: Date;
 }
@@ -176,6 +180,44 @@ export interface MarkIntakeSourceResult {
   path: string;
   status: string;
   candidateIds: string[];
+}
+
+export interface ReadIntakeSourceOptions {
+  target: string;
+  id: string;
+  path: string;
+  startLine?: number;
+  endLine?: number;
+  actor?: string;
+  now?: Date;
+}
+
+export interface ReadIntakeSourceResult {
+  id: string;
+  path: string;
+  objectId: string;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  complete: boolean;
+  receiptId: string;
+  content: string;
+}
+
+interface IntakeSourceReadReceipt {
+  id: string;
+  object_id: string;
+  start_line: number;
+  end_line: number;
+  total_lines: number;
+  actor: string;
+  read_at: string;
+}
+
+interface PinnedIntakeSource {
+  kind: "text" | "binary" | "unsupported";
+  totalLines: number;
+  reason: string;
 }
 
 export interface RecordIntakeProbeOptions {
@@ -405,6 +447,8 @@ export async function beginIntakeCase(
       note: "",
       reviewed_by: "",
       reviewed_at: "",
+      read_receipts: [],
+      non_text_disposition: null,
     })),
   };
 
@@ -530,6 +574,16 @@ export async function markIntakeSource(
   options: MarkIntakeSourceOptions,
 ): Promise<MarkIntakeSourceResult> {
   const target = await requireKnowledgeRepository(options.target);
+  return await withFileLock(
+    intakeCaseLockPath(target, options.id),
+    async () => await markIntakeSourceLocked(options, target),
+  );
+}
+
+async function markIntakeSourceLocked(
+  options: MarkIntakeSourceOptions,
+  target: string,
+): Promise<MarkIntakeSourceResult> {
   if (!SOURCE_STATUSES.has(options.status) || options.status === "pending") {
     throw new Error(
       `Invalid final source status "${options.status}"; expected reviewed, no-relevant-claims, needs-maintainer, or unreadable`,
@@ -548,6 +602,7 @@ export async function markIntakeSource(
 
   const casePath = intakeCasePath(target, "active", options.id);
   const document = parseCase(await readFile(casePath, "utf8"));
+  requireCurrentIntakeVersion(document.metadata);
   const sources = recordArray(document.metadata.sources);
   const matches = sources.filter((source) => stringValue(source.path) === options.path);
   if (matches.length !== 1) {
@@ -558,12 +613,64 @@ export async function markIntakeSource(
     );
   }
   const source = matches[0]!;
+  if (source.read_receipts === undefined) {
+    source.read_receipts = [];
+  }
+  if (source.non_text_disposition === undefined) {
+    source.non_text_disposition = null;
+  }
+  const pinned = await inspectPinnedIntakeSource(target, source);
+  const receiptIssues = await intakeSourceReceiptIssues(target, source, pinned, false);
+  if (receiptIssues.length > 0) {
+    throw new Error(
+      `${options.path}: intake read receipt gate is invalid: ${receiptIssues.join("; ")}`,
+    );
+  }
+  if (pinned.kind === "text") {
+    if (options.nonTextReason?.trim()) {
+      throw new Error(`${options.path}: --non-text-reason is only valid for non-text input`);
+    }
+    if (
+      (options.status === "reviewed" || options.status === "no-relevant-claims")
+      && !receiptsCoverIntakeSource(
+        intakeSourceReadReceipts(source),
+        pinned.totalLines,
+      )
+    ) {
+      throw new Error(
+        `${options.path}: ${options.status} status requires gap-free full-read receipts for the pinned blob`,
+      );
+    }
+    source.non_text_disposition = null;
+  } else {
+    if (options.status === "reviewed") {
+      throw new Error(
+        `${options.path}: non-text input cannot be reviewed as text; choose an explicit non-text disposition`,
+      );
+    }
+    if (!options.nonTextReason?.trim()) {
+      throw new Error(
+        `${options.path}: ${pinned.kind} input requires --non-text-reason <disposition rationale>`,
+      );
+    }
+  }
+  const now = options.now ?? new Date();
+  const reviewedBy = options.reviewedBy?.trim() || "workflow-agent/1";
   source.status = options.status;
   source.candidate_ids = candidateIds;
   source.note = options.note.trim();
-  source.reviewed_by = options.reviewedBy?.trim() || "workflow-agent/1";
-  source.reviewed_at = (options.now ?? new Date()).toISOString();
-  document.metadata.updated_at = (options.now ?? new Date()).toISOString();
+  source.reviewed_by = reviewedBy;
+  source.reviewed_at = now.toISOString();
+  if (pinned.kind !== "text") {
+    source.non_text_disposition = {
+      kind: pinned.kind,
+      status: options.status,
+      reason: options.nonTextReason!.trim(),
+      decided_by: reviewedBy,
+      decided_at: now.toISOString(),
+    };
+  }
+  document.metadata.updated_at = now.toISOString();
   await writeFile(casePath, serializeCase(document), "utf8");
 
   return {
@@ -571,6 +678,96 @@ export async function markIntakeSource(
     path: options.path,
     status: options.status,
     candidateIds,
+  };
+}
+
+export async function readIntakeSource(
+  options: ReadIntakeSourceOptions,
+): Promise<ReadIntakeSourceResult> {
+  const target = await requireKnowledgeRepository(options.target);
+  return await withFileLock(
+    intakeCaseLockPath(target, options.id),
+    async () => await readIntakeSourceLocked(options, target),
+  );
+}
+
+async function readIntakeSourceLocked(
+  options: ReadIntakeSourceOptions,
+  target: string,
+): Promise<ReadIntakeSourceResult> {
+  const casePath = intakeCasePath(target, "active", options.id);
+  const document = parseCase(await readFile(casePath, "utf8"));
+  requireCurrentIntakeVersion(document.metadata);
+  const sources = recordArray(document.metadata.sources);
+  const matches = sources.filter((source) => stringValue(source.path) === options.path);
+  if (matches.length !== 1) {
+    throw new Error(
+      matches.length === 0
+        ? `Intake source is outside the frozen case scope: ${options.path}`
+        : `Intake source path is duplicated in the case: ${options.path}`,
+    );
+  }
+  const source = matches[0]!;
+  if (stringValue(source.object_type) !== "blob") {
+    throw new Error(
+      `${options.path}: pinned input is unsupported (Git object type is ${stringValue(source.object_type) || "unknown"}); record an explicit non-text disposition instead`,
+    );
+  }
+  const objectId = stringValue(source.object_id);
+  const read = await readPinnedGitTextRange(
+    target,
+    ["cat-file", "blob", objectId],
+    {
+      ...(options.startLine === undefined ? {} : { startLine: options.startLine }),
+      ...(options.endLine === undefined ? {} : { endLine: options.endLine }),
+      operationName: `${options.path}: pinned intake read`,
+    },
+  );
+  if (read.kind !== "text") {
+    throw new Error(
+      `${options.path}: pinned input is ${read.kind} (${read.reason}); record an explicit non-text disposition instead`,
+    );
+  }
+  const totalLines = read.totalLines;
+  const startLine = read.startLine;
+  const endLine = read.endLine;
+  const now = options.now ?? new Date();
+  const actor = options.actor?.trim() || "workflow-agent/1";
+  const receiptId = intakeReadReceiptId({
+    path: options.path,
+    objectId,
+    startLine,
+    endLine,
+    totalLines,
+    actor,
+  });
+  const receipt: IntakeSourceReadReceipt = {
+    id: receiptId,
+    object_id: objectId,
+    start_line: startLine,
+    end_line: endLine,
+    total_lines: totalLines,
+    actor,
+    read_at: now.toISOString(),
+  };
+  const receipts = mergeIntakeSourceReceipts([
+    ...intakeSourceReadReceipts(source),
+    receipt,
+  ]);
+  source.read_receipts = receipts;
+  source.non_text_disposition = null;
+  document.metadata.updated_at = now.toISOString();
+  await writeFile(casePath, serializeCase(document), "utf8");
+  return {
+    id: options.id,
+    path: options.path,
+    objectId,
+    startLine,
+    endLine,
+    totalLines,
+    complete: receiptsCoverIntakeSource(receipts, totalLines),
+    receiptId,
+    content: read.content,
   };
 }
 
@@ -791,6 +988,12 @@ export async function inspectIntakeCase(
     } catch (error) {
       issues.push(errorMessage(error));
     }
+  }
+  const sourceIssueGroups = await Promise.all(
+    sources.map((source) => intakeSourceReceiptIssues(target, source)),
+  );
+  for (const sourceIssues of sourceIssueGroups) {
+    issues.push(...sourceIssues);
   }
 
   const candidateIds = new Set(
@@ -1494,6 +1697,206 @@ function compareTreeEntries(
   return issues;
 }
 
+async function intakeSourceReceiptIssues(
+  target: string,
+  source: Record<string, unknown>,
+  pinnedInput?: PinnedIntakeSource,
+  validateFinalState = true,
+): Promise<string[]> {
+  const issues: string[] = [];
+  const path = stringValue(source.path);
+  const status = stringValue(source.status);
+  const rawReceipts = source.read_receipts;
+  const receipts = intakeSourceReadReceipts(source);
+  if (!Array.isArray(rawReceipts)) {
+    issues.push(`${path}: read_receipts must be a list`);
+  } else if (rawReceipts.length !== receipts.length) {
+    issues.push(`${path}: read_receipts must contain only receipt mappings`);
+  }
+
+  let pinned: PinnedIntakeSource;
+  try {
+    pinned = pinnedInput ?? await inspectPinnedIntakeSource(target, source);
+  } catch (error) {
+    issues.push(`${path}: cannot inspect pinned intake input: ${errorMessage(error)}`);
+    return issues;
+  }
+
+  if (pinned.kind === "text") {
+    const totalLines = pinned.totalLines;
+    if (
+      validateFinalState
+      && source.non_text_disposition !== null
+      && source.non_text_disposition !== undefined
+    ) {
+      issues.push(`${path}: text input must not carry a non-text disposition`);
+    }
+    if (receipts.some((receipt) =>
+      receipt.id !== intakeReadReceiptId({
+        path,
+        objectId: receipt.object_id,
+        startLine: receipt.start_line,
+        endLine: receipt.end_line,
+        totalLines: receipt.total_lines,
+        actor: receipt.actor,
+      })
+      || receipt.object_id !== stringValue(source.object_id)
+      || receipt.total_lines !== totalLines
+      || !Number.isInteger(receipt.start_line)
+      || !Number.isInteger(receipt.end_line)
+      || (
+        totalLines === 0
+          ? receipt.start_line !== 0 || receipt.end_line !== 0
+          : receipt.start_line < 1
+            || receipt.end_line < receipt.start_line
+            || receipt.end_line > totalLines
+      )
+      || !receipt.actor.trim()
+      || !isIsoDateTime(receipt.read_at)
+    )) {
+      issues.push(`${path}: read receipt identity or metadata is invalid`);
+    }
+    if (
+      validateFinalState
+      && (status === "reviewed" || status === "no-relevant-claims")
+      && !receiptsCoverIntakeSource(receipts, totalLines)
+    ) {
+      issues.push(`${path}: final text review lacks gap-free full-read receipts`);
+    }
+    return issues;
+  }
+
+  if (receipts.length > 0) {
+    issues.push(`${path}: non-text input must not carry text read receipts`);
+  }
+  if (validateFinalState && status === "reviewed") {
+    issues.push(`${path}: non-text input cannot finish with reviewed status`);
+  }
+  if (validateFinalState && status !== "pending") {
+    const disposition = recordValue(source.non_text_disposition);
+    if (
+      disposition?.kind !== pinned.kind
+      || disposition?.status !== status
+      || !stringValue(disposition?.reason).trim()
+      || !stringValue(disposition?.decided_by).trim()
+      || !isIsoDateTime(stringValue(disposition?.decided_at))
+    ) {
+      issues.push(
+        `${path}: ${pinned.kind} input requires a matching explicit non-text disposition, reason, actor, and time`,
+      );
+    }
+  }
+  return issues;
+}
+
+async function inspectPinnedIntakeSource(
+  target: string,
+  source: Record<string, unknown>,
+): Promise<PinnedIntakeSource> {
+  if (stringValue(source.object_type) !== "blob") {
+    return {
+      kind: "unsupported",
+      totalLines: 0,
+      reason: `Git object type is ${stringValue(source.object_type) || "unknown"}`,
+    };
+  }
+  const objectId = stringValue(source.object_id);
+  if (!/^[0-9a-f]{40,64}$/i.test(objectId)) {
+    throw new Error("pinned Git object ID is invalid");
+  }
+  const read = await readPinnedGitTextRange(
+    target,
+    ["cat-file", "blob", objectId],
+    { operationName: `${stringValue(source.path)}: pinned intake inspection` },
+  );
+  return {
+    kind: read.kind,
+    totalLines: read.totalLines,
+    reason: read.reason,
+  };
+}
+
+function intakeSourceReadReceipts(
+  source: Record<string, unknown>,
+): IntakeSourceReadReceipt[] {
+  return recordArray(source.read_receipts).map((receipt) => ({
+    id: stringValue(receipt.id) || intakeReadReceiptId({
+      path: stringValue(source.path),
+      objectId: stringValue(receipt.object_id),
+      startLine: Number(receipt.start_line),
+      endLine: Number(receipt.end_line),
+      totalLines: Number(receipt.total_lines),
+      actor: stringValue(receipt.actor),
+    }),
+    object_id: stringValue(receipt.object_id),
+    start_line: Number(receipt.start_line),
+    end_line: Number(receipt.end_line),
+    total_lines: Number(receipt.total_lines),
+    actor: stringValue(receipt.actor),
+    read_at: stringValue(receipt.read_at),
+  }));
+}
+
+function mergeIntakeSourceReceipts(
+  receipts: IntakeSourceReadReceipt[],
+): IntakeSourceReadReceipt[] {
+  const unique = new Map<string, IntakeSourceReadReceipt>();
+  for (const receipt of receipts) {
+    unique.set(receipt.id, receipt);
+  }
+  return [...unique.values()].sort(
+    (left, right) =>
+      left.start_line - right.start_line || left.end_line - right.end_line,
+  );
+}
+
+function intakeReadReceiptId(input: {
+  path: string;
+  objectId: string;
+  startLine: number;
+  endLine: number;
+  totalLines: number;
+  actor: string;
+}): string {
+  const digest = createHash("sha256").update([
+    input.path,
+    input.objectId,
+    String(input.startLine),
+    String(input.endLine),
+    String(input.totalLines),
+    input.actor,
+  ].join("\0")).digest("hex");
+  return `raw-read:${digest.slice(0, 32)}`;
+}
+
+function receiptsCoverIntakeSource(
+  receipts: IntakeSourceReadReceipt[],
+  totalLines: number,
+): boolean {
+  if (receipts.length === 0) {
+    return false;
+  }
+  if (totalLines === 0) {
+    return receipts.some((receipt) =>
+      receipt.start_line === 0
+      && receipt.end_line === 0
+      && receipt.total_lines === 0
+    );
+  }
+  const ranges = receipts
+    .filter((receipt) => receipt.total_lines === totalLines)
+    .map((receipt) => [receipt.start_line, receipt.end_line] as const)
+    .sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  let coveredThrough = 0;
+  for (const [start, end] of ranges) {
+    if (start > coveredThrough + 1) {
+      return false;
+    }
+    coveredThrough = Math.max(coveredThrough, end);
+  }
+  return coveredThrough >= totalLines;
+}
+
 async function readIntakeSourceHistory(target: string): Promise<IntakeSourceHistory[]> {
   const history: IntakeSourceHistory[] = [];
   for (const lifecycle of ["active", "archive"] as const) {
@@ -1719,8 +2122,8 @@ async function bindParentReconstruction(
   } catch (error) {
     throw new Error(`Cannot bind raw intake to active reconstruction ${id}: ${errorMessage(error)}`);
   }
-  if (Number(parent.metadata.reconstruction_version) !== 4) {
-    throw new Error(`Reconstruction ${id} must record its v4 raw scope before intake starts`);
+  if (![4, 5].includes(Number(parent.metadata.reconstruction_version))) {
+    throw new Error(`Reconstruction ${id} must record its current raw scope before intake starts`);
   }
   const raw = recordValue(recordValue(parent.metadata.supplemental_inputs)?.raw);
   const scope = recordValue(raw?.scope);
@@ -1804,6 +2207,17 @@ function intakeCasePath(
     throw new Error(`Invalid intake case id: ${id}`);
   }
   return join(target, "intake/cases", state, id, "case.md");
+}
+
+function intakeCaseLockPath(target: string, id: string): string {
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
+    throw new Error(`Invalid intake case id: ${id}`);
+  }
+  return join(
+    target,
+    ".workflow/current/locks",
+    `intake-case-${id}.lock`,
+  );
 }
 
 async function uniqueDirectoryId(root: string, base: string): Promise<string> {

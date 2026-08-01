@@ -171,9 +171,119 @@ Graphify community into a durable coverage ledger. The durable case stores
 repository identity, branch, commit, checkout label, and worktree ID, but not
 a machine-local path.
 
+## Plan adaptive execution before analysis
+
+The default strategy is one orchestrator with bounded workers, not a free-form
+swarm. Decide the execution only after inspecting the complete frozen frontier:
+
+- choose `single-agent` when the work is small, tightly sequential, depends on
+  one shared context, or the current host has no safe subagent facility;
+- choose `orchestrator-workers` when there are genuinely independent read-heavy
+  repository, raw, structural, or review axes, or the corpus cannot fit one
+  context without material loss;
+- never use agent count as a goal. Record a proportional `max_parallel`, total
+  workstream cap, retry cap, and reason in `case.md` before dispatch.
+
+Use platform-native subagents when available. Do not hard-code a particular
+agent product, command, model, worktree feature, or topology into the durable
+case. A normal checkout is as valid as a worktree; every worker receives the
+exact already-bound source root at dispatch time.
+
+Partition research by independently reviewable semantic outcome, not by
+alphabetical file range. Suitable first-wave units include:
+
+- one cohesive repository/community and its entrypoints, runtime surfaces,
+  tests, and boundaries;
+- an unusual executable surface such as migrations, generators, background
+  jobs, protocols, plugins, or operations;
+- one bounded raw-intake or historical question after raw scope approval;
+- a structural coverage scout whose output is a map, not a product conclusion.
+
+After fan-in, create narrower units for discovered cross-repository flows,
+contracts, Areas, capabilities, contradictions, negative claims, or unexplained
+coverage. One repository's worker never defines the whole-project meaning.
+
+For every worker, create and register a unique durable packet with `wfctl
+knowledge reconstruct workstream create`, then claim it for the concrete host
+run with `wfctl knowledge reconstruct workstream claim`. The CLI uses
+[the workstream template](assets/reconstruction-workstream.md), updates the
+parent list under a case lock, and records the reported host and run ID. The
+dispatch prompt must include:
+
+```sh
+wfctl knowledge reconstruct workstream create <case-id> <workstream-id> \
+  --title "<bounded outcome>" --objective "<semantic question>" \
+  --role <role> --wave <number> [--repository/--file/--community/--surface/--raw-case ...]
+wfctl knowledge reconstruct workstream claim <case-id> <workstream-id> \
+  --by <worker> --host <agent-host> --run-id <actual-session-id-or-unavailable:reason>
+```
+
+- exact knowledge root, case root, bound source root, repository identity, and
+  pinned commit;
+- the exact files, communities, surfaces, raw cases, or questions it owns;
+- the parent case, relevant dossier and frontier slice, and only explicit
+  prerequisite workstreams to read fully;
+- the objective, non-goals, required tools, evidence contract, output schema,
+  stop conditions, and effort boundary;
+- explicit permission to explore all connected evidence with safe read-only
+  tools, while updating only its own packet;
+- the requirement to record material cross-slice exploration in
+  `explored_context` and turn final source evidence into attributed receipt IDs
+  with `wfctl knowledge reconstruct read` or approved raw reads with `wfctl
+  knowledge case read`.
+
+Workers must not edit the parent case, repository dossiers, intake cases,
+other workstreams, coverage JSON directly, curated knowledge, or leaf source.
+Shared coverage and raw-read commands serialize their receipt updates, but
+only the orchestrator assigns final `files`, `community`, `surface`, and
+dossier dispositions. A worker summary is
+an untrusted research packet until the orchestrator checks its receipts and
+marks `review.status: accepted`. A dispatched packet that becomes unnecessary
+remains referenced as `status: cancelled` with an accepted review explaining
+why; never delete it or leave it unreferenced to hide work.
+
+Qualify every leaf coverage item in packet frontmatter as
+`<repository>#<exact-path-or-id>`. The close gate resolves files, communities,
+and surfaces against the frozen ledgers and resolves raw case IDs against the
+parent reconstruction. An unqualified, out-of-scope, or merely guessed item
+does not satisfy assignment accounting. The assigned slice is an ownership
+contract, not a search wall: follow relevant callers, callees, contracts, and
+cross-repository links, then record every material expansion and why it was
+needed. `result.evidence_refs` accepts only receipt IDs produced for that
+worker by a pinned read; prose paths and invented references are rejected.
+
+Run bounded waves:
+
+1. **Map:** reconcile the Git inventory, Graphify structure, runtime surfaces,
+   current knowledge, and approved optional-input frontier.
+2. **Breadth:** dispatch independent repository, structural, and raw workstreams.
+3. **Fan-in:** review every packet, update owning dossiers and coverage, record
+   cross-project discoveries, and expose gaps without smoothing conflicts.
+4. **Depth:** dispatch only the cross-repository, historical, contradiction, or
+   omission work now justified by evidence.
+5. **Synthesis:** one orchestrator constructs whole-project candidates and
+   records a claim-to-evidence and contradiction audit.
+6. **Independent review:** a fresh read-only critic checks coverage omissions,
+   unsupported claims, hidden conflicts, invalid negative claims, and unjustified
+   `structural-only` or `irrelevant` states. Reopen bounded workstreams for real
+   gaps; do not ask the critic to rewrite its own target.
+
+Use per-resource write barriers during fan-out: never overlap worker and
+orchestrator Markdown edits to the same intake case or packet. The orchestrator
+may validate a submitted packet while unrelated workers remain read-only, but
+must wait for every wave packet to be accepted, returned, blocked, or
+review-cancelled before final shared dossier, parent-case, candidate, or curated
+knowledge synthesis. CLI receipt mutations are locked; normal Markdown edits
+are not.
+
+If the host cannot supply a fresh critic, stop before completed close and ask
+the maintainer for review or continue in a fresh session. Record actual
+execution; never claim a worker or independent review that did not occur.
+
 ## Analyze every repository
 
-For each dossier:
+For each dossier, either the orchestrator works serially or it reviews and
+integrates accepted worker packets. In both modes:
 
 1. Invoke `analyze-with-graphify`, which must load the official native
    `graphify` skill in the current session.
@@ -186,8 +296,9 @@ For each dossier:
    community, boundaries, integrations, data/state/control flow, persistence,
    contracts, invariants, failures, tests, and runtime surfaces. A Graphify
    community is a technical cluster, not automatically an Area or capability.
-4. Record every material Graphify query in `graphify_queries`, then disposition
-   each community through the CLI:
+4. Record every material Graphify query in `graphify_queries`. Workers record
+   proposed dispositions in their own packet; the orchestrator alone applies
+   each reviewed community disposition through the CLI:
 
    ```sh
    wfctl knowledge reconstruct community <case-id> <community-id> \
@@ -199,20 +310,28 @@ For each dossier:
 
    `structural-only` and `irrelevant` require an explanation. `pending` and
    `blocked` prevent completed close.
-5. Open actual source, tests, contracts, configuration, product data, and
-   repository documentation from the pinned commit through bounded reads:
+5. Explore actual source, tests, contracts, configuration, product data, and
+   repository documentation with Graphify and any safe read-only tools. This
+   exploration is deliberately unrestricted by packet boundaries. Before using
+   a source file in a final claim or marking it fully inspected, create bounded
+   reads from the pinned commit. Use the exact packet owner as `--by` so the
+   receipt can satisfy that workstream's evidence contract:
 
    ```sh
    wfctl knowledge reconstruct read <case-id> <path> \
      --repository <repository-id> \
-     --start <first-line> --end <last-line>
+     --start <first-line> --end <last-line> \
+     --by workflow-agent/<workstream-id>
    ```
 
-   Continue until the command reports `complete`. This command records the
-   exact blob and line ranges; a Graphify result, search snippet, editor open,
-   or dossier statement does not create a read receipt. Read every material
-   condition, branch, exception, and test body rather than only headers.
-6. Classify or disposition remaining manifest entries in explicit batches:
+   Cite the returned receipt ID in `result.evidence_refs`. Continue until the
+   command reports `complete` whenever the file itself is claimed as fully
+   inspected. This command records the exact blob and line ranges; a Graphify
+   result, search snippet, editor open, or dossier statement does not create a
+   read receipt. Read every material condition, branch, exception, and test body
+   rather than only headers.
+6. After reviewing worker evidence, classify or disposition remaining manifest
+   entries in explicit batches:
 
    ```sh
    wfctl knowledge reconstruct files <case-id> \
@@ -245,6 +364,11 @@ For each dossier:
      --note "<whole-repository surface omission audit>"
    ```
 
+   Coverage starts with conservative `auto-*` candidates derived from tracked
+   paths. Inspect each one and either replace/confirm it with the real surface
+   record or mark it `irrelevant` with a specific reason. Auto-discovery is a
+   review queue, never evidence that the surface exists semantically.
+
    An empty surface list is valid only after an explicit reviewed or
    `not-relevant` explanation. Do not leave a surface only in dossier prose.
 8. Complete every dossier coverage dimension. Use `not-relevant` only with an
@@ -272,8 +396,9 @@ The ledger guarantees accounting and delivery of bytes to the agent; it does
 not prove correct semantic understanding, so the dossier and maintainer review
 remain mandatory.
 
-Refresh the reconstruction frontier before switching repositories so the next
-agent cannot mistake local dossier completion for whole-project completion.
+Refresh the reconstruction frontier before switching repositories and after
+every wave. A new worker or clean session must not mistake one submitted packet
+or local dossier completion for whole-project completion.
 
 Do not edit source code from the knowledge repository. If analysis discovers a
 needed change, identify the owning leaf and open normal significant work there.
@@ -323,7 +448,8 @@ needed change, identify the owning leaf and open normal significant work there.
 ## Maintain the record during discussion
 
 The reconstruction case and repository dossiers are the session's durable
-working memory. Stable `knowledge/` pages are not scratchpads. After every
+working memory, and accepted workstream packets preserve isolated worker
+findings. Stable `knowledge/` pages are not scratchpads. After every
 material maintainer turn, update candidate state, decisions, contradictions,
 promotion map, and affected discovery entries before continuing. Refresh the
 checkpoint after those semantic and coverage updates, after each repository
@@ -352,9 +478,10 @@ After compaction or interruption:
    command, including their final lines and every discovery entry;
 3. use the returned complete coverage frontier for exact pending communities,
    files, read ranges, and surfaces;
-4. if the checkpoint is stale, treat its next action as a hint only, rebuild
+4. read every returned `reconstruction-workstream-full-read` packet completely;
+5. if the checkpoint is stale, treat its next action as a hint only, rebuild
    the frontier from the full records, and refresh it before continuing;
-5. confirm the exact bound checkouts and resume from durable candidates,
+6. confirm the exact bound checkouts and resume from durable candidates,
    discoveries, coverage, and maintainer decisions rather than chat memory.
 
 Then render the current reconstruction frontier before continuing analysis.
@@ -397,12 +524,23 @@ Then render the current reconstruction frontier before continuing analysis.
    receipt while `promotion.validation` is still pending. Set it to `passed`
    only after validation actually succeeds, then rerun the reconstruction
    check.
-7. Present the maintainer a baseline review packet: current intended product,
+7. Submit each finished packet with `wfctl knowledge reconstruct workstream
+   submit` and have a different actor run `wfctl knowledge reconstruct
+   workstream review`. Mark orchestration complete only after every workstream
+   is accepted or has
+   a review-approved `cancelled` disposition, blocked work is either resolved
+   or represented by an honest partial outcome, the
+   orchestrator's synthesis audit passes, and a distinct fresh actor records
+   the independent review. Record `assurance` as `independent-agent`,
+   `separate-session`, or `maintainer`, plus the actual host run ID when
+   applicable. `wfctl knowledge reconstruct check` rejects missing,
+   unfinished, unreviewed, unreferenced, or path-leaking workstreams.
+8. Present the maintainer a baseline review packet: current intended product,
    observed implementation, alignment and drift, reconstructed evolution with
    confidence limits, unknowns, and the human reading path.
    Include the final frontier and require every requested completion blocker
    to be zero or explicitly represented by an honest partial outcome.
-8. Record explicit `maintainer_review` approval, then close:
+9. Record explicit `maintainer_review` approval, then close:
 
    ```sh
    wfctl knowledge reconstruct close <case-id> --outcome completed

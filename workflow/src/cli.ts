@@ -41,6 +41,7 @@ import {
   inventoryRaw,
   markIntakeSource,
   migrateIntakeCase,
+  readIntakeSource,
   recordIntakeProbe,
   updateIntakeCheckpoint,
 } from "./intake.js";
@@ -58,7 +59,9 @@ import { initializeGitRepository, isGitRepository } from "./git.js";
 import {
   approveReconstructionRawScope,
   beginProjectReconstruction,
+  claimReconstructionWorkstream,
   closeProjectReconstruction,
+  createReconstructionWorkstream,
   reconstructionContext,
   inspectProjectReconstruction,
   inspectReconstructionCoverage,
@@ -66,7 +69,9 @@ import {
   markReconstructionFiles,
   readReconstructionSource,
   recordReconstructionSurface,
+  reviewReconstructionWorkstream,
   reviewReconstructionSurfaces,
+  submitReconstructionWorkstream,
   updateReconstructionCheckpoint,
   type ReconstructionRawScopeMode,
 } from "./reconstruction.js";
@@ -1496,6 +1501,20 @@ function knowledgeReconstructCommand() {
                     : "legacy record without structured checkpoint"
                 }\n`,
             );
+            process.stdout.write(
+              `Orchestration: ${result.orchestration.execution || "not planned"}; `
+                + `${result.orchestration.status || "pending"}; `
+                + `parallel ${result.orchestration.maxParallel}; `
+                + `workstreams ${result.workstreams.length}/${result.orchestration.maxWorkstreams}; `
+                + `retries ${result.orchestration.maxRetriesPerWorkstream}\n`
+                + `Synthesis: ${result.orchestration.synthesisStatus || "pending"}; `
+                + `independent review: ${result.orchestration.independentReviewStatus || "pending"}`
+                + `${result.orchestration.independentReviewAssurance ? ` (${result.orchestration.independentReviewAssurance})` : ""}`
+                + `${result.orchestration.independentReviewRunId ? `; run ${result.orchestration.independentReviewRunId}` : ""}\n`,
+            );
+            if (result.orchestration.reason) {
+              process.stdout.write(`Orchestration reason: ${result.orchestration.reason}\n`);
+            }
             if (result.checkpoint) {
               process.stdout.write(
                 `Current: ${result.checkpoint.currentState || "missing"}\n`
@@ -1512,6 +1531,18 @@ function knowledgeReconstructCommand() {
             for (const file of result.requiredFiles) {
               process.stdout.write(
                 `- ${file.path} [${file.role}; ${file.bytes} bytes; ${file.sha256.slice(0, 12)}]\n`,
+              );
+            }
+            process.stdout.write(
+              `Workstreams: ${result.workstreams.length === 0 ? "none yet" : result.workstreams.length}\n`,
+            );
+            for (const workstream of result.workstreams) {
+              process.stdout.write(
+                `- wave ${workstream.wave} ${workstream.id}: ${workstream.status}`
+                  + `; review ${workstream.reviewStatus || "pending"}`
+                  + `${workstream.owner ? `; owner ${workstream.owner}` : ""}\n`
+                  + `  ${workstream.title}\n`
+                  + `  ${workstream.path}\n`,
               );
             }
             process.stdout.write("Complete coverage frontier:\n");
@@ -1616,6 +1647,7 @@ function knowledgeReconstructCommand() {
           }
         }),
     )
+    .command("workstream", reconstructionWorkstreamCommand())
     .command(
       "coverage",
       new Command()
@@ -1679,7 +1711,8 @@ function knowledgeReconstructCommand() {
             process.stdout.write(
               `${result.repository}@${result.commit} ${result.path} `
                 + `lines ${result.startLine}-${result.endLine}/${result.totalLines} `
-                + `[${result.complete ? "complete" : "more remains"}]\n`,
+                + `[${result.complete ? "complete" : "more remains"}]\n`
+                + `Receipt: ${result.receiptId}\n`,
             );
             if (result.content) {
               const width = String(result.endLine).length;
@@ -1931,6 +1964,127 @@ function knowledgeReconstructCommand() {
           }
         }),
     );
+}
+
+function reconstructionWorkstreamCommand() {
+  return new Command()
+    .description(
+      "Agent-facing lifecycle for bounded reconstruction worker packets.",
+    )
+    .command(
+      "create",
+      new Command()
+        .description("Create and register one semantic workstream packet.")
+        .arguments("<id:string> <workstream:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--title <text:string>", "Bounded human-readable outcome.", { required: true })
+        .option("--objective <text:string>", "Independent research question.", { required: true })
+        .option("--role <role:string>", "Worker role.", { required: true })
+        .option("--wave <number:string>", "Positive orchestration wave.", { required: true })
+        .option("--repository <id:string>", "Owned repository; repeat.", { collect: true })
+        .option("--file <ref:string>", "Owned <repository>#<path>; repeat.", { collect: true })
+        .option("--community <ref:string>", "Owned <repository>#<community>; repeat.", { collect: true })
+        .option("--surface <ref:string>", "Owned <repository>#<surface>; repeat.", { collect: true })
+        .option("--raw-case <id:string>", "Owned linked raw intake case; repeat.", { collect: true })
+        .option("--dependency <id:string>", "Earlier workstream dependency; repeat.", { collect: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, workstream) => {
+          const result = await createReconstructionWorkstream({
+            target: options.target,
+            id,
+            workstream,
+            title: options.title,
+            objective: options.objective,
+            role: options.role,
+            wave: parseLineNumber(options.wave, "--wave"),
+            repositories: collectedStrings(options.repository),
+            files: collectedStrings(options.file),
+            communities: collectedStrings(options.community),
+            surfaces: collectedStrings(options.surface),
+            rawCases: collectedStrings(options.rawCase),
+            dependencies: collectedStrings(options.dependency),
+          });
+          printWorkstreamMutation(result, options.json);
+        }),
+    )
+    .command(
+      "claim",
+      new Command()
+        .description("Claim a planned or rework packet for one concrete agent run.")
+        .arguments("<id:string> <workstream:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--by <actor:string>", "Stable worker identity.", { required: true })
+        .option("--host <host:string>", "Agent host, for example codex-cli or claude-code.", { required: true })
+        .option("--run-id <id:string>", "Actual host session/run ID, or unavailable:<reason>.", { required: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, workstream) => {
+          const result = await claimReconstructionWorkstream({
+            target: options.target,
+            id,
+            workstream,
+            actor: options.by,
+            host: options.host,
+            runId: options.runId,
+          });
+          printWorkstreamMutation(result, options.json);
+        }),
+    )
+    .command(
+      "submit",
+      new Command()
+        .description("Validate and submit the current owner's completed packet.")
+        .arguments("<id:string> <workstream:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--by <actor:string>", "Recorded worker owner.", { required: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, workstream) => {
+          const result = await submitReconstructionWorkstream({
+            target: options.target,
+            id,
+            workstream,
+            actor: options.by,
+          });
+          printWorkstreamMutation(result, options.json);
+        }),
+    )
+    .command(
+      "review",
+      new Command()
+        .description("Accept or return submitted work, or review-cancel an obsolete packet.")
+        .arguments("<id:string> <workstream:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--by <actor:string>", "Reviewer identity; must differ from owner.", { required: true })
+        .option("--status <status:string>", "accepted, rework, or cancelled.", { required: true })
+        .option("--note <text:string>", "Review finding; repeat.", { collect: true, required: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, workstream) => {
+          if (!["accepted", "rework", "cancelled"].includes(options.status)) {
+            throw new Error("--status must be accepted, rework, or cancelled");
+          }
+          const result = await reviewReconstructionWorkstream({
+            target: options.target,
+            id,
+            workstream,
+            reviewer: options.by,
+            status: options.status as "accepted" | "rework" | "cancelled",
+            notes: collectedStrings(options.note),
+          });
+          printWorkstreamMutation(result, options.json);
+        }),
+    );
+}
+
+function printWorkstreamMutation(
+  result: { id: string; workstream: string; status: string; path: string },
+  json: boolean | undefined,
+): void {
+  if (json) {
+    printJson(result);
+    return;
+  }
+  process.stdout.write(
+    `Workstream ${result.workstream}: ${result.status}\nPacket: ${result.path}\n`,
+  );
 }
 
 function knowledgeSourcesCommand() {
@@ -2247,6 +2401,52 @@ function knowledgeCaseCommand() {
         }),
     )
     .command(
+      "read",
+      new Command()
+        .description(
+          "Read a bounded range from one frozen raw blob and record the full-read receipt.",
+        )
+        .arguments("<id:string> <path:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--start <line:string>", "First one-based line.")
+        .option("--end <line:string>", "Last one-based line; at most 400 lines per read.")
+        .option("--by <actor:string>", "Reading agent actor.", {
+          default: "workflow-agent/1",
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, path) => {
+          const result = await readIntakeSource({
+            target: options.target,
+            id,
+            path,
+            ...(options.start === undefined
+              ? {}
+              : { startLine: parseLineNumber(options.start, "--start") }),
+            ...(options.end === undefined
+              ? {}
+              : { endLine: parseLineNumber(options.end, "--end") }),
+            actor: options.by,
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `${result.path} lines ${result.startLine}-${result.endLine}/${result.totalLines} `
+                + `[${result.complete ? "complete" : "more remains"}]\n`
+                + `Receipt: ${result.receiptId}\n`,
+            );
+            if (result.content) {
+              const width = String(result.endLine).length;
+              for (const [offset, line] of result.content.split("\n").entries()) {
+                process.stdout.write(
+                  `${String(result.startLine + offset).padStart(width)} | ${line}\n`,
+                );
+              }
+            }
+          }
+        }),
+    )
+    .command(
       "mark",
       new Command()
         .description("Record the complete review result for one frozen source file.")
@@ -2261,6 +2461,10 @@ function knowledgeCaseCommand() {
           collect: true,
         })
         .option("--note <text:string>", "Full-file review result.", { required: true })
+        .option(
+          "--non-text-reason <text:string>",
+          "Required disposition rationale for binary or unsupported input.",
+        )
         .option("--by <actor:string>", "Reviewing agent actor.", {
           default: "workflow-agent/1",
         })
@@ -2279,6 +2483,9 @@ function knowledgeCaseCommand() {
             candidateIds,
             note: options.note,
             reviewedBy: options.by,
+            ...(options.nonTextReason === undefined
+              ? {}
+              : { nonTextReason: options.nonTextReason }),
           });
           if (options.json) {
             printJson(result);

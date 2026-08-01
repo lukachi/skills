@@ -107,6 +107,36 @@ It does not prove perfect semantic understanding. Review the proposed product
 map, corrections, and unknowns before approving promotion into curated
 knowledge.
 
+## How large reconstructions are parallelized
+
+You do not decide how to split a codebase or operate subagents. After freezing
+the exact source set, the main agent chooses between one session and bounded
+fan-out.
+
+Fan-out is used only for independent research outcomes: a coherent repository
+area, runtime surface, bounded raw-history question, cross-repository flow, or
+fresh omission review. It is not used to assign arbitrary alphabetical file
+ranges and does not allow several agents to rewrite the shared project story.
+
+The main agent remains the orchestrator. It gives each worker exact source and
+case roots, a pinned commit, a precise responsibility slice, relevant required
+context, and one durable work packet. The slice does not prevent exploration:
+workers may follow any relevant read-only code or documentation and record why
+they crossed it. They cannot modify product code or publish curated knowledge.
+The orchestrator verifies stable source-read receipt IDs, reconciles overlaps
+and contradictions, and only then updates shared dossiers and project
+candidates.
+
+The first wave maps independent repository and raw surfaces. Likely entrypoints
+and runtime surfaces are proposed automatically from tracked paths, but remain
+questions until an agent inspects or rejects them. Later waves are
+created only for concrete gaps or cross-repository connections found during
+fan-in. A separate fresh review challenges omissions and unsupported claims
+before you review the baseline. The record states whether that review came from
+an independent agent, a separate session, or you; a different actor label alone
+does not count. If the current agent host has no subagents,
+the same stages run serially and the record says so honestly.
+
 ## During review
 
 The agent shows a reconstruction frontier: repositories, coverage, approved
@@ -114,10 +144,11 @@ raw scope, active themes, blockers, decisions needed, and the remaining
 completion condition.
 
 The parent case retains cross-project discoveries; each repository dossier
-retains consequential local discoveries. A checkpoint records only the current
-frontier and next safe action. On a new session, one active reconstruction is
-discovered automatically and every case/dossier is reread. If any semantic or
-coverage record changed after the checkpoint, it is marked stale and the agent
+retains consequential local discoveries; accepted worker packets retain their
+isolated findings. A checkpoint records only the current frontier and next safe
+action. On a new session, one active reconstruction is discovered automatically
+and every case, dossier, workstream, and machine frontier is reread. If any
+owned record changed after the checkpoint, it is marked stale and the agent
 rebuilds the frontier before continuing. With several active reconstructions,
 you choose by human title rather than remembering an ID.
 

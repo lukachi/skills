@@ -97,26 +97,41 @@ case files, retrieval, and validation.
    repository dossiers, freezes every tracked Git entry and Graphify
    community into a coverage ledger, and keeps absolute paths only in ignored
    local state.
-5. The agent accounts for every tracked file, including formats Graphify does
+5. The agent chooses a proportional execution mode. Small or tightly connected
+   baselines remain in one session. Large independent surfaces use bounded
+   subagents: the main agent stays the orchestrator, creates explicit durable
+   work packets, and sends workers to investigate coherent repository areas,
+   runtime surfaces, raw-history questions, or cross-repository flows. It never
+   divides semantic conclusions by arbitrary filename ranges.
+6. Workers inspect leaves read-only and may write only their own work packet.
+   Their assigned slice defines responsibility, not what they can see: they may
+   follow relevant code and docs outside it and must record material expansion.
+   The orchestrator reviews every result against stable pinned-read receipt IDs
+   before updating shared dossiers, coverage states, candidates, or curated
+   knowledge. A final fresh critic looks specifically for omissions and
+   overclaims, and its actual independence level is recorded.
+7. The agent accounts for every tracked file, including formats Graphify does
    not understand. It traces purpose, Areas/capabilities, entrypoints,
    boundaries, contracts, flows, invariants, failures, tests, and Git evolution
-   through Graphify, then reads the pinned source and test bodies in bounded
-   ranges. Exact read receipts prevent a header or search snippet from being
-   reported as full inspection.
-6. Optional docs, change records, and raw are reconciled as separate source
+   through Graphify, explores the relevant implementation freely, then records
+   final source evidence and complete-file review in bounded pinned ranges.
+   Exact receipt IDs prevent a header or search snippet from being reported as
+   full inspection. Likely runtime surfaces are proposed automatically for
+   review, not asserted as truth.
+8. Optional docs, change records, and raw are reconciled as separate source
    lanes. Before reconstruction-owned raw intake starts, the agent inventories
    the frozen raw snapshot, recommends all, selected themes, or exclusion, and
    records your explicit choice. You approve the human boundary; the agent
    owns paths and commands. Absence is recorded automatically only when the
    frozen raw snapshot is actually empty.
-7. Repository dossiers keep traceable partial observations. The parent case
+9. Repository dossiers keep traceable partial observations. The parent case
    reconciles them into one candidate per whole-project capability, flow, or
    contract before promotion.
-8. Each candidate separates intended product state, observed delivery, and
+10. Each candidate separates intended product state, observed delivery, and
    alignment. Proposed ideas stay outside current knowledge.
-9. You adjudicate only intent, rationale, ownership, chronology, or authority
+11. You adjudicate only intent, rationale, ownership, chronology, or authority
    that evidence cannot establish.
-10. The agent promotes the smallest coherent human map, validates and builds
+12. The agent promotes the smallest coherent human map, validates and builds
     knowledge, obtains your baseline review, then closes the reconstruction.
 
 During the run it shows a reconstruction frontier derived from the complete
@@ -124,17 +139,24 @@ ledgers: pinned repositories, outstanding files/communities/surfaces,
 optional-input status and approved raw scope, cross-repository reconciliation,
 unresolved claims, human decisions, and next action.
 
+The number of agents is adaptive and normally invisible to you. Fan-out is
+used to shorten independent research, not to trade accuracy for speed. You may
+see workstream names in progress updates, but you do not assign files, manage
+agent prompts, or merge their output yourself.
+
 You do not need to remember a reconstruction case ID between sessions. The
 agent asks the workflow for the active context. One active case resumes
 automatically; several are shown by human title so you can choose the intended
 outcome. The case and repository dossiers preserve consequential discoveries,
-while a checked checkpoint records where work stopped and the next safe
-action. If any owned record changed afterward, the checkpoint is reported as
-stale and the agent rebuilds the frontier from the complete records.
+accepted worker packets preserve isolated investigation results, and a checked
+checkpoint records where work stopped and the next safe action. If any owned
+record changed afterward, the checkpoint is reported as stale and the agent
+rebuilds the frontier from the complete records.
 
 The agent's reconstruction gate fails on worktree or commit drift, dirty
 source, an unaccounted file or Graphify community, unexplained runtime
 surfaces, incomplete source reads or dossiers, unresolved raw input or claims,
+unreviewed or unreferenced worker packets, missing synthesis or fresh critique,
 weak promotion, missing coverage audits, or absent maintainer approval. This
 guarantees explicit accounting, not infallible understanding; your baseline
 review remains required. The agent reports the actual issue, not the
@@ -155,10 +177,13 @@ bounded topics rather than asking an agent to summarize the entire dump.
    and blob ID; you do not choose pathspec syntax or manage the case ID.
 5. The agent runs QMD from this repository, explicitly searches the `raw`
    collection, and follows related terminology and contradictions.
-6. The agent then reads every frozen source in full, records every result, and
-   maintains atomic candidate claims in the case. Each claim separately records
-   semantic role, authority, intent, delivery, alignment, time, relations, and
-   routing. Retrieval snippets do not count as complete review.
+6. The agent then reads every frozen text through bounded, receipt-recording
+   `wfctl` reads until its full line range is covered. Binary or unsupported
+   material gets an explicit non-text disposition. Only then does it record
+   each semantic result and maintain atomic candidate claims in the case. Each
+   claim separately records semantic role, authority, intent, delivery,
+   alignment, time, relations, and routing. Retrieval snippets and ordinary
+   filesystem reads do not count as complete review.
 7. Implementation candidates are checked in exact source repositories through
    Graphify followed by direct source and test inspection.
 8. You answer only unresolved intent, chronology, or authority questions.

@@ -1,5 +1,5 @@
 ---
-reconstruction_version: 4
+reconstruction_version: 5
 session_record_version: 1
 id: "<case-id>"
 title: "<title>"
@@ -44,6 +44,28 @@ coverage_audit:
 reconciliation_audit:
   result: pending
   notes: []
+orchestration:
+  version: 2
+  strategy: adaptive-orchestrator-worker
+  execution: pending
+  status: planning
+  reason: ""
+  budget:
+    max_parallel: 0
+    max_workstreams: 0
+    max_retries_per_workstream: 2
+  workstreams: []
+  synthesis:
+    status: pending
+    by: ""
+    notes: []
+  independent_review:
+    status: pending
+    by: ""
+    assurance: ""
+    run_id: ""
+    at: ""
+    notes: []
 maintainer_review:
   status: pending
   by: ""
@@ -114,7 +136,7 @@ Keep atomic candidates in frontmatter. Classify each claim independently:
 
 Use `deferred` for a reviewed proposal that is intentionally kept outside
 current knowledge. `unresolved` blocks completed reconstruction. The
-reconstruction v3 gate still accepts legacy `promoted_to`, but new cases must
+compatibility gate still accepts legacy `promoted_to`, but new cases must
 author the richer routing and relation fields so the shared claim ledger can
 preserve cross-source lineage.
 
@@ -158,6 +180,15 @@ cross-repository boundary, supplemental input class, candidate, and promoted
 concept. Look explicitly for Graphify-unindexed source, missing conditions,
 negative behavior, unowned capabilities, stale intent, accidental
 implementation, and knowledge that claims more than the evidence proves.
+
+# Orchestration record
+
+Choose `single-agent` or `orchestrator-workers` from the actual independent
+work available and the current host's capabilities. For parallel execution,
+list every durable `workstreams/*.md` packet in frontmatter. The orchestrator
+alone owns this case, repository dossiers, final coverage dispositions,
+candidate reconciliation, and curated knowledge. Record why the chosen effort
+is proportionate, the final synthesis audit, and a fresh independent review.
 
 # Maintainer review
 

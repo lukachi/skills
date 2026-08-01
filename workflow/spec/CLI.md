@@ -88,8 +88,12 @@ Installed knowledge agents own these commands.
   hash-bound checkpoint for clean-session resume.
 - `wfctl knowledge case checkpoint <id>` refreshes current state and the next
   safe action after semantic case updates.
-- `wfctl knowledge case mark` records complete review of one frozen file and
-  its candidate claims.
+- `wfctl knowledge case read` returns at most 400 lines from the exact frozen
+  blob and atomically records attributed line receipts. Repeated ranges must
+  cover the complete text before a final text disposition is accepted.
+- `wfctl knowledge case mark` records the semantic result and candidate links
+  only after complete text coverage. Binary or unsupported blobs require an
+  explicit `--non-text-reason`.
 - `wfctl knowledge case migrate` converts an active v3 case to conservative v4
   fields. Semantic migration review is a separate operation.
 - `wfctl knowledge case probe` records one omission probe against routed
@@ -103,6 +107,7 @@ Example:
 wfctl knowledge raw inventory
 
 wfctl knowledge case context --json
+wfctl knowledge case read <case-id> raw/<path>
 
 wfctl knowledge case start world-loop-notes \
   --title "Review world-loop notes" \
@@ -129,14 +134,22 @@ Tracked registry state contains no absolute local paths.
   complete coverage ledgers.
 - `context [id]` auto-selects only one active reconstruction and returns the
   exact full-read case, dossiers, local binding, complete coverage frontier,
-  discovery validation, and hash-bound checkpoint.
+  durable workstream frontier, discovery validation, and hash-bound checkpoint.
+- Workstream files are agent-owned records, not user CLI chores. Context reads
+  every packet present on disk; check rejects unreferenced packets and resolves
+  repository-qualified coverage slices against the frozen ledgers.
+- `workstream create`, `claim`, `submit`, and `review` manage packet registration,
+  run provenance, ownership transitions, receipt-backed submission, and
+  separate review under a case lock. They are agent-facing operations; the
+  maintainer normally uses plain-language requests.
 - `checkpoint <id>` refreshes current state and the next safe action after the
   case, dossiers, and coverage have been updated.
 - `raw-scope <id>` records the maintainer's `all`, `selected`, or `excluded`
   decision before linked intake starts. `unavailable` is permitted only when
   the frozen snapshot is empty. Legacy v3 cases upgrade through this command.
 - `coverage`, `files`, and `read` expose outstanding Git inventory and bounded
-  pinned source ranges.
+  pinned source ranges. `read` prints a stable receipt ID for workstream
+  evidence and streams large blobs instead of buffering the entire file.
 - `community` records Graphify-community review.
 - `surface` and `surfaces` record entrypoint/runtime-surface review.
 - `check` and `close` enforce the

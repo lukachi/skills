@@ -132,6 +132,10 @@ test("knowledge-side cases preserve discoveries and clean-session resume state",
     join(root, "skills/process-raw-intake/assets/intake-case.md"),
     "utf8",
   );
+  const workstream = await readFile(
+    join(root, "skills/reconstruct-project-knowledge/assets/reconstruction-workstream.md"),
+    "utf8",
+  );
   for (const content of [reconstruction, intake]) {
     assert.match(content, /context --json/);
     assert.match(content, /without an ID/);
@@ -160,7 +164,18 @@ test("knowledge-side cases preserve discoveries and clean-session resume state",
     assert.match(template, /# Discovery ledger/);
   }
   assert.match(reconstructionCase, /basis_sha256/);
-  assert.match(reconstructionCase, /reconstruction_version: 4/);
+  assert.match(reconstructionCase, /reconstruction_version: 5/);
+  assert.match(reconstructionCase, /strategy: adaptive-orchestrator-worker/);
+  assert.match(reconstructionCase, /independent_review:/);
+  assert.match(reconstructionCase, /assurance:/);
+  assert.match(workstream, /reconstruction_workstream_version: 2/);
+  assert.match(workstream, /explored_context:/);
+  assert.match(workstream, /responsibility, not visibility/i);
+  assert.match(workstream, /receipt ID/i);
+  assert.match(reconstruction, /workstream create/);
+  assert.match(reconstruction, /workstream claim/);
+  assert.match(reconstruction, /workstream\s+submit/);
+  assert.match(reconstruction, /workstream\s+review/);
   assert.match(reconstructionCase, /scope:\n\s+mode: pending/);
   assert.match(intakeCase, /basis_sha256/);
   assert.match(intakeCase, /parent_reconstruction: null/);

@@ -85,7 +85,7 @@ test("accounts for the complete Git tree beyond Graphify and requires full reads
     ["7"],
   );
 
-  readPinnedSource(ledger, root, "src/main.ts", {
+  await readPinnedSource(ledger, root, "src/main.ts", {
     startLine: 1,
     endLine: 400,
     actor: "workflow-agent/test",
@@ -98,13 +98,13 @@ test("accounts for the complete Git tree beyond Graphify and requires full reads
       }),
     /complete wfctl read receipts/,
   );
-  readPinnedSource(ledger, root, "src/main.ts", {
+  await readPinnedSource(ledger, root, "src/main.ts", {
     startLine: 401,
     endLine: 450,
     actor: "workflow-agent/test",
     now: new Date("2026-07-30T10:02:00.000Z"),
   });
-  readPinnedSource(ledger, root, ".gitignore", {
+  await readPinnedSource(ledger, root, ".gitignore", {
     actor: "workflow-agent/test",
     now: new Date("2026-07-30T10:03:00.000Z"),
   });

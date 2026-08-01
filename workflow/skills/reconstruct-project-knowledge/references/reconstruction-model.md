@@ -90,8 +90,12 @@ The coverage ledger keeps three independent accounts:
   result;
 - every declared entrypoint, runtime surface, and boundary.
 
-Pinned `wfctl` reads add blob-and-line receipts. An inspected text file is
-complete only when those receipts cover every line. `structural-only` is for
+Read-only exploration remains free to cross a workstream slice: the slice says
+who owns a conclusion, not what an agent is allowed to see. Material expansion
+is recorded for synthesis. Pinned `wfctl` reads turn selected source ranges into
+stable, actor-attributed receipt IDs. Final workstream evidence must resolve to
+those receipts; a path written in prose is not evidence. An inspected text file
+is complete only when receipts cover every line. `structural-only` is for
 non-product-bearing structure and always needs a reason; it cannot close
 source, tests, contracts, configuration, product data, or documentation.
 `irrelevant` also needs a scoped reason. Pending and blocked entries prevent a
@@ -124,6 +128,53 @@ The coverage audit must reconcile:
 
 The maintainer review remains essential because a deterministic gate cannot
 prove that an agent understood the whole project.
+
+## Adaptive orchestration
+
+Reconstruction is breadth-heavy enough to benefit from parallel research, but
+only when its units are genuinely independent. The workflow therefore uses one
+adaptive orchestrator rather than a permanent swarm.
+
+The orchestrator owns the frozen frontier, assignment plan, shared dossiers,
+final coverage states, candidate reconciliation, and all promotion. Workers
+operate in isolated contexts over bounded semantic units and return durable
+evidence packets. Their summaries are inputs, never authority.
+
+Execution proceeds wide to narrow:
+
+1. deterministically inventory repositories, Graphify communities, runtime
+   surfaces, current knowledge, and approved optional inputs;
+2. run a bounded breadth wave over independent repository, structural, or raw
+   units;
+3. fan in and compare every result with the complete frontier;
+4. create narrower cross-repository, historical, contradiction, or omission
+   work only where the first wave found a concrete reason;
+5. synthesize once at the whole-project boundary;
+6. use a fresh critic to test completeness, provenance soundness,
+   contradiction transparency, and negative claims before maintainer review.
+
+A workstream is defined by an independently reviewable outcome, exact snapshot,
+coverage slice, and output contract. Alphabetical file sharding may help
+distribute byte-complete reading but cannot define a product or architecture
+conclusion. Cross-repository Areas, capabilities, flows, and contracts are
+always reconciled after repository-local fan-in.
+
+Parallelism is bounded by the host and the frontier, not maximized. Small,
+tightly dependent, or shared-context work remains single-agent. Repeated
+failure, unavailable authority, or blocked evidence stops at a human gate
+instead of spawning more workers.
+
+Each worker writes only its unique `workstreams/*.md` packet and uses attributed
+`wfctl` reads for pinned source evidence, while remaining free to explore all
+relevant read-only context. Shared machine coverage updates are serialized.
+Only the orchestrator accepts a packet and applies final dispositions. The
+case, every dossier, every coverage ledger, and every workstream present on
+disk are part of the resumable session basis. The close gate rejects a packet
+that is present but omitted from the orchestration list. Worker claim, submit,
+and review transitions are CLI-managed under a case lock. Review identity is
+reported provenance, not cryptographic authentication; the case separately
+records whether the final critic was an independent agent, a separate session,
+or the maintainer.
 
 Raw participation is a separate maintainer-owned scope decision. The agent may
 map and recommend the complete frozen snapshot, selected themes, or exclusion,

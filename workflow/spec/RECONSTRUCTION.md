@@ -41,8 +41,9 @@ must remain portable.
 
 ### Git inventory lane
 
-Git is the enumeration authority. The manifest freezes every tracked tree
-entry, including files unsupported by Graphify.
+Git is the enumeration authority. The CLI streams the pinned tree and freezes
+every tracked entry without a fixed subprocess-output buffer, including files
+unsupported by Graphify.
 
 A completed case rejects:
 
@@ -68,13 +69,18 @@ Graphify absence never proves project absence.
 
 Source and test evidence comes from pinned Git blobs. Reading receipts record:
 
+- deterministic receipt ID;
 - exact blob;
 - line range and total lines;
 - actor;
 - timestamp.
 
 An inspected text file is complete only when its receipts cover the whole file
-without gaps. Confirmed source-code evidence must resolve to an inspected file.
+without gaps. Blob reads stream through Git and retain only the requested line
+window, so a large file is not loaded into CLI memory as one buffer. Agents may
+explore with any safe read-only tool, but final workstream evidence must resolve
+to a receipt owned by that worker. Confirmed source-code evidence must resolve
+to an inspected file.
 
 ## File dispositions
 
@@ -100,6 +106,10 @@ Every discovered entrypoint, runtime surface, and boundary records relevant
 paths and a final disposition. Each repository has a final surface audit. An
 empty surface list is valid only with an explicit reviewed explanation.
 
+The initial ledger conservatively proposes likely entrypoints, boundaries, and
+runtime surfaces from manifest paths. Each proposal remains `pending` until an
+agent inspects or rejects it; discovery is a review queue, never truth.
+
 Unexplained communities or runtime surfaces block completion.
 
 ## Repository dossiers
@@ -115,6 +125,63 @@ Each selected repository produces one dossier containing:
 - delivery gaps, contradictions, and unknowns.
 
 Repository names, roles, and count are never predefined by the workflow.
+
+## Adaptive multi-agent execution
+
+Reconstruction version 5 adds an execution contract without making subagents a
+requirement for every case.
+
+- One orchestrator owns the complete frozen frontier, parent case, repository
+  dossiers, final coverage dispositions, candidate reconciliation, and curated
+  knowledge writes.
+- The orchestrator selects `single-agent` or `orchestrator-workers` after
+  inspecting actual independent work and host capabilities. It records bounded
+  parallelism, total workstream, and retry budgets plus a reason.
+- Parallel work is read-heavy and semantically partitioned by repository or
+  community outcome, runtime surface, cross-repository flow or contract,
+  bounded raw-history question, or adversarial audit. Arbitrary path ranges do
+  not establish semantic ownership.
+- Every worker receives exact roots and frozen identities at dispatch, reads
+  the parent case plus only relevant dossiers, frontier items, and explicit
+  dependencies, updates one unique durable workstream packet, and attributes
+  pinned-source receipts to its workstream actor.
+- Packet coverage slices qualify every leaf file, community, and surface with
+  repository identity and must resolve against the frozen frontier; raw case
+  IDs must already belong to the parent reconstruction. A slice assigns
+  responsibility, not visibility. Workers may follow adjacent read-only
+  evidence and record material expansion under `explored_context`.
+- `result.evidence_refs` contains receipt IDs, not arbitrary paths or prose.
+  Each ID must exist, belong to the packet owner, and resolve to an assigned or
+  explicitly explored file.
+- Worker packets are untrusted findings. Only the orchestrator accepts them,
+  updates shared dossiers and final coverage states, and synthesizes
+  whole-project candidates.
+- Work proceeds in bounded map, breadth, fan-in, evidence-driven depth,
+  synthesis, and independent-review waves. New workers require a concrete
+  frontier gap; agent count is not a goal.
+- Per-resource barriers prevent concurrent Markdown mutation of the same packet
+  or intake record. Submitted packets may be reviewed while unrelated workers
+  keep reading. Final shared dossier, case, candidate, and knowledge synthesis
+  waits for all workstreams in the wave to reach reviewed terminal states.
+- Shared coverage mutations serialize through an ignored runtime lock. Direct
+  edits to machine coverage JSON remain invalid.
+- Reconstruction-owned raw workers use the same policy through serialized
+  `case read` receipts. Final raw source dispositions remain orchestrator-owned;
+  workers do not edit intake cases directly.
+- A completed version 5 case requires every referenced workstream to be
+  accepted or explicitly cancelled with orchestrator review, a passed synthesis
+  audit, and a distinct fresh independent review. The review records its actual
+  assurance as `independent-agent`, `separate-session`, or `maintainer`; agent
+  review also records the host run ID. These fields are auditable provenance,
+  not cryptographic authentication.
+- Every packet present under `workstreams/` enters clean-session context and
+  must be referenced. A worker cannot disappear from accounting by leaving its
+  packet off the parent list.
+  Hosts without subagents may work serially, but still require an honest fresh
+  review or maintainer intervention before completed close.
+
+The deterministic ledgers prove corpus accounting. They do not prove worker
+understanding, orchestrator synthesis, or semantic truth.
 
 ## Session continuity
 
@@ -157,7 +224,7 @@ candidate inputs.
 
 ### Maintainer-approved raw scope
 
-Reconstruction version 4 freezes the raw baseline but does not infer whether
+Reconstruction version 5 freezes the raw baseline but does not infer whether
 raw belongs to the baseline. When files exist, the agent inventories and maps
 the snapshot, recommends a boundary, and records exactly one maintainer choice:
 
@@ -215,6 +282,8 @@ Completion fails closed on:
 - unresolved candidate routing;
 - unreviewed declared optional inputs;
 - missing cross-repository reconciliation;
+- unfinished or unreviewed orchestration workstreams;
+- missing synthesis or independent omission review;
 - invalid or missing knowledge promotion;
 - absent maintainer approval.
 

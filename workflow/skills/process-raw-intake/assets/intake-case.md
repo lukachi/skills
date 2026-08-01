@@ -93,10 +93,13 @@ may appear only as intake locators, never as evidence.
 # Source review
 
 `wfctl` generated `sources` from the exact Git tree. For every source, read the
-complete file rather than only search snippets, then use
-`wfctl knowledge case mark`. A `reviewed` source must list every candidate ID
-it yielded. Use `no-relevant-claims` only after the full file was considered.
-Do not edit path, object ID, type, or mode.
+complete frozen text through successive `wfctl knowledge case read` ranges
+rather than only search snippets, then use `wfctl knowledge case mark`. A
+`reviewed` source must list every candidate ID it yielded.
+`no-relevant-claims` requires the same gap-free receipt. Binary or unsupported
+input needs an explicit non-text disposition rather than a fabricated text
+review. Do not edit path, object ID, type, mode, receipts, or non-text state by
+hand.
 
 # Source verification
 

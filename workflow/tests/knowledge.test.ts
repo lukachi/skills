@@ -22,6 +22,7 @@ import {
   inventoryRaw,
   markIntakeSource,
   migrateIntakeCase,
+  readIntakeSource,
   recordIntakeProbe,
   updateIntakeCheckpoint,
 } from "../src/intake.js";
@@ -38,14 +39,19 @@ import { buildInstallPlan } from "../src/planner.js";
 import {
   approveReconstructionRawScope,
   beginProjectReconstruction,
+  claimReconstructionWorkstream,
   closeProjectReconstruction,
+  createReconstructionWorkstream,
   inspectProjectReconstruction,
+  inspectReconstructionCoverage,
   markReconstructionCommunity,
   markReconstructionFiles,
   readReconstructionSource,
   recordReconstructionSurface,
   reconstructionContext,
+  reviewReconstructionWorkstream,
   reviewReconstructionSurfaces,
+  submitReconstructionWorkstream,
   updateReconstructionCheckpoint,
 } from "../src/reconstruction.js";
 import { addLeafRepository } from "../src/repository-registry.js";
@@ -102,6 +108,12 @@ async function completeNoClaimsIntake(
   closedAt: Date,
 ): Promise<void> {
   const casePath = join(target, "intake/cases/active", id, "case.md");
+  await readIntakeSource({
+    target,
+    id,
+    path,
+    now: reviewedAt,
+  });
   await markIntakeSource({
     target,
     id,
@@ -296,6 +308,320 @@ test("resumes reconstruction from complete case, dossier, binding, and coverage 
   );
 });
 
+test("tracks durable reconstruction workstreams and rejects unreviewed worker output", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-reconstruction-workstream-");
+  const leaf = await initializedLeafRepository(
+    "wfctl-reconstruction-workstream-leaf-",
+    target,
+  );
+  const started = await beginProjectReconstruction({
+    target,
+    slug: "workstream-contract",
+    title: "Workstream contract",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-31T11:00:00.000Z"),
+  });
+  const caseDocument = parseWorkSpec(await readFile(started.path, "utf8"));
+  caseDocument.metadata.orchestration = {
+    version: 2,
+    strategy: "adaptive-orchestrator-worker",
+    execution: "orchestrator-workers",
+    status: "completed",
+    reason: "A repository scout can work independently from whole-project synthesis.",
+    budget: {
+      max_parallel: 2,
+      max_workstreams: 1,
+      max_retries_per_workstream: 1,
+    },
+    workstreams: ["workstreams/repository-scout.md"],
+    synthesis: {
+      status: "passed",
+      by: "workflow-agent/orchestrator",
+      notes: ["The isolated packet was reconciled with the complete frontier."],
+    },
+    independent_review: {
+      status: "passed",
+      by: "workflow-agent/critic",
+      assurance: "independent-agent",
+      run_id: "test-run-critic",
+      at: "2026-07-31T11:30:00.000Z",
+      notes: ["The critic checked omitted and unsupported claims."],
+    },
+  };
+  await writeFile(started.path, serializeWorkSpec(caseDocument), "utf8");
+  const workstreamPath = join(
+    dirname(started.path),
+    "workstreams/repository-scout.md",
+  );
+  const repository = started.repositories[0]!;
+  const sourceRead = await readReconstructionSource({
+    target,
+    id: started.id,
+    repository: repository.repository,
+    path: "src/main.ts",
+    actor: "workflow-agent/worker-a",
+    now: new Date("2026-07-31T11:15:00.000Z"),
+  });
+  const workstream: { metadata: Record<string, unknown>; body: string } = {
+    metadata: {
+      reconstruction_workstream_version: 2,
+      case_id: started.id,
+      id: "repository-scout",
+      title: "Map the greeting repository surface",
+      wave: 1,
+      role: "repository-scout",
+      status: "submitted",
+      owner: "workflow-agent/worker-a",
+      attempt: 1,
+      created_at: "2026-07-31T11:05:00.000Z",
+      updated_at: "2026-07-31T11:20:00.000Z",
+      execution: {
+        host: "test-runner",
+        run_id: "test-run-worker-a",
+        claimed_at: "2026-07-31T11:05:00.000Z",
+      },
+      dependencies: [],
+      repositories: [repository.repository],
+      coverage_slice: {
+        files: [`${repository.repository}#src/main.ts`],
+        communities: [`${repository.repository}#1`],
+        surfaces: [],
+        raw_cases: [],
+      },
+      explored_context: {
+        files: [],
+        communities: [],
+        surfaces: [],
+        raw_cases: [],
+        notes: [],
+      },
+      result: {
+        summary: "Mapped the greeting entrypoint and its local boundary.",
+        candidate_ids: [],
+        evidence_refs: [sourceRead.receiptId],
+        uncertainties: [],
+        contradictions: [],
+        unexplained: [],
+        follow_up: [],
+      },
+      review: {
+        status: "pending",
+        by: "",
+        at: "",
+        notes: [],
+      },
+    },
+    body: "# Objective\n\nMap one bounded repository surface.\n\n# Findings\n\nThe greeting entrypoint is local to the pinned repository.\n",
+  };
+  await writeFile(workstreamPath, serializeWorkSpec(workstream), "utf8");
+
+  const context = await reconstructionContext(target, started.id);
+  assert.equal(context.workstreams[0]?.id, "repository-scout");
+  assert.ok(context.requiredFiles.some((file) =>
+    file.role === "reconstruction-workstream-full-read"
+    && file.path.endsWith("workstreams/repository-scout.md")
+  ));
+  assert.ok((await inspectProjectReconstruction(target, started.id)).issues.some((issue) =>
+    /workstream workstreams\/repository-scout\.md: status must be accepted or review-approved cancelled/.test(issue)
+  ));
+
+  workstream.metadata.status = "accepted";
+  workstream.metadata.review = {
+    status: "accepted",
+    by: "workflow-agent/orchestrator",
+    at: "2026-07-31T11:25:00.000Z",
+    notes: ["Receipts and bounded claims match the assigned slice."],
+  };
+  await writeFile(workstreamPath, serializeWorkSpec(workstream), "utf8");
+  const accepted = await inspectProjectReconstruction(target, started.id);
+  assert.equal(
+    accepted.issues.some((issue) =>
+      issue.startsWith("workstream ") || issue.startsWith("orchestration ")
+    ),
+    false,
+  );
+
+  const coverageSlice = workstream.metadata.coverage_slice as Record<string, unknown>;
+  coverageSlice.files = [`${repository.repository}#src/missing.ts`];
+  await writeFile(workstreamPath, serializeWorkSpec(workstream), "utf8");
+  assert.ok((await inspectProjectReconstruction(target, started.id)).issues.some((issue) =>
+    /coverage_slice\.files is outside the frozen frontier/.test(issue)
+  ));
+  coverageSlice.files = [`${repository.repository}#src/main.ts`];
+  await writeFile(workstreamPath, serializeWorkSpec(workstream), "utf8");
+
+  const unreferencedCase = parseWorkSpec(await readFile(started.path, "utf8"));
+  const orchestration = unreferencedCase.metadata.orchestration as Record<string, unknown>;
+  orchestration.workstreams = [];
+  await writeFile(started.path, serializeWorkSpec(unreferencedCase), "utf8");
+  assert.equal((await reconstructionContext(target, started.id)).workstreams[0]?.id, "repository-scout");
+  assert.ok((await inspectProjectReconstruction(target, started.id)).issues.some((issue) =>
+    /workstream is present but not referenced: workstreams\/repository-scout\.md/.test(issue)
+  ));
+});
+
+test("manages workstream ownership while allowing receipt-backed scope expansion", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-workstream-lifecycle-");
+  const leaf = await initializedLeafRepository(
+    "wfctl-workstream-lifecycle-leaf-",
+    target,
+  );
+  await writeFile(
+    join(leaf, "src/adjacent.ts"),
+    "export const adjacent = 'followed context';\n",
+    "utf8",
+  );
+  commitAll(leaf, "add adjacent source");
+  await addLeafRepository(target, leaf);
+  const started = await beginProjectReconstruction({
+    target,
+    slug: "managed-worker",
+    title: "Managed worker lifecycle",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-31T12:00:00.000Z"),
+  });
+  const repository = started.repositories[0]!;
+  const initialContext = await reconstructionContext(target, started.id);
+  assert.ok(
+    initialContext.coverage[0]?.outstandingSurfaces.some(
+      (surface) => surface.id.startsWith("auto-entrypoint-") && surface.status === "pending",
+    ),
+  );
+
+  const caseDocument = parseWorkSpec(await readFile(started.path, "utf8"));
+  const orchestration = caseDocument.metadata.orchestration as Record<string, unknown>;
+  orchestration.execution = "orchestrator-workers";
+  orchestration.status = "planning";
+  orchestration.reason = "One bounded repository question can be delegated safely.";
+  orchestration.budget = {
+    max_parallel: 2,
+    max_workstreams: 2,
+    max_retries_per_workstream: 1,
+  };
+  await writeFile(started.path, serializeWorkSpec(caseDocument), "utf8");
+
+  const created = await createReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "repository-scout",
+    title: "Trace the greeting boundary",
+    objective: "Trace the greeting boundary and follow only relevant adjacent evidence.",
+    role: "repository-scout",
+    wave: 1,
+    repositories: [repository.repository],
+    files: [`${repository.repository}#src/main.ts`],
+    distributionRoot,
+    now: new Date("2026-07-31T12:05:00.000Z"),
+  });
+  assert.equal(created.status, "planned");
+  await claimReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "repository-scout",
+    actor: "workflow-agent/worker-a",
+    host: "test-runner",
+    runId: "test-run-worker-a",
+    now: new Date("2026-07-31T12:06:00.000Z"),
+  });
+  const adjacentRead = await readReconstructionSource({
+    target,
+    id: started.id,
+    repository: repository.repository,
+    path: "src/adjacent.ts",
+    actor: "workflow-agent/worker-a",
+    now: new Date("2026-07-31T12:10:00.000Z"),
+  });
+  const workstreamPath = join(target, created.path);
+  const packet = parseWorkSpec(await readFile(workstreamPath, "utf8"));
+  const result = packet.metadata.result as Record<string, unknown>;
+  result.summary = "The assigned entrypoint depends on relevant adjacent source.";
+  result.evidence_refs = [adjacentRead.receiptId];
+  packet.body = packet.body.replace(
+    "Pending receipt-backed evidence.",
+    "The adjacent source was read from the pinned revision.",
+  );
+  await writeFile(workstreamPath, serializeWorkSpec(packet), "utf8");
+
+  await assert.rejects(
+    submitReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "repository-scout",
+      actor: "workflow-agent/worker-a",
+    }),
+    /outside the assigned or recorded explored files/,
+  );
+  const explored = packet.metadata.explored_context as Record<string, unknown>;
+  explored.files = [`${repository.repository}#src/adjacent.ts`];
+  explored.notes = ["Followed a direct source relationship outside the owned conclusion slice."];
+  await writeFile(workstreamPath, serializeWorkSpec(packet), "utf8");
+  assert.equal(
+    (await submitReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "repository-scout",
+      actor: "workflow-agent/worker-a",
+    })).status,
+    "submitted",
+  );
+  await assert.rejects(
+    reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "repository-scout",
+      reviewer: "workflow-agent/worker-a",
+      status: "accepted",
+      notes: ["Self-review must not pass."],
+    }),
+    /reviewer must differ/,
+  );
+  assert.equal(
+    (await reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "repository-scout",
+      reviewer: "workflow-agent/orchestrator",
+      status: "accepted",
+      notes: ["The expansion is explicit and its evidence receipt belongs to the worker."],
+    })).status,
+    "accepted",
+  );
+  await createReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "obsolete-scout",
+    title: "Check an obsolete branch",
+    objective: "Confirm whether a separately planned branch still needs investigation.",
+    role: "repository-scout",
+    wave: 1,
+    repositories: [repository.repository],
+    distributionRoot,
+    now: new Date("2026-07-31T12:20:00.000Z"),
+  });
+  assert.equal(
+    (await reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "obsolete-scout",
+      reviewer: "workflow-agent/orchestrator",
+      status: "cancelled",
+      notes: ["The accepted first packet made this planned branch unnecessary."],
+    })).status,
+    "cancelled",
+  );
+  const lifecycleIssues = (await inspectProjectReconstruction(target, started.id)).issues;
+  assert.equal(
+    lifecycleIssues.some((issue) =>
+      issue.startsWith("workstream workstreams/obsolete-scout.md")
+    ),
+    false,
+  );
+});
+
 test("freezes intake coverage to exact Git blobs and detects working-tree drift", async () => {
   const target = await initializedKnowledgeRepository("wfctl-intake-");
   await mkdir(join(target, "raw/notes"), { recursive: true });
@@ -340,7 +666,14 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
     path: "raw/blob.bin",
     status: "no-relevant-claims",
     note: "Opaque artifact contains no reviewable project claim.",
+    nonTextReason: "Binary input was explicitly excluded from text claim extraction.",
     now: new Date("2026-07-28T12:10:00.000Z"),
+  });
+  await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/notes/history.md",
+    now: new Date("2026-07-28T12:15:00.000Z"),
   });
   await markIntakeSource({
     target,
@@ -440,6 +773,293 @@ test("freezes intake coverage to exact Git blobs and detects working-tree drift"
   );
 });
 
+test("requires gap-free pinned-blob read receipts before final text review", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-intake-receipts-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  const content = `${Array.from(
+    { length: 450 },
+    (_, index) => `Line ${index + 1}`,
+  ).join("\n")}\n`;
+  await writeFile(join(target, "raw/long.md"), content, "utf8");
+  commitAll(target, "add long raw source");
+  const started = await beginIntakeCase({
+    target,
+    slug: "receipt-gate",
+    title: "Receipt gate",
+    distributionRoot,
+    now: new Date("2026-07-28T13:00:00.000Z"),
+  });
+
+  await assert.rejects(
+    markIntakeSource({
+      target,
+      id: started.id,
+      path: "raw/long.md",
+      status: "no-relevant-claims",
+      note: "No durable candidates were found.",
+    }),
+    /gap-free full-read receipts/,
+  );
+  const first = await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/long.md",
+    now: new Date("2026-07-28T13:01:00.000Z"),
+  });
+  assert.equal(first.startLine, 1);
+  assert.equal(first.endLine, 200);
+  assert.equal(first.totalLines, 450);
+  assert.equal(first.complete, false);
+  await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/long.md",
+    startLine: 202,
+    endLine: 400,
+    now: new Date("2026-07-28T13:02:00.000Z"),
+  });
+  await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/long.md",
+    startLine: 401,
+    endLine: 450,
+    now: new Date("2026-07-28T13:03:00.000Z"),
+  });
+  await assert.rejects(
+    markIntakeSource({
+      target,
+      id: started.id,
+      path: "raw/long.md",
+      status: "no-relevant-claims",
+      note: "No durable candidates were found.",
+    }),
+    /gap-free full-read receipts/,
+  );
+  const completed = await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/long.md",
+    startLine: 201,
+    endLine: 201,
+    now: new Date("2026-07-28T13:04:00.000Z"),
+  });
+  assert.equal(completed.complete, true);
+  assert.equal(completed.content, "Line 201");
+  await markIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/long.md",
+    status: "no-relevant-claims",
+    note: "Every line was read from the pinned blob; no durable candidate was found.",
+    now: new Date("2026-07-28T13:05:00.000Z"),
+  });
+  const document = parseWorkSpec(await readFile(started.path, "utf8"));
+  document.metadata.promotion = {
+    status: "not-needed",
+    concepts: [],
+    reason: "No independently authoritative claim was found.",
+    validation: "not-needed",
+  };
+  document.metadata.omission_audit = {
+    result: "passed",
+    notes: ["The complete pinned source was reviewed."],
+    probes: [],
+  };
+  const source = (document.metadata.sources as Array<Record<string, unknown>>)[0]!;
+  const receipts = source.read_receipts as Array<Record<string, unknown>>;
+  receipts[0]!.end_line = 199;
+  await writeFile(started.path, serializeWorkSpec(document), "utf8");
+  assert.ok((await inspectIntakeCase(target, started.id)).issues.some((issue) =>
+    /lacks gap-free full-read receipts/.test(issue)
+  ));
+  receipts[0]!.end_line = 200;
+  await writeFile(started.path, serializeWorkSpec(document), "utf8");
+  assert.deepEqual((await inspectIntakeCase(target, started.id)).issues, []);
+});
+
+test("serializes concurrent raw read receipts without losing ranges", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-intake-concurrent-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  await writeFile(
+    join(target, "raw/parallel.md"),
+    Array.from({ length: 400 }, (_, index) => `Line ${index + 1}`).join("\n"),
+    "utf8",
+  );
+  commitAll(target, "add parallel raw source");
+  const started = await beginIntakeCase({
+    target,
+    slug: "parallel-receipts",
+    title: "Parallel receipt merge",
+    distributionRoot,
+  });
+
+  await Promise.all([
+    readIntakeSource({
+      target,
+      id: started.id,
+      path: "raw/parallel.md",
+      startLine: 1,
+      endLine: 200,
+      actor: "workflow-agent/raw-a",
+    }),
+    readIntakeSource({
+      target,
+      id: started.id,
+      path: "raw/parallel.md",
+      startLine: 201,
+      endLine: 400,
+      actor: "workflow-agent/raw-b",
+    }),
+  ]);
+  await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/parallel.md",
+    startLine: 1,
+    endLine: 200,
+    actor: "workflow-agent/raw-critic",
+  });
+  await markIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/parallel.md",
+    status: "no-relevant-claims",
+    note: "Both attributed ranges cover the complete frozen blob.",
+  });
+  const document = parseWorkSpec(await readFile(started.path, "utf8"));
+  const source = (document.metadata.sources as Array<Record<string, unknown>>)[0]!;
+  assert.equal((source.read_receipts as unknown[]).length, 3);
+});
+
+test("serializes concurrent reconstruction coverage mutations", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-reconstruction-concurrent-");
+  const leaf = await initializedLeafRepository(
+    "wfctl-reconstruction-concurrent-leaf-",
+    target,
+  );
+  const started = await beginProjectReconstruction({
+    target,
+    slug: "parallel-coverage",
+    title: "Parallel coverage merge",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+  });
+
+  await Promise.all([
+    markReconstructionFiles({
+      target,
+      id: started.id,
+      paths: ["AGENTS.md"],
+      category: "documentation",
+      status: "irrelevant",
+      reason: "Workflow bootstrap instructions are outside the fixture behavior.",
+    }),
+    markReconstructionCommunity({
+      target,
+      id: started.id,
+      community: "1",
+      status: "inspected",
+      note: "The greeting community was mapped by a separate worker.",
+      queries: ["Trace greeting structure."],
+    }),
+  ]);
+  const summary = (await inspectReconstructionCoverage(
+    target,
+    started.id,
+  )).repositories[0]!;
+  assert.equal(summary.communityStates.inspected, 1);
+  assert.ok(summary.fileStates.irrelevant >= 1);
+});
+
+test("requires explicit dispositions for binary and unsupported raw blobs", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-intake-non-text-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  await writeFile(join(target, "raw/nul.bin"), Buffer.from([0, 1, 2, 3]));
+  await writeFile(join(target, "raw/invalid.bin"), Buffer.from([0xff, 0xfe]));
+  commitAll(target, "add non-text raw sources");
+  const started = await beginIntakeCase({
+    target,
+    slug: "non-text-gate",
+    title: "Non-text gate",
+    distributionRoot,
+    now: new Date("2026-07-28T14:00:00.000Z"),
+  });
+
+  await assert.rejects(
+    readIntakeSource({
+      target,
+      id: started.id,
+      path: "raw/nul.bin",
+    }),
+    /pinned input is binary/,
+  );
+  await assert.rejects(
+    readIntakeSource({
+      target,
+      id: started.id,
+      path: "raw/invalid.bin",
+    }),
+    /pinned input is unsupported/,
+  );
+  await assert.rejects(
+    markIntakeSource({
+      target,
+      id: started.id,
+      path: "raw/nul.bin",
+      status: "no-relevant-claims",
+      note: "No text claims can be extracted.",
+    }),
+    /requires --non-text-reason/,
+  );
+  await markIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/nul.bin",
+    status: "no-relevant-claims",
+    note: "No text claims can be extracted.",
+    nonTextReason: "NUL-containing binary input is outside text intake.",
+    now: new Date("2026-07-28T14:01:00.000Z"),
+  });
+  await markIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/invalid.bin",
+    status: "no-relevant-claims",
+    note: "No supported text claims can be extracted.",
+    nonTextReason: "The blob is not valid UTF-8 and needs a future specialized extractor.",
+    now: new Date("2026-07-28T14:02:00.000Z"),
+  });
+  const document = parseWorkSpec(await readFile(started.path, "utf8"));
+  document.metadata.promotion = {
+    status: "not-needed",
+    concepts: [],
+    reason: "No text candidate was available for promotion.",
+    validation: "not-needed",
+  };
+  document.metadata.omission_audit = {
+    result: "passed",
+    notes: ["Both non-text inputs have explicit dispositions."],
+    probes: [],
+  };
+  const sources = document.metadata.sources as Array<Record<string, unknown>>;
+  assert.deepEqual(
+    sources.map((source) =>
+      (source.non_text_disposition as Record<string, unknown>).kind
+    ),
+    ["unsupported", "binary"],
+  );
+  await writeFile(started.path, serializeWorkSpec(document), "utf8");
+  assert.deepEqual((await inspectIntakeCase(target, started.id)).issues, []);
+  const disposition = sources[0]!.non_text_disposition as Record<string, unknown>;
+  disposition.reason = "";
+  await writeFile(started.path, serializeWorkSpec(document), "utf8");
+  assert.ok((await inspectIntakeCase(target, started.id)).issues.some((issue) =>
+    /requires a matching explicit non-text disposition/.test(issue)
+  ));
+});
+
 test("reviewed reconstruction raw input must converge at its frozen baseline", async () => {
   const target = await initializedKnowledgeRepository("wfctl-raw-convergence-");
   await mkdir(join(target, "raw"), { recursive: true });
@@ -507,6 +1127,12 @@ test("reviewed reconstruction raw input must converge at its frozen baseline", a
     reconstructionId: reconstruction.id,
     distributionRoot,
     now: new Date("2026-07-28T12:40:00.000Z"),
+  });
+  await readIntakeSource({
+    target,
+    id: intake.id,
+    path: "raw/idea.md",
+    now: new Date("2026-07-28T12:42:00.000Z"),
   });
   await markIntakeSource({
     target,
@@ -866,6 +1492,32 @@ test("reconstructs a source-first baseline without raw input or durable checkout
   caseDocument.metadata.reconciliation_audit = {
     result: "passed",
     notes: ["Observed delivery and accepted intent were reviewed independently."],
+  };
+  caseDocument.metadata.orchestration = {
+    version: 2,
+    strategy: "adaptive-orchestrator-worker",
+    execution: "single-agent",
+    status: "completed",
+    reason: "The small fixture has one repository and no independent analysis branches.",
+    budget: {
+      max_parallel: 1,
+      max_workstreams: 0,
+      max_retries_per_workstream: 0,
+    },
+    workstreams: [],
+    synthesis: {
+      status: "passed",
+      by: "workflow-agent/orchestrator",
+      notes: ["Repository findings and candidate claims were reconciled."],
+    },
+    independent_review: {
+      status: "passed",
+      by: "workflow-agent/critic",
+      assurance: "independent-agent",
+      run_id: "test-run-critic",
+      at: "2026-07-30T13:55:00Z",
+      notes: ["A fresh review found no unsupported claim or missing surface."],
+    },
   };
   caseDocument.metadata.maintainer_review = {
     status: "approved",
@@ -1419,6 +2071,12 @@ test("runs a bounded legacy reconciliation case lifecycle", async () => {
     distributionRoot,
     now: new Date("2026-07-28T11:00:00.000Z"),
   });
+  await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/history.md",
+    now: new Date("2026-07-28T11:20:00.000Z"),
+  });
   await markIntakeSource({
     target,
     id: started.id,
@@ -1462,6 +2120,12 @@ test("migrates intake v3 conservatively and requires semantic review", async () 
     title: "Migrate legacy intake",
     distributionRoot,
     now: new Date("2026-07-28T10:00:00.000Z"),
+  });
+  await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/legacy.md",
+    now: new Date("2026-07-28T10:02:00.000Z"),
   });
   await markIntakeSource({
     target,
@@ -1542,6 +2206,12 @@ test("does not infer current truth or permit one-step review during v3 migration
     distributionRoot,
     now: new Date("2026-07-28T10:00:00.000Z"),
   });
+  await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/legacy.md",
+    now: new Date("2026-07-28T10:02:00.000Z"),
+  });
   await markIntakeSource({
     target,
     id: started.id,
@@ -1606,6 +2276,12 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
     distributionRoot,
     now: new Date("2026-07-28T11:00:00.000Z"),
   });
+  await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/ideas/old.md",
+    now: new Date("2026-07-28T11:02:00.000Z"),
+  });
   await markIntakeSource({
     target,
     id: started.id,
@@ -1614,6 +2290,12 @@ test("enforces claim routing, reciprocal lineage, and omission probes", async ()
     candidateIds: ["old-proposal"],
     note: "Read completely; captured the earlier proposal.",
     now: new Date("2026-07-28T11:05:00.000Z"),
+  });
+  await readIntakeSource({
+    target,
+    id: started.id,
+    path: "raw/ideas/new.md",
+    now: new Date("2026-07-28T11:07:00.000Z"),
   });
   await markIntakeSource({
     target,

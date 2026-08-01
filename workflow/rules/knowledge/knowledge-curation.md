@@ -141,6 +141,11 @@ If reconstruction marks raw as reviewed, every blob in its approved `all` or
 with no unseen, changed, active, blocked, or unresolved entry. Excluded raw
 starts no child cases. Later raw is a new intake generation, not a reason to
 rewrite or invalidate the frozen receipt.
+Only `wfctl knowledge case read` creates the frozen-blob line receipts needed
+before a text source can become `reviewed` or `no-relevant-claims`. Read every
+source until the command reports complete. Binary or unsupported sources need
+an explicit `case mark --non-text-reason`; ordinary reads and QMD snippets do
+not satisfy this gate.
 
 Use `wfctl knowledge build` to validate and compile explicit Markdown links,
 typed `x-wf.relations`, Area ownership, and decision lineage into

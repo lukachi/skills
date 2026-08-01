@@ -26,6 +26,7 @@ import {
   resolveKnowledgeRoot,
 } from "./config.js";
 import { readRepositoryMetadata } from "./git.js";
+import { withFileLock } from "./file-lock.js";
 import { inventoryRaw, normalizeRawPathspecs } from "./intake.js";
 import {
   COVERAGE_STATES,
@@ -54,6 +55,16 @@ import { resolveReconstructionLeaves } from "./repository-registry.js";
 import { compileClaimLedger } from "./claim-ledger.js";
 import { discoveryLedgerIssues } from "./discovery-ledger.js";
 import {
+  RECONSTRUCTION_WORKSTREAM_VERSION,
+  readReconstructionWorkstreams,
+  reconstructionOrchestrationIssues,
+  reconstructionWorkstreamSetIssues,
+  reconstructionWorkstreamIssues,
+  type ReconstructionReceiptIndexEntry,
+  type ReconstructionScopeIndexEntry,
+  type ReconstructionWorkstreamRecord,
+} from "./reconstruction-orchestration.js";
+import {
   inspectSessionCheckpoint,
   selectActiveCase,
   sessionBasis,
@@ -72,7 +83,8 @@ import {
   serializeWorkSpec,
 } from "./work-spec.js";
 
-const RECONSTRUCTION_VERSION = 4;
+const RECONSTRUCTION_VERSION = 5;
+const RAW_SCOPE_RECONSTRUCTION_VERSION = 4;
 const LEGACY_RECONSTRUCTION_VERSION = 3;
 const RECONSTRUCTION_SESSION_VERSION = 1;
 const RAW_SCOPE_MODES = ["all", "selected", "excluded", "unavailable"] as const;
@@ -194,6 +206,28 @@ export interface ReconstructionContext {
   mode: string;
   root: string;
   requiredFiles: KnowledgeSessionFile[];
+  orchestration: {
+    execution: string;
+    status: string;
+    reason: string;
+    maxParallel: number;
+    maxWorkstreams: number;
+    maxRetriesPerWorkstream: number;
+    synthesisStatus: string;
+    independentReviewStatus: string;
+    independentReviewAssurance: string;
+    independentReviewRunId: string;
+  };
+  workstreams: Array<{
+    id: string;
+    title: string;
+    wave: number;
+    role: string;
+    status: string;
+    owner: string;
+    path: string;
+    reviewStatus: string;
+  }>;
   coverage: CoverageSummary[];
   rawScope: {
     status: string;
@@ -205,6 +239,59 @@ export interface ReconstructionContext {
   };
   checkpoint?: KnowledgeSessionCheckpointSummary;
   validationIssues: string[];
+}
+
+export interface CreateReconstructionWorkstreamOptions {
+  target: string;
+  id: string;
+  workstream: string;
+  title: string;
+  objective: string;
+  role: string;
+  wave: number;
+  repositories?: string[];
+  files?: string[];
+  communities?: string[];
+  surfaces?: string[];
+  rawCases?: string[];
+  dependencies?: string[];
+  distributionRoot?: string;
+  now?: Date;
+}
+
+export interface ClaimReconstructionWorkstreamOptions {
+  target: string;
+  id: string;
+  workstream: string;
+  actor: string;
+  host: string;
+  runId: string;
+  now?: Date;
+}
+
+export interface SubmitReconstructionWorkstreamOptions {
+  target: string;
+  id: string;
+  workstream: string;
+  actor: string;
+  now?: Date;
+}
+
+export interface ReviewReconstructionWorkstreamOptions {
+  target: string;
+  id: string;
+  workstream: string;
+  reviewer: string;
+  status: "accepted" | "rework" | "cancelled";
+  notes: string[];
+  now?: Date;
+}
+
+export interface ReconstructionWorkstreamMutationResult {
+  id: string;
+  workstream: string;
+  status: string;
+  path: string;
 }
 
 export interface UpdateReconstructionCheckpointOptions {
@@ -477,6 +564,7 @@ export async function beginProjectReconstruction(
   const bindingPath = reconstructionBindingPath(target, id);
   try {
     await mkdir(join(directory, "repositories"), { recursive: true });
+    await mkdir(join(directory, "workstreams"), { recursive: true });
     await writeFile(casePath, serializeWorkSpec(document), {
       encoding: "utf8",
       flag: "wx",
@@ -514,7 +602,7 @@ export async function beginProjectReconstruction(
       actor: "system:wfctl",
       currentState: "Reconstruction case created from exact clean repository revisions.",
       lastCompleted: "Repository dossiers, coverage ledgers, and local checkout bindings were frozen.",
-      nextAction: "Read the complete case and every dossier, then inspect the full coverage frontier.",
+      nextAction: "Read the complete case and every dossier, choose the orchestration mode and budget, then inspect the full coverage frontier.",
       blockers: [],
       now,
     });
@@ -543,6 +631,285 @@ export async function beginProjectReconstruction(
       trackedFiles: coverageLedgers[index]!.manifest.files.length,
     })),
   };
+}
+
+export async function createReconstructionWorkstream(
+  options: CreateReconstructionWorkstreamOptions,
+): Promise<ReconstructionWorkstreamMutationResult> {
+  assertWorkstreamId(options.workstream);
+  if (!options.title.trim() || !options.objective.trim() || !options.role.trim()) {
+    throw new Error("Workstream title, objective, and role are required");
+  }
+  if (!Number.isInteger(options.wave) || options.wave < 1) {
+    throw new Error("Workstream wave must be a positive integer");
+  }
+  return await withLockedReconstructionCase(
+    options.target,
+    options.id,
+    async ({ target, casePath, caseDirectory, document }) => {
+      const orchestration = recordValue(document.metadata.orchestration);
+      if (!orchestration) {
+        throw new Error("Reconstruction orchestration must be planned before creating workstreams");
+      }
+      const execution = stringValue(orchestration.execution);
+      if (execution !== "orchestrator-workers") {
+        throw new Error(
+          "Workstreams require orchestration.execution: orchestrator-workers",
+        );
+      }
+      const relativePath = `workstreams/${options.workstream}.md`;
+      const registered = stringArray(orchestration.workstreams);
+      if (registered.includes(relativePath)) {
+        throw new Error(`Reconstruction workstream already exists: ${options.workstream}`);
+      }
+      const budget = recordValue(orchestration.budget);
+      const maxWorkstreams = Number(budget?.max_workstreams);
+      if (!Number.isInteger(maxWorkstreams) || maxWorkstreams < 1) {
+        throw new Error(
+          "Plan orchestration.budget.max_workstreams before creating worker packets",
+        );
+      }
+      if (registered.length >= maxWorkstreams) {
+        throw new Error(
+          `Workstream budget exhausted: ${registered.length}/${maxWorkstreams}`,
+        );
+      }
+
+      const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+      const template = parseWorkSpec(await readFile(
+        join(
+          distributionRoot,
+          "skills/reconstruct-project-knowledge/assets/reconstruction-workstream.md",
+        ),
+        "utf8",
+      ));
+      const now = options.now ?? new Date();
+      const timestamp = now.toISOString();
+      const files = uniqueSorted(options.files ?? []);
+      const communities = uniqueSorted(options.communities ?? []);
+      const surfaces = uniqueSorted(options.surfaces ?? []);
+      const inferredRepositories = [...files, ...communities, ...surfaces]
+        .map((reference) => {
+          const separator = reference.indexOf("#");
+          return separator > 0 ? reference.slice(0, separator) : "";
+        })
+        .filter(Boolean);
+      template.metadata = {
+        ...template.metadata,
+        reconstruction_workstream_version: RECONSTRUCTION_WORKSTREAM_VERSION,
+        case_id: options.id,
+        id: options.workstream,
+        title: options.title.trim(),
+        wave: options.wave,
+        role: options.role.trim(),
+        status: "planned",
+        owner: "",
+        attempt: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+        execution: {
+          host: "",
+          run_id: "",
+          claimed_at: "",
+        },
+        dependencies: uniqueSorted(options.dependencies ?? []),
+        repositories: uniqueSorted([
+          ...(options.repositories ?? []),
+          ...inferredRepositories,
+        ]),
+        coverage_slice: {
+          files,
+          communities,
+          surfaces,
+          raw_cases: uniqueSorted(options.rawCases ?? []),
+        },
+        explored_context: {
+          files: [],
+          communities: [],
+          surfaces: [],
+          raw_cases: [],
+          notes: [],
+        },
+        result: {
+          summary: "",
+          candidate_ids: [],
+          evidence_refs: [],
+          uncertainties: [],
+          contradictions: [],
+          unexplained: [],
+          follow_up: [],
+        },
+        review: {
+          status: "pending",
+          by: "",
+          at: "",
+          notes: [],
+        },
+      };
+      template.body = renderWorkstreamBody(options.objective.trim());
+      const workstreamPath = join(caseDirectory, relativePath);
+      await writeFile(workstreamPath, serializeWorkSpec(template), {
+        encoding: "utf8",
+        flag: "wx",
+      });
+      orchestration.workstreams = [...registered, relativePath];
+      orchestration.status = "running";
+      document.metadata.updated_at = timestamp;
+      try {
+        await writeFile(casePath, serializeWorkSpec(document), "utf8");
+      } catch (error) {
+        await unlink(workstreamPath);
+        throw error;
+      }
+      return {
+        id: options.id,
+        workstream: options.workstream,
+        status: "planned",
+        path: relative(target, workstreamPath),
+      };
+    },
+  );
+}
+
+export async function claimReconstructionWorkstream(
+  options: ClaimReconstructionWorkstreamOptions,
+): Promise<ReconstructionWorkstreamMutationResult> {
+  return await mutateReconstructionWorkstream(
+    options.target,
+    options.id,
+    options.workstream,
+    options.now,
+    async ({ document, timestamp }) => {
+      const actor = options.actor.trim();
+      const host = options.host.trim();
+      const runId = options.runId.trim();
+      if (!actor || !host || !runId) {
+        throw new Error("Workstream claim requires actor, host, and run ID");
+      }
+      const status = stringValue(document.metadata.status);
+      if (status !== "planned" && status !== "rework") {
+        throw new Error(`Cannot claim workstream in ${status || "unknown"} state`);
+      }
+      if (status === "rework") {
+        document.metadata.attempt = Number(document.metadata.attempt) + 1;
+      }
+      document.metadata.status = "active";
+      document.metadata.owner = actor;
+      document.metadata.execution = {
+        host,
+        run_id: runId,
+        claimed_at: timestamp,
+      };
+      document.metadata.updated_at = timestamp;
+    },
+  );
+}
+
+export async function submitReconstructionWorkstream(
+  options: SubmitReconstructionWorkstreamOptions,
+): Promise<ReconstructionWorkstreamMutationResult> {
+  return await mutateReconstructionWorkstream(
+    options.target,
+    options.id,
+    options.workstream,
+    options.now,
+    async ({ target, caseDirectory, caseDocument, record, document, timestamp }) => {
+      const actor = options.actor.trim();
+      if (!actor || actor !== stringValue(document.metadata.owner)) {
+        throw new Error("Only the recorded workstream owner may submit it");
+      }
+      if (document.metadata.status !== "active") {
+        throw new Error("Only an active workstream may be submitted");
+      }
+      document.metadata.status = "submitted";
+      document.metadata.updated_at = timestamp;
+      record.document = document;
+      record.content = Buffer.from(serializeWorkSpec(document));
+      const context = await workstreamValidationContext(
+        target,
+        options.id,
+        caseDirectory,
+        caseDocument,
+      );
+      const issues = reconstructionWorkstreamIssues(
+        record,
+        options.id,
+        context.repositoryIds,
+        context.workstreamIds,
+        context.maxRetries,
+        context.scopeIndex,
+        context.rawCaseIds,
+        context.receiptIndex,
+        "submit",
+      );
+      if (issues.length > 0) {
+        throw new Error(`Workstream submission is incomplete: ${issues.join("; ")}`);
+      }
+    },
+  );
+}
+
+export async function reviewReconstructionWorkstream(
+  options: ReviewReconstructionWorkstreamOptions,
+): Promise<ReconstructionWorkstreamMutationResult> {
+  return await mutateReconstructionWorkstream(
+    options.target,
+    options.id,
+    options.workstream,
+    options.now,
+    async ({ target, caseDirectory, caseDocument, record, document, timestamp }) => {
+      const reviewer = options.reviewer.trim();
+      const notes = options.notes.map((note) => note.trim()).filter(Boolean);
+      if (!reviewer || notes.length === 0) {
+        throw new Error("Workstream review requires a reviewer and at least one note");
+      }
+      if (reviewer === stringValue(document.metadata.owner)) {
+        throw new Error("Workstream reviewer must differ from its owner");
+      }
+      if (
+        options.status !== "cancelled"
+        && document.metadata.status !== "submitted"
+      ) {
+        throw new Error("Only a submitted workstream may be accepted or returned");
+      }
+      if (
+        options.status === "cancelled"
+        && ["accepted", "cancelled"].includes(stringValue(document.metadata.status))
+      ) {
+        throw new Error("Completed workstream cannot be cancelled");
+      }
+      if (options.status === "accepted") {
+        const context = await workstreamValidationContext(
+          target,
+          options.id,
+          caseDirectory,
+          caseDocument,
+        );
+        const submitIssues = reconstructionWorkstreamIssues(
+          record,
+          options.id,
+          context.repositoryIds,
+          context.workstreamIds,
+          context.maxRetries,
+          context.scopeIndex,
+          context.rawCaseIds,
+          context.receiptIndex,
+          "submit",
+        );
+        if (submitIssues.length > 0) {
+          throw new Error(`Workstream cannot be accepted: ${submitIssues.join("; ")}`);
+        }
+      }
+      document.metadata.status = options.status;
+      document.metadata.review = {
+        status: options.status === "rework" ? "rework" : "accepted",
+        by: reviewer,
+        at: timestamp,
+        notes,
+      };
+      document.metadata.updated_at = timestamp;
+    },
+  );
 }
 
 export async function reconstructionContext(
@@ -604,12 +971,17 @@ export async function reconstructionContext(
   issues.push(...bindingIssues);
   const raw = recordValue(recordValue(document.metadata.supplemental_inputs)?.raw);
   const rawScope = recordValue(raw?.scope);
+  const orchestration = recordValue(document.metadata.orchestration);
+  const orchestrationBudget = recordValue(orchestration?.budget);
   const reconstructionVersion = Number(document.metadata.reconstruction_version);
   if (reconstructionVersion === LEGACY_RECONSTRUCTION_VERSION) {
     issues.push(
       `reconstruction_version ${LEGACY_RECONSTRUCTION_VERSION} has no maintainer-approved raw scope; record it with wfctl knowledge reconstruct raw-scope`,
     );
-  } else if (reconstructionVersion === RECONSTRUCTION_VERSION) {
+  } else if (
+    reconstructionVersion === RAW_SCOPE_RECONSTRUCTION_VERSION
+    || reconstructionVersion === RECONSTRUCTION_VERSION
+  ) {
     issues.push(...reconstructionRawScopeIssues(raw));
   }
   return {
@@ -618,6 +990,34 @@ export async function reconstructionContext(
     mode: stringValue(document.metadata.mode),
     root: dirname(selected.path),
     requiredFiles: session.files,
+    orchestration: {
+      execution: stringValue(orchestration?.execution),
+      status: stringValue(orchestration?.status),
+      reason: stringValue(orchestration?.reason),
+      maxParallel: Number(orchestrationBudget?.max_parallel) || 0,
+      maxWorkstreams: Number(orchestrationBudget?.max_workstreams) || 0,
+      maxRetriesPerWorkstream: Number(orchestrationBudget?.max_retries_per_workstream) || 0,
+      synthesisStatus: stringValue(recordValue(orchestration?.synthesis)?.status),
+      independentReviewStatus: stringValue(
+        recordValue(orchestration?.independent_review)?.status,
+      ),
+      independentReviewAssurance: stringValue(
+        recordValue(orchestration?.independent_review)?.assurance,
+      ),
+      independentReviewRunId: stringValue(
+        recordValue(orchestration?.independent_review)?.run_id,
+      ),
+    },
+    workstreams: session.workstreams.map(({ path, document }) => ({
+      id: stringValue(document.metadata.id),
+      title: stringValue(document.metadata.title),
+      wave: Number(document.metadata.wave),
+      role: stringValue(document.metadata.role),
+      status: stringValue(document.metadata.status),
+      owner: stringValue(document.metadata.owner),
+      path,
+      reviewStatus: stringValue(recordValue(document.metadata.review)?.status),
+    })),
     coverage: session.coverage,
     rawScope: {
       status: stringValue(raw?.status),
@@ -646,9 +1046,15 @@ export async function approveReconstructionRawScope(
   const path = reconstructionCasePath(target, "active", options.id);
   const document = parseWorkSpec(await readFile(path, "utf8"));
   const version = Number(document.metadata.reconstruction_version);
-  if (![LEGACY_RECONSTRUCTION_VERSION, RECONSTRUCTION_VERSION].includes(version)) {
+  if (
+    ![
+      LEGACY_RECONSTRUCTION_VERSION,
+      RAW_SCOPE_RECONSTRUCTION_VERSION,
+      RECONSTRUCTION_VERSION,
+    ].includes(version)
+  ) {
     throw new Error(
-      `Raw scope decisions require reconstruction version ${LEGACY_RECONSTRUCTION_VERSION} or ${RECONSTRUCTION_VERSION}`,
+      `Raw scope decisions require reconstruction version ${LEGACY_RECONSTRUCTION_VERSION}, ${RAW_SCOPE_RECONSTRUCTION_VERSION}, or ${RECONSTRUCTION_VERSION}`,
     );
   }
   const supplemental = recordValue(document.metadata.supplemental_inputs) ?? {};
@@ -747,7 +1153,9 @@ export async function approveReconstructionRawScope(
     candidate_ids: [],
     notes: [note],
   };
-  document.metadata.reconstruction_version = RECONSTRUCTION_VERSION;
+  if (version === LEGACY_RECONSTRUCTION_VERSION) {
+    document.metadata.reconstruction_version = RAW_SCOPE_RECONSTRUCTION_VERSION;
+  }
   document.metadata.supplemental_inputs = supplemental;
   document.metadata.updated_at = approvedAt;
   await writeFile(path, serializeWorkSpec(document), "utf8");
@@ -828,40 +1236,44 @@ export async function markReconstructionFiles(
   ) {
     throw new Error(`Unknown file coverage status: ${options.status}`);
   }
-  const context = await oneCoverageContext(
+  return await withLockedCoverageContext(
     options.target,
     options.id,
     options.repository,
+    async (context) => {
+      const matched = markCoverageFiles(context.ledger, options.paths, {
+        ...(options.category === undefined ? {} : { category: options.category }),
+        ...(options.status === undefined ? {} : { status: options.status }),
+        ...(options.reason === undefined ? {} : { reason: options.reason }),
+      });
+      await writeReconstructionCoverage(context.coveragePath, context.ledger);
+      return {
+        repository: context.repositoryId,
+        matched,
+        summary: summarizeReconstructionCoverage(context.ledger),
+      };
+    },
   );
-  const matched = markCoverageFiles(context.ledger, options.paths, {
-    ...(options.category === undefined ? {} : { category: options.category }),
-    ...(options.status === undefined ? {} : { status: options.status }),
-    ...(options.reason === undefined ? {} : { reason: options.reason }),
-  });
-  await writeReconstructionCoverage(context.coveragePath, context.ledger);
-  return {
-    repository: context.repositoryId,
-    matched,
-    summary: summarizeReconstructionCoverage(context.ledger),
-  };
 }
 
 export async function readReconstructionSource(
   options: ReadReconstructionSourceOptions,
 ): Promise<ReadPinnedSourceResult> {
-  const context = await oneCoverageContext(
+  return await withLockedCoverageContext(
     options.target,
     options.id,
     options.repository,
+    async (context) => {
+      const result = await readPinnedSource(context.ledger, context.root, options.path, {
+        ...(options.startLine === undefined ? {} : { startLine: options.startLine }),
+        ...(options.endLine === undefined ? {} : { endLine: options.endLine }),
+        ...(options.actor === undefined ? {} : { actor: options.actor }),
+        ...(options.now === undefined ? {} : { now: options.now }),
+      });
+      await writeReconstructionCoverage(context.coveragePath, context.ledger);
+      return result;
+    },
   );
-  const result = readPinnedSource(context.ledger, context.root, options.path, {
-    ...(options.startLine === undefined ? {} : { startLine: options.startLine }),
-    ...(options.endLine === undefined ? {} : { endLine: options.endLine }),
-    ...(options.actor === undefined ? {} : { actor: options.actor }),
-    ...(options.now === undefined ? {} : { now: options.now }),
-  });
-  await writeReconstructionCoverage(context.coveragePath, context.ledger);
-  return result;
 }
 
 export async function markReconstructionCommunity(
@@ -870,23 +1282,25 @@ export async function markReconstructionCommunity(
   if (!COVERAGE_STATES.includes(options.status)) {
     throw new Error(`Unknown community coverage status: ${options.status}`);
   }
-  const context = await oneCoverageContext(
+  return await withLockedCoverageContext(
     options.target,
     options.id,
     options.repository,
+    async (context) => {
+      markCoverageCommunity(
+        context.ledger,
+        options.community,
+        options.status,
+        options.note,
+        options.queries ?? [],
+      );
+      await writeReconstructionCoverage(context.coveragePath, context.ledger);
+      return {
+        repository: context.repositoryId,
+        summary: summarizeReconstructionCoverage(context.ledger),
+      };
+    },
   );
-  markCoverageCommunity(
-    context.ledger,
-    options.community,
-    options.status,
-    options.note,
-    options.queries ?? [],
-  );
-  await writeReconstructionCoverage(context.coveragePath, context.ledger);
-  return {
-    repository: context.repositoryId,
-    summary: summarizeReconstructionCoverage(context.ledger),
-  };
 }
 
 export async function recordReconstructionSurface(
@@ -898,41 +1312,45 @@ export async function recordReconstructionSurface(
   if (!COVERAGE_STATES.includes(options.status)) {
     throw new Error(`Unknown surface coverage status: ${options.status}`);
   }
-  const context = await oneCoverageContext(
+  return await withLockedCoverageContext(
     options.target,
     options.id,
     options.repository,
+    async (context) => {
+      recordCoverageSurface(context.ledger, {
+        id: options.surface,
+        kind: options.kind,
+        description: options.description,
+        paths: options.paths,
+        status: options.status,
+        note: options.note,
+        candidateIds: options.candidateIds ?? [],
+      });
+      await writeReconstructionCoverage(context.coveragePath, context.ledger);
+      return {
+        repository: context.repositoryId,
+        summary: summarizeReconstructionCoverage(context.ledger),
+      };
+    },
   );
-  recordCoverageSurface(context.ledger, {
-    id: options.surface,
-    kind: options.kind,
-    description: options.description,
-    paths: options.paths,
-    status: options.status,
-    note: options.note,
-    candidateIds: options.candidateIds ?? [],
-  });
-  await writeReconstructionCoverage(context.coveragePath, context.ledger);
-  return {
-    repository: context.repositoryId,
-    summary: summarizeReconstructionCoverage(context.ledger),
-  };
 }
 
 export async function reviewReconstructionSurfaces(
   options: ReviewReconstructionSurfacesOptions,
 ): Promise<{ repository: string; summary: CoverageSummary }> {
-  const context = await oneCoverageContext(
+  return await withLockedCoverageContext(
     options.target,
     options.id,
     options.repository,
+    async (context) => {
+      markSurfaceAudit(context.ledger, options.status, options.note);
+      await writeReconstructionCoverage(context.coveragePath, context.ledger);
+      return {
+        repository: context.repositoryId,
+        summary: summarizeReconstructionCoverage(context.ledger),
+      };
+    },
   );
-  markSurfaceAudit(context.ledger, options.status, options.note);
-  await writeReconstructionCoverage(context.coveragePath, context.ledger);
-  return {
-    repository: context.repositoryId,
-    summary: summarizeReconstructionCoverage(context.ledger),
-  };
 }
 
 export async function inspectProjectReconstruction(
@@ -1116,6 +1534,79 @@ export async function inspectProjectReconstructionReceipt(
     }
   }
 
+  if (Number(document.metadata.reconstruction_version) === RECONSTRUCTION_VERSION) {
+    try {
+      const workstreams = await readReconstructionWorkstreams(
+        dirname(path),
+        document.metadata,
+      );
+      const workstreamIds = new Set(
+        workstreams
+          .map((entry) => stringValue(entry.document.metadata.id))
+          .filter(Boolean),
+      );
+      const repositoryIds = new Set(
+        repositories.map((entry) => stringValue(entry.repository)).filter(Boolean),
+      );
+      const scopeIndex = new Map(
+        [...coverageByRepository.entries()].map(([repositoryId, coverage]) => [
+          repositoryId,
+          {
+            files: new Set(coverage.manifest.files.map((file) => file.path)),
+            communities: new Set(coverage.graphify.communities.map((community) => community.id)),
+            surfaces: new Set(coverage.surfaces.map((surface) => surface.id)),
+          },
+        ]),
+      );
+      const rawCaseIds = new Set(
+        stringArray(
+          recordValue(recordValue(document.metadata.supplemental_inputs)?.raw)?.case_ids,
+        ),
+      );
+      const orchestration = recordValue(document.metadata.orchestration);
+      const budget = recordValue(orchestration?.budget);
+      const maxRetries = Number.isInteger(budget?.max_retries_per_workstream)
+        ? Number(budget?.max_retries_per_workstream)
+        : 0;
+      const receiptIndex = new Map<string, ReconstructionReceiptIndexEntry>();
+      for (const [repositoryId, coverage] of coverageByRepository) {
+        for (const file of coverage.manifest.files) {
+          for (const receipt of file.receipts) {
+            if (receiptIndex.has(receipt.id)) {
+              issues.push(`source read receipt ID is duplicated: ${receipt.id}`);
+            } else {
+              receiptIndex.set(receipt.id, {
+                repository: repositoryId,
+                path: file.path,
+                actor: receipt.actor,
+              });
+            }
+          }
+        }
+      }
+      for (const workstream of workstreams) {
+        inspectedTexts.push(workstream.content.toString("utf8"));
+        issues.push(
+          ...reconstructionWorkstreamIssues(
+            workstream,
+            id,
+            repositoryIds,
+            workstreamIds,
+            maxRetries,
+            scopeIndex,
+            rawCaseIds,
+            receiptIndex,
+          ),
+        );
+      }
+      issues.push(
+        ...reconstructionWorkstreamSetIssues(workstreams, document.metadata),
+      );
+    } catch (error) {
+      issues.push(`cannot inspect reconstruction workstreams: ${errorMessage(error)}`);
+    }
+  }
+
   const supplemental = recordValue(document.metadata.supplemental_inputs);
   for (const input of ["raw", "documentation", "change_records"]) {
     for (const candidateId of stringArray(recordValue(supplemental?.[input])?.candidate_ids)) {
@@ -1289,8 +1780,13 @@ function reconstructionMetadataIssues(
     issues.push(
       `reconstruction_version ${LEGACY_RECONSTRUCTION_VERSION} has no maintainer-approved raw scope; record it with wfctl knowledge reconstruct raw-scope`,
     );
-  } else if (reconstructionVersion !== RECONSTRUCTION_VERSION) {
-    issues.push(`reconstruction_version must be ${RECONSTRUCTION_VERSION}`);
+  } else if (
+    reconstructionVersion !== RAW_SCOPE_RECONSTRUCTION_VERSION
+    && reconstructionVersion !== RECONSTRUCTION_VERSION
+  ) {
+    issues.push(
+      `reconstruction_version must be ${RAW_SCOPE_RECONSTRUCTION_VERSION} or ${RECONSTRUCTION_VERSION}`,
+    );
   }
   if (!stringValue(metadata.title).trim()) {
     issues.push("title is required");
@@ -1363,8 +1859,14 @@ function reconstructionMetadataIssues(
   if (!/^[0-9a-f]{40,64}$/i.test(stringValue(rawInput?.baseline))) {
     issues.push("supplemental_inputs.raw.baseline must pin the reconstruction-start Git snapshot");
   }
-  if (reconstructionVersion === RECONSTRUCTION_VERSION) {
+  if (
+    reconstructionVersion === RAW_SCOPE_RECONSTRUCTION_VERSION
+    || reconstructionVersion === RECONSTRUCTION_VERSION
+  ) {
     issues.push(...reconstructionRawScopeIssues(rawInput));
+  }
+  if (reconstructionVersion === RECONSTRUCTION_VERSION) {
+    issues.push(...reconstructionOrchestrationIssues(metadata));
   }
   if (
     rawInput?.status === "reviewed"
@@ -1972,6 +2474,10 @@ async function reconstructionSessionState(
   basis: string;
   related: RelatedSessionContent[];
   dossiers: RelatedSessionContent[];
+  workstreams: Array<{
+    path: string;
+    document: ReturnType<typeof parseWorkSpec>;
+  }>;
   files: KnowledgeSessionFile[];
   coverage: CoverageSummary[];
 }> {
@@ -1979,6 +2485,10 @@ async function reconstructionSessionState(
   const caseContent = serializeWorkSpec(document);
   const related: RelatedSessionContent[] = [];
   const dossiers: RelatedSessionContent[] = [];
+  const workstreams: Array<{
+    path: string;
+    document: ReturnType<typeof parseWorkSpec>;
+  }> = [];
   const files: KnowledgeSessionFile[] = [
     sessionFile(relative(target, join(caseDirectory, "case.md")), "case-full-read", caseContent),
   ];
@@ -2007,6 +2517,24 @@ async function reconstructionSessionState(
       ),
     );
   }
+  for (
+    const workstream of await readReconstructionWorkstreams(
+      caseDirectory,
+      document.metadata,
+    )
+  ) {
+    const workstreamRelative = relative(target, workstream.path);
+    related.push({ path: workstreamRelative, content: workstream.content });
+    files.push(sessionFile(
+      workstreamRelative,
+      "reconstruction-workstream-full-read",
+      workstream.content,
+    ));
+    workstreams.push({
+      path: workstreamRelative,
+      document: workstream.document,
+    });
+  }
   const bindingPath = reconstructionBindingPath(target, id);
   try {
     const bindingContent = await readFile(bindingPath);
@@ -2024,6 +2552,7 @@ async function reconstructionSessionState(
     basis: sessionBasis(document, related),
     related,
     dossiers,
+    workstreams,
     files,
     coverage,
   };
@@ -2103,6 +2632,197 @@ async function oneCoverageContext(
   const context = contexts[0]!;
   await assertCoverageBindingCurrent(context);
   return context;
+}
+
+async function withLockedCoverageContext<T>(
+  targetInput: string,
+  id: string,
+  repository: string | undefined,
+  operation: (context: ReconstructionCoverageContext) => Promise<T>,
+): Promise<T> {
+  const target = await requireKnowledgeRepository(targetInput);
+  const initial = await oneCoverageContext(target, id, repository);
+  const lockId = createHash("sha256")
+    .update(initial.coveragePath)
+    .digest("hex")
+    .slice(0, 20);
+  const lockPath = join(
+    target,
+    ".workflow/current/locks",
+    `reconstruction-coverage-${lockId}.lock`,
+  );
+  return await withFileLock(lockPath, async () => {
+    const current = await oneCoverageContext(target, id, initial.repositoryId);
+    return await operation(current);
+  });
+}
+
+interface LockedReconstructionCase {
+  target: string;
+  casePath: string;
+  caseDirectory: string;
+  document: ReturnType<typeof parseWorkSpec>;
+}
+
+async function withLockedReconstructionCase<T>(
+  targetInput: string,
+  id: string,
+  operation: (context: LockedReconstructionCase) => Promise<T>,
+): Promise<T> {
+  const target = await requireKnowledgeRepository(targetInput);
+  const casePath = reconstructionCasePath(target, "active", id);
+  const lockId = createHash("sha256").update(casePath).digest("hex").slice(0, 20);
+  const lockPath = join(
+    target,
+    ".workflow/current/locks",
+    `reconstruction-case-${lockId}.lock`,
+  );
+  return await withFileLock(lockPath, async () => {
+    const document = parseWorkSpec(await readFile(casePath, "utf8"));
+    return await operation({
+      target,
+      casePath,
+      caseDirectory: dirname(casePath),
+      document,
+    });
+  });
+}
+
+async function mutateReconstructionWorkstream(
+  targetInput: string,
+  id: string,
+  workstream: string,
+  now: Date | undefined,
+  operation: (context: LockedReconstructionCase & {
+    caseDocument: ReturnType<typeof parseWorkSpec>;
+    record: ReconstructionWorkstreamRecord;
+    document: ReturnType<typeof parseWorkSpec>;
+    timestamp: string;
+  }) => Promise<void>,
+): Promise<ReconstructionWorkstreamMutationResult> {
+  assertWorkstreamId(workstream);
+  return await withLockedReconstructionCase(
+    targetInput,
+    id,
+    async (context) => {
+      const records = await readReconstructionWorkstreams(
+        context.caseDirectory,
+        context.document.metadata,
+      );
+      const record = records.find(
+        (entry) => stringValue(entry.document.metadata.id) === workstream,
+      );
+      if (!record || !record.referenced) {
+        throw new Error(`Referenced reconstruction workstream not found: ${workstream}`);
+      }
+      const timestamp = (now ?? new Date()).toISOString();
+      await operation({
+        ...context,
+        caseDocument: context.document,
+        record,
+        document: record.document,
+        timestamp,
+      });
+      await writeFile(record.path, serializeWorkSpec(record.document), "utf8");
+      return {
+        id,
+        workstream,
+        status: stringValue(record.document.metadata.status),
+        path: relative(context.target, record.path),
+      };
+    },
+  );
+}
+
+async function workstreamValidationContext(
+  target: string,
+  id: string,
+  caseDirectory: string,
+  document: ReturnType<typeof parseWorkSpec>,
+): Promise<{
+  repositoryIds: Set<string>;
+  workstreamIds: Set<string>;
+  maxRetries: number;
+  scopeIndex: Map<string, ReconstructionScopeIndexEntry>;
+  rawCaseIds: Set<string>;
+  receiptIndex: Map<string, ReconstructionReceiptIndexEntry>;
+}> {
+  const repositories = recordArray(document.metadata.repositories);
+  const repositoryIds = new Set(
+    repositories.map((entry) => stringValue(entry.repository)).filter(Boolean),
+  );
+  const scopeIndex = new Map<string, ReconstructionScopeIndexEntry>();
+  const receiptIndex = new Map<string, ReconstructionReceiptIndexEntry>();
+  for (const repository of repositories) {
+    const repositoryId = stringValue(repository.repository);
+    const coverage = await readReconstructionCoverage(
+      resolveCaseJson(caseDirectory, stringValue(repository.coverage)),
+    );
+    scopeIndex.set(repositoryId, {
+      files: new Set(coverage.manifest.files.map((file) => file.path)),
+      communities: new Set(coverage.graphify.communities.map((community) => community.id)),
+      surfaces: new Set(coverage.surfaces.map((surface) => surface.id)),
+    });
+    for (const file of coverage.manifest.files) {
+      for (const receipt of file.receipts) {
+        if (receiptIndex.has(receipt.id)) {
+          throw new Error(`Source read receipt ID is duplicated: ${receipt.id}`);
+        }
+        receiptIndex.set(receipt.id, {
+          repository: repositoryId,
+          path: file.path,
+          actor: receipt.actor,
+        });
+      }
+    }
+  }
+  const workstreams = await readReconstructionWorkstreams(
+    caseDirectory,
+    document.metadata,
+  );
+  const orchestration = recordValue(document.metadata.orchestration);
+  const budget = recordValue(orchestration?.budget);
+  return {
+    repositoryIds,
+    workstreamIds: new Set(
+      workstreams
+        .map((entry) => stringValue(entry.document.metadata.id))
+        .filter(Boolean),
+    ),
+    maxRetries: Number.isInteger(budget?.max_retries_per_workstream)
+      ? Number(budget?.max_retries_per_workstream)
+      : 0,
+    scopeIndex,
+    rawCaseIds: new Set(
+      stringArray(
+        recordValue(recordValue(document.metadata.supplemental_inputs)?.raw)?.case_ids,
+      ),
+    ),
+    receiptIndex,
+  };
+}
+
+function renderWorkstreamBody(objective: string): string {
+  return `# Objective\n\n${objective}\n\n`
+    + "# Required context\n\n"
+    + "Read the parent case, the relevant repository dossiers and coverage items, and only explicit dependency packets before analysis. Follow adjacent read-only evidence when the question requires it.\n\n"
+    + "# Boundaries\n\n"
+    + "The coverage slice defines responsibility, not a visibility wall. Source leaves are read-only. Record material exploration outside the slice under explored_context. This packet is the worker's only durable write target.\n\n"
+    + "# Required method\n\n"
+    + "Use Graphify for structural navigation. Read source, tests, contracts, configuration, product data, and documentation with any safe read-only tools. Before relying on source in a final claim, record the exact pinned range with wfctl knowledge reconstruct read and cite its receipt ID.\n\n"
+    + "# Worker findings\n\nPending worker analysis.\n\n"
+    + "# Evidence and coverage\n\nPending receipt-backed evidence.\n\n"
+    + "# Uncertainties, contradictions, and omissions\n\nPending analysis.\n";
+}
+
+function assertWorkstreamId(value: string): void {
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(value)) {
+    throw new Error("Workstream ID must be a stable lowercase identifier");
+  }
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
 }
 
 async function assertCoverageBindingCurrent(

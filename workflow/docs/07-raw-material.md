@@ -41,7 +41,8 @@ The agent:
 2. uses QMD to propose bounded thematic batches;
 3. asks you to approve a useful next batch;
 4. freezes its exact files and Git identities into an intake case;
-5. reads every frozen file completely;
+5. reads every frozen text file completely through receipt-recording bounded
+   reads, or records an explicit non-text disposition;
 6. splits material statements into atomic candidate claims;
 7. verifies or adjudicates each claim;
 8. routes every claim and checks the durable result for omissions.
@@ -53,6 +54,12 @@ decision. The agent first asks whether that frozen snapshot should be included
 in full, limited to selected themes, or excluded. You approve the boundary;
 only then may the agent create reconstruction-linked intake cases. Ordinary
 day-to-day raw intake outside reconstruction remains independent.
+
+QMD helps the agent find themes and likely relationships, but its snippets are
+not a reading receipt. The agent uses `wfctl knowledge case read` until every
+frozen text source reports complete. Binary or unsupported input is never
+silently treated as reviewed text; it receives an explicit reasoned
+disposition instead.
 
 If the session is interrupted, the agent discovers the sole active intake case
 and rereads it completely. Consequential review discoveries stay in that case;
