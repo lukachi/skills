@@ -12,9 +12,15 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import type { RepositoryMetadata, WorkMode, WorkSpecDocument } from "./types.js";
 import { discoveryLedgerIssues } from "./discovery-ledger.js";
 import {
+  GATED_CHANGE_VERSIONS,
+  includesVersion,
   isRecord,
   parseWorkSpec,
   serializeWorkSpec,
+  SUPPORTED_CHANGE_VERSIONS,
+  SUPPORTED_ISSUE_VERSIONS,
+  SUPPORTED_MAP_VERSION,
+  SUPPORTED_REVIEW_VERSION,
 } from "./work-spec.js";
 
 export type WorkBundleStage = "shape" | "wayfind" | "implement" | "review" | "resume";
@@ -855,7 +861,7 @@ export async function bundleCompletionIssues(
   bundleRoot: string,
   change: WorkSpecDocument,
 ): Promise<string[]> {
-  if (![3, 4].includes(Number(change.metadata.workflow_version))) {
+  if (!includesVersion(GATED_CHANGE_VERSIONS, change.metadata.workflow_version)) {
     return [];
   }
   const issues: string[] = [];
@@ -952,7 +958,7 @@ async function validateBundle(
       issues.push(`${required}: required bundle file is missing`);
     }
   }
-  if (![2, 3, 4, 5].includes(Number(change.metadata.workflow_version))) {
+  if (!includesVersion(SUPPORTED_CHANGE_VERSIONS, change.metadata.workflow_version)) {
     issues.push("change.md: unsupported workflow_version");
   }
   issues.push(...discoveryLedgerIssues(
@@ -1022,8 +1028,10 @@ async function validateBundle(
         }
       }
     }
-    if (![1, 2, 3].includes(Number(entry.document.metadata.workflow_version))) {
-      issues.push(`${summary.id}: workflow_version must be 1, 2, or 3`);
+    if (!includesVersion(SUPPORTED_ISSUE_VERSIONS, entry.document.metadata.workflow_version)) {
+      issues.push(
+        `${summary.id}: workflow_version must be ${SUPPORTED_ISSUE_VERSIONS.join(", ")}`,
+      );
     }
     issues.push(...discoveryLedgerIssues(
       entry.document.body,
@@ -1054,8 +1062,8 @@ async function validateBundle(
   if (map && map.metadata.kind !== "wayfinder-map") {
     issues.push("map.md: kind must be wayfinder-map");
   }
-  if (map && map.metadata.workflow_version !== 1) {
-    issues.push("map.md: workflow_version must be 1");
+  if (map && map.metadata.workflow_version !== SUPPORTED_MAP_VERSION) {
+    issues.push(`map.md: workflow_version must be ${SUPPORTED_MAP_VERSION}`);
   }
   if (map && !["charting", "resolved"].includes(stringValue(map.metadata.status))) {
     issues.push("map.md: status must be charting or resolved");
@@ -1088,8 +1096,8 @@ async function validateBundle(
   }
   const review = await optionalDocument(join(bundleRoot, "review.md"));
   if (review) {
-    if (review.metadata.workflow_version !== 1) {
-      issues.push("review.md: workflow_version must be 1");
+    if (review.metadata.workflow_version !== SUPPORTED_REVIEW_VERSION) {
+      issues.push(`review.md: workflow_version must be ${SUPPORTED_REVIEW_VERSION}`);
     }
     if (review.metadata.kind !== "bundle-review") {
       issues.push("review.md: kind must be bundle-review");

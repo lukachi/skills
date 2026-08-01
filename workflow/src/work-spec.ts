@@ -1,5 +1,36 @@
 import { parse, stringify } from "yaml";
 import type { WorkSpecDocument } from "./types.js";
+import { containsUntrustedIntakeReference } from "./untrusted-paths.js";
+
+/**
+ * Every change-bundle schema this build can read. A new schema version must be
+ * added here, to `GATED_CHANGE_VERSIONS`, and to the bundle template, or the
+ * completion gate silently stops running for every newly created bundle.
+ */
+export const SUPPORTED_CHANGE_VERSIONS = [2, 3, 4, 5] as const;
+
+/**
+ * Change-bundle schemas whose bundle-level completion gate is enforced by
+ * `bundleCompletionIssues`. Version 2 predates the bundle layout and is exempt;
+ * every later schema must be listed here.
+ */
+export const GATED_CHANGE_VERSIONS = [3, 4, 5] as const;
+
+/** Change schemas that must carry an interactive maintainer-approval receipt. */
+export const APPROVAL_RECEIPT_CHANGE_VERSIONS = [5] as const;
+
+export const SUPPORTED_ISSUE_VERSIONS = [1, 2, 3] as const;
+export const SUPPORTED_MAP_VERSION = 1;
+export const SUPPORTED_REVIEW_VERSION = 1;
+export const CURRENT_CHANGE_VERSION = 5;
+
+export const APPROVAL_METHODS = ["interactive", "token"] as const;
+export type ApprovalMethod = (typeof APPROVAL_METHODS)[number];
+export type MaintainerReviewStage = "framing" | "completion";
+
+export function includesVersion(allowed: readonly number[], value: unknown): boolean {
+  return allowed.includes(Number(value));
+}
 
 export function parseWorkSpec(content: string): WorkSpecDocument {
   const lines = content.split(/\r?\n/);
@@ -35,8 +66,10 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   const scope = stringValue(metadata.scope) || "leaf";
   const projectOnly = scope === "project";
 
-  if (![2, 3, 4, 5].includes(Number(metadata.workflow_version))) {
-    issues.push("workflow_version must be 2, 3, 4, or 5");
+  if (!includesVersion(SUPPORTED_CHANGE_VERSIONS, metadata.workflow_version)) {
+    issues.push(
+      `workflow_version must be one of ${SUPPORTED_CHANGE_VERSIONS.join(", ")}`,
+    );
   }
   if (
     Number(metadata.workflow_version) >= 5
@@ -87,8 +120,12 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
     issues.push("knowledge_alignment.conflicts must be resolved");
   }
-  reviewIssues("framing", maintainerReview, issues);
-  reviewIssues("completion", maintainerReview, issues);
+  const requiresApprovalReceipt = includesVersion(
+    APPROVAL_RECEIPT_CHANGE_VERSIONS,
+    metadata.workflow_version,
+  );
+  reviewIssues("framing", maintainerReview, requiresApprovalReceipt, issues);
+  reviewIssues("completion", maintainerReview, requiresApprovalReceipt, issues);
   if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
     issues.push("knowledge_promotion.status must be applied or not-needed");
   } else if (
@@ -108,13 +145,27 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
     issues.push("knowledge_promotion.reason must explain why no current knowledge changed");
   }
   if (
-    containsUntrustedIntakePath(document.body)
-    || containsUntrustedIntakePath(JSON.stringify(document.metadata))
+    containsUntrustedIntakeReference(document.body)
+    || containsUntrustedIntakeReference(JSON.stringify(document.metadata))
   ) {
     issues.push("project change records must not cite raw/ or intake/ paths");
   }
 
   return issues;
+}
+
+export function maintainerReviewEntry(
+  document: WorkSpecDocument,
+  stage: MaintainerReviewStage,
+): Record<string, unknown> | undefined {
+  return recordValue(recordValue(document.metadata.maintainer_review)?.[stage]);
+}
+
+export function requiresApprovalReceipt(document: WorkSpecDocument): boolean {
+  return includesVersion(
+    APPROVAL_RECEIPT_CHANGE_VERSIONS,
+    document.metadata.workflow_version,
+  );
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -139,13 +190,10 @@ function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function containsUntrustedIntakePath(content: string): boolean {
-  return /(?:^|[\s("'`:=])(?:(?:\.\.\/|\.\/|\/)*(?:raw|intake)\/|(?:raw|intake):)[^\s)"'`]*/im.test(content);
-}
-
 function reviewIssues(
-  stage: "framing" | "completion",
+  stage: MaintainerReviewStage,
   review: Record<string, unknown> | undefined,
+  requireReceipt: boolean,
   issues: string[],
 ): void {
   const entry = recordValue(review?.[stage]);
@@ -158,6 +206,20 @@ function reviewIssues(
   }
   if (!isIsoDateTime(stringValue(entry?.at))) {
     issues.push(`${prefix}.at must be an ISO 8601 datetime`);
+  }
+  if (!requireReceipt) {
+    return;
+  }
+  const method = stringValue(entry?.method);
+  if (!APPROVAL_METHODS.includes(method as ApprovalMethod)) {
+    issues.push(
+      `${prefix}.method must be recorded by wfctl work approve (${
+        APPROVAL_METHODS.join(" or ")
+      })`,
+    );
+  }
+  if (!/^[0-9a-f]{64}$/.test(stringValue(entry?.receipt))) {
+    issues.push(`${prefix}.receipt must be the wfctl work approve receipt digest`);
   }
 }
 
