@@ -9,6 +9,7 @@ import { parse } from "yaml";
 import { errorMessage, isMissingFileError, readConfig } from "./config.js";
 import { compileKnowledgeGraph } from "./knowledge-graph.js";
 import { inspectProjectReconstructionReceipt } from "./reconstruction.js";
+import { containsUntrustedIntakeReference } from "./untrusted-paths.js";
 import { completionIssues, parseWorkSpec } from "./work-spec.js";
 import { bundleCompletionIssues } from "./work-bundle.js";
 
@@ -163,7 +164,7 @@ export async function validateKnowledge(
       continue;
     }
 
-    if (containsUntrustedIntakePath(content)) {
+    if (containsUntrustedIntakeReference(content)) {
       errors.push({
         path: displayPath,
         message: "trusted knowledge must not reference raw/ or intake/ paths",
@@ -880,7 +881,7 @@ async function projectChangeRecords(
           );
           result.set(entry.name, {
             ...document.metadata,
-            __untrustedIntakeReference: containsUntrustedIntakePath(content),
+            __untrustedIntakeReference: containsUntrustedIntakeReference(content),
             __receiptReady: completionIssues(document, true).length === 0
               && bundleIssues.length === 0
               && document.metadata.status === "completed"
@@ -977,10 +978,6 @@ function footnoteData(body: string): {
       .map(([id]) => id),
   );
   return { references, definitions };
-}
-
-function containsUntrustedIntakePath(content: string): boolean {
-  return /(?:^|[\s("'`:=])(?:(?:\.\.\/|\.\/|\/)*(?:raw|intake)\/|(?:raw|intake):)[^\s)"'`]*/im.test(content);
 }
 
 function isPinnedCodeResource(value: string): boolean {
