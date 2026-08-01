@@ -140,6 +140,8 @@ import {
   renderAgentInstructions,
   renderMaintainerGuide,
 } from "./assets.js";
+import { collectWorkflowState } from "./state.js";
+import type { StateLevel, StateReport } from "./state.js";
 
 setColorEnabled(process.stdout.isTTY === true && !("NO_COLOR" in process.env));
 
@@ -154,6 +156,8 @@ const main = new Command()
       + "  check      Validate the current workflow installation\n\n"
       + "Maintenance:\n"
       + "  upgrade    Upgrade installed rules, skills, templates, and guides\n\n"
+      + "Orientation:\n"
+      + "  brief      Report current repository state at session start\n\n"
       + "Knowledge operations:\n"
       + "  knowledge  Process raw input, validate knowledge, and build its graph\n\n"
       + "Project work:\n"
@@ -163,6 +167,7 @@ const main = new Command()
   .command("init", initCommand())
   .command("check", checkCommand())
   .command("upgrade", upgradeCommand())
+  .command("brief", briefCommand())
   .command("knowledge", knowledgeCommand())
   .command("work", workCommand());
 
@@ -541,6 +546,89 @@ function checkCommand() {
         process.exitCode = 2;
       }
     });
+}
+
+function briefCommand() {
+  return new Command()
+    .description(
+      "Report current repository state at session start.\n"
+        + "Reads only durable records; never starts work, writes, or contacts a tool.\n"
+        + "Signals are facts, capabilities are derived; composing advice is the agent's job.",
+    )
+    .option("-t, --target <path:string>", "Target repository.", { default: "." })
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options) => {
+      const report = await collectWorkflowState(options.target);
+      if (options.json) {
+        printJson(report);
+      } else {
+        printBrief(report);
+      }
+    });
+}
+
+function printBrief(report: StateReport): void {
+  const header = [
+    `wfctl ${report.workflowVersion}`,
+    report.profile ?? "not installed",
+    report.root,
+  ].join(" · ");
+  process.stdout.write(`${bold(header)}\n`);
+
+  if (report.signals.length === 0) {
+    process.stdout.write(`${dim("No state signals.")}\n`);
+  }
+  for (const signal of report.signals) {
+    const subject = signal.subject ? ` ${cyan(signal.subject)}` : "";
+    const facts = Object.entries(signal.facts ?? {})
+      .map(([key, value]) => `${key}=${value}`)
+      .join(" ");
+    process.stdout.write(
+      `${levelTag(signal.level)} ${signal.id}${subject}  ${signal.summary}\n`,
+    );
+    if (facts || signal.since || signal.awaits) {
+      const trailer = [
+        facts,
+        signal.since ? `since=${signal.since}` : "",
+        signal.awaits ? `awaits=${signal.awaits}` : "",
+      ].filter(Boolean).join(" ");
+      process.stdout.write(`${dim(`           ${trailer}`)}\n`);
+    }
+  }
+
+  if (report.capabilities.length > 0) {
+    process.stdout.write("\n");
+    for (const capability of report.capabilities) {
+      const reasons = [
+        ...capability.blockedBy,
+        ...capability.missing.map((signal) => `no ${signal}`),
+      ];
+      const state = capability.available
+        ? green("available")
+        : `${red("blocked")} ${dim(`← ${reasons.join(", ")}`)}`;
+      process.stdout.write(`${capability.id.padEnd(22)} ${state}\n`);
+    }
+  }
+
+  for (const failure of report.degraded) {
+    process.stdout.write(
+      `${yellow("degraded")}   ${failure.collector}  ${failure.reason}\n`,
+    );
+  }
+}
+
+function levelTag(level: StateLevel): string {
+  const label = level.padEnd(9);
+  if (level === "blocked") {
+    return red(label);
+  }
+  if (level === "attention") {
+    return yellow(label);
+  }
+  if (level === "ok") {
+    return green(label);
+  }
+  return dim(label);
 }
 
 function workCommand() {

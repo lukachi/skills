@@ -38,6 +38,14 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   ledger`, update the affected semantic state, and refresh its structured
   checkpoint last. The preservation trigger is consequence of information
   loss, not a fixed category of findings.
+- Run `wfctl brief --json` before anything else in a session. It is the
+  authoritative current state of this repository: signals are observed facts and
+  capabilities are derived from them. Do not rediscover that state by scanning
+  records, and do not read the list back to the maintainer. Compose one short
+  orientation from it — what exists, what is in progress, what waits on them —
+  and offer the operations reported available. For a blocked capability, name
+  what would unblock it instead of starting it. The brief never starts work; a
+  signal with `awaits: maintainer` is a question for them, not a task for you.
 - On resume, compaction, or a clean-session start, run `wfctl work context
   --stage resume` without an ID. Auto-select only when exactly one active record
   is bound to the current checkout. If several exist, inspect `wfctl work

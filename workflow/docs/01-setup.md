@@ -97,6 +97,23 @@ You will get failures and warnings, not a wall of green. A knowledge repository
 with registered leaves warns when Graphify is missing, because building a
 baseline from there needs it.
 
+## Every session opens with the state
+
+From then on, an agent starting in either repository reads the current state
+before it does anything else, and tells you where things stand: what exists,
+what is in progress, what is waiting on you, and which operations are possible
+right now. On a fresh knowledge repository that is short — nothing is connected,
+so it offers you the ways to begin.
+
+You can see the same thing without an agent:
+
+```sh
+wfctl brief
+```
+
+It only reads. It starts nothing, and a capability it reports as available is a
+possibility, not a plan.
+
 ## What got installed
 
 Both repository kinds receive a managed block in `AGENTS.md` and `CLAUDE.md`,

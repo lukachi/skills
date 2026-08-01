@@ -9965,10 +9965,10 @@ function resolveAll(constructs2, events, context) {
   const called = [];
   let index2 = -1;
   while (++index2 < constructs2.length) {
-    const resolve20 = constructs2[index2].resolveAll;
-    if (resolve20 && !called.includes(resolve20)) {
-      events = resolve20(events, context);
-      called.push(resolve20);
+    const resolve21 = constructs2[index2].resolveAll;
+    if (resolve21 && !called.includes(resolve21)) {
+      events = resolve21(events, context);
+      called.push(resolve21);
     }
   }
   return events;
@@ -15015,8 +15015,8 @@ async function collectMarkdownPaths(knowledgeRoot) {
       if (entry.isDirectory()) {
         await walk(absolute);
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
-        const stat3 = await lstat3(absolute);
-        if (!stat3.isSymbolicLink()) {
+        const stat4 = await lstat3(absolute);
+        if (!stat4.isSymbolicLink()) {
           paths.push(portable(relative2(dirname3(knowledgeRoot), absolute)));
         }
       }
@@ -15256,9 +15256,9 @@ async function readPinnedGitTextRange(root, gitArguments, options = {}) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve20, reject) => {
+  const completion = new Promise((resolve21, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve20(code2 ?? 1));
+    child.once("close", (code2) => resolve21(code2 ?? 1));
   });
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const selected = [];
@@ -18708,9 +18708,9 @@ async function readGitTree2(root, commit) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve20, reject) => {
+  const completion = new Promise((resolve21, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve20(code2 ?? 1));
+    child.once("close", (code2) => resolve21(code2 ?? 1));
   });
   const entries = [];
   let pending = Buffer.alloc(0);
@@ -24274,8 +24274,8 @@ async function validateKnowledge(targetInput, conceptPaths) {
   for (const absolute of selected.sort()) {
     const displayPath = portable2(relative7(target, absolute));
     try {
-      const stat3 = await lstat4(absolute);
-      if (stat3.isSymbolicLink()) {
+      const stat4 = await lstat4(absolute);
+      if (stat4.isSymbolicLink()) {
         errors.push({ path: displayPath, message: "curated knowledge concepts must not be symlinks" });
         continue;
       }
@@ -33548,7 +33548,7 @@ function ora(options) {
 
 // src/cli.ts
 import { createInterface } from "node:readline/promises";
-import { resolve as resolve19 } from "node:path";
+import { resolve as resolve20 } from "node:path";
 
 // src/applier.ts
 import { randomUUID } from "node:crypto";
@@ -33928,8 +33928,8 @@ async function planRepositoryRegistry(target) {
 }
 async function planDirectory(target, relativePath2) {
   try {
-    const stat3 = await lstat(join2(target, relativePath2));
-    if (stat3.isDirectory()) {
+    const stat4 = await lstat(join2(target, relativePath2));
+    if (stat4.isDirectory()) {
       return {
         kind: "directory",
         path: relativePath2,
@@ -33963,8 +33963,8 @@ async function planDirectory(target, relativePath2) {
 async function planManagedBlock(target, relativePath2, body, markers) {
   const absolute = join2(target, relativePath2);
   try {
-    const stat3 = await lstat(absolute);
-    if (stat3.isSymbolicLink()) {
+    const stat4 = await lstat(absolute);
+    if (stat4.isSymbolicLink()) {
       return {
         kind: "managed-block",
         path: relativePath2,
@@ -33972,7 +33972,7 @@ async function planManagedBlock(target, relativePath2, body, markers) {
         reason: "instruction file is a symlink not owned by this operation"
       };
     }
-    if (!stat3.isFile()) {
+    if (!stat4.isFile()) {
       return {
         kind: "managed-block",
         path: relativePath2,
@@ -34022,8 +34022,8 @@ async function planLeafGitignore(target) {
   const relativePath2 = ".gitignore";
   const absolute = join2(target, relativePath2);
   try {
-    const stat3 = await lstat(absolute);
-    if (stat3.isFile() && !stat3.isSymbolicLink()) {
+    const stat4 = await lstat(absolute);
+    if (stat4.isFile() && !stat4.isSymbolicLink()) {
       const existing = await readFile3(absolute, "utf8");
       if (!existing.includes(GITIGNORE_MARKERS.start) && ignoresGraphifyOutput(existing)) {
         return {
@@ -34062,8 +34062,8 @@ async function planClaudeInstructions(target, body) {
   const path = "CLAUDE.md";
   const absolute = join2(target, path);
   try {
-    const stat3 = await lstat(absolute);
-    if (stat3.isSymbolicLink()) {
+    const stat4 = await lstat(absolute);
+    if (stat4.isSymbolicLink()) {
       const current = await readlink(absolute);
       return current === "AGENTS.md" ? {
         kind: "symlink",
@@ -34110,8 +34110,8 @@ async function planOwnedFile(target, relativePath2, content3, state) {
   const absolute = join2(target, relativePath2);
   const desiredHash = hashContent(content3);
   try {
-    const stat3 = await lstat(absolute);
-    if (!stat3.isFile() || stat3.isSymbolicLink()) {
+    const stat4 = await lstat(absolute);
+    if (!stat4.isFile() || stat4.isSymbolicLink()) {
       return {
         kind: "file",
         path: relativePath2,
@@ -34176,8 +34176,8 @@ async function planOwnedFile(target, relativePath2, content3, state) {
 async function planObsoleteOwnedFile(target, relativePath2, installedHash) {
   const absolute = join2(target, relativePath2);
   try {
-    const stat3 = await lstat(absolute);
-    if (!stat3.isFile() || stat3.isSymbolicLink()) {
+    const stat4 = await lstat(absolute);
+    if (!stat4.isFile() || stat4.isSymbolicLink()) {
       return {
         kind: "delete",
         path: relativePath2,
@@ -34429,14 +34429,14 @@ function isMissing(error2) {
 }
 async function snapshotPath(path, root, name) {
   try {
-    const stat3 = await lstat2(path);
-    if (stat3.isSymbolicLink()) {
+    const stat4 = await lstat2(path);
+    if (stat4.isSymbolicLink()) {
       return { path, kind: "symlink", linkTarget: await readlink2(path) };
     }
-    if (stat3.isDirectory()) {
+    if (stat4.isDirectory()) {
       return { path, kind: "directory" };
     }
-    if (!stat3.isFile()) {
+    if (!stat4.isFile()) {
       throw new Error(`Cannot transactionally snapshot unsupported path: ${path}`);
     }
     const backupPath = join3(root, name);
@@ -34456,8 +34456,8 @@ async function restoreSnapshot(snapshot) {
   }
   if (snapshot.kind === "directory") {
     try {
-      const stat3 = await lstat2(snapshot.path);
-      if (stat3.isDirectory()) {
+      const stat4 = await lstat2(snapshot.path);
+      if (stat4.isDirectory()) {
         return;
       }
       await removeCurrent(snapshot.path);
@@ -34479,8 +34479,8 @@ async function restoreSnapshot(snapshot) {
 }
 async function removeCurrent(path) {
   try {
-    const stat3 = await lstat2(path);
-    if (stat3.isDirectory() && !stat3.isSymbolicLink()) {
+    const stat4 = await lstat2(path);
+    if (stat4.isDirectory() && !stat4.isSymbolicLink()) {
       await rmdir(path);
     } else {
       await unlink(path);
@@ -34956,12 +34956,12 @@ function snapshotSkillPath(path, root, index2) {
   if (!existsSync2(path)) {
     return { path, kind: "absent" };
   }
-  const stat3 = lstatSync(path);
-  if (stat3.isSymbolicLink()) {
+  const stat4 = lstatSync(path);
+  if (stat4.isSymbolicLink()) {
     return { path, kind: "symlink", linkTarget: readlinkSync(path) };
   }
   const backup = join14(root, String(index2));
-  if (stat3.isDirectory()) {
+  if (stat4.isDirectory()) {
     cpSync(path, backup, { recursive: true, verbatimSymlinks: true });
     return { path, kind: "directory", backup };
   }
@@ -36410,10 +36410,711 @@ function assertId(id) {
 
 // src/cli.ts
 init_assets();
+
+// src/state.ts
+init_config();
+import { resolve as resolve19 } from "node:path";
+
+// src/state-collectors.ts
+import { readdir as readdir12, readFile as readFile20, stat as stat3 } from "node:fs/promises";
+import { join as join18 } from "node:path";
+init_config();
+init_repository_registry();
+init_types();
+init_work_spec();
+var STATE_COLLECTORS = [
+  installCollector(),
+  sourcesCollector(),
+  corpusCollector(),
+  reconstructionCollector(),
+  intakeCollector(),
+  rawCollector(),
+  workCollector(),
+  inboxCollector()
+];
+function installCollector() {
+  return {
+    id: "install",
+    profiles: ["knowledge", "leaf"],
+    async collect(context) {
+      const signals2 = [];
+      if (context.config.installedVersion !== WORKFLOW_VERSION) {
+        signals2.push({
+          id: "install.version-drift",
+          domain: "install",
+          level: "attention",
+          summary: "Installed assets are older than the running CLI",
+          facts: { installed: context.config.installedVersion, cli: WORKFLOW_VERSION },
+          awaits: "maintainer"
+        });
+      }
+      if (context.config.skills?.scope === "none") {
+        signals2.push({
+          id: "install.skills-disabled",
+          domain: "install",
+          level: "attention",
+          summary: "Agent skills are not installed; the CLI works but agent behavior is unguided",
+          awaits: "maintainer"
+        });
+      }
+      return signals2;
+    }
+  };
+}
+function sourcesCollector() {
+  return {
+    id: "sources",
+    profiles: ["knowledge"],
+    async collect(context) {
+      const connections = await listRepositoryConnections(context.knowledgeRoot);
+      if (connections.length === 0) {
+        return [{
+          id: "sources.none",
+          domain: "sources",
+          level: "attention",
+          summary: "No source repositories are registered",
+          awaits: "maintainer",
+          blocks: ["reconstruct-baseline", "reconstruct-audit"]
+        }];
+      }
+      const signals2 = [{
+        id: "sources.registered",
+        domain: "sources",
+        level: "ok",
+        summary: "Source repositories are registered",
+        facts: {
+          repositories: connections.length,
+          connected: connections.filter((entry) => entry.connected).length
+        }
+      }];
+      for (const connection of connections) {
+        if (!connection.connected) {
+          signals2.push({
+            id: "sources.unbound",
+            domain: "sources",
+            level: "blocked",
+            summary: "Repository is registered but has no local checkout in this clone",
+            subject: connection.repository,
+            awaits: "maintainer",
+            blocks: ["reconstruct-baseline", "reconstruct-audit"]
+          });
+          continue;
+        }
+        const unavailable = connection.checkouts.filter((checkout) => !checkout.available);
+        if (unavailable.length > 0) {
+          signals2.push({
+            id: "sources.missing-checkout",
+            domain: "sources",
+            level: "attention",
+            summary: "A recorded checkout path no longer exists on this machine",
+            subject: connection.repository,
+            facts: { missing: unavailable.length, known: connection.checkouts.length },
+            awaits: "maintainer"
+          });
+        }
+        if (!connection.activeRoot) {
+          const ambiguous = connection.checkouts.length > 1;
+          signals2.push({
+            id: "sources.unselected",
+            domain: "sources",
+            level: "blocked",
+            summary: "Repository has no selected reconstruction checkout",
+            subject: connection.repository,
+            facts: { candidates: connection.checkouts.length },
+            awaits: ambiguous ? "maintainer" : "agent",
+            blocks: ["reconstruct-baseline", "reconstruct-audit"]
+          });
+        }
+      }
+      return signals2;
+    }
+  };
+}
+function corpusCollector() {
+  return {
+    id: "corpus",
+    profiles: ["knowledge"],
+    async collect(context) {
+      const graphPath = join18(context.knowledgeRoot, ".workflow/current/knowledge-graph.json");
+      const graph = await readJson(graphPath);
+      if (!graph) {
+        return [{
+          id: "corpus.not-compiled",
+          domain: "corpus",
+          level: "info",
+          summary: "The knowledge graph has not been compiled in this clone",
+          awaits: "agent"
+        }];
+      }
+      const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+      const concepts = nodes.filter(
+        (node2) => recordValue9(node2)?.kind === "concept"
+      ).length;
+      if (concepts === 0) {
+        return [{
+          id: "corpus.empty",
+          domain: "corpus",
+          level: "attention",
+          summary: "Curated knowledge holds no concepts yet; only the empty template exists",
+          facts: { documents: nodes.length }
+        }];
+      }
+      const signals2 = [{
+        id: "corpus.populated",
+        domain: "corpus",
+        level: "ok",
+        summary: "Curated knowledge is populated",
+        facts: { concepts, documents: nodes.length }
+      }];
+      const compiledAt = stringValue10(graph.generatedAt);
+      const newest = await newestModification(join18(context.knowledgeRoot, "knowledge"));
+      if (compiledAt && newest && newest > Date.parse(compiledAt)) {
+        signals2.push({
+          id: "corpus.stale-compilation",
+          domain: "corpus",
+          level: "info",
+          summary: "Curated knowledge changed after the graph was compiled",
+          since: compiledAt,
+          awaits: "agent"
+        });
+      }
+      return signals2;
+    }
+  };
+}
+function reconstructionCollector() {
+  return {
+    id: "reconstruction",
+    profiles: ["knowledge"],
+    async collect(context) {
+      const root = join18(context.knowledgeRoot, "reconstruction/active");
+      const signals2 = [];
+      for (const entry of await activeRecords(root)) {
+        const metadata = entry.document.metadata;
+        const repositories = recordArray7(metadata.repositories);
+        const totals = { files: 0, pendingFiles: 0, communities: 0, pendingCommunities: 0 };
+        for (const repository of repositories) {
+          const relative9 = stringValue10(repository.coverage);
+          if (!relative9) {
+            continue;
+          }
+          const ledger = await readJson(join18(entry.root, relative9));
+          const manifest = recordValue9(ledger?.manifest);
+          const graphify = recordValue9(ledger?.graphify);
+          const files = Array.isArray(manifest?.files) ? manifest.files : [];
+          const communities = Array.isArray(graphify?.communities) ? graphify.communities : [];
+          totals.files += files.length;
+          totals.pendingFiles += files.filter(isPending).length;
+          totals.communities += communities.length;
+          totals.pendingCommunities += communities.filter(isPending).length;
+        }
+        signals2.push({
+          id: "reconstruction.active",
+          domain: "reconstruction",
+          level: "attention",
+          summary: "A reconstruction is in progress",
+          subject: entry.id,
+          facts: {
+            title: stringValue10(metadata.title) || entry.id,
+            mode: stringValue10(metadata.mode),
+            repositories: repositories.length,
+            filesReviewed: totals.files - totals.pendingFiles,
+            files: totals.files,
+            communitiesReviewed: totals.communities - totals.pendingCommunities,
+            communities: totals.communities
+          },
+          ...stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {},
+          awaits: "agent"
+        });
+        signals2.push(...checkpointSignals("reconstruction", entry.id, metadata, context));
+        const scope = recordValue9(
+          recordValue9(recordValue9(metadata.supplemental_inputs)?.raw)?.scope
+        );
+        if (scope && !stringValue10(scope.mode)) {
+          signals2.push({
+            id: "reconstruction.raw-scope-pending",
+            domain: "reconstruction",
+            level: "blocked",
+            summary: "The reconstruction is waiting for a raw-scope decision: all, selected themes, or none",
+            subject: entry.id,
+            awaits: "maintainer",
+            blocks: ["process-raw-intake"]
+          });
+        }
+      }
+      return signals2;
+    }
+  };
+}
+function intakeCollector() {
+  return {
+    id: "intake",
+    profiles: ["knowledge"],
+    async collect(context) {
+      const root = join18(context.knowledgeRoot, "intake/cases/active");
+      const signals2 = [];
+      for (const entry of await activeRecords(root)) {
+        const metadata = entry.document.metadata;
+        const sources = recordArray7(metadata.sources);
+        const reviewed = sources.filter(
+          (source) => source.status === "reviewed" || source.status === "no-relevant-claims"
+        ).length;
+        const blocked = sources.filter(
+          (source) => source.status === "needs-maintainer" || source.status === "unreadable"
+        ).length;
+        signals2.push({
+          id: "intake.active",
+          domain: "intake",
+          level: "attention",
+          summary: "A raw-intake case is in progress",
+          subject: entry.id,
+          facts: {
+            title: stringValue10(metadata.title) || entry.id,
+            reviewed,
+            sources: sources.length
+          },
+          ...stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {},
+          awaits: "agent"
+        });
+        if (blocked > 0) {
+          signals2.push({
+            id: "intake.blocked-sources",
+            domain: "intake",
+            level: "blocked",
+            summary: "Raw sources cannot be resolved without a maintainer decision",
+            subject: entry.id,
+            facts: { blocked },
+            awaits: "maintainer"
+          });
+        }
+        signals2.push(...checkpointSignals("intake", entry.id, metadata, context));
+      }
+      return signals2;
+    }
+  };
+}
+function rawCollector() {
+  return {
+    id: "raw",
+    profiles: ["knowledge"],
+    async collect(context) {
+      const files = await countFiles(join18(context.knowledgeRoot, "raw"));
+      if (files === 0) {
+        return [{
+          id: "raw.empty",
+          domain: "raw",
+          level: "ok",
+          summary: "No raw material is waiting",
+          blocks: ["process-raw-intake"]
+        }];
+      }
+      const cases = (await activeRecords(join18(context.knowledgeRoot, "intake/cases/active"))).length + await directoryCount(join18(context.knowledgeRoot, "intake/cases/archive"));
+      return [{
+        id: cases === 0 ? "raw.unprocessed" : "raw.present",
+        domain: "raw",
+        level: cases === 0 ? "attention" : "info",
+        summary: cases === 0 ? "Raw material exists and no intake case has ever covered it" : "Raw material is present",
+        facts: { files, cases }
+      }];
+    }
+  };
+}
+function workCollector() {
+  return {
+    id: "work",
+    profiles: ["knowledge", "leaf"],
+    async collect(context) {
+      const root = join18(context.knowledgeRoot, "changes/active");
+      const signals2 = [];
+      for (const entry of await activeRecords(root, "change.md")) {
+        const metadata = entry.document.metadata;
+        const issues = await issueCounts(join18(entry.root, "issues"));
+        signals2.push({
+          id: "work.active",
+          domain: "work",
+          level: "attention",
+          summary: "A change bundle is open",
+          subject: entry.id,
+          facts: {
+            title: stringValue10(metadata.title) || entry.id,
+            mode: stringValue10(metadata.mode),
+            status: stringValue10(metadata.status),
+            repositories: recordArray7(metadata.repositories).length,
+            ...issues
+          },
+          ...stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {},
+          awaits: "agent"
+        });
+        const review = recordValue9(metadata.maintainer_review);
+        const outstanding = ["framing", "completion"].filter(
+          (stage) => stringValue10(recordValue9(review?.[stage])?.status) !== "approved"
+        );
+        if (outstanding.length > 0) {
+          signals2.push({
+            id: "work.approvals-outstanding",
+            domain: "work",
+            level: "attention",
+            summary: "Closure still requires your recorded approval",
+            subject: entry.id,
+            facts: {
+              stages: outstanding.join(","),
+              command: `wfctl work approve ${entry.id} --stage ${outstanding[0]}`
+            },
+            awaits: "maintainer",
+            blocks: ["close-work"]
+          });
+        }
+        if (stringValue10(recordValue9(metadata.verification)?.result) !== "passed") {
+          signals2.push({
+            id: "work.verification-pending",
+            domain: "work",
+            level: "info",
+            summary: "The bundle has not passed verification",
+            subject: entry.id,
+            awaits: "agent",
+            blocks: ["close-work"]
+          });
+        }
+        signals2.push(...checkpointSignals("work", entry.id, metadata, context));
+      }
+      return signals2;
+    }
+  };
+}
+function inboxCollector() {
+  return {
+    id: "inbox",
+    profiles: ["knowledge"],
+    async collect(context) {
+      const captures = await listCaptures(context.knowledgeRoot);
+      if (captures.captures.length === 0) {
+        return [];
+      }
+      const oldest = captures.captures.map((capture) => capture.createdAt).filter(Boolean).sort()[0];
+      return [{
+        id: "inbox.pending",
+        domain: "inbox",
+        level: "attention",
+        summary: "Captures are waiting for triage",
+        facts: { captures: captures.captures.length },
+        ...oldest ? { since: oldest } : {},
+        awaits: "agent"
+      }];
+    }
+  };
+}
+var STALE_CHECKPOINT_DAYS = 3;
+function checkpointSignals(domain, subject, metadata, context) {
+  const checkpoint = recordValue9(metadata.checkpoint);
+  const updatedAt = stringValue10(checkpoint?.updated_at);
+  if (!checkpoint || !updatedAt) {
+    return [];
+  }
+  const signals2 = [];
+  const age = context.now.getTime() - Date.parse(updatedAt);
+  if (Number.isFinite(age) && age > STALE_CHECKPOINT_DAYS * 864e5) {
+    signals2.push({
+      id: `${domain}.stale-checkpoint`,
+      domain,
+      level: "info",
+      summary: "The resume checkpoint is older than the record it summarizes",
+      subject,
+      since: updatedAt,
+      facts: { days: Math.floor(age / 864e5) },
+      awaits: "agent"
+    });
+  }
+  const blockers = Array.isArray(checkpoint.blockers) ? checkpoint.blockers : [];
+  if (blockers.length > 0) {
+    signals2.push({
+      id: `${domain}.blocked`,
+      domain,
+      level: "blocked",
+      summary: "The record records explicit blockers",
+      subject,
+      facts: { blockers: blockers.length, first: stringValue10(blockers[0]) },
+      awaits: "maintainer"
+    });
+  }
+  return signals2;
+}
+async function activeRecords(root, file = "case.md") {
+  const records = [];
+  for (const name of await directoryNames(root)) {
+    const directory = join18(root, name);
+    try {
+      const content3 = await readFile20(join18(directory, file), "utf8");
+      records.push({ id: name, root: directory, document: parseWorkSpec(content3) });
+    } catch {
+      records.push({ id: name, root: directory, document: { metadata: {}, body: "" } });
+    }
+  }
+  return records;
+}
+async function issueCounts(root) {
+  const counts = { issues: 0, issuesOpen: 0, issuesClaimed: 0 };
+  let names;
+  try {
+    names = (await readdir12(root)).filter((name) => name.endsWith(".md"));
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return counts;
+    }
+    throw error2;
+  }
+  for (const name of names) {
+    counts.issues += 1;
+    try {
+      const status = stringValue10(
+        parseWorkSpec(await readFile20(join18(root, name), "utf8")).metadata.status
+      );
+      if (status === "claimed") {
+        counts.issuesClaimed += 1;
+      }
+      if (status === "draft" || status === "ready" || status === "claimed") {
+        counts.issuesOpen += 1;
+      }
+    } catch {
+      counts.issuesOpen += 1;
+    }
+  }
+  return counts;
+}
+async function directoryNames(root) {
+  try {
+    return (await readdir12(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return [];
+    }
+    throw error2;
+  }
+}
+async function directoryCount(root) {
+  return (await directoryNames(root)).length;
+}
+var FILE_SCAN_LIMIT = 5e3;
+async function countFiles(root, budget = { left: FILE_SCAN_LIMIT }) {
+  let total = 0;
+  let entries;
+  try {
+    entries = await readdir12(root, { withFileTypes: true });
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return 0;
+    }
+    throw error2;
+  }
+  for (const entry of entries) {
+    if (budget.left <= 0) {
+      break;
+    }
+    if (entry.name.startsWith(".")) {
+      continue;
+    }
+    if (entry.isDirectory()) {
+      total += await countFiles(join18(root, entry.name), budget);
+    } else if (entry.isFile()) {
+      budget.left -= 1;
+      total += 1;
+    }
+  }
+  return total;
+}
+async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
+  let newest;
+  let entries;
+  try {
+    entries = await readdir12(root, { withFileTypes: true });
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return void 0;
+    }
+    throw error2;
+  }
+  for (const entry of entries) {
+    if (budget.left <= 0) {
+      break;
+    }
+    const path = join18(root, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await newestModification(path, budget);
+      if (nested !== void 0 && (newest === void 0 || nested > newest)) {
+        newest = nested;
+      }
+    } else if (entry.isFile()) {
+      budget.left -= 1;
+      const modified = (await stat3(path)).mtimeMs;
+      if (newest === void 0 || modified > newest) {
+        newest = modified;
+      }
+    }
+  }
+  return newest;
+}
+async function readJson(path) {
+  try {
+    const parsed = JSON.parse(await readFile20(path, "utf8"));
+    return recordValue9(parsed);
+  } catch {
+    return void 0;
+  }
+}
+function isPending(value) {
+  return recordValue9(value)?.status === "pending";
+}
+function recordArray7(value) {
+  return Array.isArray(value) ? value.filter(isRecord7) : [];
+}
+function recordValue9(value) {
+  return isRecord7(value) ? value : void 0;
+}
+function isRecord7(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function stringValue10(value) {
+  return typeof value === "string" ? value : "";
+}
+
+// src/state.ts
+init_types();
+var STATE_REPORT_VERSION = 1;
+var STATE_LEVELS = ["ok", "info", "attention", "blocked"];
+var STATE_DOMAINS = [
+  "install",
+  "sources",
+  "corpus",
+  "reconstruction",
+  "intake",
+  "raw",
+  "work",
+  "inbox"
+];
+var CAPABILITIES = [
+  {
+    id: "reconstruct-baseline",
+    label: "Build a knowledge baseline from source repositories",
+    profiles: ["knowledge"]
+  },
+  {
+    id: "reconstruct-audit",
+    label: "Audit the existing baseline against current source",
+    profiles: ["knowledge"],
+    requires: ["corpus.populated"]
+  },
+  {
+    id: "process-raw-intake",
+    label: "Process untrusted raw material into candidates",
+    profiles: ["knowledge"]
+  },
+  {
+    id: "start-change",
+    label: "Start a central change bundle",
+    profiles: ["knowledge", "leaf"]
+  },
+  {
+    id: "implement-work",
+    label: "Implement an issue from an open bundle in this checkout",
+    profiles: ["leaf"],
+    requires: ["work.active"]
+  },
+  {
+    id: "close-work",
+    label: "Close an open change bundle",
+    profiles: ["knowledge", "leaf"],
+    requires: ["work.active"]
+  }
+];
+async function collectWorkflowState(targetInput, options = {}) {
+  const root = resolve19(targetInput);
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const capabilities = options.capabilities ?? CAPABILITIES;
+  const base = {
+    reportVersion: STATE_REPORT_VERSION,
+    root,
+    workflowVersion: WORKFLOW_VERSION,
+    generatedAt: now.toISOString()
+  };
+  let config;
+  try {
+    config = await readConfig(root);
+  } catch (error2) {
+    return {
+      ...base,
+      signals: [{
+        id: "install.absent",
+        domain: "install",
+        level: "blocked",
+        summary: "No workflow installation was found in this directory",
+        facts: { reason: errorMessage(error2) },
+        awaits: "maintainer",
+        blocks: capabilities.map((capability) => capability.id)
+      }],
+      capabilities: [],
+      degraded: []
+    };
+  }
+  const context = {
+    root,
+    profile: config.profile,
+    config,
+    knowledgeRoot: resolveKnowledgeRoot(root, config),
+    now
+  };
+  const collectors = (options.collectors ?? STATE_COLLECTORS).filter((collector) => collector.profiles.includes(config.profile));
+  const signals2 = [];
+  const degraded = [];
+  const results = await Promise.all(collectors.map(async (collector) => {
+    try {
+      return { collector, signals: await collector.collect(context) };
+    } catch (error2) {
+      return { collector, reason: errorMessage(error2) };
+    }
+  }));
+  for (const result of results) {
+    if ("signals" in result) {
+      signals2.push(...result.signals);
+    } else {
+      degraded.push({ collector: result.collector.id, reason: result.reason });
+    }
+  }
+  return {
+    ...base,
+    profile: config.profile,
+    signals: sortSignals(signals2),
+    capabilities: resolveCapabilities(capabilities, signals2, config.profile),
+    degraded: degraded.sort((left, right) => left.collector.localeCompare(right.collector))
+  };
+}
+function resolveCapabilities(definitions, signals2, profile) {
+  const present = new Set(signals2.map((signal) => signal.id));
+  return definitions.filter((definition2) => definition2.profiles.includes(profile)).map((definition2) => {
+    const blockedBy = [
+      ...new Set(
+        signals2.filter((signal) => signal.blocks?.includes(definition2.id)).map((signal) => signal.id)
+      )
+    ].sort();
+    const missing = (definition2.requires ?? []).filter((required) => !present.has(required)).sort();
+    return {
+      id: definition2.id,
+      label: definition2.label,
+      available: blockedBy.length === 0 && missing.length === 0,
+      blockedBy,
+      missing
+    };
+  });
+}
+function sortSignals(signals2) {
+  return [...signals2].sort(
+    (left, right) => STATE_LEVELS.indexOf(right.level) - STATE_LEVELS.indexOf(left.level) || STATE_DOMAINS.indexOf(left.domain) - STATE_DOMAINS.indexOf(right.domain) || left.id.localeCompare(right.id) || (left.subject ?? "").localeCompare(right.subject ?? "")
+  );
+}
+
+// src/cli.ts
 setColorEnabled(process.stdout.isTTY === true && !("NO_COLOR" in process.env));
 var main = new Command().name("wfctl").version(WORKFLOW_VERSION).description(
-  "Install and operate a shared project workflow.\nMaintainers normally use init; installed agents own the remaining commands.\n\nSetup:\n  init       Install or repair a knowledge or leaf repository\n  check      Validate the current workflow installation\n\nMaintenance:\n  upgrade    Upgrade installed rules, skills, templates, and guides\n\nKnowledge operations:\n  knowledge  Process raw input, validate knowledge, and build its graph\n\nProject work:\n  work       Operate captures, checkpoints, change bundles, issues, and closure"
-).throwErrors().command("init", initCommand()).command("check", checkCommand()).command("upgrade", upgradeCommand()).command("knowledge", knowledgeCommand()).command("work", workCommand());
+  "Install and operate a shared project workflow.\nMaintainers normally use init; installed agents own the remaining commands.\n\nSetup:\n  init       Install or repair a knowledge or leaf repository\n  check      Validate the current workflow installation\n\nMaintenance:\n  upgrade    Upgrade installed rules, skills, templates, and guides\n\nOrientation:\n  brief      Report current repository state at session start\n\nKnowledge operations:\n  knowledge  Process raw input, validate knowledge, and build its graph\n\nProject work:\n  work       Operate captures, checkpoints, change bundles, issues, and closure"
+).throwErrors().command("init", initCommand()).command("check", checkCommand()).command("upgrade", upgradeCommand()).command("brief", briefCommand()).command("knowledge", knowledgeCommand()).command("work", workCommand());
 try {
   await main.parse(process.argv.slice(2));
 } catch (error2) {
@@ -36431,17 +37132,17 @@ function initCommand() {
     "--init-git",
     "Initialize Git when creating a knowledge repository."
   ).option("-y, --yes", "Accept defaults and safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options, profileValue) => {
-    const target = resolve19(options.target);
+    const target = resolve20(options.target);
     const promptOptions = {
       yes: options.yes === true,
       json: options.json === true
     };
     const profile = await resolveProfile(profileValue, target, promptOptions);
-    let knowledge = options.knowledge ? resolve19(options.knowledge) : await installedKnowledgePath(target, profile);
+    let knowledge = options.knowledge ? resolve20(options.knowledge) : await installedKnowledgePath(target, profile);
     if (profile === "leaf" && !knowledge && !promptOptions.yes && !promptOptions.json && interactive()) {
       const answer = await ask("Knowledge repository path: ");
       if (answer) {
-        knowledge = resolve19(answer);
+        knowledge = resolve20(answer);
       }
     }
     if (options.printInstructions) {
@@ -36479,7 +37180,7 @@ function initCommand() {
 }
 function upgradeCommand() {
   return new Command().description("Preview dependencies and upgrade an existing workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-s, --skills <scope:string>", "Change skill scope: project, user, or none.").option("-a, --agents <agents:string>", "Change skill targets: codex, claude, or both.").option("--dry-run", "Preview files and dependency checks without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
-    const target = resolve19(options.target);
+    const target = resolve20(options.target);
     const config = await readConfig(target);
     const scope = options.skills ? parseSkillScope(options.skills) : config.skills?.scope ?? "project";
     const agents = options.agents ? parseAgentTargets(options.agents) : config.skills?.agents ?? ["codex", "claude"];
@@ -36615,7 +37316,7 @@ async function installWorkflow(input) {
 ${green("\u2713")} ${bold("Workflow installed")}
   ${dim("Target")}  ${resolved.target}
   ${dim("Changes")} ${applied.changed}
-  ${dim("Guide")}   ${resolve19(resolved.target, "PROJECT_WORKFLOW.md")}
+  ${dim("Guide")}   ${resolve20(resolved.target, "PROJECT_WORKFLOW.md")}
 `
     );
     if (repositoryCheckout) {
@@ -36711,6 +37412,79 @@ function checkCommand() {
       process.exitCode = 2;
     }
   });
+}
+function briefCommand() {
+  return new Command().description(
+    "Report current repository state at session start.\nReads only durable records; never starts work, writes, or contacts a tool.\nSignals are facts, capabilities are derived; composing advice is the agent's job."
+  ).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+    const report = await collectWorkflowState(options.target);
+    if (options.json) {
+      printJson(report);
+    } else {
+      printBrief(report);
+    }
+  });
+}
+function printBrief(report) {
+  const header = [
+    `wfctl ${report.workflowVersion}`,
+    report.profile ?? "not installed",
+    report.root
+  ].join(" \xB7 ");
+  process.stdout.write(`${bold(header)}
+`);
+  if (report.signals.length === 0) {
+    process.stdout.write(`${dim("No state signals.")}
+`);
+  }
+  for (const signal of report.signals) {
+    const subject = signal.subject ? ` ${cyan(signal.subject)}` : "";
+    const facts = Object.entries(signal.facts ?? {}).map(([key, value]) => `${key}=${value}`).join(" ");
+    process.stdout.write(
+      `${levelTag(signal.level)} ${signal.id}${subject}  ${signal.summary}
+`
+    );
+    if (facts || signal.since || signal.awaits) {
+      const trailer = [
+        facts,
+        signal.since ? `since=${signal.since}` : "",
+        signal.awaits ? `awaits=${signal.awaits}` : ""
+      ].filter(Boolean).join(" ");
+      process.stdout.write(`${dim(`           ${trailer}`)}
+`);
+    }
+  }
+  if (report.capabilities.length > 0) {
+    process.stdout.write("\n");
+    for (const capability of report.capabilities) {
+      const reasons = [
+        ...capability.blockedBy,
+        ...capability.missing.map((signal) => `no ${signal}`)
+      ];
+      const state = capability.available ? green("available") : `${red("blocked")} ${dim(`\u2190 ${reasons.join(", ")}`)}`;
+      process.stdout.write(`${capability.id.padEnd(22)} ${state}
+`);
+    }
+  }
+  for (const failure of report.degraded) {
+    process.stdout.write(
+      `${yellow("degraded")}   ${failure.collector}  ${failure.reason}
+`
+    );
+  }
+}
+function levelTag(level2) {
+  const label = level2.padEnd(9);
+  if (level2 === "blocked") {
+    return red(label);
+  }
+  if (level2 === "attention") {
+    return yellow(label);
+  }
+  if (level2 === "ok") {
+    return green(label);
+  }
+  return dim(label);
 }
 function workCommand() {
   return new Command().description("Manage pending captures and central work bound to exact checkouts.").command("capture", workCaptureCommand()).command("handoff", deprecatedHandoffCommand()).command(
@@ -38803,7 +39577,7 @@ ${cyan(bold(section.title))}
 }
 async function recordedAgents(target) {
   try {
-    const config = await readConfig(resolve19(target));
+    const config = await readConfig(resolve20(target));
     const agents = config.skills?.agents ?? [];
     return agents.length > 0 ? agents : ["codex", "claude"];
   } catch {

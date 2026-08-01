@@ -136,6 +136,9 @@ Do not use it for a large but already-bounded task. That is just a spec.
 
 ## Picking up after a break
 
+A new session starts by reading the state, so an open bundle, an unclaimed
+issue, or a pending approval is the first thing you hear about. To continue it:
+
 > Resume the active work.
 
 You should not need the work ID. One bound active record resumes automatically;

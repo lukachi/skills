@@ -199,7 +199,12 @@ A capture is not project truth and not a task tracker.
 
 ## Picking up after a break
 
-Say it plainly:
+You do not have to open with anything. The agent reads the repository state at
+session start and leads with what is in progress — a reconstruction and how far
+it has got, an open intake case, a bundle waiting on your approval. If that is
+what you wanted, say so.
+
+Otherwise, say it plainly:
 
 > Continue where we left off.
 

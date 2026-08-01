@@ -78,7 +78,15 @@ The normal maintainer CLI surface is:
 - `wfctl init leaf`;
 - `wfctl upgrade` when the maintainer chooses to run it directly;
 - `wfctl work approve` for framing and completion decisions, which the agent
-  may prepare and explain but cannot satisfy on its own.
+  may prepare and explain but cannot satisfy on its own;
+- `wfctl brief` when a maintainer wants the repository state without an agent.
+
+Every session begins with `wfctl brief`. The engine must be able to state what
+exists, what is in progress, and what waits on the maintainer without the agent
+inferring it from scattered records, and must state it as observed signals and
+derived capabilities rather than as recognized scenarios. Orientation is
+read-only: the brief never starts a deliberate operation, and a reported
+capability is a permission, not an instruction.
 
 After initialization, installed agents own routine `wfctl`, QMD, Graphify,
 validation, registry, case, and work-record operations. Users express desired

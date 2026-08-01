@@ -70,6 +70,42 @@ wfctl check
 Human output groups checks, compacts repetitive successes, and gives actionable
 QMD semantic setup instructions. `--json` returns the complete machine report.
 
+## Session orientation
+
+```sh
+wfctl brief --json
+```
+
+`brief` reports the current state of an initialized repository so a starting
+agent does not have to discover it by scanning records. It is the first command
+of a session and is safe to run at any time: it reads durable records only, and
+never writes, locks, starts work, or contacts QMD, Graphify, or the network.
+
+Its output has two parts and no third:
+
+- **signals** — observed facts. Each carries a stable dotted `id`, a `domain`,
+  a `level` of `ok`, `info`, `attention`, or `blocked`, an optional `subject`
+  identifying the record it describes, machine-readable `facts`, and `awaits`
+  naming whether an agent or the maintainer can resolve it. A signal may declare
+  the capabilities it `blocks`.
+- **capabilities** — deliberate operations whose preconditions are mechanical.
+  Availability is derived: a capability is available when no collected signal
+  blocks it and every signal it `requires` is present. `blockedBy` and `missing`
+  name the exact reasons.
+
+The command composes no advice and describes no scenario. Ranking facts into a
+short human orientation is the agent's work, not the CLI's.
+
+Collectors are independent and profile-scoped. A collector that fails degrades
+into the `degraded` list with its reason and never fails the report, because
+this runs at session start where a thrown error costs the maintainer a turn. An
+uninitialized directory returns one `install.absent` signal rather than an
+error.
+
+Adding a new observable state means adding a collector. It must not mean adding
+a branch to a renderer, and no consumer may reintroduce per-scenario handling
+of these signals.
+
 ## Knowledge operations
 
 Installed knowledge agents own these commands.
