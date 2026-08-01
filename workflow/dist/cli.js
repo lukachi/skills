@@ -21561,7 +21561,10 @@ async function claimReconstructionWorkstream(options) {
       }
       const status = stringValue7(document3.metadata.status);
       if (status !== "planned" && status !== "rework") {
-        throw new Error(`Cannot claim workstream in ${status || "unknown"} state`);
+        const recovery = status === "claimed" || status === "active" ? " Its worker never submitted. Cancel it with wfctl knowledge reconstruct workstream review --status cancelled and an honest note, then plan a fresh packet for the remaining scope; the cancelled packet stays referenced as evidence of what was attempted." : "";
+        throw new Error(
+          `Cannot claim workstream in ${status || "unknown"} state.${recovery}`
+        );
       }
       if (status === "rework") {
         document3.metadata.attempt = Number(document3.metadata.attempt) + 1;
@@ -36747,6 +36750,7 @@ function reconstructionCollector() {
           awaits: "agent"
         });
         signals2.push(...checkpointSignals("reconstruction", entry.id, metadata, context));
+        signals2.push(...await workstreamSignals(entry));
         const scope = recordValue10(
           recordValue10(recordValue10(metadata.supplemental_inputs)?.raw)?.scope
         );
@@ -36923,6 +36927,46 @@ function inboxCollector() {
     }
   };
 }
+async function workstreamSignals(entry) {
+  const packets = await markdownRecords(join18(entry.root, "workstreams"));
+  const counts = { packets: packets.length, claimed: 0, submitted: 0, accepted: 0 };
+  const stranded = [];
+  for (const packet of packets) {
+    const status = stringValue10(packet.document.metadata.status);
+    if (status === "claimed" || status === "active") {
+      counts.claimed += 1;
+      stranded.push(packet.id);
+    } else if (status === "submitted") {
+      counts.submitted += 1;
+    } else if (status === "accepted") {
+      counts.accepted += 1;
+    }
+  }
+  if (counts.packets === 0) {
+    return [];
+  }
+  const signals2 = [{
+    id: "reconstruction.workstreams",
+    domain: "reconstruction",
+    level: "info",
+    summary: "Worker packets are recorded for this reconstruction",
+    subject: entry.id,
+    facts: counts,
+    awaits: "agent"
+  }];
+  if (stranded.length > 0) {
+    signals2.push({
+      id: "reconstruction.stranded-workstream",
+      domain: "reconstruction",
+      level: "blocked",
+      summary: "A worker packet is still claimed and its worker is gone; it cannot be re-claimed or reviewed until it is cancelled",
+      subject: `${entry.id}/${stranded[0]}`,
+      facts: { stranded: stranded.length, packets: stranded.join(",") },
+      awaits: "agent"
+    });
+  }
+  return signals2;
+}
 var STALE_CHECKPOINT_DAYS = 3;
 function checkpointSignals(domain, subject, metadata, context) {
   const checkpoint = recordValue10(metadata.checkpoint);
@@ -36967,6 +37011,31 @@ async function activeRecords(root, file = "case.md") {
       records.push({ id: name, root: directory, document: parseWorkSpec(content3) });
     } catch {
       records.push({ id: name, root: directory, document: { metadata: {}, body: "" } });
+    }
+  }
+  return records;
+}
+async function markdownRecords(root) {
+  let names;
+  try {
+    names = (await readdir12(root)).filter((name) => name.endsWith(".md")).sort();
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return [];
+    }
+    throw error2;
+  }
+  const records = [];
+  for (const name of names) {
+    const path = join18(root, name);
+    try {
+      records.push({
+        id: name.slice(0, -3),
+        root: path,
+        document: parseWorkSpec(await readFile20(path, "utf8"))
+      });
+    } catch {
+      records.push({ id: name.slice(0, -3), root: path, document: { metadata: {}, body: "" } });
     }
   }
   return records;

@@ -61,6 +61,13 @@ or resuming `reconstruct-project-knowledge`.
 - Preserve every dispatched packet. If evidence makes one unnecessary, keep it
   referenced as `cancelled` and record an accepted orchestrator review; never
   delete or unreference it to manufacture a clean frontier.
+- A claimed packet whose worker never submitted — the normal outcome when a
+  session ends while it is running — cannot be re-claimed or reviewed, by
+  design: resuming abandoned work would inherit conclusions nobody checked.
+  Cancel it with a note naming what was attempted and what is unknown, then plan
+  a fresh packet for the remaining scope. Before ending a session deliberately,
+  bring every claimed packet to `submitted` or cancel it; leaving one claimed
+  strands the scope behind a state no later session can move.
 - Run fan-out in bounded waves. Start broad, fan in, compare results with the
   complete deterministic frontier, and create later workers only for concrete
   gaps, contradictions, cross-repository links, or high-risk negative claims.

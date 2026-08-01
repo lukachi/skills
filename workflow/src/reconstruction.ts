@@ -893,7 +893,19 @@ export async function claimReconstructionWorkstream(
       }
       const status = stringValue(document.metadata.status);
       if (status !== "planned" && status !== "rework") {
-        throw new Error(`Cannot claim workstream in ${status || "unknown"} state`);
+        // A worker that died with its session leaves the packet claimed, and a
+        // claimed packet is deliberately not re-claimable: silently resuming
+        // abandoned work would inherit conclusions nobody reviewed. Name the
+        // supported recovery so an agent does not have to derive it.
+        const recovery = status === "claimed" || status === "active"
+          ? " Its worker never submitted. Cancel it with wfctl knowledge reconstruct"
+            + " workstream review --status cancelled and an honest note, then plan a"
+            + " fresh packet for the remaining scope; the cancelled packet stays"
+            + " referenced as evidence of what was attempted."
+          : "";
+        throw new Error(
+          `Cannot claim workstream in ${status || "unknown"} state.${recovery}`,
+        );
       }
       if (status === "rework") {
         document.metadata.attempt = Number(document.metadata.attempt) + 1;

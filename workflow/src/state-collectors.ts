@@ -227,6 +227,7 @@ function reconstructionCollector(): StateCollector {
           awaits: "agent",
         });
         signals.push(...checkpointSignals("reconstruction", entry.id, metadata, context));
+        signals.push(...await workstreamSignals(entry));
 
         const scope = recordValue(
           recordValue(recordValue(metadata.supplemental_inputs)?.raw)?.scope,
@@ -423,6 +424,54 @@ function inboxCollector(): StateCollector {
   };
 }
 
+/**
+ * A packet still claimed at session start belongs to a worker that never
+ * submitted. It cannot be re-claimed or reviewed, so its scope is stranded
+ * until someone cancels it — worth saying before any other planning.
+ */
+async function workstreamSignals(entry: ActiveRecord): Promise<StateSignal[]> {
+  const packets = await markdownRecords(join(entry.root, "workstreams"));
+  const counts = { packets: packets.length, claimed: 0, submitted: 0, accepted: 0 };
+  const stranded: string[] = [];
+  for (const packet of packets) {
+    const status = stringValue(packet.document.metadata.status);
+    if (status === "claimed" || status === "active") {
+      counts.claimed += 1;
+      stranded.push(packet.id);
+    } else if (status === "submitted") {
+      counts.submitted += 1;
+    } else if (status === "accepted") {
+      counts.accepted += 1;
+    }
+  }
+  if (counts.packets === 0) {
+    return [];
+  }
+  const signals: StateSignal[] = [{
+    id: "reconstruction.workstreams",
+    domain: "reconstruction",
+    level: "info",
+    summary: "Worker packets are recorded for this reconstruction",
+    subject: entry.id,
+    facts: counts,
+    awaits: "agent",
+  }];
+  if (stranded.length > 0) {
+    signals.push({
+      id: "reconstruction.stranded-workstream",
+      domain: "reconstruction",
+      level: "blocked",
+      summary:
+        "A worker packet is still claimed and its worker is gone; it cannot be "
+        + "re-claimed or reviewed until it is cancelled",
+      subject: `${entry.id}/${stranded[0]}`,
+      facts: { stranded: stranded.length, packets: stranded.join(",") },
+      awaits: "agent",
+    });
+  }
+  return signals;
+}
+
 const STALE_CHECKPOINT_DAYS = 3;
 
 /**
@@ -484,6 +533,32 @@ async function activeRecords(root: string, file = "case.md"): Promise<ActiveReco
       records.push({ id: name, root: directory, document: parseWorkSpec(content) });
     } catch {
       records.push({ id: name, root: directory, document: { metadata: {}, body: "" } });
+    }
+  }
+  return records;
+}
+
+async function markdownRecords(root: string): Promise<ActiveRecord[]> {
+  let names: string[];
+  try {
+    names = (await readdir(root)).filter((name) => name.endsWith(".md")).sort();
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return [];
+    }
+    throw error;
+  }
+  const records: ActiveRecord[] = [];
+  for (const name of names) {
+    const path = join(root, name);
+    try {
+      records.push({
+        id: name.slice(0, -3),
+        root: path,
+        document: parseWorkSpec(await readFile(path, "utf8")),
+      });
+    } catch {
+      records.push({ id: name.slice(0, -3), root: path, document: { metadata: {}, body: "" } });
     }
   }
   return records;
