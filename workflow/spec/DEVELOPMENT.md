@@ -50,6 +50,8 @@ It covers:
 
 - TypeScript type checking;
 - isolated unit tests;
+- eval corpus validity and any recorded agent-behavior runs;
+- a rebuilt bundle that matches the committed `dist/`;
 - preflight integration;
 - real QMD behavior;
 - real Graphify behavior;
@@ -57,12 +59,20 @@ It covers:
 - Bun, Node.js, and Deno runtime smoke tests;
 - packed npm artifact contents and CLI execution.
 
+`.github/workflows/workflow-check.yml` runs the same gate in CI on every push
+and pull request that touches `workflow/`.
+
 Focused suites:
 
 ```sh
 bun test tests/knowledge.test.ts
 bun test tests/knowledge-skills.test.ts
+bun run test:evals
 ```
+
+`dist/cli.js` is committed and shipped. `bun run build` overwrites it, so
+`bun run check:dist` exists to reject a stale committed bundle instead of
+silently repairing it.
 
 Automated tests prove deterministic contracts. They do not prove that an agent
 selects the right skill, understands a project, or writes useful stakeholder
@@ -163,3 +173,8 @@ When behavior changes:
 4. add or update hidden behavior evals when routing or agent judgment changes;
 5. run the complete gate;
 6. test the packed package, not only the source checkout.
+
+Schema versions are a recurring hazard: a bump that reaches a template but not
+the matching gate disables that gate silently. Keep supported and enforced
+version sets as named constants next to the gate, never as inline literals, and
+bind the distributed template to them with a regression test.

@@ -1,0 +1,73 @@
+name: wfctl check
+
+on:
+  push:
+    branches: ["**"]
+    paths: ["workflow/**", ".github/workflows/workflow-check.yml"]
+  pull_request:
+    paths: ["workflow/**", ".github/workflows/workflow-check.yml"]
+
+defaults:
+  run:
+    working-directory: workflow
+
+jobs:
+  deterministic:
+    name: Types, unit tests, evals, bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Type check
+        run: bun run typecheck
+      - name: Unit tests
+        run: bun run test
+      - name: Eval corpora
+        run: bun run test:evals
+      - name: Build bundle
+        run: bun run build
+      # dist/cli.js is committed and shipped. `bun run build` overwrites it, so
+      # without this step a stale bundle would be silently repaired in CI and
+      # never reported.
+      - name: Reject stale committed bundle
+        run: bun run check:dist
+
+  integration:
+    name: Runtimes, external tools, packed artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Install QMD
+        run: bun install -g @tobilu/qmd@2.5.3
+      - name: Install Graphify
+        run: uv tool install graphifyy
+      - name: Build bundle
+        run: bun run build
+      - name: Preflight integration
+        run: bun run test:preflight
+      - name: QMD integration
+        run: bun run test:qmd
+      - name: Graphify integration
+        run: bun run test:graphify
+      - name: Reconstruction integration
+        run: bun run test:reconstruction
+      - name: Runtime smoke (Bun, Node, Deno)
+        run: bun run test:runtime
+      - name: Packed artifact smoke
+        run: bun run test:package
