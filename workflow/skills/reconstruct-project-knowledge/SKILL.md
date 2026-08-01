@@ -12,6 +12,8 @@ it actually retains; raw material supplies candidates, never evidence.
 
 Read [the reconstruction model](references/reconstruction-model.md) before the
 first baseline or any multi-repository audit.
+Read [the adaptive agent-routing contract](references/agent-routing.md) before
+planning workers, choosing their compute profiles, or reviewing an escalation.
 
 ## Command and interaction ownership
 
@@ -184,10 +186,15 @@ swarm. Decide the execution only after inspecting the complete frozen frontier:
 - never use agent count as a goal. Record a proportional `max_parallel`, total
   workstream cap, retry cap, and reason in `case.md` before dispatch.
 
-Use platform-native subagents when available. Do not hard-code a particular
-agent product, command, model, worktree feature, or topology into the durable
-case. A normal checkout is as valid as a worktree; every worker receives the
-exact already-bound source root at dispatch time.
+Use platform-native subagents when available. Keep durable routing host-neutral:
+classify each packet as `exploration`, `analysis`, `synthesis`, or `review` and
+request `fast`, `balanced`, or `deep` according to
+[the routing contract](references/agent-routing.md). Let the host map that
+profile to a concrete model and reasoning effort. Record the effective choice
+when known or the explicit `host-auto` / `profile-default` fallback. Do not
+hard-code an agent product, model name, worktree feature, or topology as a
+workflow requirement. A normal checkout is as valid as a worktree; every
+worker receives the exact already-bound source root at dispatch time.
 
 Partition research by independently reviewable semantic outcome, not by
 alphabetical file range. Suitable first-wave units include:
@@ -203,7 +210,7 @@ After fan-in, create narrower units for discovered cross-repository flows,
 contracts, Areas, capabilities, contradictions, negative claims, or unexplained
 coverage. One repository's worker never defines the whole-project meaning.
 
-For every worker, create and register a unique durable packet with `wfctl
+For every research worker, create and register a unique durable packet with `wfctl
 knowledge reconstruct workstream create`, then claim it for the concrete host
 run with `wfctl knowledge reconstruct workstream claim`. The CLI uses
 [the workstream template](assets/reconstruction-workstream.md), updates the
@@ -213,9 +220,12 @@ dispatch prompt must include:
 ```sh
 wfctl knowledge reconstruct workstream create <case-id> <workstream-id> \
   --title "<bounded outcome>" --objective "<semantic question>" \
-  --role <role> --wave <number> [--repository/--file/--community/--surface/--raw-case ...]
+  --role <role> --workload <exploration|analysis|synthesis|review> \
+  --profile <fast|balanced|deep> --routing-reason "<why sufficient>" \
+  --wave <number> [--repository/--file/--community/--surface/--raw-case ...]
 wfctl knowledge reconstruct workstream claim <case-id> <workstream-id> \
-  --by <worker> --host <agent-host> --run-id <actual-session-id-or-unavailable:reason>
+  --by <worker> --host <agent-host> --run-id <actual-session-id-or-unavailable:reason> \
+  --model <model-or-host-auto> --effort <effort-or-profile-default>
 ```
 
 - exact knowledge root, case root, bound source root, repository identity, and
@@ -252,6 +262,17 @@ cross-repository links, then record every material expansion and why it was
 needed. `result.evidence_refs` accepts only receipt IDs produced for that
 worker by a pinned read; prose paths and invented references are rejected.
 
+Every escalation answers one concrete attempt. Material `explored_context`,
+`result.authority_questions`, contradictions, negative claims, unexplained
+results, and review rework require their matching current-attempt response. A
+`new-workstream` target must still be planned, belong to a later wave, and name
+the originating packet as a dependency. Every review remains in
+`review_history`; accepting a retry never erases the review that returned it.
+
+Version 2 workstreams created by an earlier workflow remain valid under their
+original lifecycle and may be resumed without invented routing metadata. Apply
+adaptive escalation only to new version 3 packets.
+
 Run bounded waves:
 
 1. **Map:** reconcile the Git inventory, Graphify structure, runtime surfaces,
@@ -266,7 +287,12 @@ Run bounded waves:
 6. **Independent review:** a fresh read-only critic checks coverage omissions,
    unsupported claims, hidden conflicts, invalid negative claims, and unjustified
    `structural-only` or `irrelevant` states. Reopen bounded workstreams for real
-   gaps; do not ask the critic to rewrite its own target.
+   gaps; do not ask the critic to rewrite its own target. This final whole-case
+   critic returns a read-only verdict; the orchestrator attributes and records
+   it in `orchestration.independent_review`, not as a normal workstream, so the
+   critic remains outside the worker set it audits. Route an agent or
+   separate-session critic as `review` / `deep` and record its routing reason,
+   effective host, run ID, model, and reasoning effort.
 
 Use per-resource write barriers during fan-out: never overlap worker and
 orchestrator Markdown edits to the same intake case or packet. The orchestrator
@@ -526,7 +552,12 @@ Then render the current reconstruction frontier before continuing analysis.
    check.
 7. Submit each finished packet with `wfctl knowledge reconstruct workstream
    submit` and have a different actor run `wfctl knowledge reconstruct
-   workstream review`. Mark orchestration complete only after every workstream
+   workstream review`. Before acceptance, respond to contradictions,
+   insufficient evidence, negative claims, or review rework with `wfctl
+   knowledge reconstruct workstream escalate`; choose a stronger profile, a
+   narrower follow-up workstream, maintainer review, retained uncertainty, or
+   an explicitly justified same-profile correction. Mark orchestration complete
+   only after every workstream
    is accepted or has
    a review-approved `cancelled` disposition, blocked work is either resolved
    or represented by an honest partial outcome, the

@@ -2,8 +2,40 @@ import { readFile, readdir } from "node:fs/promises";
 import { basename, relative, resolve, sep } from "node:path";
 import { isRecord, parseWorkSpec } from "./work-spec.js";
 
-export const RECONSTRUCTION_ORCHESTRATION_VERSION = 2;
-export const RECONSTRUCTION_WORKSTREAM_VERSION = 2;
+export const RECONSTRUCTION_ORCHESTRATION_VERSION = 3;
+export const LEGACY_RECONSTRUCTION_ORCHESTRATION_VERSION = 2;
+export const RECONSTRUCTION_WORKSTREAM_VERSION = 3;
+export const LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION = 2;
+
+export const RECONSTRUCTION_WORKLOADS = [
+  "exploration",
+  "analysis",
+  "synthesis",
+  "review",
+] as const;
+export const RECONSTRUCTION_PROFILES = ["fast", "balanced", "deep"] as const;
+export const RECONSTRUCTION_ESCALATION_TRIGGERS = [
+  "contradiction",
+  "insufficient-evidence",
+  "negative-claim",
+  "cross-boundary-scope",
+  "review-rework",
+  "maintainer-authority",
+] as const;
+export const RECONSTRUCTION_ESCALATION_ACTIONS = [
+  "stronger-profile",
+  "new-workstream",
+  "maintainer-review",
+  "retained-uncertainty",
+  "same-profile",
+] as const;
+
+export type ReconstructionWorkload = typeof RECONSTRUCTION_WORKLOADS[number];
+export type ReconstructionProfile = typeof RECONSTRUCTION_PROFILES[number];
+export type ReconstructionEscalationTrigger =
+  typeof RECONSTRUCTION_ESCALATION_TRIGGERS[number];
+export type ReconstructionEscalationAction =
+  typeof RECONSTRUCTION_ESCALATION_ACTIONS[number];
 
 const EXECUTION_MODES = new Set(["single-agent", "orchestrator-workers"]);
 const WORKSTREAM_STATUSES = new Set([
@@ -20,6 +52,13 @@ const REVIEW_ASSURANCE_LEVELS = new Set([
   "separate-session",
   "maintainer",
 ]);
+const WORKLOADS = new Set<string>(RECONSTRUCTION_WORKLOADS);
+const PROFILES = new Set<string>(RECONSTRUCTION_PROFILES);
+const ESCALATION_TRIGGERS = new Set<string>(RECONSTRUCTION_ESCALATION_TRIGGERS);
+const ESCALATION_ACTIONS = new Set<string>(RECONSTRUCTION_ESCALATION_ACTIONS);
+const PROFILE_RANK = new Map<string, number>(
+  RECONSTRUCTION_PROFILES.map((profile, index) => [profile, index]),
+);
 
 export interface ReconstructionWorkstreamRecord {
   path: string;
@@ -96,9 +135,14 @@ export function reconstructionOrchestrationIssues(
   if (!orchestration) {
     return ["orchestration is required for reconstruction version 5"];
   }
-  if (orchestration.version !== RECONSTRUCTION_ORCHESTRATION_VERSION) {
+  const orchestrationVersion = Number(orchestration.version);
+  const adaptiveOrchestration = orchestrationVersion === RECONSTRUCTION_ORCHESTRATION_VERSION;
+  if (
+    orchestrationVersion !== LEGACY_RECONSTRUCTION_ORCHESTRATION_VERSION
+    && !adaptiveOrchestration
+  ) {
     issues.push(
-      `orchestration.version must be ${RECONSTRUCTION_ORCHESTRATION_VERSION}`,
+      `orchestration.version must be ${LEGACY_RECONSTRUCTION_ORCHESTRATION_VERSION} or ${RECONSTRUCTION_ORCHESTRATION_VERSION}`,
     );
   }
   if (orchestration.strategy !== "adaptive-orchestrator-worker") {
@@ -197,10 +241,24 @@ export function reconstructionOrchestrationIssues(
     issues.push("maintainer assurance requires a human:<maintainer-id> reviewer");
   } else if (
     assurance !== "maintainer"
-    && !stringValue(review?.run_id).trim()
+    && (
+      adaptiveOrchestration
+        ? (
+          stringValue(recordValue(review?.routing)?.workload) !== "review"
+          || stringValue(recordValue(review?.routing)?.requested_profile) !== "deep"
+          || !stringValue(recordValue(review?.routing)?.reason).trim()
+          || !stringValue(review?.host).trim()
+          || !stringValue(review?.run_id).trim()
+          || !stringValue(review?.model).trim()
+          || !stringValue(review?.reasoning_effort).trim()
+        )
+        : !stringValue(review?.run_id).trim()
+    )
   ) {
     issues.push(
-      "agent or separate-session assurance requires the reported host run_id",
+      adaptiveOrchestration
+        ? "agent or separate-session assurance requires review/deep routing with a reason and the reported host, run ID, model, and reasoning effort"
+        : "legacy agent or separate-session assurance requires the reported host run_id",
     );
   }
   if (
@@ -221,14 +279,21 @@ export function reconstructionWorkstreamIssues(
   scopeIndex: Map<string, ReconstructionScopeIndexEntry>,
   rawCaseIds: Set<string>,
   receiptIndex: Map<string, ReconstructionReceiptIndexEntry>,
-  phase: "close" | "submit" = "close",
+  phase: "close" | "accept" | "submit" = "close",
 ): string[] {
   const issues: string[] = [];
   const { metadata, body } = record.document;
   const prefix = `workstream ${record.relativePath}`;
   const id = stringValue(metadata.id);
-  if (metadata.reconstruction_workstream_version !== RECONSTRUCTION_WORKSTREAM_VERSION) {
-    issues.push(`${prefix}: reconstruction_workstream_version must be ${RECONSTRUCTION_WORKSTREAM_VERSION}`);
+  const workstreamVersion = Number(metadata.reconstruction_workstream_version);
+  const adaptiveRouting = workstreamVersion === RECONSTRUCTION_WORKSTREAM_VERSION;
+  if (
+    workstreamVersion !== LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION
+    && !adaptiveRouting
+  ) {
+    issues.push(
+      `${prefix}: reconstruction_workstream_version must be ${LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION} or ${RECONSTRUCTION_WORKSTREAM_VERSION}`,
+    );
   }
   if (metadata.case_id !== caseId) {
     issues.push(`${prefix}: case_id does not match reconstruction ${caseId}`);
@@ -247,6 +312,121 @@ export function reconstructionWorkstreamIssues(
   }
   if (!stringValue(metadata.role).trim()) {
     issues.push(`${prefix}: role is required`);
+  }
+  const routing = recordValue(metadata.routing);
+  const workload = stringValue(routing?.workload);
+  const initialProfile = stringValue(routing?.initial_profile);
+  const requestedProfile = stringValue(routing?.requested_profile);
+  const escalationHistory = adaptiveRouting
+    ? recordArray(routing?.escalation_history)
+    : [];
+  const executionHistory = adaptiveRouting
+    ? recordArray(routing?.execution_history)
+    : [];
+  const rawEscalationHistory = routing?.escalation_history;
+  const rawExecutionHistory = routing?.execution_history;
+  if (adaptiveRouting && !WORKLOADS.has(workload)) {
+    issues.push(`${prefix}: routing.workload must be exploration, analysis, synthesis, or review`);
+  }
+  if (adaptiveRouting && !PROFILES.has(requestedProfile)) {
+    issues.push(`${prefix}: routing.requested_profile must be fast, balanced, or deep`);
+  }
+  if (adaptiveRouting && !PROFILES.has(initialProfile)) {
+    issues.push(`${prefix}: routing.initial_profile must be fast, balanced, or deep`);
+  }
+  if (adaptiveRouting && !stringValue(routing?.reason).trim()) {
+    issues.push(`${prefix}: routing.reason must explain the requested compute profile`);
+  }
+  if (adaptiveRouting && workload === "analysis" && requestedProfile === "fast") {
+    issues.push(`${prefix}: analysis work requires balanced or deep routing`);
+  }
+  if (
+    adaptiveRouting
+    && (workload === "synthesis" || workload === "review")
+    && requestedProfile !== "deep"
+  ) {
+    issues.push(`${prefix}: synthesis and review work require deep routing`);
+  }
+  if (adaptiveRouting && !Array.isArray(rawEscalationHistory)) {
+    issues.push(`${prefix}: routing.escalation_history must be a list`);
+  } else if (
+    adaptiveRouting
+    && Array.isArray(rawEscalationHistory)
+    && rawEscalationHistory.some((entry) => !isRecord(entry))
+  ) {
+    issues.push(`${prefix}: routing.escalation_history entries must be records`);
+  }
+  if (adaptiveRouting && !Array.isArray(rawExecutionHistory)) {
+    issues.push(`${prefix}: routing.execution_history must be a list`);
+  } else if (
+    adaptiveRouting
+    && Array.isArray(rawExecutionHistory)
+    && rawExecutionHistory.some((entry) => !isRecord(entry))
+  ) {
+    issues.push(`${prefix}: routing.execution_history entries must be records`);
+  }
+  let expectedProfile = adaptiveRouting && PROFILES.has(initialProfile)
+    ? initialProfile
+    : undefined;
+  for (const [index, escalation] of escalationHistory.entries()) {
+    const eventPrefix = `${prefix}: routing.escalation_history[${index}]`;
+    const trigger = stringValue(escalation.trigger);
+    const action = stringValue(escalation.action);
+    const fromProfile = stringValue(escalation.from_profile);
+    const toProfile = stringValue(escalation.to_profile);
+    const targetWorkstream = stringValue(escalation.target_workstream);
+    if (!ESCALATION_TRIGGERS.has(trigger)) {
+      issues.push(`${eventPrefix}.trigger is invalid`);
+    }
+    if (!ESCALATION_ACTIONS.has(action)) {
+      issues.push(`${eventPrefix}.action is invalid`);
+    }
+    if (!PROFILES.has(fromProfile) || !PROFILES.has(toProfile)) {
+      issues.push(`${eventPrefix} must record valid from_profile and to_profile`);
+    } else {
+      if (expectedProfile !== undefined && fromProfile !== expectedProfile) {
+        issues.push(`${eventPrefix}.from_profile does not continue the routing history`);
+      }
+      if (
+        action === "stronger-profile"
+        && (PROFILE_RANK.get(toProfile) ?? -1) <= (PROFILE_RANK.get(fromProfile) ?? -1)
+      ) {
+        issues.push(`${eventPrefix}: stronger-profile must increase the requested profile`);
+      }
+      if (action !== "stronger-profile" && toProfile !== fromProfile) {
+        issues.push(`${eventPrefix}: only stronger-profile may change the requested profile`);
+      }
+      expectedProfile = toProfile;
+    }
+    if (!stringValue(escalation.by).trim()) {
+      issues.push(`${eventPrefix}.by is required`);
+    }
+    if (
+      action === "maintainer-review"
+      && !stringValue(escalation.by).startsWith("human:")
+    ) {
+      issues.push(`${eventPrefix}: maintainer-review must be recorded by human:<maintainer-id>`);
+    }
+    if (action === "new-workstream") {
+      if (!knownWorkstreamIds.has(targetWorkstream) || targetWorkstream === id) {
+        issues.push(`${eventPrefix}.target_workstream must reference another registered workstream`);
+      }
+    } else if (targetWorkstream) {
+      issues.push(`${eventPrefix}.target_workstream is valid only for new-workstream`);
+    }
+    const escalationAttempt = positiveInteger(escalation.attempt);
+    if (escalationAttempt === undefined) {
+      issues.push(`${eventPrefix}.attempt must be a positive integer`);
+    }
+    if (!isIsoDateTime(stringValue(escalation.at))) {
+      issues.push(`${eventPrefix}.at must be an ISO date-time`);
+    }
+    if (!stringValue(escalation.reason).trim()) {
+      issues.push(`${eventPrefix}.reason is required`);
+    }
+  }
+  if (adaptiveRouting && expectedProfile !== undefined && requestedProfile !== expectedProfile) {
+    issues.push(`${prefix}: routing.requested_profile does not match the escalation history`);
   }
   const status = stringValue(metadata.status);
   const cancelled = status === "cancelled";
@@ -272,11 +452,21 @@ export function reconstructionWorkstreamIssues(
     && (
       !stringValue(executionRecord?.host).trim()
       || !stringValue(executionRecord?.run_id).trim()
+      || (
+        adaptiveRouting
+        && (
+          !PROFILES.has(stringValue(executionRecord?.profile))
+          || !stringValue(executionRecord?.model).trim()
+          || !stringValue(executionRecord?.reasoning_effort).trim()
+        )
+      )
       || !isIsoDateTime(stringValue(executionRecord?.claimed_at))
     )
   ) {
     issues.push(
-      `${prefix}: claimed work requires execution.host, execution.run_id, and execution.claimed_at`,
+      adaptiveRouting
+        ? `${prefix}: claimed work requires execution host, run ID, requested profile, model selection, reasoning effort, and claimed time`
+        : `${prefix}: legacy claimed work requires execution host, run ID, and claimed time`,
     );
   }
   const attempt = positiveInteger(metadata.attempt);
@@ -284,6 +474,73 @@ export function reconstructionWorkstreamIssues(
     issues.push(`${prefix}: attempt must be a positive integer`);
   } else if (attempt > maxRetries + 1) {
     issues.push(`${prefix}: attempt ${attempt} exceeds retry budget ${maxRetries}`);
+  }
+  if (adaptiveRouting && attempt !== undefined) {
+    const maximumEscalationAttempt = status === "rework" ? attempt + 1 : attempt;
+    for (const [index, escalation] of escalationHistory.entries()) {
+      const escalationAttempt = positiveInteger(escalation.attempt);
+      if (
+        escalationAttempt !== undefined
+        && escalationAttempt > maximumEscalationAttempt
+      ) {
+        issues.push(
+          `${prefix}: routing.escalation_history[${index}].attempt exceeds the current lifecycle attempt`,
+        );
+      }
+    }
+  }
+  for (const [index, execution] of executionHistory.entries()) {
+    const executionPrefix = `${prefix}: routing.execution_history[${index}]`;
+    if (positiveInteger(execution.attempt) !== index + 1) {
+      issues.push(`${executionPrefix}.attempt must form a contiguous sequence starting at 1`);
+    }
+    if (!stringValue(execution.by).trim()) {
+      issues.push(`${executionPrefix}.by is required`);
+    }
+    if (!stringValue(execution.host).trim() || !stringValue(execution.run_id).trim()) {
+      issues.push(`${executionPrefix} must record host and run_id`);
+    }
+    if (!PROFILES.has(stringValue(execution.profile))) {
+      issues.push(`${executionPrefix}.profile must be fast, balanced, or deep`);
+    }
+    if (
+      !stringValue(execution.model).trim()
+      || !stringValue(execution.reasoning_effort).trim()
+    ) {
+      issues.push(`${executionPrefix} must record model and reasoning_effort`);
+    }
+    if (!isIsoDateTime(stringValue(execution.claimed_at))) {
+      issues.push(`${executionPrefix}.claimed_at must be an ISO date-time`);
+    }
+  }
+  if (adaptiveRouting && !cancelled && status === "planned" && executionHistory.length > 0) {
+    issues.push(`${prefix}: planned workstream cannot contain execution history`);
+  }
+  if (
+    adaptiveRouting
+    && !cancelled
+    && status !== "planned"
+    && attempt !== undefined
+    && executionHistory.length !== attempt
+  ) {
+    issues.push(`${prefix}: routing.execution_history must contain one claim for every attempt`);
+  }
+  const latestExecution = executionHistory.at(-1);
+  if (adaptiveRouting && !cancelled && status !== "planned" && latestExecution) {
+    for (const field of ["host", "run_id", "profile", "model", "reasoning_effort", "claimed_at"]) {
+      if (stringValue(executionRecord?.[field]) !== stringValue(latestExecution[field])) {
+        issues.push(`${prefix}: execution.${field} must match the latest execution history entry`);
+      }
+    }
+    if (owner !== stringValue(latestExecution.by)) {
+      issues.push(`${prefix}: owner must match the latest execution history actor`);
+    }
+    if (
+      ["active", "submitted", "accepted"].includes(status)
+      && stringValue(latestExecution.profile) !== requestedProfile
+    ) {
+      issues.push(`${prefix}: active execution profile must match routing.requested_profile`);
+    }
   }
   if (!isIsoDateTime(stringValue(metadata.created_at))) {
     issues.push(`${prefix}: created_at must be an ISO date-time`);
@@ -337,16 +594,16 @@ export function reconstructionWorkstreamIssues(
   if (!cancelled && !stringValue(result?.summary).trim()) {
     issues.push(`${prefix}: result.summary is required`);
   }
-  for (
-    const field of [
-      "candidate_ids",
-      "evidence_refs",
-      "uncertainties",
-      "contradictions",
-      "unexplained",
-      "follow_up",
-    ]
-  ) {
+  const resultFields = [
+    "candidate_ids",
+    "evidence_refs",
+    "uncertainties",
+    "contradictions",
+    "unexplained",
+    "follow_up",
+    ...(adaptiveRouting ? ["negative_claims", "authority_questions"] : []),
+  ];
+  for (const field of resultFields) {
     if (!cancelled && !Array.isArray(result?.[field])) {
       issues.push(`${prefix}: result.${field} must be a list`);
     }
@@ -379,6 +636,67 @@ export function reconstructionWorkstreamIssues(
   }
 
   const review = recordValue(metadata.review);
+  const reviewHistory = adaptiveRouting ? recordArray(metadata.review_history) : [];
+  if (adaptiveRouting && !Array.isArray(metadata.review_history)) {
+    issues.push(`${prefix}: review_history must be a list`);
+  } else if (
+    adaptiveRouting
+    && Array.isArray(metadata.review_history)
+    && metadata.review_history.some((entry) => !isRecord(entry))
+  ) {
+    issues.push(`${prefix}: review_history entries must be records`);
+  }
+  for (const [index, reviewEvent] of reviewHistory.entries()) {
+    const reviewPrefix = `${prefix}: review_history[${index}]`;
+    if (positiveInteger(reviewEvent.attempt) === undefined) {
+      issues.push(`${reviewPrefix}.attempt must be a positive integer`);
+    }
+    if (!["accepted", "rework", "cancelled"].includes(stringValue(reviewEvent.outcome))) {
+      issues.push(`${reviewPrefix}.outcome must be accepted, rework, or cancelled`);
+    }
+    if (!stringValue(reviewEvent.by).trim()) {
+      issues.push(`${reviewPrefix}.by is required`);
+    }
+    if (!isIsoDateTime(stringValue(reviewEvent.at))) {
+      issues.push(`${reviewPrefix}.at must be an ISO date-time`);
+    }
+    if (!nonEmptyStringArray(reviewEvent.notes)) {
+      issues.push(`${reviewPrefix}.notes must be a non-empty list`);
+    }
+  }
+  if (adaptiveRouting && !cancelled && phase !== "submit") {
+    const escalationTriggers = new Set(
+      escalationHistory
+        .filter((entry) => positiveInteger(entry.attempt) === attempt)
+        .map((entry) => stringValue(entry.trigger)),
+    );
+    const requiredTriggers = new Set<string>();
+    if (stringArray(result?.contradictions).length > 0) {
+      requiredTriggers.add("contradiction");
+    }
+    if (stringArray(result?.unexplained).length > 0) {
+      requiredTriggers.add("insufficient-evidence");
+    }
+    if (stringArray(result?.negative_claims).length > 0) {
+      requiredTriggers.add("negative-claim");
+    }
+    if (exploredCount > 0) {
+      requiredTriggers.add("cross-boundary-scope");
+    }
+    if (stringArray(result?.authority_questions).length > 0) {
+      requiredTriggers.add("maintainer-authority");
+    }
+    if ((attempt ?? 1) > 1) {
+      requiredTriggers.add("review-rework");
+    }
+    for (const trigger of requiredTriggers) {
+      if (!escalationTriggers.has(trigger)) {
+        issues.push(
+          `${prefix}: ${trigger} requires a durable routing escalation before acceptance`,
+        );
+      }
+    }
+  }
   if (
     phase === "close"
     && (
@@ -392,6 +710,21 @@ export function reconstructionWorkstreamIssues(
   }
   if (phase === "close" && owner && owner === stringValue(review?.by)) {
     issues.push(`${prefix}: reviewer must differ from worker owner`);
+  }
+  if (adaptiveRouting && phase === "close") {
+    const latestReview = reviewHistory.at(-1);
+    const expectedOutcome = cancelled ? "cancelled" : "accepted";
+    if (
+      !latestReview
+      || positiveInteger(latestReview.attempt) !== attempt
+      || stringValue(latestReview.outcome) !== expectedOutcome
+      || stringValue(latestReview.by) !== stringValue(review?.by)
+      || stringValue(latestReview.at) !== stringValue(review?.at)
+      || JSON.stringify(stringArray(latestReview.notes))
+        !== JSON.stringify(stringArray(review?.notes))
+    ) {
+      issues.push(`${prefix}: review must match the latest durable review_history event`);
+    }
   }
   if (!cancelled && /<[^>\n]+>/.test(body)) {
     issues.push(`${prefix}: template placeholders remain`);
@@ -490,6 +823,35 @@ export function reconstructionWorkstreamSetIssues(
         );
       }
     }
+    const routing = recordValue(record.document.metadata.routing);
+    for (const escalation of recordArray(routing?.escalation_history)) {
+      if (escalation.action !== "new-workstream") {
+        continue;
+      }
+      const targetId = stringValue(escalation.target_workstream);
+      const target = byId.get(targetId);
+      if (target?.document.metadata.status === "cancelled") {
+        issues.push(
+          `workstream ${id}: escalation target ${targetId} cannot be cancelled`,
+        );
+      }
+      if (
+        target
+        && (positiveInteger(target.document.metadata.wave) ?? 0) <= wave
+      ) {
+        issues.push(
+          `workstream ${id}: escalation target ${targetId} must belong to a later wave`,
+        );
+      }
+      if (
+        target
+        && !stringArray(target.document.metadata.dependencies).includes(id)
+      ) {
+        issues.push(
+          `workstream ${id}: escalation target ${targetId} must depend on its originating workstream`,
+        );
+      }
+    }
   }
 
   const visiting = new Set<string>();
@@ -530,7 +892,28 @@ export function reconstructionWorkstreamSetIssues(
     issues.push("orchestration synthesis actor must not be a worker owner");
   }
   if (owners.has(stringValue(review?.by))) {
-    issues.push("orchestration independent review actor must be fresh, not a worker owner");
+    issues.push(
+      "orchestration independent review actor must be fresh, not a workstream owner; record final assurance in the parent case",
+    );
+  }
+  const reviewHostRun = `${stringValue(review?.host)}\u0000${stringValue(review?.run_id)}`;
+  const workerHostRuns = new Set(
+    records.flatMap((record) => {
+      const routing = recordValue(record.document.metadata.routing);
+      return recordArray(routing?.execution_history).map((execution) =>
+        `${stringValue(execution.host)}\u0000${stringValue(execution.run_id)}`
+      );
+    }),
+  );
+  if (
+    stringValue(review?.assurance) !== "maintainer"
+    && stringValue(review?.host)
+    && stringValue(review?.run_id)
+    && workerHostRuns.has(reviewHostRun)
+  ) {
+    issues.push(
+      "orchestration independent review must use a host run distinct from every research workstream",
+    );
   }
   return [...new Set(issues)];
 }
@@ -551,6 +934,10 @@ function resolveWorkstreamPath(caseDirectory: string, input: string): string {
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
+}
+
+function recordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
 function stringValue(value: unknown): string {

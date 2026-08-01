@@ -42,6 +42,7 @@ import {
   claimReconstructionWorkstream,
   closeProjectReconstruction,
   createReconstructionWorkstream,
+  escalateReconstructionWorkstream,
   inspectProjectReconstruction,
   inspectReconstructionCoverage,
   markReconstructionCommunity,
@@ -325,7 +326,7 @@ test("tracks durable reconstruction workstreams and rejects unreviewed worker ou
   });
   const caseDocument = parseWorkSpec(await readFile(started.path, "utf8"));
   caseDocument.metadata.orchestration = {
-    version: 2,
+    version: 3,
     strategy: "adaptive-orchestrator-worker",
     execution: "orchestrator-workers",
     status: "completed",
@@ -345,7 +346,15 @@ test("tracks durable reconstruction workstreams and rejects unreviewed worker ou
       status: "passed",
       by: "workflow-agent/critic",
       assurance: "independent-agent",
+      routing: {
+        workload: "review",
+        requested_profile: "deep",
+        reason: "Whole-case omission review requires the strongest available profile.",
+      },
+      host: "test-host",
       run_id: "test-run-critic",
+      model: "test-deep-model",
+      reasoning_effort: "high",
       at: "2026-07-31T11:30:00.000Z",
       notes: ["The critic checked omitted and unsupported claims."],
     },
@@ -366,12 +375,31 @@ test("tracks durable reconstruction workstreams and rejects unreviewed worker ou
   });
   const workstream: { metadata: Record<string, unknown>; body: string } = {
     metadata: {
-      reconstruction_workstream_version: 2,
+      reconstruction_workstream_version: 3,
       case_id: started.id,
       id: "repository-scout",
       title: "Map the greeting repository surface",
       wave: 1,
       role: "repository-scout",
+      routing: {
+        workload: "exploration",
+        initial_profile: "fast",
+        requested_profile: "fast",
+        reason: "The packet only maps one bounded entrypoint with receipt-backed evidence.",
+        escalation_history: [],
+        execution_history: [
+          {
+            attempt: 1,
+            by: "workflow-agent/worker-a",
+            host: "test-runner",
+            run_id: "test-run-worker-a",
+            profile: "fast",
+            model: "test-fast-model",
+            reasoning_effort: "low",
+            claimed_at: "2026-07-31T11:05:00.000Z",
+          },
+        ],
+      },
       status: "submitted",
       owner: "workflow-agent/worker-a",
       attempt: 1,
@@ -380,6 +408,9 @@ test("tracks durable reconstruction workstreams and rejects unreviewed worker ou
       execution: {
         host: "test-runner",
         run_id: "test-run-worker-a",
+        profile: "fast",
+        model: "test-fast-model",
+        reasoning_effort: "low",
         claimed_at: "2026-07-31T11:05:00.000Z",
       },
       dependencies: [],
@@ -403,6 +434,8 @@ test("tracks durable reconstruction workstreams and rejects unreviewed worker ou
         evidence_refs: [sourceRead.receiptId],
         uncertainties: [],
         contradictions: [],
+        negative_claims: [],
+        authority_questions: [],
         unexplained: [],
         follow_up: [],
       },
@@ -412,6 +445,7 @@ test("tracks durable reconstruction workstreams and rejects unreviewed worker ou
         at: "",
         notes: [],
       },
+      review_history: [],
     },
     body: "# Objective\n\nMap one bounded repository surface.\n\n# Findings\n\nThe greeting entrypoint is local to the pinned repository.\n",
   };
@@ -419,6 +453,9 @@ test("tracks durable reconstruction workstreams and rejects unreviewed worker ou
 
   const context = await reconstructionContext(target, started.id);
   assert.equal(context.workstreams[0]?.id, "repository-scout");
+  assert.equal(context.orchestration.independentReviewProfile, "deep");
+  assert.equal(context.orchestration.independentReviewModel, "test-deep-model");
+  assert.equal(context.orchestration.independentReviewReasoningEffort, "high");
   assert.ok(context.requiredFiles.some((file) =>
     file.role === "reconstruction-workstream-full-read"
     && file.path.endsWith("workstreams/repository-scout.md")
@@ -434,6 +471,15 @@ test("tracks durable reconstruction workstreams and rejects unreviewed worker ou
     at: "2026-07-31T11:25:00.000Z",
     notes: ["Receipts and bounded claims match the assigned slice."],
   };
+  workstream.metadata.review_history = [
+    {
+      attempt: 1,
+      outcome: "accepted",
+      by: "workflow-agent/orchestrator",
+      at: "2026-07-31T11:25:00.000Z",
+      notes: ["Receipts and bounded claims match the assigned slice."],
+    },
+  ];
   await writeFile(workstreamPath, serializeWorkSpec(workstream), "utf8");
   const accepted = await inspectProjectReconstruction(target, started.id);
   assert.equal(
@@ -442,6 +488,36 @@ test("tracks durable reconstruction workstreams and rejects unreviewed worker ou
     ),
     false,
   );
+
+  const reusedReviewRunCase = parseWorkSpec(await readFile(started.path, "utf8"));
+  const reusedOrchestration = reusedReviewRunCase.metadata.orchestration as Record<string, unknown>;
+  const reusedReview = reusedOrchestration.independent_review as Record<string, unknown>;
+  reusedReview.host = "test-runner";
+  reusedReview.run_id = "test-run-worker-a";
+  await writeFile(started.path, serializeWorkSpec(reusedReviewRunCase), "utf8");
+  assert.ok((await inspectProjectReconstruction(target, started.id)).issues.some((issue) =>
+    /independent review must use a host run distinct from every research workstream/.test(issue)
+  ));
+  reusedReview.host = "test-host";
+  reusedReview.run_id = "test-run-critic";
+  await writeFile(started.path, serializeWorkSpec(reusedReviewRunCase), "utf8");
+
+  const adaptiveReview = structuredClone(reusedReview);
+  reusedOrchestration.version = 2;
+  delete reusedReview.routing;
+  delete reusedReview.host;
+  delete reusedReview.model;
+  delete reusedReview.reasoning_effort;
+  await writeFile(started.path, serializeWorkSpec(reusedReviewRunCase), "utf8");
+  assert.equal(
+    (await inspectProjectReconstruction(target, started.id)).issues.some((issue) =>
+      /agent or separate-session assurance requires review\/deep routing/.test(issue)
+    ),
+    false,
+  );
+  reusedOrchestration.version = 3;
+  reusedOrchestration.independent_review = adaptiveReview;
+  await writeFile(started.path, serializeWorkSpec(reusedReviewRunCase), "utf8");
 
   const coverageSlice = workstream.metadata.coverage_slice as Record<string, unknown>;
   coverageSlice.files = [`${repository.repository}#src/missing.ts`];
@@ -511,6 +587,9 @@ test("manages workstream ownership while allowing receipt-backed scope expansion
     title: "Trace the greeting boundary",
     objective: "Trace the greeting boundary and follow only relevant adjacent evidence.",
     role: "repository-scout",
+    workload: "exploration",
+    profile: "fast",
+    routingReason: "The bounded mapping has deterministic source receipts and no semantic synthesis.",
     wave: 1,
     repositories: [repository.repository],
     files: [`${repository.repository}#src/main.ts`],
@@ -579,6 +658,26 @@ test("manages workstream ownership while allowing receipt-backed scope expansion
     }),
     /reviewer must differ/,
   );
+  await assert.rejects(
+    reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "repository-scout",
+      reviewer: "workflow-agent/orchestrator",
+      status: "accepted",
+      notes: ["The expansion is explicit and its evidence receipt belongs to the worker."],
+    }),
+    /cross-boundary-scope requires a durable routing escalation/,
+  );
+  await escalateReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "repository-scout",
+    actor: "workflow-agent/orchestrator",
+    trigger: "cross-boundary-scope",
+    action: "same-profile",
+    reason: "The adjacent receipt is a bounded direct dependency and does not widen the outcome.",
+  });
   assert.equal(
     (await reviewReconstructionWorkstream({
       target,
@@ -597,6 +696,9 @@ test("manages workstream ownership while allowing receipt-backed scope expansion
     title: "Check an obsolete branch",
     objective: "Confirm whether a separately planned branch still needs investigation.",
     role: "repository-scout",
+    workload: "exploration",
+    profile: "fast",
+    routingReason: "The packet is a bounded structural check with no project-wide conclusion.",
     wave: 1,
     repositories: [repository.repository],
     distributionRoot,
@@ -617,6 +719,542 @@ test("manages workstream ownership while allowing receipt-backed scope expansion
   assert.equal(
     lifecycleIssues.some((issue) =>
       issue.startsWith("workstream workstreams/obsolete-scout.md")
+    ),
+    false,
+  );
+});
+
+test("routes reconstruction workers by workload and gates evidence-driven escalation", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-workstream-routing-");
+  const leaf = await initializedLeafRepository(
+    "wfctl-workstream-routing-leaf-",
+    target,
+  );
+  const started = await beginProjectReconstruction({
+    target,
+    slug: "adaptive-routing",
+    title: "Adaptive routing",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-08-01T10:00:00.000Z"),
+  });
+  const repository = started.repositories[0]!;
+  const caseDocument = parseWorkSpec(await readFile(started.path, "utf8"));
+  const orchestration = caseDocument.metadata.orchestration as Record<string, unknown>;
+  orchestration.execution = "orchestrator-workers";
+  orchestration.status = "planning";
+  orchestration.reason = "A bounded semantic analysis can be reviewed independently.";
+  orchestration.budget = {
+    max_parallel: 2,
+    max_workstreams: 2,
+    max_retries_per_workstream: 1,
+  };
+  await writeFile(started.path, serializeWorkSpec(caseDocument), "utf8");
+
+  await assert.rejects(
+    createReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "underpowered-analysis",
+      title: "Interpret one runtime surface",
+      objective: "Interpret the source-backed responsibility of one runtime surface.",
+      role: "repository-analyst",
+      workload: "analysis",
+      profile: "fast",
+      routingReason: "This intentionally invalid profile must be rejected.",
+      wave: 1,
+      repositories: [repository.repository],
+      distributionRoot,
+    }),
+    /requires a balanced or deep profile/,
+  );
+
+  const created = await createReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "repository-analysis",
+    title: "Interpret the greeting boundary",
+    objective: "Interpret the greeting entrypoint without hiding contradictory evidence.",
+    role: "repository-analyst",
+    workload: "analysis",
+    profile: "balanced",
+    routingReason: "One repository slice needs semantic interpretation but not project synthesis.",
+    wave: 1,
+    repositories: [repository.repository],
+    files: [`${repository.repository}#src/main.ts`],
+    distributionRoot,
+    now: new Date("2026-08-01T10:05:00.000Z"),
+  });
+  await claimReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "repository-analysis",
+    actor: "workflow-agent/analyst",
+    host: "test-runner",
+    runId: "test-run-analyst",
+    now: new Date("2026-08-01T10:06:00.000Z"),
+  });
+  const sourceRead = await readReconstructionSource({
+    target,
+    id: started.id,
+    repository: repository.repository,
+    path: "src/main.ts",
+    actor: "workflow-agent/analyst",
+    now: new Date("2026-08-01T10:10:00.000Z"),
+  });
+  const packetPath = join(target, created.path);
+  const packet = parseWorkSpec(await readFile(packetPath, "utf8"));
+  const result = packet.metadata.result as Record<string, unknown>;
+  result.summary = "The implementation evidence conflicts with a prior whole-project assumption.";
+  result.evidence_refs = [sourceRead.receiptId];
+  result.contradictions = ["The observed entrypoint conflicts with the assumed project boundary."];
+  result.negative_claims = ["No other repository owns the greeting boundary."];
+  result.authority_questions = ["Which repository should own this boundary by product intent?"];
+  packet.body = packet.body.replace(
+    "Pending receipt-backed evidence.",
+    "Pinned source establishes the local entrypoint but not the project-wide negative claim.",
+  );
+  await writeFile(packetPath, serializeWorkSpec(packet), "utf8");
+  await submitReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "repository-analysis",
+    actor: "workflow-agent/analyst",
+  });
+
+  await assert.rejects(
+    reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "repository-analysis",
+      reviewer: "workflow-agent/orchestrator",
+      status: "accepted",
+      notes: ["The packet is not yet escalation-complete."],
+    }),
+    /contradiction requires a durable routing escalation/,
+  );
+  await escalateReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "repository-analysis",
+    actor: "workflow-agent/orchestrator",
+    trigger: "contradiction",
+    action: "retained-uncertainty",
+    reason: "The packet preserves the contradiction for parent-case reconciliation.",
+    now: new Date("2026-08-01T10:20:00.000Z"),
+  });
+  await assert.rejects(
+    reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "repository-analysis",
+      reviewer: "workflow-agent/orchestrator",
+      status: "accepted",
+      notes: ["The negative claim still lacks an authority response."],
+    }),
+    /negative-claim requires a durable routing escalation/,
+  );
+  await escalateReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "repository-analysis",
+    actor: "human:test-maintainer",
+    trigger: "negative-claim",
+    action: "maintainer-review",
+    reason: "Complete coverage and maintainer review are required before accepting absence.",
+    now: new Date("2026-08-01T10:21:00.000Z"),
+  });
+  await assert.rejects(
+    reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "repository-analysis",
+      reviewer: "workflow-agent/orchestrator",
+      status: "accepted",
+      notes: ["Product authority remains unresolved."],
+    }),
+    /maintainer-authority requires a durable routing escalation/,
+  );
+  await escalateReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "repository-analysis",
+    actor: "human:test-maintainer",
+    trigger: "maintainer-authority",
+    action: "maintainer-review",
+    reason: "The maintainer explicitly adjudicated intended repository ownership.",
+    now: new Date("2026-08-01T10:21:30.000Z"),
+  });
+  assert.equal(
+    (await reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "repository-analysis",
+      reviewer: "workflow-agent/orchestrator",
+      status: "accepted",
+      notes: ["Both quality signals now have explicit follow-up ownership."],
+      now: new Date("2026-08-01T10:22:00.000Z"),
+    })).status,
+    "accepted",
+  );
+
+  const context = await reconstructionContext(target, started.id);
+  assert.equal(context.workstreams[0]?.workload, "analysis");
+  assert.equal(context.workstreams[0]?.requestedProfile, "balanced");
+  assert.equal(context.workstreams[0]?.executionProfile, "balanced");
+  assert.equal(context.workstreams[0]?.executionModel, "host-auto");
+  assert.equal(context.workstreams[0]?.executionReasoningEffort, "profile-default");
+  assert.equal(context.workstreams[0]?.escalationCount, 3);
+
+  const retry = await createReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "retry-scout",
+    title: "Map one retryable structure",
+    objective: "Return one bounded structural observation for independent review.",
+    role: "repository-scout",
+    workload: "exploration",
+    profile: "fast",
+    routingReason: "The output is bounded and directly reviewable.",
+    wave: 1,
+    repositories: [repository.repository],
+    distributionRoot,
+    now: new Date("2026-08-01T10:30:00.000Z"),
+  });
+  await claimReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "retry-scout",
+    actor: "workflow-agent/retry-scout",
+    host: "test-runner",
+    runId: "test-run-retry-fast",
+    model: "test-fast-model",
+    reasoningEffort: "low",
+    now: new Date("2026-08-01T10:31:00.000Z"),
+  });
+  const retryPath = join(target, retry.path);
+  const retryPacket = parseWorkSpec(await readFile(retryPath, "utf8"));
+  (retryPacket.metadata.result as Record<string, unknown>).summary =
+    "The first bounded structural observation is ready for review.";
+  retryPacket.body = retryPacket.body.replace(
+    "Pending receipt-backed evidence.",
+    "The first structural observation remains bounded to this packet.",
+  );
+  await writeFile(retryPath, serializeWorkSpec(retryPacket), "utf8");
+  await submitReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "retry-scout",
+    actor: "workflow-agent/retry-scout",
+  });
+  await reviewReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "retry-scout",
+    reviewer: "workflow-agent/orchestrator",
+    status: "rework",
+    notes: ["The bounded result needs stronger interpretation before acceptance."],
+  });
+  await escalateReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "retry-scout",
+    actor: "workflow-agent/orchestrator",
+    trigger: "review-rework",
+    action: "stronger-profile",
+    targetProfile: "balanced",
+    reason: "Independent review found the fast pass insufficient for the observed structure.",
+    now: new Date("2026-08-01T10:35:00.000Z"),
+  });
+  await claimReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "retry-scout",
+    actor: "workflow-agent/retry-scout",
+    host: "test-runner",
+    runId: "test-run-retry-balanced",
+    model: "test-balanced-model",
+    reasoningEffort: "high",
+    now: new Date("2026-08-01T10:36:00.000Z"),
+  });
+  await submitReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "retry-scout",
+    actor: "workflow-agent/retry-scout",
+  });
+  assert.equal(
+    (await reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "retry-scout",
+      reviewer: "workflow-agent/orchestrator",
+      status: "accepted",
+      notes: ["The escalated balanced pass satisfies the bounded review."],
+      now: new Date("2026-08-01T10:40:00.000Z"),
+    })).status,
+    "accepted",
+  );
+  const routedContext = await reconstructionContext(target, started.id);
+  const retried = routedContext.workstreams.find((entry) => entry.id === "retry-scout");
+  assert.equal(retried?.requestedProfile, "balanced");
+  assert.equal(retried?.executionProfile, "balanced");
+  assert.equal(retried?.executionModel, "test-balanced-model");
+  assert.equal(retried?.executionReasoningEffort, "high");
+  assert.equal(retried?.escalationCount, 1);
+  const acceptedRetry = parseWorkSpec(await readFile(retryPath, "utf8"));
+  const retryRouting = acceptedRetry.metadata.routing as Record<string, unknown>;
+  const executionHistory = retryRouting.execution_history as Array<Record<string, unknown>>;
+  const reviewHistory = acceptedRetry.metadata.review_history as Array<Record<string, unknown>>;
+  const escalationHistory = retryRouting.escalation_history as Array<Record<string, unknown>>;
+  assert.equal(retryRouting.initial_profile, "fast");
+  assert.deepEqual(
+    executionHistory.map((entry) => [entry.attempt, entry.profile, entry.model]),
+    [
+      [1, "fast", "test-fast-model"],
+      [2, "balanced", "test-balanced-model"],
+    ],
+  );
+  assert.deepEqual(
+    reviewHistory.map((entry) => [entry.attempt, entry.outcome]),
+    [
+      [1, "rework"],
+      [2, "accepted"],
+    ],
+  );
+  assert.equal(escalationHistory[0]?.attempt, 2);
+});
+
+test("requires attempt-scoped follow-up workstreams and preserves legacy v2 lifecycle", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-workstream-compat-");
+  const leaf = await initializedLeafRepository("wfctl-workstream-compat-leaf-", target);
+  const started = await beginProjectReconstruction({
+    target,
+    slug: "workstream-compat",
+    title: "Workstream compatibility",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+  });
+  const repository = started.repositories[0]!;
+  const caseDocument = parseWorkSpec(await readFile(started.path, "utf8"));
+  const orchestration = caseDocument.metadata.orchestration as Record<string, unknown>;
+  orchestration.execution = "orchestrator-workers";
+  orchestration.status = "planning";
+  orchestration.reason = "Follow-up routing and legacy continuation are independently testable.";
+  orchestration.budget = {
+    max_parallel: 2,
+    max_workstreams: 5,
+    max_retries_per_workstream: 1,
+  };
+  await writeFile(started.path, serializeWorkSpec(caseDocument), "utf8");
+
+  const origin = await createReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "absence-origin",
+    title: "Check one absence claim",
+    objective: "Establish whether a bounded runtime path is absent.",
+    role: "repository-analyst",
+    workload: "analysis",
+    profile: "balanced",
+    routingReason: "The bounded absence claim needs semantic inspection.",
+    wave: 1,
+    repositories: [repository.repository],
+    distributionRoot,
+  });
+  await assert.rejects(
+    escalateReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "absence-origin",
+      actor: "workflow-agent/orchestrator",
+      trigger: "negative-claim",
+      action: "retained-uncertainty",
+      reason: "This pre-seeded event must not be accepted before execution.",
+    }),
+    /Cannot record routing escalation while workstream is planned/,
+  );
+  await claimReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "absence-origin",
+    actor: "workflow-agent/absence-origin",
+    host: "test-runner",
+    runId: "absence-origin-run",
+  });
+  const originPath = join(target, origin.path);
+  const originPacket = parseWorkSpec(await readFile(originPath, "utf8"));
+  const originResult = originPacket.metadata.result as Record<string, unknown>;
+  originResult.summary = "The first pass could not safely establish project-wide absence.";
+  originResult.negative_claims = ["No fallback path exists."];
+  originPacket.body = originPacket.body.replace(
+    "Pending receipt-backed evidence.",
+    "The negative claim requires a separately reviewable follow-up.",
+  );
+  await writeFile(originPath, serializeWorkSpec(originPacket), "utf8");
+  await submitReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "absence-origin",
+    actor: "workflow-agent/absence-origin",
+  });
+
+  await createReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "wrong-wave-target",
+    title: "Wrong-wave target",
+    objective: "Demonstrate that a follow-up cannot remain in the originating wave.",
+    role: "coverage-critic",
+    workload: "review",
+    profile: "deep",
+    routingReason: "The negative claim requires adversarial review.",
+    wave: 1,
+    dependencies: ["absence-origin"],
+    distributionRoot,
+  });
+  await assert.rejects(
+    escalateReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "absence-origin",
+      actor: "workflow-agent/orchestrator",
+      trigger: "negative-claim",
+      action: "new-workstream",
+      targetWorkstream: "wrong-wave-target",
+      reason: "The target is intentionally in the wrong wave.",
+    }),
+    /must belong to a later wave/,
+  );
+
+  await createReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "missing-dependency-target",
+    title: "Missing-dependency target",
+    objective: "Demonstrate that a follow-up must depend on its origin.",
+    role: "coverage-critic",
+    workload: "review",
+    profile: "deep",
+    routingReason: "The negative claim requires adversarial review.",
+    wave: 2,
+    distributionRoot,
+  });
+  await assert.rejects(
+    escalateReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "absence-origin",
+      actor: "workflow-agent/orchestrator",
+      trigger: "negative-claim",
+      action: "new-workstream",
+      targetWorkstream: "missing-dependency-target",
+      reason: "The target intentionally omits its origin dependency.",
+    }),
+    /must depend on the originating workstream/,
+  );
+
+  await createReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "valid-absence-audit",
+    title: "Audit the absence claim",
+    objective: "Adversarially inspect alternate runtime paths.",
+    role: "coverage-critic",
+    workload: "review",
+    profile: "deep",
+    routingReason: "A high-risk negative claim requires deep adversarial review.",
+    wave: 2,
+    dependencies: ["absence-origin"],
+    distributionRoot,
+  });
+  await escalateReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "absence-origin",
+    actor: "workflow-agent/orchestrator",
+    trigger: "negative-claim",
+    action: "new-workstream",
+    targetWorkstream: "valid-absence-audit",
+    reason: "The registered later-wave audit owns the unresolved absence question.",
+  });
+  assert.equal(
+    (await reviewReconstructionWorkstream({
+      target,
+      id: started.id,
+      workstream: "absence-origin",
+      reviewer: "workflow-agent/orchestrator",
+      status: "accepted",
+      notes: ["The negative claim is explicitly delegated to its dependent audit."],
+    })).status,
+    "accepted",
+  );
+
+  const legacy = await createReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "legacy-v2-scout",
+    title: "Continue a legacy packet",
+    objective: "Prove that an already-active version 2 case remains resumable.",
+    role: "repository-scout",
+    workload: "exploration",
+    profile: "fast",
+    routingReason: "Only the generated registration is reused before downgrading the fixture.",
+    wave: 1,
+    distributionRoot,
+  });
+  const legacyPath = join(target, legacy.path);
+  const legacyPacket = parseWorkSpec(await readFile(legacyPath, "utf8"));
+  legacyPacket.metadata.reconstruction_workstream_version = 2;
+  delete legacyPacket.metadata.routing;
+  delete legacyPacket.metadata.review_history;
+  const legacyResult = legacyPacket.metadata.result as Record<string, unknown>;
+  delete legacyResult.negative_claims;
+  delete legacyResult.authority_questions;
+  legacyPacket.metadata.execution = { host: "", run_id: "", claimed_at: "" };
+  await writeFile(legacyPath, serializeWorkSpec(legacyPacket), "utf8");
+  await claimReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "legacy-v2-scout",
+    actor: "workflow-agent/legacy-v2-scout",
+    host: "legacy-host",
+    runId: "legacy-run",
+    model: "ignored-for-v2",
+    reasoningEffort: "ignored-for-v2",
+  });
+  const claimedLegacy = parseWorkSpec(await readFile(legacyPath, "utf8"));
+  assert.deepEqual(claimedLegacy.metadata.execution, {
+    host: "legacy-host",
+    run_id: "legacy-run",
+    claimed_at: claimedLegacy.metadata.updated_at,
+  });
+  (claimedLegacy.metadata.result as Record<string, unknown>).summary =
+    "The legacy packet completed under its original lifecycle contract.";
+  claimedLegacy.body = claimedLegacy.body.replace(
+    "Pending receipt-backed evidence.",
+    "The legacy packet remains reviewable without adaptive-routing metadata.",
+  );
+  await writeFile(legacyPath, serializeWorkSpec(claimedLegacy), "utf8");
+  await submitReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "legacy-v2-scout",
+    actor: "workflow-agent/legacy-v2-scout",
+  });
+  await reviewReconstructionWorkstream({
+    target,
+    id: started.id,
+    workstream: "legacy-v2-scout",
+    reviewer: "workflow-agent/orchestrator",
+    status: "accepted",
+    notes: ["Legacy evidence and scope satisfy the version 2 contract."],
+  });
+  assert.equal(
+    (await inspectProjectReconstruction(target, started.id)).issues.some((issue) =>
+      issue.startsWith("workstream workstreams/legacy-v2-scout.md")
     ),
     false,
   );
@@ -1494,7 +2132,7 @@ test("reconstructs a source-first baseline without raw input or durable checkout
     notes: ["Observed delivery and accepted intent were reviewed independently."],
   };
   caseDocument.metadata.orchestration = {
-    version: 2,
+    version: 3,
     strategy: "adaptive-orchestrator-worker",
     execution: "single-agent",
     status: "completed",
@@ -1514,7 +2152,15 @@ test("reconstructs a source-first baseline without raw input or durable checkout
       status: "passed",
       by: "workflow-agent/critic",
       assurance: "independent-agent",
+      routing: {
+        workload: "review",
+        requested_profile: "deep",
+        reason: "Whole-case omission review requires the strongest available profile.",
+      },
+      host: "test-host",
       run_id: "test-run-critic",
+      model: "test-deep-model",
+      reasoning_effort: "high",
       at: "2026-07-30T13:55:00Z",
       notes: ["A fresh review found no unsupported claim or missing surface."],
     },

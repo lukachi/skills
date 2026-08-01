@@ -228,6 +228,41 @@ try {
   assert.equal(reconstructHelp.status, 0, reconstructHelp.stderr || reconstructHelp.stdout);
   assert.match(stripAnsi(reconstructHelp.stdout), /^\s+raw-scope\s/m);
 
+  const workstreamHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "knowledge", "reconstruct", "workstream", "--help"],
+    { encoding: "utf8" },
+  );
+  assert.equal(workstreamHelp.status, 0, workstreamHelp.stderr || workstreamHelp.stdout);
+  assert.match(stripAnsi(workstreamHelp.stdout), /^\s+escalate\s/m);
+
+  const workstreamCreateHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "knowledge", "reconstruct", "workstream", "create", "--help"],
+    { encoding: "utf8" },
+  );
+  assert.equal(
+    workstreamCreateHelp.status,
+    0,
+    workstreamCreateHelp.stderr || workstreamCreateHelp.stdout,
+  );
+  assert.match(stripAnsi(workstreamCreateHelp.stdout), /--workload/);
+  assert.match(stripAnsi(workstreamCreateHelp.stdout), /--profile/);
+  assert.match(stripAnsi(workstreamCreateHelp.stdout), /--routing-reason/);
+
+  const workstreamEscalateHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "knowledge", "reconstruct", "workstream", "escalate", "--help"],
+    { encoding: "utf8" },
+  );
+  assert.equal(
+    workstreamEscalateHelp.status,
+    0,
+    workstreamEscalateHelp.stderr || workstreamEscalateHelp.stdout,
+  );
+  assert.match(stripAnsi(workstreamEscalateHelp.stdout), /--trigger/);
+  assert.match(stripAnsi(workstreamEscalateHelp.stdout), /--action/);
+
   const intakeStartHelp = spawnSync(
     "node",
     [join(packaged, "dist/cli.js"), "knowledge", "case", "start", "--help"],

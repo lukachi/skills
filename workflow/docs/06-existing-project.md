@@ -118,6 +118,11 @@ area, runtime surface, bounded raw-history question, cross-repository flow, or
 fresh omission review. It is not used to assign arbitrary alphabetical file
 ranges and does not allow several agents to rewrite the shared project story.
 
+The main agent also matches worker strength to the outcome: bounded mapping may
+use a fast worker, semantic interpretation uses a stronger one, and synthesis
+or adversarial review uses the deepest suitable option. The workflow records
+the host's actual choice without depending on provider-specific model names.
+
 The main agent remains the orchestrator. It gives each worker exact source and
 case roots, a pinned commit, a precise responsibility slice, relevant required
 context, and one durable work packet. The slice does not prevent exploration:
@@ -126,6 +131,11 @@ they crossed it. They cannot modify product code or publish curated knowledge.
 The orchestrator verifies stable source-read receipt IDs, reconciles overlaps
 and contradictions, and only then updates shared dossiers and project
 candidates.
+
+Contradictions, missing evidence, risky absence claims, review rework, or an
+authority boundary make the orchestrator reconsider the route. It may use a
+stronger worker, open a narrower question, ask you, or retain uncertainty; the
+worker's confidence alone is not a quality signal.
 
 The first wave maps independent repository and raw surfaces. Likely entrypoints
 and runtime surfaces are proposed automatically from tracked paths, but remain

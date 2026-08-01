@@ -55,13 +55,23 @@ import { resolveReconstructionLeaves } from "./repository-registry.js";
 import { compileClaimLedger } from "./claim-ledger.js";
 import { discoveryLedgerIssues } from "./discovery-ledger.js";
 import {
+  RECONSTRUCTION_ESCALATION_ACTIONS,
+  RECONSTRUCTION_ESCALATION_TRIGGERS,
+  LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION,
+  RECONSTRUCTION_PROFILES,
+  RECONSTRUCTION_WORKLOADS,
   RECONSTRUCTION_WORKSTREAM_VERSION,
+  orchestrationWorkstreamPaths,
   readReconstructionWorkstreams,
   reconstructionOrchestrationIssues,
   reconstructionWorkstreamSetIssues,
   reconstructionWorkstreamIssues,
   type ReconstructionReceiptIndexEntry,
+  type ReconstructionEscalationAction,
+  type ReconstructionEscalationTrigger,
+  type ReconstructionProfile,
   type ReconstructionScopeIndexEntry,
+  type ReconstructionWorkload,
   type ReconstructionWorkstreamRecord,
 } from "./reconstruction-orchestration.js";
 import {
@@ -217,12 +227,21 @@ export interface ReconstructionContext {
     independentReviewStatus: string;
     independentReviewAssurance: string;
     independentReviewRunId: string;
+    independentReviewProfile: string;
+    independentReviewModel: string;
+    independentReviewReasoningEffort: string;
   };
   workstreams: Array<{
     id: string;
     title: string;
     wave: number;
     role: string;
+    workload: string;
+    requestedProfile: string;
+    executionProfile: string;
+    executionModel: string;
+    executionReasoningEffort: string;
+    escalationCount: number;
     status: string;
     owner: string;
     path: string;
@@ -248,6 +267,9 @@ export interface CreateReconstructionWorkstreamOptions {
   title: string;
   objective: string;
   role: string;
+  workload: ReconstructionWorkload;
+  profile: ReconstructionProfile;
+  routingReason: string;
   wave: number;
   repositories?: string[];
   files?: string[];
@@ -266,6 +288,21 @@ export interface ClaimReconstructionWorkstreamOptions {
   actor: string;
   host: string;
   runId: string;
+  model?: string;
+  reasoningEffort?: string;
+  now?: Date;
+}
+
+export interface EscalateReconstructionWorkstreamOptions {
+  target: string;
+  id: string;
+  workstream: string;
+  actor: string;
+  trigger: ReconstructionEscalationTrigger;
+  action: ReconstructionEscalationAction;
+  targetProfile?: ReconstructionProfile;
+  targetWorkstream?: string;
+  reason: string;
   now?: Date;
 }
 
@@ -637,8 +674,28 @@ export async function createReconstructionWorkstream(
   options: CreateReconstructionWorkstreamOptions,
 ): Promise<ReconstructionWorkstreamMutationResult> {
   assertWorkstreamId(options.workstream);
-  if (!options.title.trim() || !options.objective.trim() || !options.role.trim()) {
-    throw new Error("Workstream title, objective, and role are required");
+  if (
+    !options.title.trim()
+    || !options.objective.trim()
+    || !options.role.trim()
+    || !options.routingReason.trim()
+  ) {
+    throw new Error("Workstream title, objective, role, and routing reason are required");
+  }
+  if (!RECONSTRUCTION_WORKLOADS.includes(options.workload)) {
+    throw new Error(`Unknown reconstruction workload: ${options.workload}`);
+  }
+  if (!RECONSTRUCTION_PROFILES.includes(options.profile)) {
+    throw new Error(`Unknown reconstruction profile: ${options.profile}`);
+  }
+  if (options.workload === "analysis" && options.profile === "fast") {
+    throw new Error("Analysis work requires a balanced or deep profile");
+  }
+  if (
+    (options.workload === "synthesis" || options.workload === "review")
+    && options.profile !== "deep"
+  ) {
+    throw new Error("Synthesis and review work require a deep profile");
   }
   if (!Number.isInteger(options.wave) || options.wave < 1) {
     throw new Error("Workstream wave must be a positive integer");
@@ -702,6 +759,14 @@ export async function createReconstructionWorkstream(
         title: options.title.trim(),
         wave: options.wave,
         role: options.role.trim(),
+        routing: {
+          workload: options.workload,
+          initial_profile: options.profile,
+          requested_profile: options.profile,
+          reason: options.routingReason.trim(),
+          escalation_history: [],
+          execution_history: [],
+        },
         status: "planned",
         owner: "",
         attempt: 1,
@@ -710,6 +775,9 @@ export async function createReconstructionWorkstream(
         execution: {
           host: "",
           run_id: "",
+          profile: "",
+          model: "",
+          reasoning_effort: "",
           claimed_at: "",
         },
         dependencies: uniqueSorted(options.dependencies ?? []),
@@ -736,6 +804,8 @@ export async function createReconstructionWorkstream(
           evidence_refs: [],
           uncertainties: [],
           contradictions: [],
+          negative_claims: [],
+          authority_questions: [],
           unexplained: [],
           follow_up: [],
         },
@@ -745,6 +815,7 @@ export async function createReconstructionWorkstream(
           at: "",
           notes: [],
         },
+        review_history: [],
       };
       template.body = renderWorkstreamBody(options.objective.trim());
       const workstreamPath = join(caseDirectory, relativePath);
@@ -793,13 +864,189 @@ export async function claimReconstructionWorkstream(
       if (status === "rework") {
         document.metadata.attempt = Number(document.metadata.attempt) + 1;
       }
+      const workstreamVersion = Number(document.metadata.reconstruction_workstream_version);
+      if (workstreamVersion === LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION) {
+        document.metadata.status = "active";
+        document.metadata.owner = actor;
+        document.metadata.execution = {
+          host,
+          run_id: runId,
+          claimed_at: timestamp,
+        };
+        document.metadata.updated_at = timestamp;
+        return;
+      }
+      if (workstreamVersion !== RECONSTRUCTION_WORKSTREAM_VERSION) {
+        throw new Error(`Unsupported reconstruction workstream version: ${workstreamVersion}`);
+      }
+      const routing = recordValue(document.metadata.routing);
+      if (!routing) {
+        throw new Error("Workstream routing metadata is missing");
+      }
+      const profile = stringValue(routing.requested_profile);
+      if (!RECONSTRUCTION_PROFILES.includes(profile as ReconstructionProfile)) {
+        throw new Error(`Unknown requested reconstruction profile: ${profile || "missing"}`);
+      }
+      const attempt = Number(document.metadata.attempt);
+      const model = options.model?.trim() || "host-auto";
+      const reasoningEffort = options.reasoningEffort?.trim() || "profile-default";
+      const execution = {
+        attempt,
+        by: actor,
+        host,
+        run_id: runId,
+        profile,
+        model,
+        reasoning_effort: reasoningEffort,
+        claimed_at: timestamp,
+      };
+      routing.execution_history = [
+        ...recordArray(routing.execution_history),
+        execution,
+      ];
+      document.metadata.routing = routing;
       document.metadata.status = "active";
       document.metadata.owner = actor;
       document.metadata.execution = {
         host,
         run_id: runId,
+        profile,
+        model,
+        reasoning_effort: reasoningEffort,
         claimed_at: timestamp,
       };
+      document.metadata.updated_at = timestamp;
+    },
+  );
+}
+
+export async function escalateReconstructionWorkstream(
+  options: EscalateReconstructionWorkstreamOptions,
+): Promise<ReconstructionWorkstreamMutationResult> {
+  return await mutateReconstructionWorkstream(
+    options.target,
+    options.id,
+    options.workstream,
+    options.now,
+    async ({ caseDirectory, caseDocument, document, timestamp }) => {
+      const actor = options.actor.trim();
+      const reason = options.reason.trim();
+      if (!actor || !reason) {
+        throw new Error("Workstream escalation requires an actor and reason");
+      }
+      if (!RECONSTRUCTION_ESCALATION_TRIGGERS.includes(options.trigger)) {
+        throw new Error(`Unknown reconstruction escalation trigger: ${options.trigger}`);
+      }
+      if (!RECONSTRUCTION_ESCALATION_ACTIONS.includes(options.action)) {
+        throw new Error(`Unknown reconstruction escalation action: ${options.action}`);
+      }
+      if (
+        Number(document.metadata.reconstruction_workstream_version)
+        !== RECONSTRUCTION_WORKSTREAM_VERSION
+      ) {
+        throw new Error(
+          "Adaptive routing escalation is available only for version 3 workstreams; legacy version 2 packets continue under their original lifecycle",
+        );
+      }
+      const status = stringValue(document.metadata.status);
+      if (!["submitted", "rework"].includes(status)) {
+        throw new Error(
+          `Cannot record routing escalation while workstream is ${status || "unknown"}`,
+        );
+      }
+      if (options.trigger === "review-rework" && status !== "rework") {
+        throw new Error("review-rework escalation requires a recorded rework review");
+      }
+      const routing = recordValue(document.metadata.routing);
+      if (!routing) {
+        throw new Error("Workstream routing metadata is missing");
+      }
+      const fromProfile = stringValue(routing.requested_profile) as ReconstructionProfile;
+      if (!RECONSTRUCTION_PROFILES.includes(fromProfile)) {
+        throw new Error(`Unknown current reconstruction profile: ${fromProfile || "missing"}`);
+      }
+      let toProfile = fromProfile;
+      if (options.action === "stronger-profile") {
+        if (status !== "planned" && status !== "rework") {
+          throw new Error(
+            "Return submitted work for rework before assigning a stronger profile",
+          );
+        }
+        if (!options.targetProfile || !RECONSTRUCTION_PROFILES.includes(options.targetProfile)) {
+          throw new Error("stronger-profile escalation requires --to-profile");
+        }
+        if (
+          RECONSTRUCTION_PROFILES.indexOf(options.targetProfile)
+          <= RECONSTRUCTION_PROFILES.indexOf(fromProfile)
+        ) {
+          throw new Error("stronger-profile escalation must increase the requested profile");
+        }
+        toProfile = options.targetProfile;
+        routing.requested_profile = toProfile;
+      } else if (options.targetProfile !== undefined) {
+        throw new Error("--to-profile is valid only with stronger-profile escalation");
+      }
+      let targetWorkstream = "";
+      if (options.action === "new-workstream") {
+        if (!options.targetWorkstream) {
+          throw new Error("new-workstream escalation requires --target-workstream");
+        }
+        assertWorkstreamId(options.targetWorkstream);
+        if (options.targetWorkstream === options.workstream) {
+          throw new Error("new-workstream escalation must reference another packet");
+        }
+        if (
+          !orchestrationWorkstreamPaths(caseDocument.metadata)
+            .includes(`workstreams/${options.targetWorkstream}.md`)
+        ) {
+          throw new Error(
+            `Escalation target workstream is not registered: ${options.targetWorkstream}`,
+          );
+        }
+        const targetDocument = parseWorkSpec(
+          await readFile(
+            join(caseDirectory, "workstreams", `${options.targetWorkstream}.md`),
+            "utf8",
+          ),
+        );
+        if (targetDocument.metadata.status !== "planned") {
+          throw new Error("new-workstream escalation target must still be planned");
+        }
+        if (Number(targetDocument.metadata.wave) <= Number(document.metadata.wave)) {
+          throw new Error("new-workstream escalation target must belong to a later wave");
+        }
+        if (!stringArray(targetDocument.metadata.dependencies).includes(options.workstream)) {
+          throw new Error(
+            "new-workstream escalation target must depend on the originating workstream",
+          );
+        }
+        targetWorkstream = options.targetWorkstream;
+      } else if (options.targetWorkstream !== undefined) {
+        throw new Error("--target-workstream is valid only with new-workstream escalation");
+      }
+      if (options.action === "maintainer-review" && !actor.startsWith("human:")) {
+        throw new Error("maintainer-review escalation must be recorded by human:<maintainer-id>");
+      }
+      const history = recordArray(routing.escalation_history);
+      const currentAttempt = Number(document.metadata.attempt);
+      const escalationAttempt = status === "rework"
+        ? currentAttempt + 1
+        : currentAttempt;
+      routing.escalation_history = [
+        ...history,
+        {
+          attempt: escalationAttempt,
+          trigger: options.trigger,
+          action: options.action,
+          from_profile: fromProfile,
+          to_profile: toProfile,
+          target_workstream: targetWorkstream,
+          by: actor,
+          at: timestamp,
+          reason,
+        },
+      ];
+      document.metadata.routing = routing;
       document.metadata.updated_at = timestamp;
     },
   );
@@ -894,7 +1141,7 @@ export async function reviewReconstructionWorkstream(
           context.scopeIndex,
           context.rawCaseIds,
           context.receiptIndex,
-          "submit",
+          "accept",
         );
         if (submitIssues.length > 0) {
           throw new Error(`Workstream cannot be accepted: ${submitIssues.join("; ")}`);
@@ -907,6 +1154,21 @@ export async function reviewReconstructionWorkstream(
         at: timestamp,
         notes,
       };
+      if (
+        Number(document.metadata.reconstruction_workstream_version)
+        === RECONSTRUCTION_WORKSTREAM_VERSION
+      ) {
+        document.metadata.review_history = [
+          ...recordArray(document.metadata.review_history),
+          {
+            attempt: Number(document.metadata.attempt),
+            outcome: options.status,
+            by: reviewer,
+            at: timestamp,
+            notes,
+          },
+        ];
+      }
       document.metadata.updated_at = timestamp;
     },
   );
@@ -1007,12 +1269,35 @@ export async function reconstructionContext(
       independentReviewRunId: stringValue(
         recordValue(orchestration?.independent_review)?.run_id,
       ),
+      independentReviewProfile: stringValue(
+        recordValue(
+          recordValue(orchestration?.independent_review)?.routing,
+        )?.requested_profile,
+      ),
+      independentReviewModel: stringValue(
+        recordValue(orchestration?.independent_review)?.model,
+      ),
+      independentReviewReasoningEffort: stringValue(
+        recordValue(orchestration?.independent_review)?.reasoning_effort,
+      ),
     },
     workstreams: session.workstreams.map(({ path, document }) => ({
       id: stringValue(document.metadata.id),
       title: stringValue(document.metadata.title),
       wave: Number(document.metadata.wave),
       role: stringValue(document.metadata.role),
+      workload: stringValue(recordValue(document.metadata.routing)?.workload),
+      requestedProfile: stringValue(
+        recordValue(document.metadata.routing)?.requested_profile,
+      ),
+      executionProfile: stringValue(recordValue(document.metadata.execution)?.profile),
+      executionModel: stringValue(recordValue(document.metadata.execution)?.model),
+      executionReasoningEffort: stringValue(
+        recordValue(document.metadata.execution)?.reasoning_effort,
+      ),
+      escalationCount: recordArray(
+        recordValue(document.metadata.routing)?.escalation_history,
+      ).length,
       status: stringValue(document.metadata.status),
       owner: stringValue(document.metadata.owner),
       path,

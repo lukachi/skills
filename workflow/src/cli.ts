@@ -62,6 +62,7 @@ import {
   claimReconstructionWorkstream,
   closeProjectReconstruction,
   createReconstructionWorkstream,
+  escalateReconstructionWorkstream,
   reconstructionContext,
   inspectProjectReconstruction,
   inspectReconstructionCoverage,
@@ -75,6 +76,16 @@ import {
   updateReconstructionCheckpoint,
   type ReconstructionRawScopeMode,
 } from "./reconstruction.js";
+import {
+  RECONSTRUCTION_ESCALATION_ACTIONS,
+  RECONSTRUCTION_ESCALATION_TRIGGERS,
+  RECONSTRUCTION_PROFILES,
+  RECONSTRUCTION_WORKLOADS,
+  type ReconstructionEscalationAction,
+  type ReconstructionEscalationTrigger,
+  type ReconstructionProfile,
+  type ReconstructionWorkload,
+} from "./reconstruction-orchestration.js";
 import type {
   CoverageState,
   CoverageSummary,
@@ -1510,6 +1521,8 @@ function knowledgeReconstructCommand() {
                 + `Synthesis: ${result.orchestration.synthesisStatus || "pending"}; `
                 + `independent review: ${result.orchestration.independentReviewStatus || "pending"}`
                 + `${result.orchestration.independentReviewAssurance ? ` (${result.orchestration.independentReviewAssurance})` : ""}`
+                + `${result.orchestration.independentReviewProfile ? `; profile ${result.orchestration.independentReviewProfile}` : ""}`
+                + `${result.orchestration.independentReviewModel ? `; ${result.orchestration.independentReviewModel}/${result.orchestration.independentReviewReasoningEffort || "unspecified"}` : ""}`
                 + `${result.orchestration.independentReviewRunId ? `; run ${result.orchestration.independentReviewRunId}` : ""}\n`,
             );
             if (result.orchestration.reason) {
@@ -1539,8 +1552,13 @@ function knowledgeReconstructCommand() {
             for (const workstream of result.workstreams) {
               process.stdout.write(
                 `- wave ${workstream.wave} ${workstream.id}: ${workstream.status}`
+                  + `; ${workstream.workload || "unclassified"}/${workstream.requestedProfile || "unrouted"}`
                   + `; review ${workstream.reviewStatus || "pending"}`
                   + `${workstream.owner ? `; owner ${workstream.owner}` : ""}\n`
+                  + `  execution ${workstream.executionProfile || "unrouted"}`
+                  + `/${workstream.executionModel || "not claimed"}`
+                  + `/${workstream.executionReasoningEffort || "not claimed"}`
+                  + `; escalations ${workstream.escalationCount}\n`
                   + `  ${workstream.title}\n`
                   + `  ${workstream.path}\n`,
               );
@@ -1980,6 +1998,9 @@ function reconstructionWorkstreamCommand() {
         .option("--title <text:string>", "Bounded human-readable outcome.", { required: true })
         .option("--objective <text:string>", "Independent research question.", { required: true })
         .option("--role <role:string>", "Worker role.", { required: true })
+        .option("--workload <kind:string>", "exploration, analysis, synthesis, or review.", { required: true })
+        .option("--profile <profile:string>", "Host-neutral compute profile: fast, balanced, or deep.", { required: true })
+        .option("--routing-reason <text:string>", "Why this is the minimum sufficient profile.", { required: true })
         .option("--wave <number:string>", "Positive orchestration wave.", { required: true })
         .option("--repository <id:string>", "Owned repository; repeat.", { collect: true })
         .option("--file <ref:string>", "Owned <repository>#<path>; repeat.", { collect: true })
@@ -1989,6 +2010,12 @@ function reconstructionWorkstreamCommand() {
         .option("--dependency <id:string>", "Earlier workstream dependency; repeat.", { collect: true })
         .option("--json", "Print machine-readable JSON.")
         .action(async (options, id, workstream) => {
+          if (!RECONSTRUCTION_WORKLOADS.includes(options.workload as ReconstructionWorkload)) {
+            throw new Error("--workload must be exploration, analysis, synthesis, or review");
+          }
+          if (!RECONSTRUCTION_PROFILES.includes(options.profile as ReconstructionProfile)) {
+            throw new Error("--profile must be fast, balanced, or deep");
+          }
           const result = await createReconstructionWorkstream({
             target: options.target,
             id,
@@ -1996,6 +2023,9 @@ function reconstructionWorkstreamCommand() {
             title: options.title,
             objective: options.objective,
             role: options.role,
+            workload: options.workload as ReconstructionWorkload,
+            profile: options.profile as ReconstructionProfile,
+            routingReason: options.routingReason,
             wave: parseLineNumber(options.wave, "--wave"),
             repositories: collectedStrings(options.repository),
             files: collectedStrings(options.file),
@@ -2014,8 +2044,10 @@ function reconstructionWorkstreamCommand() {
         .arguments("<id:string> <workstream:string>")
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
         .option("--by <actor:string>", "Stable worker identity.", { required: true })
-        .option("--host <host:string>", "Agent host, for example codex-cli or claude-code.", { required: true })
+        .option("--host <host:string>", "Agent host identity.", { required: true })
         .option("--run-id <id:string>", "Actual host session/run ID, or unavailable:<reason>.", { required: true })
+        .option("--model <model:string>", "Selected model, or host-auto when the host routes it.", { default: "host-auto" })
+        .option("--effort <effort:string>", "Selected reasoning effort, or profile-default.", { default: "profile-default" })
         .option("--json", "Print machine-readable JSON.")
         .action(async (options, id, workstream) => {
           const result = await claimReconstructionWorkstream({
@@ -2025,6 +2057,64 @@ function reconstructionWorkstreamCommand() {
             actor: options.by,
             host: options.host,
             runId: options.runId,
+            model: options.model,
+            reasoningEffort: options.effort,
+          });
+          printWorkstreamMutation(result, options.json);
+        }),
+    )
+    .command(
+      "escalate",
+      new Command()
+        .description("Record how an observable quality signal changes or constrains routing.")
+        .arguments("<id:string> <workstream:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--by <actor:string>", "Orchestrator or reviewer identity.", { required: true })
+        .option("--trigger <trigger:string>", "Observed escalation trigger.", { required: true })
+        .option("--action <action:string>", "Recorded response to the trigger.", { required: true })
+        .option("--to-profile <profile:string>", "Higher profile for stronger-profile action.")
+        .option("--target-workstream <id:string>", "Registered follow-up packet for new-workstream action.")
+        .option("--reason <text:string>", "Evidence-based routing explanation.", { required: true })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, workstream) => {
+          if (
+            !RECONSTRUCTION_ESCALATION_TRIGGERS.includes(
+              options.trigger as ReconstructionEscalationTrigger,
+            )
+          ) {
+            throw new Error(
+              `--trigger must be one of: ${RECONSTRUCTION_ESCALATION_TRIGGERS.join(", ")}`,
+            );
+          }
+          if (
+            !RECONSTRUCTION_ESCALATION_ACTIONS.includes(
+              options.action as ReconstructionEscalationAction,
+            )
+          ) {
+            throw new Error(
+              `--action must be one of: ${RECONSTRUCTION_ESCALATION_ACTIONS.join(", ")}`,
+            );
+          }
+          if (
+            options.toProfile !== undefined
+            && !RECONSTRUCTION_PROFILES.includes(options.toProfile as ReconstructionProfile)
+          ) {
+            throw new Error("--to-profile must be fast, balanced, or deep");
+          }
+          const result = await escalateReconstructionWorkstream({
+            target: options.target,
+            id,
+            workstream,
+            actor: options.by,
+            trigger: options.trigger as ReconstructionEscalationTrigger,
+            action: options.action as ReconstructionEscalationAction,
+            reason: options.reason,
+            ...(options.toProfile === undefined
+              ? {}
+              : { targetProfile: options.toProfile as ReconstructionProfile }),
+            ...(options.targetWorkstream === undefined
+              ? {}
+              : { targetWorkstream: options.targetWorkstream }),
           });
           printWorkstreamMutation(result, options.json);
         }),

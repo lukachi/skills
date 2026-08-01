@@ -128,8 +128,9 @@ Repository names, roles, and count are never predefined by the workflow.
 
 ## Adaptive multi-agent execution
 
-Reconstruction version 5 adds an execution contract without making subagents a
-requirement for every case.
+Reconstruction version 5 uses orchestration version 3 for adaptive routing
+without making subagents a requirement for every case. Existing orchestration
+version 2 records retain their original assurance contract.
 
 - One orchestrator owns the complete frozen frontier, parent case, repository
   dossiers, final coverage dispositions, candidate reconciliation, and curated
@@ -137,6 +138,28 @@ requirement for every case.
 - The orchestrator selects `single-agent` or `orchestrator-workers` after
   inspecting actual independent work and host capabilities. It records bounded
   parallelism, total workstream, and retry budgets plus a reason.
+- Workstream routing separates semantic role from compute. Every packet records
+  a workload (`exploration`, `analysis`, `synthesis`, or `review`), the minimum
+  sufficient host-neutral profile (`fast`, `balanced`, or `deep`), and its
+  rationale. Analysis requires at least `balanced`; synthesis and adversarial
+  review require `deep`.
+- The agent host maps profiles to concrete models and reasoning effort. Packet
+  execution records the known selection or the explicit `host-auto` and
+  `profile-default` fallback. Every claim appends this provenance to execution
+  history, so retrying cannot erase the earlier worker, profile, model, or
+  effort. Provider model names are provenance, never durable workflow
+  requirements.
+- Routing is a quality-driven cascade. Contradictions, insufficient evidence,
+  negative claims, material cross-boundary expansion, review rework, and
+  maintainer-only authority are durable escalation triggers. The orchestrator
+  records whether it selected a stronger profile, opened a narrower workstream,
+  requested maintainer review, retained uncertainty, or justified a
+  same-profile correction. Deterministically observable contradictions,
+  unexplained results, negative claims, material explored scope,
+  maintainer-authority questions, and repeated attempts block acceptance until
+  a matching escalation for the current attempt is recorded. A follow-up
+  workstream remains planned, belongs to a later wave, and depends on its
+  origin. Review and execution histories are append-only.
 - Parallel work is read-heavy and semantically partitioned by repository or
   community outcome, runtime surface, cross-repository flow or contract,
   bounded raw-history question, or adversarial audit. Arbitrary path ranges do
@@ -172,8 +195,10 @@ requirement for every case.
   accepted or explicitly cancelled with orchestrator review, a passed synthesis
   audit, and a distinct fresh independent review. The review records its actual
   assurance as `independent-agent`, `separate-session`, or `maintainer`; agent
-  review also records the host run ID. These fields are auditable provenance,
-  not cryptographic authentication.
+  or separate-session review is an assurance role outside the normal worker
+  set, requires `review` / `deep` routing, and records the routing reason plus
+  effective host, run ID, model, and reasoning effort. These fields are
+  auditable provenance, not cryptographic authentication.
 - Every packet present under `workstreams/` enters clean-session context and
   must be referenced. A worker cannot disappear from accounting by leaving its
   packet off the parent list.
@@ -182,6 +207,10 @@ requirement for every case.
 
 The deterministic ledgers prove corpus accounting. They do not prove worker
 understanding, orchestrator synthesis, or semantic truth.
+
+Version 2 workstreams from an already-active reconstruction remain valid under
+their original lifecycle after upgrade. They do not receive fabricated routing
+history; all newly created packets use version 3.
 
 ## Session continuity
 

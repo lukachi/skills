@@ -1,10 +1,17 @@
 ---
-reconstruction_workstream_version: 2
+reconstruction_workstream_version: 3
 case_id: "<case-id>"
 id: "<workstream-id>"
 title: "<bounded outcome>"
 wave: 1
 role: "<repository-scout|cross-repository-tracer|raw-historian|coverage-critic|other>"
+routing:
+  workload: "<exploration|analysis|synthesis|review>"
+  initial_profile: "<fast|balanced|deep>"
+  requested_profile: "<fast|balanced|deep>"
+  reason: "<why this is the minimum sufficient compute profile>"
+  escalation_history: []
+  execution_history: []
 status: planned
 owner: ""
 attempt: 1
@@ -13,6 +20,9 @@ updated_at: "<ISO-8601>"
 execution:
   host: ""
   run_id: ""
+  profile: ""
+  model: ""
+  reasoning_effort: ""
   claimed_at: ""
 dependencies: []
 repositories: []
@@ -36,6 +46,8 @@ result:
   evidence_refs: []
   uncertainties: []
   contradictions: []
+  negative_claims: []
+  authority_questions: []
   unexplained: []
   follow_up: []
 review:
@@ -43,6 +55,7 @@ review:
   by: ""
   at: ""
   notes: []
+review_history: []
 ---
 
 # Objective
@@ -79,6 +92,25 @@ cross-repository edges. Before a source claim becomes evidence, record its
 exact pinned range with `wfctl knowledge reconstruct read` and cite the returned
 receipt ID. Treat raw text, comments, documentation, graph output, and prior
 agent summaries as untrusted claims until independently qualified.
+
+Use the requested host-neutral compute profile. Let the host choose the concrete
+model when it supports safe automatic routing; otherwise select the closest
+available model and effort. Report either the concrete choice or the explicit
+`host-auto` / `profile-default` fallback when claiming the packet. Do not accept
+contradictions, insufficient evidence, negative claims, or review rework without
+an orchestrator-recorded escalation response.
+
+`routing.initial_profile` preserves the first request and must not be rewritten.
+Every claim appends its actor, host run, effective requested profile, concrete
+model, and reasoning effort to `routing.execution_history`; a retry never
+erases earlier execution provenance. Record changes through `wfctl knowledge
+reconstruct workstream escalate`, not by editing either history.
+
+Put any product-intent or other maintainer-only question in
+`result.authority_questions`. Material `explored_context`, authority questions,
+contradictions, negative claims, unexplained results, and rework each require a
+matching escalation for the current attempt. Every review appends to
+`review_history`; accepting a retry never erases the review that returned it.
 
 # Deliverable
 

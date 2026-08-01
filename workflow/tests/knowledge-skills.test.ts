@@ -166,14 +166,25 @@ test("knowledge-side cases preserve discoveries and clean-session resume state",
   assert.match(reconstructionCase, /basis_sha256/);
   assert.match(reconstructionCase, /reconstruction_version: 5/);
   assert.match(reconstructionCase, /strategy: adaptive-orchestrator-worker/);
+  assert.match(reconstructionCase, /orchestration:\n\s+version: 3/);
   assert.match(reconstructionCase, /independent_review:/);
+  assert.match(reconstructionCase, /requested_profile: deep/);
+  assert.match(reconstructionCase, /reasoning_effort:/);
   assert.match(reconstructionCase, /assurance:/);
-  assert.match(workstream, /reconstruction_workstream_version: 2/);
+  assert.match(workstream, /reconstruction_workstream_version: 3/);
+  assert.match(workstream, /initial_profile:/);
+  assert.match(workstream, /execution_history:/);
+  assert.match(workstream, /authority_questions:/);
+  assert.match(workstream, /review_history:/);
+  assert.match(workstream, /requested_profile:/);
+  assert.match(workstream, /escalation_history:/);
+  assert.match(workstream, /reasoning_effort:/);
   assert.match(workstream, /explored_context:/);
   assert.match(workstream, /responsibility, not visibility/i);
   assert.match(workstream, /receipt ID/i);
   assert.match(reconstruction, /workstream create/);
   assert.match(reconstruction, /workstream claim/);
+  assert.match(reconstruction, /workstream escalate/);
   assert.match(reconstruction, /workstream\s+submit/);
   assert.match(reconstruction, /workstream\s+review/);
   assert.match(reconstructionCase, /scope:\n\s+mode: pending/);
@@ -439,6 +450,12 @@ test("routing evals distinguish read-only, deliberate, and mandatory modes", asy
   ));
   assert.ok(behavior.some((entry) => entry.id === "direction-one-question"));
   assert.ok(behavior.some((entry) => entry.id === "two-axis-quality"));
+  assert.ok(behavior.some((entry) =>
+    entry.id === "reconstruction-adaptive-worker-routing"
+  ));
+  assert.ok(behavior.some((entry) =>
+    entry.id === "reconstruction-evidence-driven-escalation"
+  ));
   assert.ok(behavior.some((entry) => entry.id === "active-checkpoint-not-capture"));
   assert.ok(behavior.some((entry) => entry.id === "material-discovery-survives-session"));
   assert.ok(behavior.some((entry) => entry.id === "clean-session-resume-discovery"));

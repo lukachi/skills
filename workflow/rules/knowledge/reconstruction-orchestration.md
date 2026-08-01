@@ -9,13 +9,30 @@ or resuming `reconstruct-project-knowledge`.
 - Use platform-native subagents only when the frozen frontier contains
   genuinely independent, read-heavy research units or would pollute one
   context window. Do not spawn workers merely because subagents exist.
+- Route compute independently from semantic ownership. Classify every worker
+  packet as `exploration`, `analysis`, `synthesis`, or `review`, then request
+  the minimum sufficient host-neutral profile: `fast`, `balanced`, or `deep`.
+  Analysis cannot use `fast`; synthesis and adversarial review require `deep`.
+  Let the host select the concrete model when appropriate and record either its
+  known model/effort or `host-auto` / `profile-default` honestly. Preserve an
+  append-only execution entry for every claim so retry provenance is not lost.
+- Escalate from observable evidence and review signals, never self-confidence.
+  Contradictions, insufficient evidence, negative claims, cross-boundary scope,
+  review rework, and maintainer-only authority require a durable response. A
+  response may select a stronger profile, create a narrower workstream, request
+  maintainer review, retain explicit uncertainty, or justify a same-profile
+  correction. A `new-workstream` response references an already registered
+  still-planned packet in a later wave that depends on the origin; a
+  `maintainer-review` response is recorded by `human:<maintainer-id>`. Bind
+  every response to the attempt it answers and preserve review history. Do not
+  accept a packet while a current-attempt response is absent.
 - Partition by semantic outcome: a cohesive repository/community slice, an
   entrypoint or runtime surface, a cross-repository flow or contract, a bounded
   raw-history question, or an adversarial coverage review. Alphabetical file
   ranges may distribute complete reading, but must never define the semantic
   conclusion.
 - Before dispatch, create one unique durable `workstreams/*.md` packet per
-  worker from the supplied template. Give the worker the exact knowledge root,
+  research worker from the supplied template. Give the worker the exact knowledge root,
   case root, source root, repository identity, pinned commit, coverage slice,
   prerequisite full reads, objective, non-goals, output contract, stop
   conditions, and effort boundary.
@@ -54,9 +71,13 @@ or resuming `reconstruct-project-knowledge`.
 - After synthesis, use a fresh read-only critic when the host supports it. The
   critic checks omissions, claim-to-evidence soundness, contradictions,
   unjustified `structural-only` or `irrelevant` states, negative claims, and
-  hidden scope drift. It does not rewrite the answer it reviews. Record whether
-  this was an independent agent, a separate host session, or a maintainer
-  review; an actor label alone is not evidence of independence.
+  hidden scope drift. It does not rewrite the answer it reviews. The
+  orchestrator attributes the verdict under the parent case's
+  `independent_review`; this final assurance role is not a normal workstream and
+  must remain outside the worker set. Route agent or separate-session assurance
+  as `review` / `deep` and record its host, run, model, and reasoning effort.
+  Record maintainer assurance as human authority without invented model
+  provenance; an actor label alone is not evidence of independence.
 - If subagents are unavailable, the orchestrator follows the same wide-to-
   narrow waves serially and records `single-agent` with an honest reason. Do
   not pretend fan-out occurred.
@@ -70,3 +91,5 @@ or resuming `reconstruct-project-knowledge`.
 The Git manifest and coverage ledgers prove accounting, not semantic truth.
 Graphify guides navigation, workstreams preserve isolated findings, the
 orchestrator reconciles them, and maintainer review remains the authority gate.
+Legacy version 2 packets may finish under their original contract; never invent
+adaptive-routing history while resuming them.

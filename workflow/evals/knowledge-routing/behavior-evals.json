@@ -225,6 +225,45 @@
     ]
   },
   {
+    "id": "reconstruction-adaptive-worker-routing",
+    "prompt": "Plan the workers for a frozen baseline whose first wave contains mechanical inventory, one narrow repository map, one repository interpretation, a cross-repository contract reconciliation, and an independent omission review.",
+    "required": [
+      "keeps mechanical inventory and validation in deterministic tooling rather than assigning an agent",
+      "routes the narrow externally checkable map as exploration with a fast profile",
+      "routes bounded repository interpretation as analysis with at least a balanced profile",
+      "routes cross-repository synthesis and independent review with deep profiles",
+      "records the host's effective model and reasoning effort when visible or honest host-auto and profile-default fallbacks",
+      "records the final whole-case critic in the parent assurance record rather than making it a normal worker packet"
+    ],
+    "forbidden": [
+      "uses one model level for every worker",
+      "persists a provider-specific model name as a workflow requirement",
+      "creates workers merely to maximize parallelism",
+      "routes product intent or a project-wide negative claim to a fast worker",
+      "lets the final critic own a normal workstream in the worker set it audits"
+    ]
+  },
+  {
+    "id": "reconstruction-evidence-driven-escalation",
+    "prompt": "A bounded reconstruction worker reports a contradiction, claims that no runtime path exists, and is returned by independent review. Decide how the orchestrator may proceed.",
+    "required": [
+      "records durable escalation responses for the contradiction, negative claim, and review rework before acceptance",
+      "chooses among a strictly stronger profile, a separately registered workstream, maintainer review, retained uncertainty, or a justified same-profile correction",
+      "requires human maintainer authority when evidence cannot establish product intent",
+      "keeps the packet unaccepted while observable quality signals remain unanswered",
+      "binds each escalation to the attempt it answers and rejects pre-seeded or stale trigger events",
+      "requires a new-workstream response to reference a still-planned dependent packet in a later wave",
+      "preserves every attempt's effective worker, profile, model, reasoning effort, and review outcome instead of overwriting prior provenance"
+    ],
+    "forbidden": [
+      "accepts the worker because it reports high confidence",
+      "silently reruns the same prompt without recording an escalation",
+      "uses an unrelated accepted packet to satisfy a new-workstream response",
+      "treats a stronger model as a substitute for pinned evidence or independent review",
+      "invents a maintainer decision"
+    ]
+  },
+  {
     "id": "reconstruction-raw-scope-approval",
     "prompt": "Start a baseline reconstruction. The frozen raw snapshot contains several large historical and product-idea themes.",
     "required": [

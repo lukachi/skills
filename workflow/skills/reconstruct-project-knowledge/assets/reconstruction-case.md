@@ -45,7 +45,7 @@ reconciliation_audit:
   result: pending
   notes: []
 orchestration:
-  version: 2
+  version: 3
   strategy: adaptive-orchestrator-worker
   execution: pending
   status: planning
@@ -63,7 +63,14 @@ orchestration:
     status: pending
     by: ""
     assurance: ""
+    routing:
+      workload: review
+      requested_profile: deep
+      reason: ""
+    host: ""
     run_id: ""
+    model: ""
+    reasoning_effort: ""
     at: ""
     notes: []
 maintainer_review:
@@ -188,7 +195,11 @@ work available and the current host's capabilities. For parallel execution,
 list every durable `workstreams/*.md` packet in frontmatter. The orchestrator
 alone owns this case, repository dossiers, final coverage dispositions,
 candidate reconciliation, and curated knowledge. Record why the chosen effort
-is proportionate, the final synthesis audit, and a fresh independent review.
+is proportionate and the final synthesis audit. Record the fresh whole-case
+critic directly under `independent_review`, not as a normal workstream: it must
+remain outside the worker set it audits. Agent or separate-session assurance
+uses `review` / `deep` routing and records its effective host, run, model, and
+reasoning effort.
 
 # Maintainer review
 

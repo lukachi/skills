@@ -19503,9 +19503,11 @@ function reconstructionOrchestrationIssues(metadata) {
   if (!orchestration) {
     return ["orchestration is required for reconstruction version 5"];
   }
-  if (orchestration.version !== RECONSTRUCTION_ORCHESTRATION_VERSION) {
+  const orchestrationVersion = Number(orchestration.version);
+  const adaptiveOrchestration = orchestrationVersion === RECONSTRUCTION_ORCHESTRATION_VERSION;
+  if (orchestrationVersion !== LEGACY_RECONSTRUCTION_ORCHESTRATION_VERSION && !adaptiveOrchestration) {
     issues.push(
-      `orchestration.version must be ${RECONSTRUCTION_ORCHESTRATION_VERSION}`
+      `orchestration.version must be ${LEGACY_RECONSTRUCTION_ORCHESTRATION_VERSION} or ${RECONSTRUCTION_ORCHESTRATION_VERSION}`
     );
   }
   if (orchestration.strategy !== "adaptive-orchestrator-worker") {
@@ -19584,9 +19586,9 @@ function reconstructionOrchestrationIssues(metadata) {
     );
   } else if (assurance === "maintainer" && !stringValue6(review?.by).startsWith("human:")) {
     issues.push("maintainer assurance requires a human:<maintainer-id> reviewer");
-  } else if (assurance !== "maintainer" && !stringValue6(review?.run_id).trim()) {
+  } else if (assurance !== "maintainer" && (adaptiveOrchestration ? stringValue6(recordValue5(review?.routing)?.workload) !== "review" || stringValue6(recordValue5(review?.routing)?.requested_profile) !== "deep" || !stringValue6(recordValue5(review?.routing)?.reason).trim() || !stringValue6(review?.host).trim() || !stringValue6(review?.run_id).trim() || !stringValue6(review?.model).trim() || !stringValue6(review?.reasoning_effort).trim() : !stringValue6(review?.run_id).trim())) {
     issues.push(
-      "agent or separate-session assurance requires the reported host run_id"
+      adaptiveOrchestration ? "agent or separate-session assurance requires review/deep routing with a reason and the reported host, run ID, model, and reasoning effort" : "legacy agent or separate-session assurance requires the reported host run_id"
     );
   }
   if (stringValue6(synthesis?.by) && stringValue6(synthesis?.by) === stringValue6(review?.by)) {
@@ -19599,8 +19601,12 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
   const { metadata, body } = record2.document;
   const prefix = `workstream ${record2.relativePath}`;
   const id = stringValue6(metadata.id);
-  if (metadata.reconstruction_workstream_version !== RECONSTRUCTION_WORKSTREAM_VERSION) {
-    issues.push(`${prefix}: reconstruction_workstream_version must be ${RECONSTRUCTION_WORKSTREAM_VERSION}`);
+  const workstreamVersion = Number(metadata.reconstruction_workstream_version);
+  const adaptiveRouting = workstreamVersion === RECONSTRUCTION_WORKSTREAM_VERSION;
+  if (workstreamVersion !== LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION && !adaptiveRouting) {
+    issues.push(
+      `${prefix}: reconstruction_workstream_version must be ${LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION} or ${RECONSTRUCTION_WORKSTREAM_VERSION}`
+    );
   }
   if (metadata.case_id !== caseId) {
     issues.push(`${prefix}: case_id does not match reconstruction ${caseId}`);
@@ -19620,6 +19626,97 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
   if (!stringValue6(metadata.role).trim()) {
     issues.push(`${prefix}: role is required`);
   }
+  const routing = recordValue5(metadata.routing);
+  const workload = stringValue6(routing?.workload);
+  const initialProfile = stringValue6(routing?.initial_profile);
+  const requestedProfile = stringValue6(routing?.requested_profile);
+  const escalationHistory = adaptiveRouting ? recordArray3(routing?.escalation_history) : [];
+  const executionHistory = adaptiveRouting ? recordArray3(routing?.execution_history) : [];
+  const rawEscalationHistory = routing?.escalation_history;
+  const rawExecutionHistory = routing?.execution_history;
+  if (adaptiveRouting && !WORKLOADS.has(workload)) {
+    issues.push(`${prefix}: routing.workload must be exploration, analysis, synthesis, or review`);
+  }
+  if (adaptiveRouting && !PROFILES.has(requestedProfile)) {
+    issues.push(`${prefix}: routing.requested_profile must be fast, balanced, or deep`);
+  }
+  if (adaptiveRouting && !PROFILES.has(initialProfile)) {
+    issues.push(`${prefix}: routing.initial_profile must be fast, balanced, or deep`);
+  }
+  if (adaptiveRouting && !stringValue6(routing?.reason).trim()) {
+    issues.push(`${prefix}: routing.reason must explain the requested compute profile`);
+  }
+  if (adaptiveRouting && workload === "analysis" && requestedProfile === "fast") {
+    issues.push(`${prefix}: analysis work requires balanced or deep routing`);
+  }
+  if (adaptiveRouting && (workload === "synthesis" || workload === "review") && requestedProfile !== "deep") {
+    issues.push(`${prefix}: synthesis and review work require deep routing`);
+  }
+  if (adaptiveRouting && !Array.isArray(rawEscalationHistory)) {
+    issues.push(`${prefix}: routing.escalation_history must be a list`);
+  } else if (adaptiveRouting && Array.isArray(rawEscalationHistory) && rawEscalationHistory.some((entry) => !isRecord2(entry))) {
+    issues.push(`${prefix}: routing.escalation_history entries must be records`);
+  }
+  if (adaptiveRouting && !Array.isArray(rawExecutionHistory)) {
+    issues.push(`${prefix}: routing.execution_history must be a list`);
+  } else if (adaptiveRouting && Array.isArray(rawExecutionHistory) && rawExecutionHistory.some((entry) => !isRecord2(entry))) {
+    issues.push(`${prefix}: routing.execution_history entries must be records`);
+  }
+  let expectedProfile = adaptiveRouting && PROFILES.has(initialProfile) ? initialProfile : void 0;
+  for (const [index2, escalation] of escalationHistory.entries()) {
+    const eventPrefix = `${prefix}: routing.escalation_history[${index2}]`;
+    const trigger = stringValue6(escalation.trigger);
+    const action = stringValue6(escalation.action);
+    const fromProfile = stringValue6(escalation.from_profile);
+    const toProfile = stringValue6(escalation.to_profile);
+    const targetWorkstream = stringValue6(escalation.target_workstream);
+    if (!ESCALATION_TRIGGERS.has(trigger)) {
+      issues.push(`${eventPrefix}.trigger is invalid`);
+    }
+    if (!ESCALATION_ACTIONS.has(action)) {
+      issues.push(`${eventPrefix}.action is invalid`);
+    }
+    if (!PROFILES.has(fromProfile) || !PROFILES.has(toProfile)) {
+      issues.push(`${eventPrefix} must record valid from_profile and to_profile`);
+    } else {
+      if (expectedProfile !== void 0 && fromProfile !== expectedProfile) {
+        issues.push(`${eventPrefix}.from_profile does not continue the routing history`);
+      }
+      if (action === "stronger-profile" && (PROFILE_RANK.get(toProfile) ?? -1) <= (PROFILE_RANK.get(fromProfile) ?? -1)) {
+        issues.push(`${eventPrefix}: stronger-profile must increase the requested profile`);
+      }
+      if (action !== "stronger-profile" && toProfile !== fromProfile) {
+        issues.push(`${eventPrefix}: only stronger-profile may change the requested profile`);
+      }
+      expectedProfile = toProfile;
+    }
+    if (!stringValue6(escalation.by).trim()) {
+      issues.push(`${eventPrefix}.by is required`);
+    }
+    if (action === "maintainer-review" && !stringValue6(escalation.by).startsWith("human:")) {
+      issues.push(`${eventPrefix}: maintainer-review must be recorded by human:<maintainer-id>`);
+    }
+    if (action === "new-workstream") {
+      if (!knownWorkstreamIds.has(targetWorkstream) || targetWorkstream === id) {
+        issues.push(`${eventPrefix}.target_workstream must reference another registered workstream`);
+      }
+    } else if (targetWorkstream) {
+      issues.push(`${eventPrefix}.target_workstream is valid only for new-workstream`);
+    }
+    const escalationAttempt = positiveInteger(escalation.attempt);
+    if (escalationAttempt === void 0) {
+      issues.push(`${eventPrefix}.attempt must be a positive integer`);
+    }
+    if (!isIsoDateTime5(stringValue6(escalation.at))) {
+      issues.push(`${eventPrefix}.at must be an ISO date-time`);
+    }
+    if (!stringValue6(escalation.reason).trim()) {
+      issues.push(`${eventPrefix}.reason is required`);
+    }
+  }
+  if (adaptiveRouting && expectedProfile !== void 0 && requestedProfile !== expectedProfile) {
+    issues.push(`${prefix}: routing.requested_profile does not match the escalation history`);
+  }
   const status = stringValue6(metadata.status);
   const cancelled = status === "cancelled";
   if (!WORKSTREAM_STATUSES.has(status)) {
@@ -19634,9 +19731,9 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
     issues.push(`${prefix}: owner is required`);
   }
   const executionRecord = recordValue5(metadata.execution);
-  if (status !== "planned" && !cancelled && (!stringValue6(executionRecord?.host).trim() || !stringValue6(executionRecord?.run_id).trim() || !isIsoDateTime5(stringValue6(executionRecord?.claimed_at)))) {
+  if (status !== "planned" && !cancelled && (!stringValue6(executionRecord?.host).trim() || !stringValue6(executionRecord?.run_id).trim() || adaptiveRouting && (!PROFILES.has(stringValue6(executionRecord?.profile)) || !stringValue6(executionRecord?.model).trim() || !stringValue6(executionRecord?.reasoning_effort).trim()) || !isIsoDateTime5(stringValue6(executionRecord?.claimed_at)))) {
     issues.push(
-      `${prefix}: claimed work requires execution.host, execution.run_id, and execution.claimed_at`
+      adaptiveRouting ? `${prefix}: claimed work requires execution host, run ID, requested profile, model selection, reasoning effort, and claimed time` : `${prefix}: legacy claimed work requires execution host, run ID, and claimed time`
     );
   }
   const attempt = positiveInteger(metadata.attempt);
@@ -19644,6 +19741,58 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
     issues.push(`${prefix}: attempt must be a positive integer`);
   } else if (attempt > maxRetries + 1) {
     issues.push(`${prefix}: attempt ${attempt} exceeds retry budget ${maxRetries}`);
+  }
+  if (adaptiveRouting && attempt !== void 0) {
+    const maximumEscalationAttempt = status === "rework" ? attempt + 1 : attempt;
+    for (const [index2, escalation] of escalationHistory.entries()) {
+      const escalationAttempt = positiveInteger(escalation.attempt);
+      if (escalationAttempt !== void 0 && escalationAttempt > maximumEscalationAttempt) {
+        issues.push(
+          `${prefix}: routing.escalation_history[${index2}].attempt exceeds the current lifecycle attempt`
+        );
+      }
+    }
+  }
+  for (const [index2, execution] of executionHistory.entries()) {
+    const executionPrefix = `${prefix}: routing.execution_history[${index2}]`;
+    if (positiveInteger(execution.attempt) !== index2 + 1) {
+      issues.push(`${executionPrefix}.attempt must form a contiguous sequence starting at 1`);
+    }
+    if (!stringValue6(execution.by).trim()) {
+      issues.push(`${executionPrefix}.by is required`);
+    }
+    if (!stringValue6(execution.host).trim() || !stringValue6(execution.run_id).trim()) {
+      issues.push(`${executionPrefix} must record host and run_id`);
+    }
+    if (!PROFILES.has(stringValue6(execution.profile))) {
+      issues.push(`${executionPrefix}.profile must be fast, balanced, or deep`);
+    }
+    if (!stringValue6(execution.model).trim() || !stringValue6(execution.reasoning_effort).trim()) {
+      issues.push(`${executionPrefix} must record model and reasoning_effort`);
+    }
+    if (!isIsoDateTime5(stringValue6(execution.claimed_at))) {
+      issues.push(`${executionPrefix}.claimed_at must be an ISO date-time`);
+    }
+  }
+  if (adaptiveRouting && !cancelled && status === "planned" && executionHistory.length > 0) {
+    issues.push(`${prefix}: planned workstream cannot contain execution history`);
+  }
+  if (adaptiveRouting && !cancelled && status !== "planned" && attempt !== void 0 && executionHistory.length !== attempt) {
+    issues.push(`${prefix}: routing.execution_history must contain one claim for every attempt`);
+  }
+  const latestExecution = executionHistory.at(-1);
+  if (adaptiveRouting && !cancelled && status !== "planned" && latestExecution) {
+    for (const field of ["host", "run_id", "profile", "model", "reasoning_effort", "claimed_at"]) {
+      if (stringValue6(executionRecord?.[field]) !== stringValue6(latestExecution[field])) {
+        issues.push(`${prefix}: execution.${field} must match the latest execution history entry`);
+      }
+    }
+    if (owner !== stringValue6(latestExecution.by)) {
+      issues.push(`${prefix}: owner must match the latest execution history actor`);
+    }
+    if (["active", "submitted", "accepted"].includes(status) && stringValue6(latestExecution.profile) !== requestedProfile) {
+      issues.push(`${prefix}: active execution profile must match routing.requested_profile`);
+    }
   }
   if (!isIsoDateTime5(stringValue6(metadata.created_at))) {
     issues.push(`${prefix}: created_at must be an ISO date-time`);
@@ -19694,14 +19843,16 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
   if (!cancelled && !stringValue6(result?.summary).trim()) {
     issues.push(`${prefix}: result.summary is required`);
   }
-  for (const field of [
+  const resultFields = [
     "candidate_ids",
     "evidence_refs",
     "uncertainties",
     "contradictions",
     "unexplained",
-    "follow_up"
-  ]) {
+    "follow_up",
+    ...adaptiveRouting ? ["negative_claims", "authority_questions"] : []
+  ];
+  for (const field of resultFields) {
     if (!cancelled && !Array.isArray(result?.[field])) {
       issues.push(`${prefix}: result.${field} must be a list`);
     }
@@ -19733,11 +19884,73 @@ function reconstructionWorkstreamIssues(record2, caseId, repositoryIds, knownWor
     }
   }
   const review = recordValue5(metadata.review);
+  const reviewHistory = adaptiveRouting ? recordArray3(metadata.review_history) : [];
+  if (adaptiveRouting && !Array.isArray(metadata.review_history)) {
+    issues.push(`${prefix}: review_history must be a list`);
+  } else if (adaptiveRouting && Array.isArray(metadata.review_history) && metadata.review_history.some((entry) => !isRecord2(entry))) {
+    issues.push(`${prefix}: review_history entries must be records`);
+  }
+  for (const [index2, reviewEvent] of reviewHistory.entries()) {
+    const reviewPrefix = `${prefix}: review_history[${index2}]`;
+    if (positiveInteger(reviewEvent.attempt) === void 0) {
+      issues.push(`${reviewPrefix}.attempt must be a positive integer`);
+    }
+    if (!["accepted", "rework", "cancelled"].includes(stringValue6(reviewEvent.outcome))) {
+      issues.push(`${reviewPrefix}.outcome must be accepted, rework, or cancelled`);
+    }
+    if (!stringValue6(reviewEvent.by).trim()) {
+      issues.push(`${reviewPrefix}.by is required`);
+    }
+    if (!isIsoDateTime5(stringValue6(reviewEvent.at))) {
+      issues.push(`${reviewPrefix}.at must be an ISO date-time`);
+    }
+    if (!nonEmptyStringArray3(reviewEvent.notes)) {
+      issues.push(`${reviewPrefix}.notes must be a non-empty list`);
+    }
+  }
+  if (adaptiveRouting && !cancelled && phase !== "submit") {
+    const escalationTriggers = new Set(
+      escalationHistory.filter((entry) => positiveInteger(entry.attempt) === attempt).map((entry) => stringValue6(entry.trigger))
+    );
+    const requiredTriggers = /* @__PURE__ */ new Set();
+    if (stringArray5(result?.contradictions).length > 0) {
+      requiredTriggers.add("contradiction");
+    }
+    if (stringArray5(result?.unexplained).length > 0) {
+      requiredTriggers.add("insufficient-evidence");
+    }
+    if (stringArray5(result?.negative_claims).length > 0) {
+      requiredTriggers.add("negative-claim");
+    }
+    if (exploredCount > 0) {
+      requiredTriggers.add("cross-boundary-scope");
+    }
+    if (stringArray5(result?.authority_questions).length > 0) {
+      requiredTriggers.add("maintainer-authority");
+    }
+    if ((attempt ?? 1) > 1) {
+      requiredTriggers.add("review-rework");
+    }
+    for (const trigger of requiredTriggers) {
+      if (!escalationTriggers.has(trigger)) {
+        issues.push(
+          `${prefix}: ${trigger} requires a durable routing escalation before acceptance`
+        );
+      }
+    }
+  }
   if (phase === "close" && (review?.status !== "accepted" || !stringValue6(review.by).trim() || !isIsoDateTime5(stringValue6(review.at)) || !nonEmptyStringArray3(review.notes))) {
     issues.push(`${prefix}: review must be accepted with actor, time, and notes`);
   }
   if (phase === "close" && owner && owner === stringValue6(review?.by)) {
     issues.push(`${prefix}: reviewer must differ from worker owner`);
+  }
+  if (adaptiveRouting && phase === "close") {
+    const latestReview = reviewHistory.at(-1);
+    const expectedOutcome = cancelled ? "cancelled" : "accepted";
+    if (!latestReview || positiveInteger(latestReview.attempt) !== attempt || stringValue6(latestReview.outcome) !== expectedOutcome || stringValue6(latestReview.by) !== stringValue6(review?.by) || stringValue6(latestReview.at) !== stringValue6(review?.at) || JSON.stringify(stringArray5(latestReview.notes)) !== JSON.stringify(stringArray5(review?.notes))) {
+      issues.push(`${prefix}: review must match the latest durable review_history event`);
+    }
   }
   if (!cancelled && /<[^>\n]+>/.test(body)) {
     issues.push(`${prefix}: template placeholders remain`);
@@ -19820,6 +20033,29 @@ function reconstructionWorkstreamSetIssues(records, metadata) {
         );
       }
     }
+    const routing = recordValue5(record2.document.metadata.routing);
+    for (const escalation of recordArray3(routing?.escalation_history)) {
+      if (escalation.action !== "new-workstream") {
+        continue;
+      }
+      const targetId = stringValue6(escalation.target_workstream);
+      const target = byId.get(targetId);
+      if (target?.document.metadata.status === "cancelled") {
+        issues.push(
+          `workstream ${id}: escalation target ${targetId} cannot be cancelled`
+        );
+      }
+      if (target && (positiveInteger(target.document.metadata.wave) ?? 0) <= wave) {
+        issues.push(
+          `workstream ${id}: escalation target ${targetId} must belong to a later wave`
+        );
+      }
+      if (target && !stringArray5(target.document.metadata.dependencies).includes(id)) {
+        issues.push(
+          `workstream ${id}: escalation target ${targetId} must depend on its originating workstream`
+        );
+      }
+    }
   }
   const visiting = /* @__PURE__ */ new Set();
   const visited = /* @__PURE__ */ new Set();
@@ -19856,7 +20092,23 @@ function reconstructionWorkstreamSetIssues(records, metadata) {
     issues.push("orchestration synthesis actor must not be a worker owner");
   }
   if (owners.has(stringValue6(review?.by))) {
-    issues.push("orchestration independent review actor must be fresh, not a worker owner");
+    issues.push(
+      "orchestration independent review actor must be fresh, not a workstream owner; record final assurance in the parent case"
+    );
+  }
+  const reviewHostRun = `${stringValue6(review?.host)}\0${stringValue6(review?.run_id)}`;
+  const workerHostRuns = new Set(
+    records.flatMap((record2) => {
+      const routing = recordValue5(record2.document.metadata.routing);
+      return recordArray3(routing?.execution_history).map(
+        (execution) => `${stringValue6(execution.host)}\0${stringValue6(execution.run_id)}`
+      );
+    })
+  );
+  if (stringValue6(review?.assurance) !== "maintainer" && stringValue6(review?.host) && stringValue6(review?.run_id) && workerHostRuns.has(reviewHostRun)) {
+    issues.push(
+      "orchestration independent review must use a host run distinct from every research workstream"
+    );
   }
   return [...new Set(issues)];
 }
@@ -19875,6 +20127,9 @@ function resolveWorkstreamPath(caseDirectory, input) {
 }
 function recordValue5(value) {
   return isRecord2(value) ? value : void 0;
+}
+function recordArray3(value) {
+  return Array.isArray(value) ? value.filter(isRecord2) : [];
 }
 function stringValue6(value) {
   return typeof value === "string" ? value : "";
@@ -19897,13 +20152,37 @@ function isIsoDateTime5(value) {
 function hasCode2(error2, code2) {
   return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === code2;
 }
-var RECONSTRUCTION_ORCHESTRATION_VERSION, RECONSTRUCTION_WORKSTREAM_VERSION, EXECUTION_MODES, WORKSTREAM_STATUSES, REVIEW_ASSURANCE_LEVELS;
+var RECONSTRUCTION_ORCHESTRATION_VERSION, LEGACY_RECONSTRUCTION_ORCHESTRATION_VERSION, RECONSTRUCTION_WORKSTREAM_VERSION, LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION, RECONSTRUCTION_WORKLOADS, RECONSTRUCTION_PROFILES, RECONSTRUCTION_ESCALATION_TRIGGERS, RECONSTRUCTION_ESCALATION_ACTIONS, EXECUTION_MODES, WORKSTREAM_STATUSES, REVIEW_ASSURANCE_LEVELS, WORKLOADS, PROFILES, ESCALATION_TRIGGERS, ESCALATION_ACTIONS, PROFILE_RANK;
 var init_reconstruction_orchestration = __esm({
   "src/reconstruction-orchestration.ts"() {
     "use strict";
     init_work_spec();
-    RECONSTRUCTION_ORCHESTRATION_VERSION = 2;
-    RECONSTRUCTION_WORKSTREAM_VERSION = 2;
+    RECONSTRUCTION_ORCHESTRATION_VERSION = 3;
+    LEGACY_RECONSTRUCTION_ORCHESTRATION_VERSION = 2;
+    RECONSTRUCTION_WORKSTREAM_VERSION = 3;
+    LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION = 2;
+    RECONSTRUCTION_WORKLOADS = [
+      "exploration",
+      "analysis",
+      "synthesis",
+      "review"
+    ];
+    RECONSTRUCTION_PROFILES = ["fast", "balanced", "deep"];
+    RECONSTRUCTION_ESCALATION_TRIGGERS = [
+      "contradiction",
+      "insufficient-evidence",
+      "negative-claim",
+      "cross-boundary-scope",
+      "review-rework",
+      "maintainer-authority"
+    ];
+    RECONSTRUCTION_ESCALATION_ACTIONS = [
+      "stronger-profile",
+      "new-workstream",
+      "maintainer-review",
+      "retained-uncertainty",
+      "same-profile"
+    ];
     EXECUTION_MODES = /* @__PURE__ */ new Set(["single-agent", "orchestrator-workers"]);
     WORKSTREAM_STATUSES = /* @__PURE__ */ new Set([
       "planned",
@@ -19919,6 +20198,13 @@ var init_reconstruction_orchestration = __esm({
       "separate-session",
       "maintainer"
     ]);
+    WORKLOADS = new Set(RECONSTRUCTION_WORKLOADS);
+    PROFILES = new Set(RECONSTRUCTION_PROFILES);
+    ESCALATION_TRIGGERS = new Set(RECONSTRUCTION_ESCALATION_TRIGGERS);
+    ESCALATION_ACTIONS = new Set(RECONSTRUCTION_ESCALATION_ACTIONS);
+    PROFILE_RANK = new Map(
+      RECONSTRUCTION_PROFILES.map((profile, index2) => [profile, index2])
+    );
   }
 });
 
@@ -20181,8 +20467,20 @@ async function beginProjectReconstruction(options) {
 }
 async function createReconstructionWorkstream(options) {
   assertWorkstreamId(options.workstream);
-  if (!options.title.trim() || !options.objective.trim() || !options.role.trim()) {
-    throw new Error("Workstream title, objective, and role are required");
+  if (!options.title.trim() || !options.objective.trim() || !options.role.trim() || !options.routingReason.trim()) {
+    throw new Error("Workstream title, objective, role, and routing reason are required");
+  }
+  if (!RECONSTRUCTION_WORKLOADS.includes(options.workload)) {
+    throw new Error(`Unknown reconstruction workload: ${options.workload}`);
+  }
+  if (!RECONSTRUCTION_PROFILES.includes(options.profile)) {
+    throw new Error(`Unknown reconstruction profile: ${options.profile}`);
+  }
+  if (options.workload === "analysis" && options.profile === "fast") {
+    throw new Error("Analysis work requires a balanced or deep profile");
+  }
+  if ((options.workload === "synthesis" || options.workload === "review") && options.profile !== "deep") {
+    throw new Error("Synthesis and review work require a deep profile");
   }
   if (!Number.isInteger(options.wave) || options.wave < 1) {
     throw new Error("Workstream wave must be a positive integer");
@@ -20243,6 +20541,14 @@ async function createReconstructionWorkstream(options) {
         title: options.title.trim(),
         wave: options.wave,
         role: options.role.trim(),
+        routing: {
+          workload: options.workload,
+          initial_profile: options.profile,
+          requested_profile: options.profile,
+          reason: options.routingReason.trim(),
+          escalation_history: [],
+          execution_history: []
+        },
         status: "planned",
         owner: "",
         attempt: 1,
@@ -20251,6 +20557,9 @@ async function createReconstructionWorkstream(options) {
         execution: {
           host: "",
           run_id: "",
+          profile: "",
+          model: "",
+          reasoning_effort: "",
           claimed_at: ""
         },
         dependencies: uniqueSorted(options.dependencies ?? []),
@@ -20277,6 +20586,8 @@ async function createReconstructionWorkstream(options) {
           evidence_refs: [],
           uncertainties: [],
           contradictions: [],
+          negative_claims: [],
+          authority_questions: [],
           unexplained: [],
           follow_up: []
         },
@@ -20285,7 +20596,8 @@ async function createReconstructionWorkstream(options) {
           by: "",
           at: "",
           notes: []
-        }
+        },
+        review_history: []
       };
       template.body = renderWorkstreamBody(options.objective.trim());
       const workstreamPath = join10(caseDirectory, relativePath2);
@@ -20331,13 +20643,175 @@ async function claimReconstructionWorkstream(options) {
       if (status === "rework") {
         document3.metadata.attempt = Number(document3.metadata.attempt) + 1;
       }
+      const workstreamVersion = Number(document3.metadata.reconstruction_workstream_version);
+      if (workstreamVersion === LEGACY_RECONSTRUCTION_WORKSTREAM_VERSION) {
+        document3.metadata.status = "active";
+        document3.metadata.owner = actor;
+        document3.metadata.execution = {
+          host,
+          run_id: runId,
+          claimed_at: timestamp2
+        };
+        document3.metadata.updated_at = timestamp2;
+        return;
+      }
+      if (workstreamVersion !== RECONSTRUCTION_WORKSTREAM_VERSION) {
+        throw new Error(`Unsupported reconstruction workstream version: ${workstreamVersion}`);
+      }
+      const routing = recordValue6(document3.metadata.routing);
+      if (!routing) {
+        throw new Error("Workstream routing metadata is missing");
+      }
+      const profile = stringValue7(routing.requested_profile);
+      if (!RECONSTRUCTION_PROFILES.includes(profile)) {
+        throw new Error(`Unknown requested reconstruction profile: ${profile || "missing"}`);
+      }
+      const attempt = Number(document3.metadata.attempt);
+      const model = options.model?.trim() || "host-auto";
+      const reasoningEffort = options.reasoningEffort?.trim() || "profile-default";
+      const execution = {
+        attempt,
+        by: actor,
+        host,
+        run_id: runId,
+        profile,
+        model,
+        reasoning_effort: reasoningEffort,
+        claimed_at: timestamp2
+      };
+      routing.execution_history = [
+        ...recordArray4(routing.execution_history),
+        execution
+      ];
+      document3.metadata.routing = routing;
       document3.metadata.status = "active";
       document3.metadata.owner = actor;
       document3.metadata.execution = {
         host,
         run_id: runId,
+        profile,
+        model,
+        reasoning_effort: reasoningEffort,
         claimed_at: timestamp2
       };
+      document3.metadata.updated_at = timestamp2;
+    }
+  );
+}
+async function escalateReconstructionWorkstream(options) {
+  return await mutateReconstructionWorkstream(
+    options.target,
+    options.id,
+    options.workstream,
+    options.now,
+    async ({ caseDirectory, caseDocument, document: document3, timestamp: timestamp2 }) => {
+      const actor = options.actor.trim();
+      const reason = options.reason.trim();
+      if (!actor || !reason) {
+        throw new Error("Workstream escalation requires an actor and reason");
+      }
+      if (!RECONSTRUCTION_ESCALATION_TRIGGERS.includes(options.trigger)) {
+        throw new Error(`Unknown reconstruction escalation trigger: ${options.trigger}`);
+      }
+      if (!RECONSTRUCTION_ESCALATION_ACTIONS.includes(options.action)) {
+        throw new Error(`Unknown reconstruction escalation action: ${options.action}`);
+      }
+      if (Number(document3.metadata.reconstruction_workstream_version) !== RECONSTRUCTION_WORKSTREAM_VERSION) {
+        throw new Error(
+          "Adaptive routing escalation is available only for version 3 workstreams; legacy version 2 packets continue under their original lifecycle"
+        );
+      }
+      const status = stringValue7(document3.metadata.status);
+      if (!["submitted", "rework"].includes(status)) {
+        throw new Error(
+          `Cannot record routing escalation while workstream is ${status || "unknown"}`
+        );
+      }
+      if (options.trigger === "review-rework" && status !== "rework") {
+        throw new Error("review-rework escalation requires a recorded rework review");
+      }
+      const routing = recordValue6(document3.metadata.routing);
+      if (!routing) {
+        throw new Error("Workstream routing metadata is missing");
+      }
+      const fromProfile = stringValue7(routing.requested_profile);
+      if (!RECONSTRUCTION_PROFILES.includes(fromProfile)) {
+        throw new Error(`Unknown current reconstruction profile: ${fromProfile || "missing"}`);
+      }
+      let toProfile = fromProfile;
+      if (options.action === "stronger-profile") {
+        if (status !== "planned" && status !== "rework") {
+          throw new Error(
+            "Return submitted work for rework before assigning a stronger profile"
+          );
+        }
+        if (!options.targetProfile || !RECONSTRUCTION_PROFILES.includes(options.targetProfile)) {
+          throw new Error("stronger-profile escalation requires --to-profile");
+        }
+        if (RECONSTRUCTION_PROFILES.indexOf(options.targetProfile) <= RECONSTRUCTION_PROFILES.indexOf(fromProfile)) {
+          throw new Error("stronger-profile escalation must increase the requested profile");
+        }
+        toProfile = options.targetProfile;
+        routing.requested_profile = toProfile;
+      } else if (options.targetProfile !== void 0) {
+        throw new Error("--to-profile is valid only with stronger-profile escalation");
+      }
+      let targetWorkstream = "";
+      if (options.action === "new-workstream") {
+        if (!options.targetWorkstream) {
+          throw new Error("new-workstream escalation requires --target-workstream");
+        }
+        assertWorkstreamId(options.targetWorkstream);
+        if (options.targetWorkstream === options.workstream) {
+          throw new Error("new-workstream escalation must reference another packet");
+        }
+        if (!orchestrationWorkstreamPaths(caseDocument.metadata).includes(`workstreams/${options.targetWorkstream}.md`)) {
+          throw new Error(
+            `Escalation target workstream is not registered: ${options.targetWorkstream}`
+          );
+        }
+        const targetDocument = parseWorkSpec(
+          await readFile13(
+            join10(caseDirectory, "workstreams", `${options.targetWorkstream}.md`),
+            "utf8"
+          )
+        );
+        if (targetDocument.metadata.status !== "planned") {
+          throw new Error("new-workstream escalation target must still be planned");
+        }
+        if (Number(targetDocument.metadata.wave) <= Number(document3.metadata.wave)) {
+          throw new Error("new-workstream escalation target must belong to a later wave");
+        }
+        if (!stringArray6(targetDocument.metadata.dependencies).includes(options.workstream)) {
+          throw new Error(
+            "new-workstream escalation target must depend on the originating workstream"
+          );
+        }
+        targetWorkstream = options.targetWorkstream;
+      } else if (options.targetWorkstream !== void 0) {
+        throw new Error("--target-workstream is valid only with new-workstream escalation");
+      }
+      if (options.action === "maintainer-review" && !actor.startsWith("human:")) {
+        throw new Error("maintainer-review escalation must be recorded by human:<maintainer-id>");
+      }
+      const history = recordArray4(routing.escalation_history);
+      const currentAttempt = Number(document3.metadata.attempt);
+      const escalationAttempt = status === "rework" ? currentAttempt + 1 : currentAttempt;
+      routing.escalation_history = [
+        ...history,
+        {
+          attempt: escalationAttempt,
+          trigger: options.trigger,
+          action: options.action,
+          from_profile: fromProfile,
+          to_profile: toProfile,
+          target_workstream: targetWorkstream,
+          by: actor,
+          at: timestamp2,
+          reason
+        }
+      ];
+      document3.metadata.routing = routing;
       document3.metadata.updated_at = timestamp2;
     }
   );
@@ -20420,7 +20894,7 @@ async function reviewReconstructionWorkstream(options) {
           context.scopeIndex,
           context.rawCaseIds,
           context.receiptIndex,
-          "submit"
+          "accept"
         );
         if (submitIssues.length > 0) {
           throw new Error(`Workstream cannot be accepted: ${submitIssues.join("; ")}`);
@@ -20433,6 +20907,18 @@ async function reviewReconstructionWorkstream(options) {
         at: timestamp2,
         notes
       };
+      if (Number(document3.metadata.reconstruction_workstream_version) === RECONSTRUCTION_WORKSTREAM_VERSION) {
+        document3.metadata.review_history = [
+          ...recordArray4(document3.metadata.review_history),
+          {
+            attempt: Number(document3.metadata.attempt),
+            outcome: options.status,
+            by: reviewer,
+            at: timestamp2,
+            notes
+          }
+        ];
+      }
       document3.metadata.updated_at = timestamp2;
     }
   );
@@ -20472,7 +20958,7 @@ async function reconstructionContext(targetInput, requestedId) {
     if (binding.caseId !== selected.id || binding.knowledgeRoot !== target) {
       bindingIssues.push("local reconstruction binding does not match this knowledge checkout");
     }
-    const durableRepositories = recordArray3(document3.metadata.repositories);
+    const durableRepositories = recordArray4(document3.metadata.repositories);
     for (const repository of durableRepositories) {
       const repositoryId2 = stringValue7(repository.repository);
       const local = binding.repositories.find((entry) => entry.repository === repositoryId2);
@@ -20521,6 +21007,17 @@ async function reconstructionContext(targetInput, requestedId) {
       ),
       independentReviewRunId: stringValue7(
         recordValue6(orchestration?.independent_review)?.run_id
+      ),
+      independentReviewProfile: stringValue7(
+        recordValue6(
+          recordValue6(orchestration?.independent_review)?.routing
+        )?.requested_profile
+      ),
+      independentReviewModel: stringValue7(
+        recordValue6(orchestration?.independent_review)?.model
+      ),
+      independentReviewReasoningEffort: stringValue7(
+        recordValue6(orchestration?.independent_review)?.reasoning_effort
       )
     },
     workstreams: session.workstreams.map(({ path, document: document4 }) => ({
@@ -20528,6 +21025,18 @@ async function reconstructionContext(targetInput, requestedId) {
       title: stringValue7(document4.metadata.title),
       wave: Number(document4.metadata.wave),
       role: stringValue7(document4.metadata.role),
+      workload: stringValue7(recordValue6(document4.metadata.routing)?.workload),
+      requestedProfile: stringValue7(
+        recordValue6(document4.metadata.routing)?.requested_profile
+      ),
+      executionProfile: stringValue7(recordValue6(document4.metadata.execution)?.profile),
+      executionModel: stringValue7(recordValue6(document4.metadata.execution)?.model),
+      executionReasoningEffort: stringValue7(
+        recordValue6(document4.metadata.execution)?.reasoning_effort
+      ),
+      escalationCount: recordArray4(
+        recordValue6(document4.metadata.routing)?.escalation_history
+      ).length,
       status: stringValue7(document4.metadata.status),
       owner: stringValue7(document4.metadata.owner),
       path,
@@ -20854,8 +21363,8 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
   issues.push(
     ...await supplementalInputIssues(target, document3.metadata, lifecycle)
   );
-  const repositories = recordArray3(document3.metadata.repositories);
-  const candidates = recordArray3(document3.metadata.candidate_claims);
+  const repositories = recordArray4(document3.metadata.repositories);
+  const candidates = recordArray4(document3.metadata.candidate_claims);
   const binding = lifecycle === "active" ? await readBinding(target, id, issues) : void 0;
   const inspectedTexts = [await readFile13(path, "utf8")];
   const linkedCandidateIds = /* @__PURE__ */ new Set();
@@ -21052,7 +21561,7 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
     }
   }
   for (const candidate of candidates) {
-    for (const evidence of recordArray3(candidate.evidence)) {
+    for (const evidence of recordArray4(candidate.evidence)) {
       if (evidence.kind !== "source-code") {
         continue;
       }
@@ -21169,8 +21678,8 @@ async function closeProjectReconstruction(options) {
 function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotionValidation) {
   const issues = [];
   const mode = stringValue7(metadata.mode);
-  const repositories = recordArray3(metadata.repositories);
-  const candidates = recordArray3(metadata.candidate_claims);
+  const repositories = recordArray4(metadata.repositories);
+  const candidates = recordArray4(metadata.candidate_claims);
   const promotion = recordValue6(metadata.promotion);
   const coverage = recordValue6(metadata.coverage_audit);
   const reconciliation = recordValue6(metadata.reconciliation_audit);
@@ -21272,7 +21781,7 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
     const id = stringValue7(candidate.id);
     const claimClass = stringValue7(candidate.claim_class);
     const disposition = stringValue7(candidate.disposition);
-    const evidence = recordArray3(candidate.evidence);
+    const evidence = recordArray4(candidate.evidence);
     const normativeClaim = [
       "product-intent",
       "product-meaning",
@@ -21597,7 +22106,7 @@ async function supplementalInputIssues(target, metadata, lifecycle) {
         if (isIsoDateTime6(decidedAt) && (!isIsoDateTime6(createdAt) || Date.parse(createdAt) < Date.parse(decidedAt))) {
           issues.push(`raw-intake case predates the approved reconstruction scope: ${id}`);
         }
-        for (const source of recordArray3(intake.metadata.sources)) {
+        for (const source of recordArray4(intake.metadata.sources)) {
           const identity = `${stringValue7(source.path)}\0${stringValue7(source.object_id)}`;
           if (!allowedIdentities.has(identity)) {
             issues.push(`raw-intake case contains a source outside the approved scope: ${id}#${stringValue7(source.path)}`);
@@ -21734,7 +22243,7 @@ async function reconstructionSessionState(target, id, document3) {
     sessionFile(relative5(target, join10(caseDirectory, "case.md")), "case-full-read", caseContent)
   ];
   const coverage = [];
-  for (const repository of recordArray3(document3.metadata.repositories)) {
+  for (const repository of recordArray4(document3.metadata.repositories)) {
     const dossierPath = resolveCaseFile(caseDirectory, stringValue7(repository.dossier));
     const dossierContent = await readFile13(dossierPath);
     const dossierRelative = relative5(target, dossierPath);
@@ -21806,7 +22315,7 @@ async function coverageContexts(targetInput, id, repository) {
       bindingIssues.join("; ") || "local reconstruction binding is missing"
     );
   }
-  const durable = recordArray3(document3.metadata.repositories);
+  const durable = recordArray4(document3.metadata.repositories);
   const selected = repository ? durable.filter((entry) => entry.repository === repository) : durable;
   if (selected.length === 0) {
     throw new Error(
@@ -21917,7 +22426,7 @@ async function mutateReconstructionWorkstream(targetInput, id, workstream, now, 
   );
 }
 async function workstreamValidationContext(target, id, caseDirectory, document3) {
-  const repositories = recordArray3(document3.metadata.repositories);
+  const repositories = recordArray4(document3.metadata.repositories);
   const repositoryIds = new Set(
     repositories.map((entry) => stringValue7(entry.repository)).filter(Boolean)
   );
@@ -22124,7 +22633,7 @@ function isPinnedCodeResource2(value) {
 function isVersionControlResource2(value) {
   return /^git:.+@[0-9a-f]{40}(?:#[^#\s]+)?$/i.test(value) || /^https?:\/\/\S+\/(?:pull|merge_requests|commit|commits)\/\S+$/i.test(value);
 }
-function recordArray3(value) {
+function recordArray4(value) {
   return Array.isArray(value) ? value.filter(isRecord2) : [];
 }
 function recordValue6(value) {
@@ -22368,7 +22877,7 @@ async function inspectWorkBundle(bundleRoot, stage, selectedIssue) {
     ...map2 ? { mapStatus: stringValue8(map2.metadata.status) } : {},
     ...map2 ? { destination: stringValue8(map2.metadata.destination) } : {},
     ...map2 ? { fog: Array.isArray(map2.metadata.fog) ? map2.metadata.fog : [] } : {},
-    ...map2 ? { resolved: recordArray4(map2.metadata.resolved) } : {},
+    ...map2 ? { resolved: recordArray5(map2.metadata.resolved) } : {},
     inventory,
     requiredFiles: requiredPaths.map((path) => inventory.find((entry) => entry.path === path)).filter((entry) => entry !== void 0),
     checkpoints,
@@ -22406,7 +22915,7 @@ async function createWorkIssue(options) {
     }
   }
   const knownRepositories = new Set(
-    recordArray4(change.metadata.repositories).map((entry) => stringValue8(entry.repository))
+    recordArray5(change.metadata.repositories).map((entry) => stringValue8(entry.repository))
   );
   for (const repository of repositories) {
     if (!knownRepositories.has(repository)) {
@@ -22831,7 +23340,7 @@ async function bundleCompletionIssues(bundleRoot, change) {
     }
   }
   const verification = recordValue7(change.metadata.verification);
-  const receipts = recordArray4(verification?.acceptance);
+  const receipts = recordArray5(verification?.acceptance);
   const receiptIds = receipts.map((entry) => stringValue8(entry.id));
   if (new Set(receiptIds).size !== receiptIds.length) {
     issues.push("verification.acceptance IDs must be unique");
@@ -22905,7 +23414,7 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
     Number(change.metadata.workflow_version) >= 5
   ));
   const repositoryIds = new Set(
-    recordArray4(change.metadata.repositories).map((entry) => stringValue8(entry.repository))
+    recordArray5(change.metadata.repositories).map((entry) => stringValue8(entry.repository))
   );
   const criteria = acceptanceCriteria(change);
   const criterionIds = new Set(criteria.map((entry) => entry.id));
@@ -23007,7 +23516,7 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
     issues.push("map.md: out_of_scope must be an array");
   }
   if (map2) {
-    const resolved = recordArray4(map2.metadata.resolved);
+    const resolved = recordArray5(map2.metadata.resolved);
     const resolvedIds = resolved.map((entry) => stringValue8(entry.issue));
     if (new Set(resolvedIds).size !== resolvedIds.length) {
       issues.push("map.md: resolved issue pointers must be unique");
@@ -23124,7 +23633,7 @@ function requiredPathsForStage(stage, selectedIssue, parsedIssues, inventory) {
 async function appendMapResolution(bundleRoot, id, title, summary, now) {
   const path = join11(bundleRoot, "map.md");
   const map2 = parseWorkSpec(await readFile14(path, "utf8"));
-  const resolved = recordArray4(map2.metadata.resolved).filter((entry) => entry.issue !== id);
+  const resolved = recordArray5(map2.metadata.resolved).filter((entry) => entry.issue !== id);
   map2.metadata.resolved = [
     ...resolved,
     { issue: id, title, summary }
@@ -23290,7 +23799,7 @@ function transitiveBlockers(issue3, all2) {
   return [...found].sort();
 }
 function acceptanceCriteria(document3) {
-  return recordArray4(document3.metadata.acceptance).map((entry) => {
+  return recordArray5(document3.metadata.acceptance).map((entry) => {
     const id = normalizeAcceptanceId(stringValue8(entry.id));
     return {
       id,
@@ -23300,7 +23809,7 @@ function acceptanceCriteria(document3) {
   });
 }
 function reviewReceipts(document3) {
-  return recordArray4(document3.metadata.files).map((entry) => ({
+  return recordArray5(document3.metadata.files).map((entry) => ({
     path: normalizeBundlePath(requiredString(entry.path, "review.files.path")),
     sha256: requiredString(entry.sha256, "review.files.sha256"),
     status: enumValue(
@@ -23594,7 +24103,7 @@ function sha256(content3) {
 function recordValue7(value) {
   return isRecord2(value) ? value : void 0;
 }
-function recordArray4(value) {
+function recordArray5(value) {
   return Array.isArray(value) ? value.filter((entry) => isRecord2(entry)) : [];
 }
 function stringArray7(value) {
@@ -34914,6 +35423,7 @@ init_knowledge_graph();
 init_repository_registry();
 init_git();
 init_reconstruction();
+init_reconstruction_orchestration();
 init_types();
 
 // src/work.ts
@@ -35278,7 +35788,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   binding.repositories[index2] = { root: target, source: current };
   const specPath = resolve18(knowledgeRoot, binding.spec);
   const document3 = parseWorkSpec(await readFile18(specPath, "utf8"));
-  const repositories = recordArray5(document3.metadata.repositories);
+  const repositories = recordArray6(document3.metadata.repositories);
   const durableIndex = repositories.findIndex(
     (entry) => entry.repository === current.repository
   );
@@ -35289,7 +35799,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   document3.metadata.repositories = repositories;
   document3.metadata.updated_at = now.toISOString();
   document3.metadata.rebindings = [
-    ...recordArray5(document3.metadata.rebindings),
+    ...recordArray6(document3.metadata.rebindings),
     {
       repository: current.repository,
       from_worktree_id: previous2.source.worktreeId,
@@ -35418,7 +35928,7 @@ async function inspectWorkContext(target, profile, id) {
     if (document3.metadata.scope !== binding.scope) {
       issues.push("spec scope does not match the local binding");
     }
-    const durable = recordArray5(document3.metadata.repositories);
+    const durable = recordArray6(document3.metadata.repositories);
     if (durable.length !== binding.repositories.length) {
       issues.push("spec repository scope does not match the local binding");
     }
@@ -35471,7 +35981,7 @@ function repositoryVerificationIssues(document3, sources) {
     return issues;
   }
   const verification = record(document3.metadata.verification);
-  const receipts = recordArray5(verification?.repositories);
+  const receipts = recordArray6(verification?.repositories);
   for (const source of sources) {
     if (source.dirty) {
       issues.push(`${source.repository}: bound source checkout must be clean for final verification`);
@@ -35587,7 +36097,7 @@ function inside(parent, child) {
 function record(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
 }
-function recordArray5(value) {
+function recordArray6(value) {
   return Array.isArray(value) ? value.filter((entry) => Boolean(record(entry))) : [];
 }
 function stringArray9(value) {
@@ -36700,7 +37210,7 @@ Checkpoint: ${result.checkpoint ? `${result.checkpoint.valid ? "current" : "stal
         );
         process.stdout.write(
           `Orchestration: ${result.orchestration.execution || "not planned"}; ${result.orchestration.status || "pending"}; parallel ${result.orchestration.maxParallel}; workstreams ${result.workstreams.length}/${result.orchestration.maxWorkstreams}; retries ${result.orchestration.maxRetriesPerWorkstream}
-Synthesis: ${result.orchestration.synthesisStatus || "pending"}; independent review: ${result.orchestration.independentReviewStatus || "pending"}${result.orchestration.independentReviewAssurance ? ` (${result.orchestration.independentReviewAssurance})` : ""}${result.orchestration.independentReviewRunId ? `; run ${result.orchestration.independentReviewRunId}` : ""}
+Synthesis: ${result.orchestration.synthesisStatus || "pending"}; independent review: ${result.orchestration.independentReviewStatus || "pending"}${result.orchestration.independentReviewAssurance ? ` (${result.orchestration.independentReviewAssurance})` : ""}${result.orchestration.independentReviewProfile ? `; profile ${result.orchestration.independentReviewProfile}` : ""}${result.orchestration.independentReviewModel ? `; ${result.orchestration.independentReviewModel}/${result.orchestration.independentReviewReasoningEffort || "unspecified"}` : ""}${result.orchestration.independentReviewRunId ? `; run ${result.orchestration.independentReviewRunId}` : ""}
 `
         );
         if (result.orchestration.reason) {
@@ -36729,7 +37239,8 @@ Blockers: ${result.checkpoint.blockers.length > 0 ? result.checkpoint.blockers.j
         );
         for (const workstream of result.workstreams) {
           process.stdout.write(
-            `- wave ${workstream.wave} ${workstream.id}: ${workstream.status}; review ${workstream.reviewStatus || "pending"}${workstream.owner ? `; owner ${workstream.owner}` : ""}
+            `- wave ${workstream.wave} ${workstream.id}: ${workstream.status}; ${workstream.workload || "unclassified"}/${workstream.requestedProfile || "unrouted"}; review ${workstream.reviewStatus || "pending"}${workstream.owner ? `; owner ${workstream.owner}` : ""}
+  execution ${workstream.executionProfile || "unrouted"}/${workstream.executionModel || "not claimed"}/${workstream.executionReasoningEffort || "not claimed"}; escalations ${workstream.escalationCount}
   ${workstream.title}
   ${workstream.path}
 `
@@ -37052,7 +37563,13 @@ function reconstructionWorkstreamCommand() {
     "Agent-facing lifecycle for bounded reconstruction worker packets."
   ).command(
     "create",
-    new Command().description("Create and register one semantic workstream packet.").arguments("<id:string> <workstream:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--title <text:string>", "Bounded human-readable outcome.", { required: true }).option("--objective <text:string>", "Independent research question.", { required: true }).option("--role <role:string>", "Worker role.", { required: true }).option("--wave <number:string>", "Positive orchestration wave.", { required: true }).option("--repository <id:string>", "Owned repository; repeat.", { collect: true }).option("--file <ref:string>", "Owned <repository>#<path>; repeat.", { collect: true }).option("--community <ref:string>", "Owned <repository>#<community>; repeat.", { collect: true }).option("--surface <ref:string>", "Owned <repository>#<surface>; repeat.", { collect: true }).option("--raw-case <id:string>", "Owned linked raw intake case; repeat.", { collect: true }).option("--dependency <id:string>", "Earlier workstream dependency; repeat.", { collect: true }).option("--json", "Print machine-readable JSON.").action(async (options, id, workstream) => {
+    new Command().description("Create and register one semantic workstream packet.").arguments("<id:string> <workstream:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--title <text:string>", "Bounded human-readable outcome.", { required: true }).option("--objective <text:string>", "Independent research question.", { required: true }).option("--role <role:string>", "Worker role.", { required: true }).option("--workload <kind:string>", "exploration, analysis, synthesis, or review.", { required: true }).option("--profile <profile:string>", "Host-neutral compute profile: fast, balanced, or deep.", { required: true }).option("--routing-reason <text:string>", "Why this is the minimum sufficient profile.", { required: true }).option("--wave <number:string>", "Positive orchestration wave.", { required: true }).option("--repository <id:string>", "Owned repository; repeat.", { collect: true }).option("--file <ref:string>", "Owned <repository>#<path>; repeat.", { collect: true }).option("--community <ref:string>", "Owned <repository>#<community>; repeat.", { collect: true }).option("--surface <ref:string>", "Owned <repository>#<surface>; repeat.", { collect: true }).option("--raw-case <id:string>", "Owned linked raw intake case; repeat.", { collect: true }).option("--dependency <id:string>", "Earlier workstream dependency; repeat.", { collect: true }).option("--json", "Print machine-readable JSON.").action(async (options, id, workstream) => {
+      if (!RECONSTRUCTION_WORKLOADS.includes(options.workload)) {
+        throw new Error("--workload must be exploration, analysis, synthesis, or review");
+      }
+      if (!RECONSTRUCTION_PROFILES.includes(options.profile)) {
+        throw new Error("--profile must be fast, balanced, or deep");
+      }
       const result = await createReconstructionWorkstream({
         target: options.target,
         id,
@@ -37060,6 +37577,9 @@ function reconstructionWorkstreamCommand() {
         title: options.title,
         objective: options.objective,
         role: options.role,
+        workload: options.workload,
+        profile: options.profile,
+        routingReason: options.routingReason,
         wave: parseLineNumber(options.wave, "--wave"),
         repositories: collectedStrings(options.repository),
         files: collectedStrings(options.file),
@@ -37072,14 +37592,49 @@ function reconstructionWorkstreamCommand() {
     })
   ).command(
     "claim",
-    new Command().description("Claim a planned or rework packet for one concrete agent run.").arguments("<id:string> <workstream:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--by <actor:string>", "Stable worker identity.", { required: true }).option("--host <host:string>", "Agent host, for example codex-cli or claude-code.", { required: true }).option("--run-id <id:string>", "Actual host session/run ID, or unavailable:<reason>.", { required: true }).option("--json", "Print machine-readable JSON.").action(async (options, id, workstream) => {
+    new Command().description("Claim a planned or rework packet for one concrete agent run.").arguments("<id:string> <workstream:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--by <actor:string>", "Stable worker identity.", { required: true }).option("--host <host:string>", "Agent host identity.", { required: true }).option("--run-id <id:string>", "Actual host session/run ID, or unavailable:<reason>.", { required: true }).option("--model <model:string>", "Selected model, or host-auto when the host routes it.", { default: "host-auto" }).option("--effort <effort:string>", "Selected reasoning effort, or profile-default.", { default: "profile-default" }).option("--json", "Print machine-readable JSON.").action(async (options, id, workstream) => {
       const result = await claimReconstructionWorkstream({
         target: options.target,
         id,
         workstream,
         actor: options.by,
         host: options.host,
-        runId: options.runId
+        runId: options.runId,
+        model: options.model,
+        reasoningEffort: options.effort
+      });
+      printWorkstreamMutation(result, options.json);
+    })
+  ).command(
+    "escalate",
+    new Command().description("Record how an observable quality signal changes or constrains routing.").arguments("<id:string> <workstream:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--by <actor:string>", "Orchestrator or reviewer identity.", { required: true }).option("--trigger <trigger:string>", "Observed escalation trigger.", { required: true }).option("--action <action:string>", "Recorded response to the trigger.", { required: true }).option("--to-profile <profile:string>", "Higher profile for stronger-profile action.").option("--target-workstream <id:string>", "Registered follow-up packet for new-workstream action.").option("--reason <text:string>", "Evidence-based routing explanation.", { required: true }).option("--json", "Print machine-readable JSON.").action(async (options, id, workstream) => {
+      if (!RECONSTRUCTION_ESCALATION_TRIGGERS.includes(
+        options.trigger
+      )) {
+        throw new Error(
+          `--trigger must be one of: ${RECONSTRUCTION_ESCALATION_TRIGGERS.join(", ")}`
+        );
+      }
+      if (!RECONSTRUCTION_ESCALATION_ACTIONS.includes(
+        options.action
+      )) {
+        throw new Error(
+          `--action must be one of: ${RECONSTRUCTION_ESCALATION_ACTIONS.join(", ")}`
+        );
+      }
+      if (options.toProfile !== void 0 && !RECONSTRUCTION_PROFILES.includes(options.toProfile)) {
+        throw new Error("--to-profile must be fast, balanced, or deep");
+      }
+      const result = await escalateReconstructionWorkstream({
+        target: options.target,
+        id,
+        workstream,
+        actor: options.by,
+        trigger: options.trigger,
+        action: options.action,
+        reason: options.reason,
+        ...options.toProfile === void 0 ? {} : { targetProfile: options.toProfile },
+        ...options.targetWorkstream === void 0 ? {} : { targetWorkstream: options.targetWorkstream }
       });
       printWorkstreamMutation(result, options.json);
     })
