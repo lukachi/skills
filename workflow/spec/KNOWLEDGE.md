@@ -171,9 +171,13 @@ adjudication, promotion, and validation gates as raw intake. Its additional
 source-completeness rules live in
 [RECONSTRUCTION.md](RECONSTRUCTION.md).
 
-Raw is optional during reconstruction. If a case declares raw reviewed, its
-frozen snapshot must converge to zero unseen, changed, active, blocked,
-unresolved, or uncommitted selected inputs.
+Raw is optional during reconstruction. Its participation is a human-owned
+scope decision, not an agent inference: all frozen raw, selected themes mapped
+to paths, or exclusion. The CLI records unavailable automatically only for an
+empty starting snapshot. Reconstruction-linked intake cannot start before this
+decision or escape its baseline and paths. If a case declares raw reviewed,
+its approved frozen scope must converge to zero unseen, changed, active,
+blocked, unresolved, or uncommitted selected inputs.
 
 ## Active case continuity
 

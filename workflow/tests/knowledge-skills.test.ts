@@ -146,12 +146,24 @@ test("knowledge-side cases preserve discoveries and clean-session resume state",
   assert.match(reconstruction, /repository dossier/i);
   assert.match(reconstruction, /cross-repository/i);
   assert.match(reconstruction, /checkpoint is stale/i);
+  assert.match(reconstruction, /reconstruct raw-scope/);
+  assert.match(reconstruction, /--by human:<maintainer-id>/);
+  assert.match(reconstruction, /Never start a linked intake case\s+before this decision/i);
+  assert.match(
+    reconstruction,
+    /never by itself a reason to recommend `excluded`/i,
+  );
+  assert.match(reconstruction, /do not convert uncertainty into\s+exclusion/i);
+  assert.match(intake, /--reconstruction <parent-case-id>/);
   for (const template of [reconstructionCase, dossier, intakeCase]) {
     assert.match(template, /session_record_version: 1/);
     assert.match(template, /# Discovery ledger/);
   }
   assert.match(reconstructionCase, /basis_sha256/);
+  assert.match(reconstructionCase, /reconstruction_version: 4/);
+  assert.match(reconstructionCase, /scope:\n\s+mode: pending/);
   assert.match(intakeCase, /basis_sha256/);
+  assert.match(intakeCase, /parent_reconstruction: null/);
 });
 
 test("workflow keeps maintainer-product and engineering roads first-class", async () => {

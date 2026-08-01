@@ -59,7 +59,12 @@ every Graphify community, and every declared runtime surface, and read direct
 pinned source through CLI receipts. Separate observed implementation from
 accepted intent. Never edit the machine-owned coverage JSON manually.
 Optional raw, documentation, and change records supplement this process but
-are never assumed to exist or promoted without their own authority.
+are never assumed to exist or promoted without their own authority. Before
+reconstruction-owned raw intake, inventory the frozen snapshot, recommend all,
+selected themes, or exclusion, and ask the maintainer for that boundary. Record
+the exact human decision yourself; never invent approval or require pathspec
+syntax. Bind every resulting intake case to the parent reconstruction so the
+CLI rejects pre-approval, path, or baseline drift.
 
 For reconstruction and raw intake, the active case is the session-memory
 owner; curated `knowledge/` pages are not scratchpads. On a fresh session or

@@ -103,8 +103,12 @@ case files, retrieval, and validation.
    through Graphify, then reads the pinned source and test bodies in bounded
    ranges. Exact read receipts prevent a header or search snippet from being
    reported as full inspection.
-6. Optional docs, change records, and bounded raw-intake candidates are
-   reconciled as separate source lanes.
+6. Optional docs, change records, and raw are reconciled as separate source
+   lanes. Before reconstruction-owned raw intake starts, the agent inventories
+   the frozen raw snapshot, recommends all, selected themes, or exclusion, and
+   records your explicit choice. You approve the human boundary; the agent
+   owns paths and commands. Absence is recorded automatically only when the
+   frozen raw snapshot is actually empty.
 7. Repository dossiers keep traceable partial observations. The parent case
    reconciles them into one candidate per whole-project capability, flow, or
    contract before promotion.
@@ -117,8 +121,8 @@ case files, retrieval, and validation.
 
 During the run it shows a reconstruction frontier derived from the complete
 ledgers: pinned repositories, outstanding files/communities/surfaces,
-optional-input status, cross-repository reconciliation, unresolved claims,
-human decisions, and next action.
+optional-input status and approved raw scope, cross-repository reconciliation,
+unresolved claims, human decisions, and next action.
 
 You do not need to remember a reconstruction case ID between sessions. The
 agent asks the workflow for the active context. One active case resumes

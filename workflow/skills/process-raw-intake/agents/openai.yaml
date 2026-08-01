@@ -1,4 +1,4 @@
 interface:
   display_name: "Process Raw Intake"
   short_description: "Adjudicate raw claims, time, and lineage"
-  default_prompt: "Use $process-raw-intake to start or safely resume a bounded case, read its complete record, preserve consequential discoveries, classify claims and chronology, verify authority, route durable outputs, and detect omissions without treating raw input as truth."
+  default_prompt: "Use $process-raw-intake to start or safely resume a bounded case, bind approved reconstruction scope when applicable, read its complete record, preserve consequential discoveries, classify claims and chronology, verify authority, route durable outputs, and detect omissions without treating raw input as truth."

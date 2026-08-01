@@ -56,6 +56,7 @@ import {
 } from "./repository-registry.js";
 import { initializeGitRepository, isGitRepository } from "./git.js";
 import {
+  approveReconstructionRawScope,
   beginProjectReconstruction,
   closeProjectReconstruction,
   reconstructionContext,
@@ -67,6 +68,7 @@ import {
   recordReconstructionSurface,
   reviewReconstructionSurfaces,
   updateReconstructionCheckpoint,
+  type ReconstructionRawScopeMode,
 } from "./reconstruction.js";
 import type {
   CoverageState,
@@ -1484,6 +1486,9 @@ function knowledgeReconstructCommand() {
               `Reconstruction: ${result.id} — ${result.title}\n`
                 + `Mode: ${result.mode}\n`
                 + `Root: ${result.root}\n`
+                + `Raw: ${result.rawScope.status || "pending"}; scope ${result.rawScope.mode || "undecided"}`
+                + `${result.rawScope.paths.length > 0 ? ` (${result.rawScope.paths.join(", ")})` : ""}`
+                + `${result.rawScope.decidedBy ? `; by ${result.rawScope.decidedBy}` : ""}\n`
                 + `Checkpoint: ${
                   result.checkpoint
                     ? `${result.checkpoint.valid ? "current" : "stale/invalid"}; `
@@ -1562,6 +1567,51 @@ function knowledgeReconstructCommand() {
               `Reconstruction checkpoint refreshed: ${result.status}/${result.stage}\n`
                 + `Current: ${result.currentState}\n`
                 + `Next: ${result.nextAction}\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "raw-scope",
+      new Command()
+        .description(
+          "Record the maintainer's reconstruction-start raw decision before linked intake begins.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--mode <mode:string>", "all, selected, excluded, or unavailable.", {
+          required: true,
+        })
+        .option(
+          "--path <path:string>",
+          "Approved path under raw/; repeat for selected mode.",
+          { collect: true },
+        )
+        .option(
+          "--by <actor:string>",
+          "Approving human actor; required except for verified unavailable input.",
+        )
+        .option("--note <text:string>", "Maintainer decision or absence rationale.", {
+          required: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await approveReconstructionRawScope({
+            target: options.target,
+            id,
+            mode: parseReconstructionRawScopeMode(options.mode),
+            paths: collectedStrings(options.path),
+            ...(options.by === undefined ? {} : { approvedBy: options.by }),
+            note: options.note,
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Raw reconstruction scope: ${result.mode}\n`
+                + `Status: ${result.status}; frozen files: ${result.rawFiles}\n`
+                + `Decision: ${result.approvedBy} at ${result.approvedAt}\n`
+                + `Paths: ${result.paths.length > 0 ? result.paths.join(", ") : "none"}\n`,
             );
           }
         }),
@@ -2008,11 +2058,18 @@ function knowledgeRawCommand() {
         .description("Classify each raw path and Git blob against intake case coverage.")
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
         .option("--baseline <commitish:string>", "Git baseline.", { default: "HEAD" })
+        .option(
+          "--path <path:string>",
+          "Limit inventory to a path under raw/; repeat as needed.",
+          { collect: true },
+        )
         .option("--json", "Print machine-readable JSON.")
         .action(async (options) => {
+          const paths = collectedStrings(options.path);
           const result = await inventoryRaw({
             target: options.target,
             baseline: options.baseline,
+            ...(paths.length > 0 ? { paths } : {}),
           });
           if (options.json) {
             printJson(result);
@@ -2049,6 +2106,10 @@ function knowledgeCaseCommand() {
         .option("--title <title:string>", "Human-readable bounded topic.", { required: true })
         .option("--baseline <commitish:string>", "Git baseline.", { default: "HEAD" })
         .option(
+          "--reconstruction <id:string>",
+          "Parent reconstruction with a maintainer-approved raw scope.",
+        )
+        .option(
           "--path <path:string>",
           "Tracked path under raw/; repeat to define the scope. Defaults to raw/.",
           { collect: true },
@@ -2065,6 +2126,9 @@ function knowledgeCaseCommand() {
             slug,
             title: options.title,
             baseline: options.baseline,
+            ...(options.reconstruction === undefined
+              ? {}
+              : { reconstructionId: options.reconstruction }),
             ...(paths ? { paths } : {}),
           });
           if (options.json) {
@@ -2572,6 +2636,17 @@ function parseReconstructionCheckpointStage(
     );
   }
   return value as "setup" | "repository-analysis" | "reconciliation" | "promotion" | "review";
+}
+
+function parseReconstructionRawScopeMode(
+  value: string,
+): ReconstructionRawScopeMode {
+  if (!["all", "selected", "excluded", "unavailable"].includes(value)) {
+    throw new Error(
+      `Invalid reconstruction raw scope "${value}"; expected all, selected, excluded, or unavailable`,
+    );
+  }
+  return value as ReconstructionRawScopeMode;
 }
 
 function parseIntakeCheckpointStage(

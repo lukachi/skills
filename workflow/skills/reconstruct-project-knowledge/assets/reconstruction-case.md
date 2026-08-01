@@ -1,5 +1,5 @@
 ---
-reconstruction_version: 3
+reconstruction_version: 4
 session_record_version: 1
 id: "<case-id>"
 title: "<title>"
@@ -12,6 +12,12 @@ supplemental_inputs:
   raw:
     status: pending
     baseline: "<full-knowledge-git-commit>"
+    scope:
+      mode: pending
+      paths: []
+      decided_by: ""
+      decided_at: ""
+      note: ""
     case_ids: []
     candidate_ids: []
     notes: []

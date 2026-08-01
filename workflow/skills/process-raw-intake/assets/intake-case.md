@@ -10,6 +10,7 @@ baseline:
   repository: "<repository>"
   commit: "<full-git-commit>"
   paths: []
+parent_reconstruction: null
 sources: []
 candidate_claims: []
 maintainer_decisions: []

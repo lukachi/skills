@@ -36,6 +36,7 @@ import {
 } from "../src/claim-ledger.js";
 import { buildInstallPlan } from "../src/planner.js";
 import {
+  approveReconstructionRawScope,
   beginProjectReconstruction,
   closeProjectReconstruction,
   inspectProjectReconstruction,
@@ -91,6 +92,43 @@ function intakeClaim(
     },
     ...overrides,
   };
+}
+
+async function completeNoClaimsIntake(
+  target: string,
+  id: string,
+  path: string,
+  reviewedAt: Date,
+  closedAt: Date,
+): Promise<void> {
+  const casePath = join(target, "intake/cases/active", id, "case.md");
+  await markIntakeSource({
+    target,
+    id,
+    path,
+    status: "no-relevant-claims",
+    note: "Read completely; no independently authoritative candidate was found.",
+    now: reviewedAt,
+  });
+  const document = parseWorkSpec(await readFile(casePath, "utf8"));
+  document.metadata.promotion = {
+    status: "not-needed",
+    concepts: [],
+    reason: "No independently authoritative claim was found.",
+    validation: "not-needed",
+  };
+  document.metadata.omission_audit = {
+    result: "passed",
+    notes: ["The complete frozen source was reviewed."],
+    probes: [],
+  };
+  await writeFile(casePath, serializeWorkSpec(document), "utf8");
+  await closeIntakeCase({
+    target,
+    id,
+    outcome: "completed",
+    now: closedAt,
+  });
 }
 
 test("resumes one active intake case and detects a stale checkpoint", async () => {
@@ -424,6 +462,16 @@ test("reviewed reconstruction raw input must converge at its frozen baseline", a
     runner: graphifyFixtureRunner,
     now: new Date("2026-07-28T12:30:00.000Z"),
   });
+  const approvedScope = await approveReconstructionRawScope({
+    target,
+    id: reconstruction.id,
+    mode: "all",
+    approvedBy: "human:test-maintainer",
+    note: "Include the complete frozen raw snapshot in this baseline.",
+    now: new Date("2026-07-28T12:35:00.000Z"),
+  });
+  assert.equal(approvedScope.rawFiles, 1);
+  assert.deepEqual(approvedScope.paths, ["raw"]);
   const caseDocument = parseWorkSpec(
     await readFile(reconstruction.path, "utf8"),
   );
@@ -456,6 +504,7 @@ test("reviewed reconstruction raw input must converge at its frozen baseline", a
     title: "Review frozen raw idea",
     paths: ["raw/idea.md"],
     baseline: String(supplemental.raw!.baseline),
+    reconstructionId: reconstruction.id,
     distributionRoot,
     now: new Date("2026-07-28T12:40:00.000Z"),
   });
@@ -505,6 +554,209 @@ test("reviewed reconstruction raw input must converge at its frozen baseline", a
   );
 });
 
+test("reconstruction raw scope requires maintainer approval before linked intake", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-raw-scope-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  await writeFile(join(target, "raw/selected.md"), "# Selected\n\nReview this.\n", "utf8");
+  await writeFile(join(target, "raw/outside.md"), "# Outside\n\nLeave this for later.\n", "utf8");
+  commitAll(target, "add scoped raw input");
+  const leaf = await initializedLeafRepository("wfctl-raw-scope-leaf-", target);
+  const reconstruction = await beginProjectReconstruction({
+    target,
+    slug: "selected-raw",
+    title: "Selected raw reconstruction",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-28T15:00:00.000Z"),
+  });
+  assert.ok(
+    (await inspectProjectReconstruction(target, reconstruction.id)).issues.some((issue) =>
+      /raw\.scope\.mode requires a maintainer decision/.test(issue)
+    ),
+  );
+  await assert.rejects(
+    approveReconstructionRawScope({
+      target,
+      id: reconstruction.id,
+      mode: "selected",
+      paths: ["raw/selected.md"],
+      note: "Only the selected topic is relevant to this baseline.",
+      now: new Date("2026-07-28T15:05:00.000Z"),
+    }),
+    /requires --by human:/,
+  );
+  await assert.rejects(
+    approveReconstructionRawScope({
+      target,
+      id: reconstruction.id,
+      mode: "unavailable",
+      note: "No raw exists.",
+      now: new Date("2026-07-28T15:05:00.000Z"),
+    }),
+    /Raw input exists and cannot be marked unavailable/,
+  );
+  await assert.rejects(
+    beginIntakeCase({
+      target,
+      slug: "blocked-before-approval",
+      title: "Blocked before approval",
+      paths: ["raw/selected.md"],
+      baseline: "HEAD",
+      reconstructionId: reconstruction.id,
+      distributionRoot,
+      now: new Date("2026-07-28T15:01:00.000Z"),
+    }),
+    /raw scope does not authorize intake: pending/,
+  );
+
+  const caseBeforeApproval = await beginIntakeCase({
+    target,
+    slug: "premature-selected",
+    title: "Premature selected intake",
+    paths: ["raw/selected.md"],
+    baseline: "HEAD",
+    distributionRoot,
+    now: new Date("2026-07-28T15:01:00.000Z"),
+  });
+  await completeNoClaimsIntake(
+    target,
+    caseBeforeApproval.id,
+    "raw/selected.md",
+    new Date("2026-07-28T15:02:00.000Z"),
+    new Date("2026-07-28T15:03:00.000Z"),
+  );
+
+  const scope = await approveReconstructionRawScope({
+    target,
+    id: reconstruction.id,
+    mode: "selected",
+    paths: ["raw/selected.md"],
+    approvedBy: "human:test-maintainer",
+    note: "Only the selected topic belongs to this reconstruction; outside.md remains future intake.",
+    now: new Date("2026-07-28T15:05:00.000Z"),
+  });
+  assert.equal(scope.rawFiles, 1);
+  assert.deepEqual(scope.paths, ["raw/selected.md"]);
+  await assert.rejects(
+    beginIntakeCase({
+      target,
+      slug: "outside-approved-scope",
+      title: "Outside approved scope",
+      paths: ["raw/outside.md"],
+      baseline: "HEAD",
+      reconstructionId: reconstruction.id,
+      distributionRoot,
+      now: new Date("2026-07-28T15:05:30.000Z"),
+    }),
+    /outside reconstruction .* approved scope: raw\/outside\.md/,
+  );
+
+  const reconstructionDocument = parseWorkSpec(
+    await readFile(reconstruction.path, "utf8"),
+  );
+  const raw = (
+    reconstructionDocument.metadata.supplemental_inputs as Record<
+      string,
+      Record<string, unknown>
+    >
+  ).raw!;
+  raw.status = "reviewed";
+  raw.case_ids = [caseBeforeApproval.id];
+  await writeFile(
+    reconstruction.path,
+    serializeWorkSpec(reconstructionDocument),
+    "utf8",
+  );
+  assert.ok(
+    (await inspectProjectReconstruction(target, reconstruction.id)).issues.some((issue) =>
+      /raw-intake case is not bound to this reconstruction/.test(issue)
+    ),
+  );
+
+  const approvedCase = await beginIntakeCase({
+    target,
+    slug: "approved-selected",
+    title: "Approved selected intake",
+    paths: ["raw/selected.md"],
+    baseline: String(raw.baseline),
+    reconstructionId: reconstruction.id,
+    distributionRoot,
+    now: new Date("2026-07-28T15:06:00.000Z"),
+  });
+  await completeNoClaimsIntake(
+    target,
+    approvedCase.id,
+    "raw/selected.md",
+    new Date("2026-07-28T15:07:00.000Z"),
+    new Date("2026-07-28T15:08:00.000Z"),
+  );
+  raw.case_ids = [approvedCase.id];
+  await writeFile(
+    reconstruction.path,
+    serializeWorkSpec(reconstructionDocument),
+    "utf8",
+  );
+  const reconciled = await inspectProjectReconstruction(target, reconstruction.id);
+  assert.equal(
+    reconciled.issues.some((issue) =>
+      /raw\/outside\.md|raw-intake case|frozen raw input|final raw review|supplemental_inputs\.raw/.test(issue)
+    ),
+    false,
+  );
+});
+
+test("raw scope decision upgrades a legacy reconstruction case", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-legacy-raw-scope-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  await writeFile(join(target, "raw/legacy.md"), "# Legacy\n", "utf8");
+  commitAll(target, "add legacy raw fixture");
+  const baseline = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: target,
+    encoding: "utf8",
+  }).trim();
+  const id = "legacy-raw-scope";
+  const directory = join(target, "reconstruction/active", id);
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, "case.md"),
+    serializeWorkSpec({
+      metadata: {
+        reconstruction_version: 3,
+        id,
+        title: "Legacy raw scope",
+        status: "active",
+        supplemental_inputs: {
+          raw: {
+            status: "pending",
+            baseline,
+            case_ids: [],
+            candidate_ids: [],
+            notes: [],
+          },
+        },
+      },
+      body: "# Legacy reconstruction\n",
+    }),
+    "utf8",
+  );
+  const result = await approveReconstructionRawScope({
+    target,
+    id,
+    mode: "excluded",
+    approvedBy: "human:test-maintainer",
+    note: "Legacy raw is outside this source-first baseline.",
+    now: new Date("2026-07-28T16:00:00.000Z"),
+  });
+  assert.equal(result.status, "not-relevant");
+  const upgraded = parseWorkSpec(await readFile(join(directory, "case.md"), "utf8"));
+  assert.equal(upgraded.metadata.reconstruction_version, 4);
+  assert.equal(
+    (((upgraded.metadata.supplemental_inputs as Record<string, unknown>).raw as Record<string, unknown>).scope as Record<string, unknown>).mode,
+    "excluded",
+  );
+});
+
 test("reconstructs a source-first baseline without raw input or durable checkout paths", async () => {
   const target = await initializedKnowledgeRepository("wfctl-reconstruction-");
   const leaf = await initializedLeafRepository(
@@ -536,18 +788,16 @@ test("reconstructs a source-first baseline without raw input or durable checkout
 
   const repository = started.repositories[0]!;
   const caseDocument = parseWorkSpec(caseText);
-  const rawBaseline = (
-    (
-      caseDocument.metadata.supplemental_inputs as Record<string, unknown>
-    ).raw as Record<string, unknown>
-  ).baseline;
+  const rawInput = (
+    caseDocument.metadata.supplemental_inputs as Record<string, unknown>
+  ).raw;
+  assert.equal((rawInput as Record<string, unknown>).status, "not-available");
+  assert.equal(
+    ((rawInput as Record<string, unknown>).scope as Record<string, unknown>).mode,
+    "unavailable",
+  );
   caseDocument.metadata.supplemental_inputs = {
-    raw: {
-      status: "not-available",
-      baseline: rawBaseline,
-      candidate_ids: [],
-      notes: ["No raw material exists; source-first reconstruction remains complete."],
-    },
+    raw: rawInput,
     documentation: {
       status: "not-available",
       candidate_ids: [],

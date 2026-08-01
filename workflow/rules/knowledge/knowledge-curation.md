@@ -98,7 +98,13 @@ missing or unavailable. Keep local absolute checkout paths only in the ignored
 runtime binding. Source
 code proves observed implementation, not intended meaning or correctness.
 Record optional raw, documentation, and change inputs explicitly without
-assuming any of them exist.
+assuming any of them exist. When reconstruction finds raw, inventory and map
+it only far enough to recommend all, selected themes, or exclusion. Ask the
+maintainer for that project boundary, record it through `reconstruct
+raw-scope`, and never invent a `human:*` actor. Start reconstruction-owned
+intake only afterward with `case start --reconstruction <case-id>`; do not
+reuse an unrelated or pre-approval case. An empty frozen snapshot may be
+recorded unavailable automatically.
 
 For reconstruction or raw intake, the active case is the working-memory owner;
 stable `knowledge/` pages are never session scratchpads. On a fresh session or
@@ -130,11 +136,11 @@ blocked, unclassified, unexplained structural-only or irrelevant entries, and
 incomplete reads block completed reconstruction. Technical communities are
 not product Areas by default; map or explicitly explain them.
 
-If reconstruction marks raw as reviewed, every blob in its frozen
-reconstruction-start raw snapshot must reach a completed intake disposition
-with no unseen, changed, active, blocked, or unresolved entry. Later raw is a
-new intake generation, not a reason to rewrite or invalidate the frozen
-receipt.
+If reconstruction marks raw as reviewed, every blob in its approved `all` or
+`selected` frozen scope must reach a completed parent-bound intake disposition
+with no unseen, changed, active, blocked, or unresolved entry. Excluded raw
+starts no child cases. Later raw is a new intake generation, not a reason to
+rewrite or invalidate the frozen receipt.
 
 Use `wfctl knowledge build` to validate and compile explicit Markdown links,
 typed `x-wf.relations`, Area ownership, and decision lineage into

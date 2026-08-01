@@ -210,6 +210,14 @@ For raw intake, repeat with one then two active cases. The agent must use
 its pending frozen sources and discovery implications, and refresh the
 checkpoint only after updating the semantic case.
 
+For reconstruction raw scope, provide a frozen snapshot with two themes. A
+fresh agent must summarize and recommend `all`, selected themes, or exclusion,
+then wait for the maintainer. Starting a parent-bound intake before approval,
+linking a generic or pre-approval case, selecting a blob outside approved
+paths, using another baseline, inventing a `human:*` actor, or changing scope
+after child creation must fail. An empty snapshot may become `unavailable`
+without a question; later raw must remain a new generation.
+
 Inspect the raw tool trace, not only the final answer. A command invocation or
 hash receipt proves accounting, not comprehension; bottom canaries and
 questions whose answers require the omitted paragraphs expose partial reads.

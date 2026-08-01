@@ -26,7 +26,7 @@ import {
   resolveKnowledgeRoot,
 } from "./config.js";
 import { readRepositoryMetadata } from "./git.js";
-import { inventoryRaw } from "./intake.js";
+import { inventoryRaw, normalizeRawPathspecs } from "./intake.js";
 import {
   COVERAGE_STATES,
   FILE_CATEGORIES,
@@ -72,8 +72,10 @@ import {
   serializeWorkSpec,
 } from "./work-spec.js";
 
-const RECONSTRUCTION_VERSION = 3;
+const RECONSTRUCTION_VERSION = 4;
+const LEGACY_RECONSTRUCTION_VERSION = 3;
 const RECONSTRUCTION_SESSION_VERSION = 1;
+const RAW_SCOPE_MODES = ["all", "selected", "excluded", "unavailable"] as const;
 const RECONSTRUCTION_CHECKPOINT_STAGES = [
   "setup",
   "repository-analysis",
@@ -193,6 +195,14 @@ export interface ReconstructionContext {
   root: string;
   requiredFiles: KnowledgeSessionFile[];
   coverage: CoverageSummary[];
+  rawScope: {
+    status: string;
+    mode: string;
+    paths: string[];
+    decidedBy: string;
+    decidedAt: string;
+    note: string;
+  };
   checkpoint?: KnowledgeSessionCheckpointSummary;
   validationIssues: string[];
 }
@@ -208,6 +218,28 @@ export interface UpdateReconstructionCheckpointOptions {
   nextAction: string;
   blockers?: string[];
   now?: Date;
+}
+
+export type ReconstructionRawScopeMode = typeof RAW_SCOPE_MODES[number];
+
+export interface ApproveReconstructionRawScopeOptions {
+  target: string;
+  id: string;
+  mode: ReconstructionRawScopeMode;
+  paths?: string[];
+  approvedBy?: string;
+  note: string;
+  now?: Date;
+}
+
+export interface ReconstructionRawScopeResult {
+  id: string;
+  mode: ReconstructionRawScopeMode;
+  paths: string[];
+  approvedBy: string;
+  approvedAt: string;
+  rawFiles: number;
+  status: string;
 }
 
 export interface MarkReconstructionFilesOptions {
@@ -352,10 +384,31 @@ export async function beginProjectReconstruction(
   const createdAt = now.toISOString();
   const supplementalInputs = recordValue(document.metadata.supplemental_inputs) ?? {};
   const rawInput = recordValue(supplementalInputs.raw) ?? {};
-  supplementalInputs.raw = {
-    ...rawInput,
+  const initialRawInventory = await inventoryRaw({
+    target,
     baseline: knowledgeMetadata.commit,
-  };
+  });
+  const rawUnavailable = initialRawInventory.entries.length === 0
+    && initialRawInventory.uncommitted.length === 0
+    && !await containsFiles(join(target, "raw"));
+  supplementalInputs.raw = rawUnavailable
+    ? {
+      ...rawInput,
+      status: "not-available",
+      baseline: knowledgeMetadata.commit,
+      scope: {
+        mode: "unavailable",
+        paths: [],
+        decided_by: "system:wfctl",
+        decided_at: createdAt,
+        note: "No committed or uncommitted raw input existed when reconstruction started.",
+      },
+      notes: ["The reconstruction-start raw snapshot contains no files."],
+    }
+    : {
+      ...rawInput,
+      baseline: knowledgeMetadata.commit,
+    };
   const durableRepositories = repositoryInputs.map((input, index) => {
     const repositorySlug = uniqueDossierName(
       input.metadata.repository,
@@ -549,6 +602,16 @@ export async function reconstructionContext(
     }
   }
   issues.push(...bindingIssues);
+  const raw = recordValue(recordValue(document.metadata.supplemental_inputs)?.raw);
+  const rawScope = recordValue(raw?.scope);
+  const reconstructionVersion = Number(document.metadata.reconstruction_version);
+  if (reconstructionVersion === LEGACY_RECONSTRUCTION_VERSION) {
+    issues.push(
+      `reconstruction_version ${LEGACY_RECONSTRUCTION_VERSION} has no maintainer-approved raw scope; record it with wfctl knowledge reconstruct raw-scope`,
+    );
+  } else if (reconstructionVersion === RECONSTRUCTION_VERSION) {
+    issues.push(...reconstructionRawScopeIssues(raw));
+  }
   return {
     id: selected.id,
     title: stringValue(document.metadata.title) || selected.title,
@@ -556,8 +619,147 @@ export async function reconstructionContext(
     root: dirname(selected.path),
     requiredFiles: session.files,
     coverage: session.coverage,
+    rawScope: {
+      status: stringValue(raw?.status),
+      mode: stringValue(rawScope?.mode),
+      paths: stringArray(rawScope?.paths),
+      decidedBy: stringValue(rawScope?.decided_by),
+      decidedAt: stringValue(rawScope?.decided_at),
+      note: stringValue(rawScope?.note),
+    },
     ...(checkpoint ? { checkpoint } : {}),
     validationIssues: [...new Set(issues)].sort(),
+  };
+}
+
+export async function approveReconstructionRawScope(
+  options: ApproveReconstructionRawScopeOptions,
+): Promise<ReconstructionRawScopeResult> {
+  const target = await requireKnowledgeRepository(options.target);
+  if (!RAW_SCOPE_MODES.includes(options.mode)) {
+    throw new Error(`Invalid reconstruction raw scope mode: ${options.mode}`);
+  }
+  const note = options.note.trim();
+  if (!note) {
+    throw new Error("Reconstruction raw scope requires a decision note");
+  }
+  const path = reconstructionCasePath(target, "active", options.id);
+  const document = parseWorkSpec(await readFile(path, "utf8"));
+  const version = Number(document.metadata.reconstruction_version);
+  if (![LEGACY_RECONSTRUCTION_VERSION, RECONSTRUCTION_VERSION].includes(version)) {
+    throw new Error(
+      `Raw scope decisions require reconstruction version ${LEGACY_RECONSTRUCTION_VERSION} or ${RECONSTRUCTION_VERSION}`,
+    );
+  }
+  const supplemental = recordValue(document.metadata.supplemental_inputs) ?? {};
+  const raw = recordValue(supplemental.raw) ?? {};
+  const baseline = stringValue(raw.baseline);
+  if (!/^[0-9a-f]{40,64}$/i.test(baseline)) {
+    throw new Error("Reconstruction raw scope requires a pinned raw baseline");
+  }
+  if (
+    stringArray(raw.case_ids).length > 0
+    || stringArray(raw.candidate_ids).length > 0
+    || raw.status === "reviewed"
+  ) {
+    throw new Error(
+      "Raw scope cannot change after reconstruction-linked intake has started; start a new reconstruction with the revised scope",
+    );
+  }
+  const childCases = await reconstructionIntakeChildren(target, options.id);
+  if (childCases.length > 0) {
+    throw new Error(
+      `Raw scope cannot change after reconstruction-linked intake has started: ${childCases.join(", ")}`,
+    );
+  }
+
+  const entireSnapshot = await inventoryRaw({ target, baseline });
+  let paths: string[];
+  let scopedInventory = entireSnapshot;
+  if (options.mode === "all") {
+    if (entireSnapshot.entries.length === 0) {
+      throw new Error("The frozen raw snapshot is empty; use unavailable instead of all");
+    }
+    paths = ["raw"];
+  } else if (options.mode === "selected") {
+    paths = normalizeRawPathspecs(options.paths ?? []);
+    if (paths.includes("raw")) {
+      throw new Error("Selected raw scope cannot contain raw/ itself; use all instead");
+    }
+    scopedInventory = await inventoryRaw({ target, baseline, paths });
+    if (scopedInventory.entries.length === 0) {
+      throw new Error("Selected raw scope contains no files at the frozen baseline");
+    }
+  } else {
+    if ((options.paths ?? []).length > 0) {
+      throw new Error(`${options.mode} raw scope does not accept --path`);
+    }
+    paths = [];
+    if (
+      options.mode === "unavailable"
+      && (
+        entireSnapshot.entries.length > 0
+        || entireSnapshot.uncommitted.length > 0
+        || await containsFiles(join(target, "raw"))
+      )
+    ) {
+      throw new Error("Raw input exists and cannot be marked unavailable");
+    }
+  }
+
+  const decidedBy = options.mode === "unavailable"
+    ? options.approvedBy?.trim() || "system:wfctl"
+    : options.approvedBy?.trim() || "";
+  if (
+    options.mode !== "unavailable"
+    && !decidedBy.startsWith("human:")
+  ) {
+    throw new Error(
+      `${options.mode} raw scope requires --by human:<maintainer-id>`,
+    );
+  }
+  if (
+    options.mode === "unavailable"
+    && decidedBy !== "system:wfctl"
+    && !decidedBy.startsWith("human:")
+  ) {
+    throw new Error("Unavailable raw scope must be recorded by system:wfctl or a human actor");
+  }
+
+  const now = options.now ?? new Date();
+  const approvedAt = now.toISOString();
+  supplemental.raw = {
+    ...raw,
+    status: options.mode === "excluded"
+      ? "not-relevant"
+      : options.mode === "unavailable"
+      ? "not-available"
+      : "pending",
+    baseline,
+    scope: {
+      mode: options.mode,
+      paths,
+      decided_by: decidedBy,
+      decided_at: approvedAt,
+      note,
+    },
+    case_ids: [],
+    candidate_ids: [],
+    notes: [note],
+  };
+  document.metadata.reconstruction_version = RECONSTRUCTION_VERSION;
+  document.metadata.supplemental_inputs = supplemental;
+  document.metadata.updated_at = approvedAt;
+  await writeFile(path, serializeWorkSpec(document), "utf8");
+
+  return {
+    id: options.id,
+    mode: options.mode,
+    paths,
+    approvedBy: decidedBy,
+    approvedAt,
+    rawFiles: scopedInventory.entries.length,
+    status: stringValue(recordValue(supplemental.raw)?.status),
   };
 }
 
@@ -1082,7 +1284,12 @@ function reconstructionMetadataIssues(
   const crossRepository = recordValue(metadata.cross_repository_analysis);
   const maintainerReview = recordValue(metadata.maintainer_review);
 
-  if (metadata.reconstruction_version !== RECONSTRUCTION_VERSION) {
+  const reconstructionVersion = Number(metadata.reconstruction_version);
+  if (reconstructionVersion === LEGACY_RECONSTRUCTION_VERSION) {
+    issues.push(
+      `reconstruction_version ${LEGACY_RECONSTRUCTION_VERSION} has no maintainer-approved raw scope; record it with wfctl knowledge reconstruct raw-scope`,
+    );
+  } else if (reconstructionVersion !== RECONSTRUCTION_VERSION) {
     issues.push(`reconstruction_version must be ${RECONSTRUCTION_VERSION}`);
   }
   if (!stringValue(metadata.title).trim()) {
@@ -1155,6 +1362,9 @@ function reconstructionMetadataIssues(
   const rawInput = recordValue(supplemental?.raw);
   if (!/^[0-9a-f]{40,64}$/i.test(stringValue(rawInput?.baseline))) {
     issues.push("supplemental_inputs.raw.baseline must pin the reconstruction-start Git snapshot");
+  }
+  if (reconstructionVersion === RECONSTRUCTION_VERSION) {
+    issues.push(...reconstructionRawScopeIssues(rawInput));
   }
   if (
     rawInput?.status === "reviewed"
@@ -1370,6 +1580,86 @@ function reconstructionMetadataIssues(
   return issues;
 }
 
+function reconstructionRawScopeIssues(
+  raw: Record<string, unknown> | undefined,
+): string[] {
+  const issues: string[] = [];
+  const scope = recordValue(raw?.scope);
+  const mode = stringValue(scope?.mode);
+  const paths = stringArray(scope?.paths);
+  const decidedBy = stringValue(scope?.decided_by);
+  const decidedAt = stringValue(scope?.decided_at);
+  const note = stringValue(scope?.note);
+
+  if (!RAW_SCOPE_MODES.includes(mode as ReconstructionRawScopeMode)) {
+    issues.push(
+      "supplemental_inputs.raw.scope.mode requires a maintainer decision: all, selected, or excluded",
+    );
+    return issues;
+  }
+  if (!Array.isArray(scope?.paths)) {
+    issues.push("supplemental_inputs.raw.scope.paths must be a list");
+  } else {
+    try {
+      const normalized = paths.length > 0 ? normalizeRawPathspecs(paths) : [];
+      if (JSON.stringify(normalized) !== JSON.stringify(paths)) {
+        issues.push("supplemental_inputs.raw.scope.paths must be normalized and sorted");
+      }
+    } catch (error) {
+      issues.push(`supplemental_inputs.raw.scope.paths: ${errorMessage(error)}`);
+    }
+  }
+  if (mode === "all" && JSON.stringify(paths) !== JSON.stringify(["raw"])) {
+    issues.push("supplemental_inputs.raw.scope.paths must be [raw] for all mode");
+  }
+  if (mode === "selected" && (paths.length === 0 || paths.includes("raw"))) {
+    issues.push("supplemental_inputs.raw.scope.paths must select narrower raw paths");
+  }
+  if ((mode === "excluded" || mode === "unavailable") && paths.length > 0) {
+    issues.push(`supplemental_inputs.raw.scope.paths must be empty for ${mode} mode`);
+  }
+  if (
+    mode !== "unavailable"
+    && !decidedBy.startsWith("human:")
+  ) {
+    issues.push("supplemental_inputs.raw.scope.decided_by must identify the approving human");
+  }
+  if (
+    mode === "unavailable"
+    && decidedBy !== "system:wfctl"
+    && !decidedBy.startsWith("human:")
+  ) {
+    issues.push("unavailable raw scope must be recorded by system:wfctl or a human actor");
+  }
+  if (!isIsoDateTime(decidedAt)) {
+    issues.push("supplemental_inputs.raw.scope.decided_at must be an ISO 8601 datetime");
+  }
+  if (!note.trim()) {
+    issues.push("supplemental_inputs.raw.scope.note must explain the decision");
+  }
+
+  const status = stringValue(raw?.status);
+  if (status === "reviewed" && mode !== "all" && mode !== "selected") {
+    issues.push("reviewed raw input requires all or selected scope");
+  }
+  if (status === "not-relevant" && mode !== "excluded") {
+    issues.push("not-relevant raw input requires excluded scope");
+  }
+  if (status === "not-available" && mode !== "unavailable") {
+    issues.push("not-available raw input requires unavailable scope");
+  }
+  if (
+    (mode === "excluded" || mode === "unavailable")
+    && (
+      stringArray(raw?.case_ids).length > 0
+      || stringArray(raw?.candidate_ids).length > 0
+    )
+  ) {
+    issues.push(`${mode} raw scope cannot link intake cases or candidates`);
+  }
+  return issues;
+}
+
 function dossierIssues(
   repository: Record<string, unknown>,
   metadata: Record<string, unknown>,
@@ -1444,13 +1734,40 @@ async function supplementalInputIssues(
 ): Promise<string[]> {
   const issues: string[] = [];
   const raw = recordValue(recordValue(metadata.supplemental_inputs)?.raw);
-  if (raw?.status === "not-available" && await containsFiles(join(target, "raw"))) {
-    issues.push(
-      "supplemental_inputs.raw is not-available but raw/ contains files; review or mark them not-relevant",
-    );
+  const scope = recordValue(raw?.scope);
+  const scopeMode = stringValue(scope?.mode);
+  const baseline = stringValue(raw?.baseline);
+  const inventoryPaths = scopeMode === "selected"
+    ? stringArray(scope?.paths)
+    : ["raw"];
+  if (raw?.status === "not-available") {
+    try {
+      const inventory = await inventoryRaw({ target, baseline, paths: ["raw"] });
+      if (inventory.entries.length > 0) {
+        issues.push(
+          "supplemental_inputs.raw is not-available but the frozen raw snapshot contains files",
+        );
+      }
+    } catch (error) {
+      issues.push(`cannot verify unavailable raw snapshot: ${errorMessage(error)}`);
+    }
   }
   if (raw?.status === "reviewed") {
     const caseIds = new Set(stringArray(raw.case_ids));
+    let allowedIdentities = new Set<string>();
+    let inventory: Awaited<ReturnType<typeof inventoryRaw>> | undefined;
+    try {
+      inventory = await inventoryRaw({
+        target,
+        baseline,
+        paths: inventoryPaths,
+      });
+      allowedIdentities = new Set(
+        inventory.entries.map((entry) => `${entry.path}\0${entry.objectId}`),
+      );
+    } catch (error) {
+      issues.push(`cannot verify frozen raw inventory: ${errorMessage(error)}`);
+    }
     for (const id of stringArray(raw.case_ids)) {
       if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
         issues.push(`supplemental_inputs.raw.case_ids contains an invalid id: ${id}`);
@@ -1469,15 +1786,42 @@ async function supplementalInputIssues(
         ) {
           issues.push(`raw-intake case is not completed: ${id}`);
         }
+        const intakeBaseline = recordValue(intake.metadata.baseline);
+        if (stringValue(intakeBaseline?.commit) !== baseline) {
+          issues.push(`raw-intake case uses a different baseline: ${id}`);
+        }
+        const intakeParent = recordValue(intake.metadata.parent_reconstruction);
+        if (stringValue(intakeParent?.id) !== stringValue(metadata.id)) {
+          issues.push(`raw-intake case is not bound to this reconstruction: ${id}`);
+        }
+        if (stringValue(intakeParent?.scope_mode) !== scopeMode) {
+          issues.push(`raw-intake case uses a different approved scope mode: ${id}`);
+        }
+        const decidedAt = stringValue(scope?.decided_at);
+        if (stringValue(intakeParent?.scope_decided_at) !== decidedAt) {
+          issues.push(`raw-intake case is not bound to the current approved scope: ${id}`);
+        }
+        const createdAt = stringValue(intake.metadata.created_at);
+        if (
+          isIsoDateTime(decidedAt)
+          && (
+            !isIsoDateTime(createdAt)
+            || Date.parse(createdAt) < Date.parse(decidedAt)
+          )
+        ) {
+          issues.push(`raw-intake case predates the approved reconstruction scope: ${id}`);
+        }
+        for (const source of recordArray(intake.metadata.sources)) {
+          const identity = `${stringValue(source.path)}\0${stringValue(source.object_id)}`;
+          if (!allowedIdentities.has(identity)) {
+            issues.push(`raw-intake case contains a source outside the approved scope: ${id}#${stringValue(source.path)}`);
+          }
+        }
       } catch (error) {
         issues.push(`cannot verify completed raw-intake case ${id}: ${errorMessage(error)}`);
       }
     }
-    try {
-      const inventory = await inventoryRaw({
-        target,
-        baseline: stringValue(raw.baseline),
-      });
+    if (inventory) {
       const baselinePaths = new Set(inventory.entries.map((entry) => entry.path));
       const changedFrozenPaths = lifecycle === "active"
         ? inventory.uncommitted.filter((path) => baselinePaths.has(path))
@@ -1506,11 +1850,43 @@ async function supplementalInputIssues(
           );
         }
       }
-    } catch (error) {
-      issues.push(`cannot verify frozen raw inventory: ${errorMessage(error)}`);
     }
   }
   return issues;
+}
+
+async function reconstructionIntakeChildren(
+  target: string,
+  reconstructionId: string,
+): Promise<string[]> {
+  const children: string[] = [];
+  for (const lifecycle of ["active", "archive"] as const) {
+    const root = join(target, "intake/cases", lifecycle);
+    let entries;
+    try {
+      entries = await readdir(root, { withFileTypes: true });
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        continue;
+      }
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const intake = parseWorkSpec(
+        await readFile(join(root, entry.name, "case.md"), "utf8"),
+      );
+      if (
+        stringValue(recordValue(intake.metadata.parent_reconstruction)?.id)
+        === reconstructionId
+      ) {
+        children.push(entry.name);
+      }
+    }
+  }
+  return children.sort();
 }
 
 async function containsFiles(root: string): Promise<boolean> {

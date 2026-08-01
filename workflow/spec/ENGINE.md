@@ -130,6 +130,11 @@ basis includes the parent case, every dossier, and every coverage ledger;
 coverage remains accounting, not semantic truth. Curated `knowledge/` concepts
 never receive an operational discovery ledger.
 
+Reconstruction raw scope is separately human-owned. The agent may inventory,
+map, and recommend, but only an explicit maintainer decision may authorize all
+or selected raw input or exclude it. Child intake records bind that approved
+scope deterministically; a checkpoint cannot supply or replace approval.
+
 ### Lightweight work
 
 Clearly local mechanical work that preserves behavior and contracts may bypass

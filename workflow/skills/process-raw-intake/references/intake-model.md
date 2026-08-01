@@ -33,6 +33,12 @@ Uncommitted raw paths are reported separately because no stable blob identity
 exists yet. The inventory is deterministic file accounting, not a Markdown
 indexer or semantic classifier.
 
+When intake belongs to reconstruction, the parent first records a
+maintainer-approved `all` or `selected` raw scope. The child case records the
+parent ID and approval revision, and its baseline plus every source identity
+must stay inside that scope. A generic, pre-approval, excluded, or differently
+pinned case cannot be reused to satisfy reconstruction.
+
 The agent renders those counts as a short intake frontier: current generation,
 active themes, blockers, maintainer decisions, next recommended batch, and the
 remaining completion condition. This frontier is derived presentation, never

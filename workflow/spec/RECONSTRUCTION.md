@@ -155,8 +155,36 @@ definition. Code may establish delivery but not accepted intent.
 Existing documentation, Git history, changes, and raw intake join as separate
 candidate inputs.
 
-Raw is optional. When declared reviewed, its frozen snapshot must converge to
-zero:
+### Maintainer-approved raw scope
+
+Reconstruction version 4 freezes the raw baseline but does not infer whether
+raw belongs to the baseline. When files exist, the agent inventories and maps
+the snapshot, recommends a boundary, and records exactly one maintainer choice:
+
+- `all`: every blob in the frozen raw snapshot;
+- `selected`: explicit raw pathspecs derived from maintainer-approved themes;
+- `excluded`: raw does not participate in this reconstruction.
+
+Raw is untrusted candidate material in every mode. Its inability to prove
+current behavior is therefore not a valid reason to recommend exclusion.
+Scope recommendations are based on possible relevance to the declared
+reconstruction objective and the risk of losing intent, alternatives, or
+history. Uncertain relevance favors a bounded selected review; `excluded` is
+for material outside the objective or material the maintainer explicitly does
+not want considered.
+
+The durable scope records human actor, time, paths, and rationale. The CLI may
+record `unavailable` without human input only when the frozen snapshot and
+working tree are empty at reconstruction start.
+
+Every reconstruction-owned intake case binds the parent reconstruction ID,
+scope mode, approval revision, exact baseline, paths, and blobs at creation.
+Creation before approval, path escape, baseline drift, reuse of an unrelated
+case, or changing scope after a child case starts fails closed. A revised scope
+requires a new reconstruction case.
+
+When `all` or `selected` is declared reviewed, that approved frozen scope must
+converge to zero:
 
 - unseen or changed committed blobs;
 - active, blocked, or unresolved cases;

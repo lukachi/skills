@@ -125,9 +125,13 @@ The coverage audit must reconcile:
 The maintainer review remains essential because a deterministic gate cannot
 prove that an agent understood the whole project.
 
-When raw is reviewed as part of reconstruction, its reconstruction-start Git
-snapshot must converge through completed intake cases. Later raw blobs are a
-new intake generation and do not invalidate an already frozen baseline.
+Raw participation is a separate maintainer-owned scope decision. The agent may
+map and recommend the complete frozen snapshot, selected themes, or exclusion,
+but cannot authorize the choice. Every reconstruction-owned intake case binds
+the approved parent scope, time, paths, and baseline at creation. When raw is
+reviewed, only that approved scope must converge through completed child cases.
+Later raw blobs are a new intake generation and do not invalidate an already
+frozen baseline.
 
 ## Project-wide convergence
 

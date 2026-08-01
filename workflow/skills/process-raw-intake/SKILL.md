@@ -59,10 +59,12 @@ counts by hand.
 - **Initial historical dump:** map topics with QMD, sample enough to propose
   bounded batches, then process one accepted batch at a time. Never claim to
   understand the whole archive from retrieval alone.
-- **Reconstruction snapshot:** use the exact raw baseline recorded by the
-  parent reconstruction. Process bounded cases against that commit until its
-  inventory contains zero unseen, changed, active, blocked, or unresolved
-  blobs. Raw committed later belongs to the next intake generation.
+- **Reconstruction snapshot:** use the exact raw baseline and only the
+  maintainer-approved `all` or `selected` scope recorded by the parent. Start
+  each case with `--reconstruction <parent-case-id>` so approval time, paths,
+  and baseline are checked before the case exists. Process bounded cases until
+  the approved scope contains zero unseen, changed, active, blocked, or
+  unresolved blobs. Raw committed later belongs to the next intake generation.
 - **A file changed at the same path:** treat its new Git blob as new input.
   Preserve the earlier case and compare versions only when chronology matters.
 - **Topic-focused request:** retrieve broadly enough to find aliases and
@@ -116,6 +118,12 @@ counts by hand.
    Repeat `--path` as needed. The generated
    [case](assets/intake-case.md) records every Git tree entry and its exact blob
    ID. Do not edit generated source identity fields.
+
+   For a reconstruction-owned batch, replace `HEAD` with its exact frozen
+   baseline and add `--reconstruction <parent-case-id>`. Refuse to create the
+   case if the parent raw scope is undecided or excluded. The maintainer
+   approves themes and boundaries; the agent translates that decision into
+   exact paths and operates the command.
 
 On a fresh session, after compaction, or when the active case ID is not already
 established, first run `wfctl knowledge case context --json` without an ID.

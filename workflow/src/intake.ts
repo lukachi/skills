@@ -148,6 +148,7 @@ export interface BeginIntakeCaseOptions {
   title: string;
   baseline?: string;
   paths?: string[];
+  reconstructionId?: string;
   distributionRoot?: string;
   now?: Date;
 }
@@ -290,6 +291,7 @@ export interface RawInventoryEntry {
 export interface RawInventoryOptions {
   target: string;
   baseline?: string;
+  paths?: string[];
 }
 
 export interface RawInventoryResult {
@@ -309,7 +311,8 @@ export async function inventoryRaw(
 ): Promise<RawInventoryResult> {
   const target = await requireKnowledgeRepository(options.target);
   const baseline = resolveCommit(target, options.baseline ?? "HEAD");
-  const entries = readGitTree(target, baseline, ["raw"]);
+  const pathspecs = normalizeRawPathspecs(options.paths ?? ["raw"]);
+  const entries = readGitTree(target, baseline, pathspecs);
   const history = await readIntakeSourceHistory(target);
   const byIdentity = new Map<string, IntakeSourceHistory[]>();
   const byPath = new Map<string, IntakeSourceHistory[]>();
@@ -337,7 +340,7 @@ export async function inventoryRaw(
         })),
       };
     }),
-    uncommitted: rawWorkingTreePaths(target),
+    uncommitted: rawWorkingTreePaths(target, pathspecs),
   };
 }
 
@@ -345,7 +348,7 @@ export async function beginIntakeCase(
   options: BeginIntakeCaseOptions,
 ): Promise<BeginIntakeCaseResult> {
   const target = await requireKnowledgeRepository(options.target);
-  const pathspecs = normalizePathspecs(options.paths ?? ["raw"]);
+  const pathspecs = normalizeRawPathspecs(options.paths ?? ["raw"]);
   assertScopeMatchesWorkingTree(target, options.baseline ?? "HEAD", pathspecs);
   const baseline = resolveCommit(target, options.baseline ?? "HEAD");
   const sources = readGitTree(target, baseline, pathspecs);
@@ -354,6 +357,15 @@ export async function beginIntakeCase(
   }
 
   const now = options.now ?? new Date();
+  const parentReconstruction = options.reconstructionId
+    ? await bindParentReconstruction(
+      target,
+      options.reconstructionId,
+      baseline,
+      sources,
+      now,
+    )
+    : undefined;
   const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug(options.slug)}`;
   const activeRoot = join(target, "intake/cases/active");
   const id = await uniqueDirectoryId(activeRoot, base);
@@ -382,6 +394,7 @@ export async function beginIntakeCase(
       commit: baseline,
       paths: pathspecs,
     },
+    parent_reconstruction: parentReconstruction ?? null,
     sources: sources.map((source) => ({
       path: source.path,
       object_id: source.objectId,
@@ -768,7 +781,7 @@ export async function inspectIntakeCase(
 
   if (commit && pathspecs.length > 0) {
     try {
-      const expected = readGitTree(target, commit, normalizePathspecs(pathspecs));
+      const expected = readGitTree(target, commit, normalizeRawPathspecs(pathspecs));
       issues.push(...compareTreeEntries(expected, sources));
       try {
         assertScopeMatchesWorkingTree(target, commit, pathspecs);
@@ -895,6 +908,7 @@ function caseMetadataIssues(metadata: Record<string, unknown>, body = ""): strin
   const promotion = recordValue(metadata.promotion);
   const omissionAudit = recordValue(metadata.omission_audit);
   const migration = recordValue(metadata.migration);
+  const parentReconstruction = recordValue(metadata.parent_reconstruction);
 
   if (metadata.intake_case_version !== INTAKE_CASE_VERSION) {
     issues.push(
@@ -921,6 +935,24 @@ function caseMetadataIssues(metadata: Record<string, unknown>, body = ""): strin
   }
   if (stringArray(baseline?.paths).length === 0) {
     issues.push("baseline.paths must contain the bounded raw pathspecs");
+  }
+  if (
+    metadata.parent_reconstruction !== undefined
+    && metadata.parent_reconstruction !== null
+    && !parentReconstruction
+  ) {
+    issues.push("parent_reconstruction must be null or a mapping");
+  }
+  if (parentReconstruction) {
+    if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(stringValue(parentReconstruction.id))) {
+      issues.push("parent_reconstruction.id must identify one reconstruction case");
+    }
+    if (!["all", "selected"].includes(stringValue(parentReconstruction.scope_mode))) {
+      issues.push("parent_reconstruction.scope_mode must be all or selected");
+    }
+    if (!isIsoDateTime(stringValue(parentReconstruction.scope_decided_at))) {
+      issues.push("parent_reconstruction.scope_decided_at must pin the approved scope revision");
+    }
   }
   if (sources.length === 0) {
     issues.push("sources must contain every file from the frozen Git scope");
@@ -1534,14 +1566,14 @@ function rawInventoryState(
   return "unseen";
 }
 
-function rawWorkingTreePaths(target: string): string[] {
+function rawWorkingTreePaths(target: string, pathspecs: string[]): string[] {
   const output = git(target, [
     "status",
     "--porcelain=v1",
     "-z",
     "--untracked-files=all",
     "--",
-    "raw",
+    ...pathspecs,
   ]);
   const records = output.split("\0");
   const paths: string[] = [];
@@ -1649,7 +1681,7 @@ function git(target: string, args: string[]): string {
   return result.stdout.replace(/\n$/, "");
 }
 
-function normalizePathspecs(values: string[]): string[] {
+export function normalizeRawPathspecs(values: string[]): string[] {
   const normalized = uniqueStrings(values.map((value) =>
     value.trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "")
   ));
@@ -1667,6 +1699,67 @@ function normalizePathspecs(values: string[]): string[] {
     }
   }
   return normalized.sort();
+}
+
+async function bindParentReconstruction(
+  target: string,
+  id: string,
+  baseline: string,
+  sources: GitTreeEntry[],
+  now: Date,
+): Promise<Record<string, unknown>> {
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
+    throw new Error(`Invalid parent reconstruction id: ${id}`);
+  }
+  let parent: CaseDocument;
+  try {
+    parent = parseCase(
+      await readFile(join(target, "reconstruction/active", id, "case.md"), "utf8"),
+    );
+  } catch (error) {
+    throw new Error(`Cannot bind raw intake to active reconstruction ${id}: ${errorMessage(error)}`);
+  }
+  if (Number(parent.metadata.reconstruction_version) !== 4) {
+    throw new Error(`Reconstruction ${id} must record its v4 raw scope before intake starts`);
+  }
+  const raw = recordValue(recordValue(parent.metadata.supplemental_inputs)?.raw);
+  const scope = recordValue(raw?.scope);
+  const mode = stringValue(scope?.mode);
+  const decidedBy = stringValue(scope?.decided_by);
+  const decidedAt = stringValue(scope?.decided_at);
+  if (mode !== "all" && mode !== "selected") {
+    throw new Error(`Reconstruction ${id} raw scope does not authorize intake: ${mode || "undecided"}`);
+  }
+  if (!decidedBy.startsWith("human:") || !isIsoDateTime(decidedAt)) {
+    throw new Error(`Reconstruction ${id} raw scope lacks explicit human approval`);
+  }
+  const parentBaseline = stringValue(raw?.baseline);
+  if (parentBaseline !== baseline) {
+    throw new Error(`Raw intake baseline does not match reconstruction ${id}`);
+  }
+  if (now.getTime() < Date.parse(decidedAt)) {
+    throw new Error(`Raw intake cannot predate reconstruction ${id} scope approval`);
+  }
+  const approvedPaths = mode === "all"
+    ? ["raw"]
+    : normalizeRawPathspecs(stringArray(scope?.paths));
+  const allowed = new Set(
+    readGitTree(target, baseline, approvedPaths).map(
+      (source) => `${source.path}\0${source.objectId}`,
+    ),
+  );
+  for (const source of sources) {
+    if (!allowed.has(`${source.path}\0${source.objectId}`)) {
+      throw new Error(
+        `Raw intake source is outside reconstruction ${id} approved scope: ${source.path}`,
+      );
+    }
+  }
+  return {
+    id,
+    scope_mode: mode,
+    scope_decided_at: decidedAt,
+  };
 }
 
 async function requireKnowledgeRepository(targetInput: string): Promise<string> {

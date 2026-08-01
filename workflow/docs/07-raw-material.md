@@ -48,6 +48,12 @@ The agent:
 
 You do not need to choose files blindly or operate case IDs.
 
+When raw is being used by an active reconstruction, there is one earlier
+decision. The agent first asks whether that frozen snapshot should be included
+in full, limited to selected themes, or excluded. You approve the boundary;
+only then may the agent create reconstruction-linked intake cases. Ordinary
+day-to-day raw intake outside reconstruction remains independent.
+
 If the session is interrupted, the agent discovers the sole active intake case
 and rereads it completely. Consequential review discoveries stay in that case;
 the checkpoint keeps only the current state and next safe action. A change to

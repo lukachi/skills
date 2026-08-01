@@ -77,9 +77,12 @@ Installed knowledge agents own these commands.
 ### Raw inventory and cases
 
 - `wfctl knowledge raw inventory` compares committed raw `path + blob`
-  identities with active and archived intake coverage.
+  identities with active and archived intake coverage. Repeated `--path`
+  restricts inventory to an already approved reconstruction scope.
 - `wfctl knowledge case start` freezes explicit raw pathspecs at one full Git
-  commit.
+  commit. `--reconstruction <id>` is mandatory for reconstruction-owned intake
+  and rejects undecided scope, path escape, baseline drift, or pre-approval
+  creation.
 - `wfctl knowledge case context [id]` auto-selects only one active case and
   returns its complete file, source frontier, discovery validation, and
   hash-bound checkpoint for clean-session resume.
@@ -104,7 +107,8 @@ wfctl knowledge case context --json
 wfctl knowledge case start world-loop-notes \
   --title "Review world-loop notes" \
   --path raw/world-loop \
-  --baseline HEAD
+  --baseline <frozen-commit> \
+  --reconstruction <parent-case-id>
 ```
 
 ### Source registry
@@ -128,6 +132,9 @@ Tracked registry state contains no absolute local paths.
   discovery validation, and hash-bound checkpoint.
 - `checkpoint <id>` refreshes current state and the next safe action after the
   case, dossiers, and coverage have been updated.
+- `raw-scope <id>` records the maintainer's `all`, `selected`, or `excluded`
+  decision before linked intake starts. `unavailable` is permitted only when
+  the frozen snapshot is empty. Legacy v3 cases upgrade through this command.
 - `coverage`, `files`, and `read` expose outstanding Git inventory and bounded
   pinned source ranges.
 - `community` records Graphify-community review.
@@ -143,6 +150,11 @@ wfctl knowledge reconstruct start project-baseline \
   --mode baseline
 
 wfctl knowledge reconstruct context --json
+wfctl knowledge reconstruct raw-scope <case-id> \
+  --mode selected \
+  --path raw/world-loop \
+  --by human:<maintainer-id> \
+  --note "Only world-loop history belongs to this baseline"
 wfctl knowledge reconstruct coverage <case-id>
 wfctl knowledge reconstruct check <case-id>
 wfctl knowledge reconstruct close <case-id> --outcome completed

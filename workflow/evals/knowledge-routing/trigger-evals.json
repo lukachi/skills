@@ -90,6 +90,12 @@
     "should_not_trigger": ["manage-project-work", "process-raw-intake"]
   },
   {
+    "id": "active-reconstruction-raw-scope",
+    "prompt": "The active reconstruction found a large raw snapshot. Help me decide whether all, selected themes, or none of it belongs to this baseline.",
+    "should_trigger": ["reconstruct-project-knowledge"],
+    "should_not_trigger": ["process-raw-intake", "manage-project-work"]
+  },
+  {
     "id": "clean-session-intake-resume",
     "prompt": "Continue the active raw-intake batch after compaction. I do not know its case ID.",
     "should_trigger": ["process-raw-intake"],

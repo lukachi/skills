@@ -220,6 +220,22 @@ try {
   assert.match(stripAnsi(sourcesHelp.stdout), /^\s+list\s/m);
   assert.doesNotMatch(stripAnsi(sourcesHelp.stdout), /^\s+connect\s/m);
 
+  const reconstructHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "knowledge", "reconstruct", "--help"],
+    { encoding: "utf8" },
+  );
+  assert.equal(reconstructHelp.status, 0, reconstructHelp.stderr || reconstructHelp.stdout);
+  assert.match(stripAnsi(reconstructHelp.stdout), /^\s+raw-scope\s/m);
+
+  const intakeStartHelp = spawnSync(
+    "node",
+    [join(packaged, "dist/cli.js"), "knowledge", "case", "start", "--help"],
+    { encoding: "utf8" },
+  );
+  assert.equal(intakeStartHelp.status, 0, intakeStartHelp.stderr || intakeStartHelp.stdout);
+  assert.match(stripAnsi(intakeStartHelp.stdout), /--reconstruction/);
+
   const initHelp = spawnSync(
     "node",
     [join(packaged, "dist/cli.js"), "init", "--help"],

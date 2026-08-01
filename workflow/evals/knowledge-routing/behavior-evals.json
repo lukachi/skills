@@ -225,6 +225,22 @@
     ]
   },
   {
+    "id": "reconstruction-raw-scope-approval",
+    "prompt": "Start a baseline reconstruction. The frozen raw snapshot contains several large historical and product-idea themes.",
+    "required": [
+      "inventories and maps raw only far enough to recommend all, selected themes, or exclusion",
+      "asks the maintainer one project-language scope question",
+      "records the exact human actor, time, paths, and rationale through reconstruction raw-scope",
+      "starts reconstruction-owned intake only after approval with the parent reconstruction binding"
+    ],
+    "forbidden": [
+      "silently includes all raw because files exist",
+      "requires the maintainer to know raw pathspec syntax",
+      "invents a human approval actor",
+      "starts or reuses an unbound intake case before the scope decision"
+    ]
+  },
+  {
     "id": "reconstruction-clean-session-owner",
     "prompt": "I opened a clean session in the knowledge repository. Continue the active reconstruction; I do not know its ID.",
     "required": [

@@ -79,6 +79,19 @@ Optional raw material, existing documentation, active changes, and Git history
 join as separate candidate inputs. They do not override source or maintainer
 authority automatically.
 
+Before any raw intake belongs to reconstruction, the agent shows what exists
+in the frozen raw snapshot and recommends one choice: review all of it, review
+selected themes, or exclude it from this baseline. You approve the boundary in
+project language; the agent records your decision and translates selected
+themes into exact paths. If no raw exists, the CLI records that automatically.
+An intake case created before approval, outside the approved paths, or at a
+different Git baseline cannot satisfy reconstruction.
+
+The agent must not recommend exclusion merely because raw is old, speculative,
+contradictory, or unverified. Those materials may be the only surviving record
+of intent or history. Exclusion means the material is outside this
+reconstruction's agreed purpose, not that it is insufficiently trustworthy.
+
 ## What “complete” means
 
 The gate proves complete accounting of the selected revisions:
@@ -96,8 +109,9 @@ knowledge.
 
 ## During review
 
-The agent shows a reconstruction frontier: repositories, coverage, active
-themes, blockers, decisions needed, and the remaining completion condition.
+The agent shows a reconstruction frontier: repositories, coverage, approved
+raw scope, active themes, blockers, decisions needed, and the remaining
+completion condition.
 
 The parent case retains cross-project discoveries; each repository dossier
 retains consequential local discoveries. A checkpoint records only the current

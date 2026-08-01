@@ -1,6 +1,6 @@
 ---
 name: reconstruct-project-knowledge
-description: Run or resume an explicit, bounded baseline reconstruction or whole-project audit across one or more registered leaf repositories, Git history, current curated knowledge, and optional documentation, change records, or raw candidates. Use when the maintainer asks to establish or rebuild an untrustworthy project baseline, accepts that recommendation after a knowledge gap is reported, requests a source-wide alignment audit, or asks a fresh or compacted knowledge-repository session to continue an active reconstruction. Do not trigger merely because someone asks what the project does or how one capability works. This is an expensive knowledge-repository operation with complete source accounting, not the per-task leaf workflow.
+description: Run or resume an explicit, bounded baseline reconstruction or whole-project audit across one or more registered leaf repositories, Git history, current curated knowledge, and optional documentation, change records, or raw candidates. Use when the maintainer asks to establish or rebuild an untrustworthy project baseline, accepts that recommendation after a knowledge gap is reported, requests a source-wide alignment audit, must decide whether all, selected themes, or none of a frozen raw snapshot belongs to an active reconstruction, or asks a fresh or compacted knowledge-repository session to continue an active reconstruction. Do not trigger merely because someone asks what the project does or how one capability works. This is an expensive knowledge-repository operation with complete source accounting, not the per-task leaf workflow.
 ---
 
 # Reconstruct Project Knowledge
@@ -100,7 +100,46 @@ complete JSON accounting remains the machine source.
    alternative worktree without changing the stored default selection. A baseline
    override must still include every registered repository. An `audit` may
    deliberately select a subset, but its title and scope must say so.
-7. Run `wfctl knowledge reconstruct check <case-id>` and read the complete
+7. Resolve raw scope before starting any reconstruction-linked intake. The CLI
+   records `unavailable` automatically only when the frozen snapshot and
+   working tree contain no raw files. Otherwise inventory the pinned snapshot,
+   use QMD only far enough to describe its themes, and recommend one
+   maintainer-facing choice:
+   - `all`: every raw blob in the reconstruction-start snapshot;
+   - `selected`: named themes mapped by the agent to explicit paths;
+   - `excluded`: raw will not participate in this reconstruction.
+
+   Raw being unreviewed, contradictory, obsolete, or unable to prove current
+   behavior is never by itself a reason to recommend `excluded`; those are
+   normal raw properties. Judge scope by possible relevance to the declared
+   reconstruction objective and by information-loss risk. Material that may
+   preserve intended behavior, abandoned alternatives, decision history, or
+   unrealized product ideas normally belongs in `all` or a bounded `selected`
+   scope even though every claim still requires reconciliation. Recommend
+   `excluded` only when the mapped snapshot is outside the declared objective
+   or the maintainer confirms that it should not inform this reconstruction.
+   If relevance cannot yet be established safely, present a neutral choice or
+   recommend a bounded selected review; do not convert uncertainty into
+   exclusion.
+
+   Ask one focused question. Do not require the maintainer to know pathspecs.
+   Record the answer yourself:
+
+   ```sh
+   wfctl knowledge reconstruct raw-scope <case-id> \
+     --mode selected \
+     --path raw/<approved-path> \
+     --by human:<maintainer-id> \
+     --note "<what was included or excluded and why>"
+   ```
+
+   Use repeated `--path` for selected scope. `all` and `excluded` take no
+   paths. Never invent `human:*` approval. Never start a linked intake case
+   before this decision. If `reconstruct check` reports a legacy v3 case,
+   record its scope through this command before continuing. Once linked intake
+   starts, the scope is immutable; a materially revised choice requires a new
+   reconstruction case.
+8. Run `wfctl knowledge reconstruct check <case-id>` and read the complete
    `case.md` plus every generated repository dossier. Run `wfctl knowledge
    reconstruct coverage <case-id>` for the complete machine-owned coverage
    summary; do not manually edit `*.coverage.json`.
@@ -119,10 +158,10 @@ complete JSON accounting remains the machine source.
    JSON coverage frontier as the complete machine enumeration; do not replace
    it with a truncated terminal list or a partial direct read of the coverage
    file.
-8. Treat `.workflow/current/reconstruction/<case-id>.json` as the local
+9. Treat `.workflow/current/reconstruction/<case-id>.json` as the local
    checkout binding. Never copy its absolute paths into the durable case,
    dossiers, or curated knowledge.
-9. Stop if the binding, worktree identity, commit, clean state, or Graphify
+10. Stop if the binding, worktree identity, commit, clean state, or Graphify
    graph drifts. Restart or explicitly re-scope; never guess which checkout to
    inspect.
 
@@ -243,12 +282,14 @@ needed change, identify the owning leaf and open normal significant work there.
 
 1. Use QMD against `knowledge` to read the current project map, if any.
 2. Review optional inputs explicitly:
-   - `raw`: process relevant material through bounded raw-intake cases first
-     and record every completed case ID. When marked `reviewed`, process the
-     reconstruction-start raw snapshot until inventory contains no `unseen`,
-     `changed`, `active`, `blocked`, or `unresolved` blob and no uncommitted raw
-     change to a path in that snapshot. New raw added after that snapshot
-     belongs to a later case;
+   - `raw`: follow only the approved `all` or `selected` scope. Start every
+     reconstruction-owned case with `wfctl knowledge case start ...
+     --reconstruction <case-id>` so the CLI rejects intake before approval,
+     scope escape, or baseline drift. Record every completed child case ID.
+     When marked `reviewed`, the approved frozen scope must contain no
+     `unseen`, `changed`, `active`, `blocked`, or `unresolved` blob and no
+     uncommitted change to a selected baseline path. New raw added after that
+     snapshot belongs to a later case. `excluded` raw starts no child cases;
    - `documentation`: treat prose as a claim until its authority is known;
    - `change_records`: qualify each claim by outcome, verification, and review.
 3. Never cite a raw or intake path as evidence. Raw agreement does not make a
