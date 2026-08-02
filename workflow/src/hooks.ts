@@ -6,6 +6,16 @@ import { isMissingFileError } from "./config.js";
 export const SESSION_BRIEF_COMMAND = "wfctl brief --hook";
 export const SESSION_START_EVENT = "SessionStart";
 
+/**
+ * Anchored on the project directory rather than an absolute path, because this
+ * settings file is committed and shared. The existence test keeps a session
+ * started outside an installed repository from failing every shell call.
+ */
+export const BACKGROUND_GUARD_COMMAND =
+  '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] '
+  + '&& node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true';
+export const PRE_TOOL_USE_EVENT = "PreToolUse";
+
 export type HookOutcome = "installed" | "already-installed" | "removed" | "absent";
 
 export interface HookResult {
@@ -29,16 +39,18 @@ interface HookMatcher {
  * entry inside it and leaves every other key untouched. The command string is
  * the identity: an entry that already runs it is never duplicated.
  */
-export async function installSessionBriefHook(
+export async function installHookEntry(
   target: string,
-  command = SESSION_BRIEF_COMMAND,
+  eventName: string,
+  matcher: string,
+  command: string,
 ): Promise<HookResult> {
   const path = settingsPath(target);
   const settings = await readSettings(path);
   const hooks = asRecord(settings.hooks) ?? {};
-  const event = asMatchers(hooks[SESSION_START_EVENT]);
+  const event = asMatchers(hooks[eventName]);
 
-  if (event.some((matcher) => runsCommand(matcher, command))) {
+  if (event.some((entry) => runsCommand(entry, command))) {
     return { path, outcome: "already-installed", command };
   }
 
@@ -46,9 +58,9 @@ export async function installSessionBriefHook(
     ...settings,
     hooks: {
       ...hooks,
-      [SESSION_START_EVENT]: [
+      [eventName]: [
         ...event,
-        { matcher: "*", hooks: [{ type: "command", command }] },
+        { matcher, hooks: [{ type: "command", command }] },
       ],
     },
   };
@@ -56,9 +68,31 @@ export async function installSessionBriefHook(
   return { path, outcome: "installed", command };
 }
 
-export async function removeSessionBriefHook(
+export function installSessionBriefHook(
   target: string,
   command = SESSION_BRIEF_COMMAND,
+): Promise<HookResult> {
+  return installHookEntry(target, SESSION_START_EVENT, "*", command);
+}
+
+/**
+ * Installed with the rest of the workflow rather than on request: a background
+ * command that stops reporting is invisible until someone notices hours later,
+ * and that is not a per-project preference.
+ */
+export function installBackgroundGuardHook(target: string): Promise<HookResult> {
+  return installHookEntry(
+    target,
+    PRE_TOOL_USE_EVENT,
+    "Bash",
+    BACKGROUND_GUARD_COMMAND,
+  );
+}
+
+export async function removeHookEntry(
+  target: string,
+  eventName: string,
+  command: string,
 ): Promise<HookResult> {
   const path = settingsPath(target);
   const settings = await readSettings(path);
@@ -66,7 +100,7 @@ export async function removeSessionBriefHook(
   if (!hooks) {
     return { path, outcome: "absent", command };
   }
-  const event = asMatchers(hooks[SESSION_START_EVENT]);
+  const event = asMatchers(hooks[eventName]);
   const before = countEntries(event);
   // A maintainer may have added their own command beside this one, so drop the
   // matched entry and keep the matcher whenever anything else survives in it.
@@ -82,9 +116,9 @@ export async function removeSessionBriefHook(
 
   const remaining: Record<string, unknown> = { ...hooks };
   if (kept.length > 0) {
-    remaining[SESSION_START_EVENT] = kept;
+    remaining[eventName] = kept;
   } else {
-    delete remaining[SESSION_START_EVENT];
+    delete remaining[eventName];
   }
   const next: Record<string, unknown> = { ...settings };
   if (Object.keys(remaining).length > 0) {
@@ -96,14 +130,32 @@ export async function removeSessionBriefHook(
   return { path, outcome: "removed", command };
 }
 
-export async function sessionBriefHookInstalled(
+export function removeSessionBriefHook(
   target: string,
   command = SESSION_BRIEF_COMMAND,
+): Promise<HookResult> {
+  return removeHookEntry(target, SESSION_START_EVENT, command);
+}
+
+export async function hookEntryInstalled(
+  target: string,
+  eventName: string,
+  command: string,
 ): Promise<boolean> {
   const settings = await readSettings(settingsPath(target));
   const hooks = asRecord(settings.hooks);
-  return asMatchers(hooks?.[SESSION_START_EVENT])
-    .some((matcher) => runsCommand(matcher, command));
+  return asMatchers(hooks?.[eventName]).some((entry) => runsCommand(entry, command));
+}
+
+export function sessionBriefHookInstalled(
+  target: string,
+  command = SESSION_BRIEF_COMMAND,
+): Promise<boolean> {
+  return hookEntryInstalled(target, SESSION_START_EVENT, command);
+}
+
+export function backgroundGuardHookInstalled(target: string): Promise<boolean> {
+  return hookEntryInstalled(target, PRE_TOOL_USE_EVENT, BACKGROUND_GUARD_COMMAND);
 }
 
 /**

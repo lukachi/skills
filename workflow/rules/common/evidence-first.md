@@ -48,4 +48,13 @@ When no source can establish something, say so and record it as unknown. An
 honest unknown is a result; a plausible answer assembled from the least-bad
 source available is a guess the maintainer can no longer see through.
 
+Never establish that work is progressing by checking that a process exists, and
+never identify a process by matching its name: the pattern matches the shell
+doing the checking, so a command that is waiting on itself reports as running.
+Ask the data instead — the counters, records, or files the job writes. When a
+background command is reported silent, that is a prompt to check, not a finding.
+Compare consumed CPU time against elapsed time, read what the job has written,
+and only then decide. Do not agree that something is broken because it was
+reported, and do not restart healthy work; that costs more than waiting.
+
 Do not turn mocks, fixtures, fakes, placeholders, disabled checks, or partial wiring into production completion claims. Name missing evidence and unfinished work directly.

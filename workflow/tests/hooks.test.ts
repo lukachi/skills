@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  BACKGROUND_GUARD_COMMAND,
+  backgroundGuardHookInstalled,
+  installBackgroundGuardHook,
   installSessionBriefHook,
   removeSessionBriefHook,
   SESSION_BRIEF_COMMAND,
@@ -130,5 +133,35 @@ test("refuses to guess at a settings file that is not an object", async () => {
   await assert.rejects(
     installSessionBriefHook(root),
     /must contain a JSON object/,
+  );
+});
+
+test("installs the background silence watch beside unrelated settings and hooks", async () => {
+  const root = await workspace({
+    model: "opus",
+    hooks: {
+      PreToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "echo mine" }] }],
+    },
+  });
+  const first = await installBackgroundGuardHook(root);
+  const second = await installBackgroundGuardHook(root);
+
+  assert.equal(first.outcome, "installed");
+  assert.equal(second.outcome, "already-installed");
+  assert.equal(await backgroundGuardHookInstalled(root), true);
+
+  const settings = await settingsOf(root);
+  assert.equal(settings.model, "opus");
+  const pre = (settings.hooks as Record<string, Array<Record<string, unknown>>>).PreToolUse ?? [];
+  assert.equal(pre.length, 2, "the maintainer's own PreToolUse entry must survive");
+  assert.equal(pre[1]?.matcher, "Bash");
+});
+
+test("anchors the watch on the project directory so the settings file stays portable", () => {
+  assert.match(BACKGROUND_GUARD_COMMAND, /\$CLAUDE_PROJECT_DIR/);
+  assert.match(
+    BACKGROUND_GUARD_COMMAND,
+    /\[ -f .* \] &&/,
+    "a session outside an installed repository must not fail every shell call",
   );
 });

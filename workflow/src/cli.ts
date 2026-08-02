@@ -143,6 +143,7 @@ import {
 import { collectWorkflowState } from "./state.js";
 import type { CapabilityState, StateLevel, StateReport } from "./state.js";
 import {
+  installBackgroundGuardHook,
   installSessionBriefHook,
   removeSessionBriefHook,
   SESSION_BRIEF_COMMAND,
@@ -398,6 +399,10 @@ async function installWorkflow(input: {
   const repositoryCheckout = input.profile === "knowledge"
     ? (await ensureRepositoryRegistry(input.target), undefined)
     : await addLeafRepository(input.knowledge!, input.target);
+  // A background command that stops reporting is invisible until someone
+  // notices hours later, so the silence watch ships with the workflow rather
+  // than waiting to be requested.
+  const backgroundGuard = await installBackgroundGuardHook(input.target);
   const graphifyUpdate = input.profile === "leaf"
     ? await refreshGraphifyGraph(input.target, input.json)
     : undefined;
@@ -412,6 +417,13 @@ async function installWorkflow(input: {
     ? updateQmdIndex(input.target)
     : undefined;
   const report = await runDoctor(input.target);
+  report.checks.push({
+    name: "background-guard",
+    status: "pass",
+    message: backgroundGuard.outcome === "already-installed"
+      ? "Background shell commands are already watched for silence"
+      : `Background shell commands are now watched for silence (${backgroundGuard.path})`,
+  });
   if (graphifyUpdate) {
     report.checks.push({
       name: "graphify-update",

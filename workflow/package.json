@@ -33,7 +33,8 @@
     "test:package": "bun tests/package-smoke.mjs",
     "test:evals": "bun scripts/eval.mjs",
     "check:dist": "git diff --exit-code -- dist",
-    "check": "bun run typecheck && bun run test && bun run test:evals && bun run build && bun run check:dist && bun run test:preflight && bun run test:qmd && bun run test:graphify && bun run test:reconstruction && bun run test:runtime && bun run test:package"
+    "check": "bun run typecheck && bun run test && bun run test:evals && bun run test:guard && bun run build && bun run check:dist && bun run test:preflight && bun run test:qmd && bun run test:graphify && bun run test:reconstruction && bun run test:runtime && bun run test:package",
+    "test:guard": "bun tests/idle-guard.mjs"
   },
   "packageManager": "bun@1.3.0",
   "engines": {

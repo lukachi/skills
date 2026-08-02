@@ -7177,6 +7177,13 @@ async function buildInstallPlan(options) {
       operations
     });
   }
+  await planOwnedTree({
+    sourceRoot: join2(distributionRoot, "templates/runtime"),
+    destinationRoot: RUNTIME_DIRECTORY,
+    target,
+    state,
+    operations
+  });
   if (options.profile === "knowledge") {
     await planOwnedTree({
       sourceRoot: join2(distributionRoot, "templates/knowledge"),
@@ -7717,7 +7724,7 @@ function sortOperations(operations) {
     (left, right) => kindOrder[left.kind] - kindOrder[right.kind] || left.path.localeCompare(right.path)
   );
 }
-var REQUIRED_DIRECTORIES, KNOWLEDGE_DIRECTORIES, COMMON_SKILLS, PROFILE_SKILLS;
+var RUNTIME_DIRECTORY, REQUIRED_DIRECTORIES, KNOWLEDGE_DIRECTORIES, COMMON_SKILLS, PROFILE_SKILLS;
 var init_planner = __esm({
   "src/planner.ts"() {
     "use strict";
@@ -7725,10 +7732,12 @@ var init_planner = __esm({
     init_assets();
     init_config();
     init_managed_block();
+    RUNTIME_DIRECTORY = ".workflow/runtime";
     REQUIRED_DIRECTORIES = [
       ".claude/rules",
       ".workflow/rules",
-      ".workflow/current"
+      ".workflow/current",
+      RUNTIME_DIRECTORY
     ];
     KNOWLEDGE_DIRECTORIES = [
       ".qmd",
@@ -37306,35 +37315,48 @@ import { randomUUID as randomUUID4 } from "node:crypto";
 import { dirname as dirname13, join as join19 } from "node:path";
 var SESSION_BRIEF_COMMAND = "wfctl brief --hook";
 var SESSION_START_EVENT = "SessionStart";
-async function installSessionBriefHook(target, command = SESSION_BRIEF_COMMAND) {
+var BACKGROUND_GUARD_COMMAND = '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true';
+var PRE_TOOL_USE_EVENT = "PreToolUse";
+async function installHookEntry(target, eventName, matcher, command) {
   const path = settingsPath(target);
   const settings = await readSettings(path);
   const hooks = asRecord(settings.hooks) ?? {};
-  const event = asMatchers(hooks[SESSION_START_EVENT]);
-  if (event.some((matcher) => runsCommand(matcher, command))) {
+  const event = asMatchers(hooks[eventName]);
+  if (event.some((entry) => runsCommand(entry, command))) {
     return { path, outcome: "already-installed", command };
   }
   const next = {
     ...settings,
     hooks: {
       ...hooks,
-      [SESSION_START_EVENT]: [
+      [eventName]: [
         ...event,
-        { matcher: "*", hooks: [{ type: "command", command }] }
+        { matcher, hooks: [{ type: "command", command }] }
       ]
     }
   };
   await writeSettings(path, next);
   return { path, outcome: "installed", command };
 }
-async function removeSessionBriefHook(target, command = SESSION_BRIEF_COMMAND) {
+function installSessionBriefHook(target, command = SESSION_BRIEF_COMMAND) {
+  return installHookEntry(target, SESSION_START_EVENT, "*", command);
+}
+function installBackgroundGuardHook(target) {
+  return installHookEntry(
+    target,
+    PRE_TOOL_USE_EVENT,
+    "Bash",
+    BACKGROUND_GUARD_COMMAND
+  );
+}
+async function removeHookEntry(target, eventName, command) {
   const path = settingsPath(target);
   const settings = await readSettings(path);
   const hooks = asRecord(settings.hooks);
   if (!hooks) {
     return { path, outcome: "absent", command };
   }
-  const event = asMatchers(hooks[SESSION_START_EVENT]);
+  const event = asMatchers(hooks[eventName]);
   const before = countEntries(event);
   const kept = event.map((matcher) => ({
     ...matcher,
@@ -37345,9 +37367,9 @@ async function removeSessionBriefHook(target, command = SESSION_BRIEF_COMMAND) {
   }
   const remaining = { ...hooks };
   if (kept.length > 0) {
-    remaining[SESSION_START_EVENT] = kept;
+    remaining[eventName] = kept;
   } else {
-    delete remaining[SESSION_START_EVENT];
+    delete remaining[eventName];
   }
   const next = { ...settings };
   if (Object.keys(remaining).length > 0) {
@@ -37358,10 +37380,16 @@ async function removeSessionBriefHook(target, command = SESSION_BRIEF_COMMAND) {
   await writeSettings(path, next);
   return { path, outcome: "removed", command };
 }
-async function sessionBriefHookInstalled(target, command = SESSION_BRIEF_COMMAND) {
+function removeSessionBriefHook(target, command = SESSION_BRIEF_COMMAND) {
+  return removeHookEntry(target, SESSION_START_EVENT, command);
+}
+async function hookEntryInstalled(target, eventName, command) {
   const settings = await readSettings(settingsPath(target));
   const hooks = asRecord(settings.hooks);
-  return asMatchers(hooks?.[SESSION_START_EVENT]).some((matcher) => runsCommand(matcher, command));
+  return asMatchers(hooks?.[eventName]).some((entry) => runsCommand(entry, command));
+}
+function sessionBriefHookInstalled(target, command = SESSION_BRIEF_COMMAND) {
+  return hookEntryInstalled(target, SESSION_START_EVENT, command);
 }
 function sessionStartEnvelope(context) {
   return `${JSON.stringify(
@@ -37589,6 +37617,7 @@ async function installWorkflow(input) {
     throw error2;
   }
   const repositoryCheckout = input.profile === "knowledge" ? (await ensureRepositoryRegistry(input.target), void 0) : await addLeafRepository(input.knowledge, input.target);
+  const backgroundGuard = await installBackgroundGuardHook(input.target);
   const graphifyUpdate = input.profile === "leaf" ? await refreshGraphifyGraph(input.target, input.json) : void 0;
   if (input.profile === "knowledge") {
     const validation = await validateKnowledge(input.target);
@@ -37599,6 +37628,11 @@ async function installWorkflow(input) {
   }
   const qmdUpdate = input.profile === "knowledge" ? updateQmdIndex(input.target) : void 0;
   const report = await runDoctor(input.target);
+  report.checks.push({
+    name: "background-guard",
+    status: "pass",
+    message: backgroundGuard.outcome === "already-installed" ? "Background shell commands are already watched for silence" : `Background shell commands are now watched for silence (${backgroundGuard.path})`
+  });
   if (graphifyUpdate) {
     report.checks.push({
       name: "graphify-update",

@@ -208,7 +208,8 @@ architecture choice, or implementation state.
 - default skills to project scope while allowing explicit user scope or none;
 - remove only obsolete project skills still attributable to this package;
 - keep generated caches and machine-local bindings out of Git;
-- exclude only its own installed files from the source graph.
+- exclude only its own installed files from the source graph;
+- watch every background shell command for silence.
 
 The last rule is not cosmetic. `.agents/` and `.claude/` are the agent's
 configuration directories, owned by the project, and a project may keep its own
@@ -221,6 +222,34 @@ never a path pattern, in the graph scope and in reconstruction coverage alike.
 
 Knowledge initialization may offer interactive `git init`; automation must use
 an explicit opt-in. Leaf initialization requires an existing Git repository.
+
+## Silence in background work
+
+A background shell command has no deadline and no stall detection. One that
+stops making progress is simply never heard from again, and the loss is measured
+in hours because nothing is wrong enough to report.
+
+Installation therefore places a `PreToolUse` watch on background shell commands.
+Duration is never the test: a talkative hour-long build is healthy and a silent
+loop is not. After a threshold of no output the watch reports and exits, which
+is what reaches a working agent — a finished background task is the only channel
+that does.
+
+Three properties are load-bearing:
+
+- **It reports, it does not decide.** The child keeps running untouched. Doing
+  nothing is therefore the safe default, which matters because an agent asked
+  "is this stuck?" tends to agree that it is.
+- **The report carries the evidence, not a verdict.** Consumed CPU time against
+  elapsed time distinguishes waiting from working; the report states it, warns
+  against restarting on the report alone, and forbids checking liveness by
+  matching a process name — a name pattern matches the checking shell too.
+- **The watch can be re-armed** onto a running process. A one-shot report would
+  leave anything judged healthy unwatched for the rest of its life.
+
+The watch never inspects what the command does. A command that keeps printing
+while doing the wrong thing is a different failure, answered by verifying the
+data a job writes rather than by observing the process.
 
 ## Non-goals
 

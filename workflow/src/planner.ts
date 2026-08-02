@@ -22,10 +22,13 @@ import type {
   WorkflowState,
 } from "./types.js";
 
+export const RUNTIME_DIRECTORY = ".workflow/runtime";
+
 const REQUIRED_DIRECTORIES = [
   ".claude/rules",
   ".workflow/rules",
   ".workflow/current",
+  RUNTIME_DIRECTORY,
 ];
 
 const KNOWLEDGE_DIRECTORIES = [
@@ -175,6 +178,14 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
       operations,
     });
   }
+
+  await planOwnedTree({
+    sourceRoot: join(distributionRoot, "templates/runtime"),
+    destinationRoot: RUNTIME_DIRECTORY,
+    target,
+    state,
+    operations,
+  });
 
   if (options.profile === "knowledge") {
     await planOwnedTree({
