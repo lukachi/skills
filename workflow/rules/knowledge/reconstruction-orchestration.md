@@ -121,8 +121,21 @@ or resuming `reconstruct-project-knowledge`.
   or expected yield per packet for total workstreams, the host's capacity for
   concurrency. Present the bound to the maintainer as a proposal with that
   arithmetic before dispatch, and record any amendment they make as their
-  decision with its date and reason. When the bound is spent, say that reading
-  stopped at the bound rather than at the frontier, and name what is unread.
+  decision with its date and reason.
+- The workstream bound caps fan-out and nothing else. It is enforced only when
+  creating a worker packet; direct pinned reading, file disposition, community
+  and surface work, and raw intake cases are untouched by it. A spent bound
+  means stop dispatching workers, not stop reading. Continue single-agent.
+- A spent bound over a frontier that still holds pending entries permits exactly
+  two proposals: a new bound, or an explicit partial close the maintainer
+  decides. Never advance the phase on it. Reconciliation, candidate minting, and
+  adjudication presented as the natural next step after exhausting a resource
+  tell the maintainer that the observable side is closed when it is not, and the
+  decisions they make there are permanent while the coverage behind them is not.
+- Put the unread inventory in front of every maintainer decision that depends on
+  it, unasked. A claim whose answering lane is materially unread is premature,
+  and saying so is the agent's job, not something the maintainer should have to
+  discover by asking whether the work was actually done.
 - Receipt commands use ignored runtime locks and distinct worker actors so
   concurrent reads cannot silently overwrite each other. Workers never bypass
   those commands by editing shared case or coverage state directly.
