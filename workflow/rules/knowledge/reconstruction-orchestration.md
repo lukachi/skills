@@ -114,6 +114,15 @@ or resuming `reconstruct-project-knowledge`.
 - Bound concurrency, total workstreams, and retries before dispatch. Stop and
   ask the maintainer after repeated identical failure, unavailable authority,
   or a blocked source; do not create workers endlessly.
+- Derive each bound and record the derivation beside it. A number invented to
+  satisfy the requirement becomes a hard stop, and a later reader cannot tell
+  it from a maintainer decision — within days it is quoted as one. State what
+  the frontier and the host give: the pending inventory divided by the observed
+  or expected yield per packet for total workstreams, the host's capacity for
+  concurrency. Present the bound to the maintainer as a proposal with that
+  arithmetic before dispatch, and record any amendment they make as their
+  decision with its date and reason. When the bound is spent, say that reading
+  stopped at the bound rather than at the frontier, and name what is unread.
 - Receipt commands use ignored runtime locks and distinct worker actors so
   concurrent reads cannot silently overwrite each other. Workers never bypass
   those commands by editing shared case or coverage state directly.
