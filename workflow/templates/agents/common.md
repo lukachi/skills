@@ -29,7 +29,12 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   subcommand, record ID, generated path, QMD query, Graphify invocation, or
   structured-file schema. Resolve those mechanics yourself.
 - When internal state offers one safe valid continuation, announce it and
-  continue. When several materially different choices remain, present their
+  continue in the same turn. Ending a turn on a stated next action is the
+  announcement without the continuation: take the action, or record why it
+  cannot be taken. A written report is progress and never the finish line;
+  completion is the terminal status of the required records. This holds while
+  executing accepted work and not while shaping or specifying, where asking is
+  the work. When several materially different choices remain, present their
   human meaning, evidence, and recommendation; after the maintainer chooses,
   execute the corresponding commands yourself.
 - For significant multi-turn work, create the central bundle early. After every

@@ -37894,13 +37894,6 @@ async function briefContext(target) {
       "rediscover this by scanning records, and do not read it back as a list.",
       "Open with one short orientation and offer what is available.",
       "",
-      "While executing accepted work: never announce the next action and then",
-      "end the turn \u2014 take it. Quote the accepted material before asking the",
-      "maintainer anything, treat a report as progress rather than completion,",
-      "and record a discovery instead of stopping for it. This does not apply",
-      "while shaping or specifying. Full text in",
-      "`.workflow/rules/execution-continuity.md`.",
-      "",
       JSON.stringify(report, null, 2)
     ].join("\n");
   } catch (error2) {

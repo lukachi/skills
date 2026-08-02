@@ -665,10 +665,10 @@ function briefCommand() {
 
 /**
  * Hook stdout reaches the agent, not the maintainer, so it carries the machine
- * report, what to do with it, and the continuity norm. The norm rides here
- * because injected context is read and an instruction to open a rules file is
- * only sometimes obeyed. A failure here would cost a whole session, so it
- * degrades into a note.
+ * report plus the one instruction the agent needs about what to do with it.
+ * Nothing normative belongs here: this reports observed state, and standing
+ * behavior lives in the managed agent block and the rules. A failure here would
+ * cost a whole session, so it degrades into a note.
  */
 async function briefContext(target: string): Promise<string> {
   try {
@@ -679,13 +679,6 @@ async function briefContext(target: string): Promise<string> {
       "capabilities are derived from them. Do not run the command again, do not",
       "rediscover this by scanning records, and do not read it back as a list.",
       "Open with one short orientation and offer what is available.",
-      "",
-      "While executing accepted work: never announce the next action and then",
-      "end the turn — take it. Quote the accepted material before asking the",
-      "maintainer anything, treat a report as progress rather than completion,",
-      "and record a discovery instead of stopping for it. This does not apply",
-      "while shaping or specifying. Full text in",
-      "`.workflow/rules/execution-continuity.md`.",
       "",
       JSON.stringify(report, null, 2),
     ].join("\n");

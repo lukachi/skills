@@ -283,9 +283,21 @@ boundary instead of interrupting a wave.
 This is a norm, not a gate. Whether a stop is warranted is a judgment about
 reversibility and blast radius, and no deterministic check can make it — a tool
 that tried would either block legitimate escalation or wave through a one-way
-door. What the engine can do is remove the asymmetry that made stopping free,
-and place the norm where the agent cannot miss it: the session brief injects it
-as context rather than relying on the agent to open a rules file.
+door. What the engine can do is remove the asymmetry that made stopping free.
+
+Where a norm lives decides whether it is read. The managed agent block is
+loaded by the host every session; the rules directory is loaded only because
+that block tells the agent to open it, and measurement says it does not. Across
+four sessions and 3481 transcript entries in one knowledge repository, skills
+were invoked three times and no session ever read the rules directory as
+instructed. Standing behavior therefore belongs in the managed block, with the
+rules holding the full text and the reasoning. The session brief is not an
+alternative: it reports observed state, and a norm placed there would make a
+state report normative to buy delivery it has no business buying.
+
+Placement is not compliance. The Graphify instructions sit in the same loaded
+block and are ignored just as often. A norm changes the odds; only a mechanism
+that re-enters the turn changes the outcome.
 
 ## Non-goals
 
