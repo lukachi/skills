@@ -47,14 +47,12 @@ function main() {
     allow();
     return;
   }
-  // Level already separates work from context. An `info` signal awaiting the
-  // agent is housekeeping — a stale graph, unembedded documents — and costing
-  // a turn for it would make the guard noise, which is how a guard gets
-  // switched off.
-  const awaiting = (report.signals ?? []).filter((signal) =>
-    signal.awaits === "agent"
-    && (signal.level === "attention" || signal.level === "blocked")
-  );
+  // Every signal that awaits the agent arms this, including the ones that look
+  // like housekeeping. Filtering by level was the wrong trade: a spent turn
+  // costs seconds and the failure it catches costs a day. A signal awaiting the
+  // maintainer stays out — that is a question for them, and forcing a turn on
+  // it would only make the agent answer itself.
+  const awaiting = (report.signals ?? []).filter((signal) => signal.awaits === "agent");
   if (awaiting.length === 0) {
     allow();
     return;

@@ -80,9 +80,9 @@ assert.equal(
     signals: [signal("info", "agent")],
     capabilities: [],
     degraded: [],
-  }).decision,
-  undefined,
-  "housekeeping is not work in progress: an info signal never costs a turn",
+  }).decision?.decision,
+  "block",
+  "level does not gate this: anything awaiting the agent is worth one turn",
 );
 
 assert.equal(

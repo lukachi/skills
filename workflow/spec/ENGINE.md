@@ -309,12 +309,20 @@ session to its token cap.
 
 The mechanism is not persuasion. Inside the forced turn the announced action is
 the cheapest available move, so the failure corrects itself without the agent
-having to obey anything. Three bounds keep it from becoming a cost of its own:
-a continuation turn is never blocked again, a turn spent waiting on a
-background task is legitimate and passes, and only `attention` or `blocked`
-signals arm it, so housekeeping such as an unembedded document never costs a
-turn. An unreadable state, a missing CLI, or malformed input ends the turn
-rather than trapping the session.
+having to obey anything.
+
+Anything awaiting the agent arms it, whatever its level. Filtering the quieter
+signals out was tried and reversed: a re-entered turn is a small, bounded cost
+and the failure it catches is not, so trading recall for quiet is the wrong
+direction. A signal awaiting the maintainer never arms it — that is a question
+for them, and forcing a turn on it would only make the agent answer itself.
+
+The bounds that remain are about not burning a session rather than about noise:
+a continuation turn is never blocked again, and a turn spent waiting on a
+background task passes because the host re-invokes the agent when that task
+finishes. An unreadable state, a missing CLI, or malformed input ends the turn
+rather than trapping the session. The guard measures nothing and has no
+threshold; it reads state and decides once.
 
 One failure stays uncovered and should not be claimed otherwise: when a turn
 produces no text after a tool result, the host fires no `Stop` event at all.
