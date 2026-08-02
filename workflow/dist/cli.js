@@ -18903,6 +18903,94 @@ async function createReconstructionCoverage(root, repository, commit, graphPath,
     surfaces: inferSurfaceCandidates(tree)
   };
 }
+async function rebaseReconstructionCoverage(previous2, root, commit, graphPath, now) {
+  const fresh = await createReconstructionCoverage(
+    root,
+    previous2.repository,
+    commit,
+    graphPath,
+    now
+  );
+  const before = new Map(previous2.manifest.files.map((file) => [file.path, file]));
+  const counts = {
+    unchanged: 0,
+    modified: 0,
+    added: 0,
+    removed: 0
+  };
+  const changes = [];
+  const invalidatedReceipts = [];
+  for (const file of fresh.manifest.files) {
+    const prior = before.get(file.path);
+    before.delete(file.path);
+    if (!prior) {
+      counts.added += 1;
+      continue;
+    }
+    if (prior.objectId !== file.objectId) {
+      counts.modified += 1;
+      const dropped = prior.receipts.map((receipt) => receipt.id);
+      invalidatedReceipts.push(...dropped);
+      changes.push({
+        path: file.path,
+        kind: "modified",
+        previousStatus: prior.status,
+        droppedReceipts: dropped
+      });
+      continue;
+    }
+    counts.unchanged += 1;
+    if (file.category !== "workflow-asset") {
+      file.category = prior.category;
+      file.status = prior.status;
+      file.reason = prior.reason;
+      file.receipts = prior.receipts;
+    }
+  }
+  for (const gone of before.values()) {
+    counts.removed += 1;
+    const dropped = gone.receipts.map((receipt) => receipt.id);
+    invalidatedReceipts.push(...dropped);
+    changes.push({
+      path: gone.path,
+      kind: "removed",
+      previousStatus: gone.status,
+      droppedReceipts: dropped
+    });
+  }
+  const priorCommunities = new Map(
+    previous2.graphify.communities.map((community) => [community.id, community])
+  );
+  fresh.graphify.communities = fresh.graphify.communities.map((community) => {
+    const prior = priorCommunities.get(community.id);
+    return prior ? { ...community, status: prior.status, note: prior.note, queries: prior.queries } : community;
+  });
+  const priorSurfaces = new Map(
+    previous2.surfaces.map((surface) => [surface.id, surface])
+  );
+  fresh.surfaces = fresh.surfaces.map((surface) => {
+    const prior = priorSurfaces.get(surface.id);
+    return prior ? { ...surface, ...prior } : surface;
+  });
+  for (const surface of previous2.surfaces) {
+    if (!fresh.surfaces.some((entry) => entry.id === surface.id)) {
+      fresh.surfaces.push(surface);
+    }
+  }
+  const moved = counts.modified + counts.added + counts.removed;
+  fresh.surfaceAudit = moved === 0 ? previous2.surfaceAudit : {
+    status: "pending",
+    note: `Reset by a repin from ${previous2.commit} to ${commit}; ${moved} manifest entries moved.`
+  };
+  return {
+    ledger: fresh,
+    fromCommit: previous2.commit,
+    toCommit: commit,
+    counts,
+    changes: changes.sort((left, right) => left.path.localeCompare(right.path)),
+    invalidatedReceipts: [...new Set(invalidatedReceipts)].sort()
+  };
+}
 async function readReconstructionCoverage(path) {
   return parseCoverage(await readFile10(path, "utf8"));
 }
@@ -22093,6 +22181,97 @@ async function approveReconstructionRawScope(options) {
     approvedAt,
     rawFiles: scopedInventory.entries.length,
     status: stringValue7(recordValue7(supplemental.raw)?.status)
+  };
+}
+async function repinReconstructionRepository(options) {
+  const target = await requireKnowledgeRepository4(options.target);
+  const casePath = reconstructionCasePath(target, "active", options.id);
+  const document3 = parseWorkSpec(await readFile13(casePath, "utf8"));
+  const repositories = recordArray4(document3.metadata.repositories);
+  const entry = repositories.find(
+    (record2) => stringValue7(record2.repository) === options.repository
+  );
+  if (!entry) {
+    throw new Error(
+      `${options.id}: reconstruction does not bind repository ${options.repository}`
+    );
+  }
+  const bindingIssues = [];
+  const binding = await readBinding(target, options.id, bindingIssues);
+  const bound = binding?.repositories.find(
+    (record2) => record2.repository === options.repository
+  );
+  if (!bound) {
+    throw new Error(
+      bindingIssues[0] ?? `${options.repository}: no local checkout is bound to this reconstruction`
+    );
+  }
+  const metadata = readRepositoryMetadata(bound.root);
+  if (metadata.dirty) {
+    throw new Error(
+      `Repinning requires a clean checkout so the new pin matches HEAD: ${bound.root}`
+    );
+  }
+  if (!/^[0-9a-f]{40}$/i.test(metadata.commit)) {
+    throw new Error(`Leaf HEAD is not a full Git commit: ${bound.root}`);
+  }
+  const fromCommit = stringValue7(entry.commit);
+  if (metadata.commit === fromCommit) {
+    throw new Error(
+      `${options.repository} is already pinned at ${fromCommit}; there is nothing to move`
+    );
+  }
+  const runner = options.runner ?? runTool;
+  const updated = updateGraphifyGraph(bound.root, runner);
+  if (updated.status !== 0) {
+    throw new Error(
+      `Graphify update failed for ${options.repository}: ${commandFailure(updated)}`
+    );
+  }
+  const graph = await graphSummary(bound.root);
+  const coveragePath = join10(
+    dirname8(casePath),
+    stringValue7(entry.coverage)
+  );
+  const previous2 = await readReconstructionCoverage(coveragePath);
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const rebase = await rebaseReconstructionCoverage(
+    previous2,
+    bound.root,
+    metadata.commit,
+    join10(bound.root, "graphify-out/graph.json"),
+    now
+  );
+  await writeReconstructionCoverage(coveragePath, rebase.ledger);
+  entry.commit = metadata.commit;
+  entry.branch = metadata.branch;
+  entry.graphify = {
+    status: "ready",
+    nodes: graph.nodes,
+    content_hash: graph.contentHash
+  };
+  document3.metadata.updated_at = now.toISOString();
+  await writeFile7(casePath, serializeWorkSpec(document3), "utf8");
+  bound.commit = metadata.commit;
+  await writeFile7(
+    reconstructionBindingPath(target, options.id),
+    `${JSON.stringify(binding, null, 2)}
+`,
+    "utf8"
+  );
+  const invalidated = new Set(rebase.invalidatedReceipts);
+  const affectedClaims = recordArray4(document3.metadata.candidates).filter(
+    (candidate) => stringArray6(candidate.evidence_refs).some((reference) => invalidated.has(reference))
+  ).map((candidate) => stringValue7(candidate.id)).filter((id) => id !== "").sort();
+  return {
+    id: options.id,
+    repository: options.repository,
+    fromCommit,
+    toCommit: metadata.commit,
+    counts: rebase.counts,
+    invalidatedReceipts: rebase.invalidatedReceipts,
+    affectedClaims,
+    changes: rebase.changes
   };
 }
 async function updateReconstructionCheckpoint(options) {
@@ -37636,10 +37815,11 @@ async function reconstructionPinChecks(input) {
       status: "warn",
       message: pin.commit === head ? `Reconstruction ${pin.caseId} reads this repository at ${abbreviate(pin.commit)}, which is the current HEAD. Upgrading refreshes the Graphify graph and adds a workflow-asset commit, so the graph stops matching the pin.` : `Reconstruction ${pin.caseId} reads this repository at ${abbreviate(pin.commit)} while HEAD is ${abbreviate(head)}. The pinned tree stays readable, but the Graphify graph already describes a different commit.`,
       remediation: {
-        title: "A pin is frozen at reconstruct start and nothing moves it",
+        title: "Advancing a bound leaf leaves the graph describing another commit",
         steps: [
           {
-            detail: "Finish or abandon the baseline before advancing this leaf; its evidence survives either way, but it cannot be re-pinned."
+            command: "wfctl knowledge reconstruct repin",
+            detail: "Move the case to this checkout's new commit afterwards. Byte-identical blobs keep their reading; changed ones return to pending."
           },
           {
             command: "wfctl upgrade",
@@ -38997,6 +39177,37 @@ Next: ${result.nextAction}
 Status: ${result.status}; frozen files: ${result.rawFiles}
 Decision: ${result.approvedBy} at ${result.approvedAt}
 Paths: ${result.paths.length > 0 ? result.paths.join(", ") : "none"}
+`
+        );
+      }
+    })
+  ).command(
+    "repin",
+    new Command().description(
+      "Move one bound repository to its checkout's current commit.\nCarries dispositions and receipts across every byte-identical blob;\nchanged, added, and deleted paths return to pending."
+    ).arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--repository <name:string>", "Durable repository identity to move.", {
+      required: true
+    }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+      const result = await repinReconstructionRepository({
+        target: options.target,
+        id,
+        repository: options.repository
+      });
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(
+        `Repinned ${result.repository}
+${result.fromCommit} -> ${result.toCommit}
+unchanged ${result.counts.unchanged}  modified ${result.counts.modified}  added ${result.counts.added}  removed ${result.counts.removed}
+Receipts invalidated: ${result.invalidatedReceipts.length}
+`
+      );
+      if (result.affectedClaims.length > 0) {
+        process.stdout.write(
+          `Claims citing an invalidated receipt: ${result.affectedClaims.join(", ")}
+Re-verify each against the new pin; none were rewritten.
 `
         );
       }

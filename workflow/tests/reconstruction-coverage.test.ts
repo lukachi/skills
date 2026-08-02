@@ -16,6 +16,7 @@ import {
   markCoverageFiles,
   markSurfaceAudit,
   readPinnedSource,
+  rebaseReconstructionCoverage,
   recordCoverageSurface,
   validateReconstructionCoverage,
 } from "../src/reconstruction-coverage.js";
@@ -445,4 +446,109 @@ test("still reconciles communities against the pinned manifest", async () => {
     true,
     "drift between the graph and the manifest is the one thing this index proves",
   );
+});
+
+test("a repin carries reading across every byte-identical blob and drops the rest", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-repin-"));
+  execFileSync("git", ["-C", root, "init", "-q"]);
+  execFileSync("git", ["-C", root, "config", "user.name", "wfctl tests"]);
+  execFileSync("git", ["-C", root, "config", "user.email", "wfctl@example.invalid"]);
+  execFileSync("git", ["-C", root, "config", "commit.gpgsign", "false"]);
+  await mkdir(join(root, "src"), { recursive: true });
+  await writeFile(join(root, ".gitignore"), "graphify-out/\n", "utf8");
+  await writeFile(join(root, "src/kept.ts"), "export const kept = 1;\n", "utf8");
+  await writeFile(join(root, "src/edited.ts"), "export const edited = 1;\n", "utf8");
+  await writeFile(join(root, "src/removed.ts"), "export const removed = 1;\n", "utf8");
+  execFileSync("git", ["-C", root, "add", "."]);
+  execFileSync("git", ["-C", root, "commit", "-q", "-m", "first"]);
+  const first = readRepositoryMetadata(root).commit;
+
+  const graphDirectory = join(root, "graphify-out");
+  await mkdir(graphDirectory, { recursive: true });
+  const graphPath = join(graphDirectory, "graph.json");
+  const writeGraph = async (commit: string) =>
+    await writeFile(
+      graphPath,
+      JSON.stringify({
+        built_at_commit: commit,
+        nodes: [{
+          id: "kept",
+          label: "kept",
+          source_file: "src/kept.ts",
+          community: 1,
+          community_name: "Runtime",
+        }],
+      }),
+      "utf8",
+    );
+  await writeGraph(first);
+
+  const before = await createReconstructionCoverage(
+    root,
+    "fixture/repo",
+    first,
+    graphPath,
+    new Date("2026-07-30T10:00:00.000Z"),
+  );
+  for (const path of ["src/kept.ts", "src/edited.ts", "src/removed.ts"]) {
+    await readPinnedSource(before, root, path, {
+      actor: "workflow-agent/test",
+      now: new Date("2026-07-30T10:01:00.000Z"),
+    });
+  }
+  markCoverageFiles(before, ["src/kept.ts", "src/edited.ts", "src/removed.ts"], {
+    status: "inspected",
+  });
+  markCoverageCommunity(before, "1", "inspected", "Mapped it.", ["trace runtime"]);
+  const keptReceipts = before.manifest.files
+    .find((file) => file.path === "src/kept.ts")?.receipts ?? [];
+
+  await writeFile(join(root, "src/edited.ts"), "export const edited = 2;\n", "utf8");
+  await writeFile(join(root, "src/added.ts"), "export const added = 1;\n", "utf8");
+  execFileSync("git", ["-C", root, "rm", "-q", "src/removed.ts"]);
+  execFileSync("git", ["-C", root, "add", "."]);
+  execFileSync("git", ["-C", root, "commit", "-q", "-m", "second"]);
+  const second = readRepositoryMetadata(root).commit;
+  await writeGraph(second);
+
+  const result = await rebaseReconstructionCoverage(
+    before,
+    root,
+    second,
+    graphPath,
+    new Date("2026-07-30T11:00:00.000Z"),
+  );
+  const byPath = new Map(result.ledger.manifest.files.map((file) => [file.path, file]));
+
+  assert.deepEqual(result.counts, { unchanged: 2, modified: 1, added: 1, removed: 1 });
+  assert.equal(byPath.get("src/kept.ts")?.status, "inspected");
+  assert.deepEqual(
+    byPath.get("src/kept.ts")?.receipts,
+    keptReceipts,
+    "an identical blob keeps the receipts that were taken against it",
+  );
+  assert.equal(
+    byPath.get("src/edited.ts")?.status,
+    "pending",
+    "a receipt covers line ranges of the old object and says nothing about the new one",
+  );
+  assert.deepEqual(byPath.get("src/edited.ts")?.receipts, []);
+  assert.equal(byPath.get("src/added.ts")?.status, "pending");
+  assert.equal(byPath.has("src/removed.ts"), false);
+  assert.equal(
+    result.invalidatedReceipts.length,
+    2,
+    "the edited and removed blobs each invalidate their own receipt",
+  );
+  assert.equal(
+    result.ledger.graphify.communities.find((community) => community.id === "1")?.status,
+    "inspected",
+    "a community that survived the rebuild keeps its disposition",
+  );
+  assert.equal(
+    result.ledger.surfaceAudit.status,
+    "pending",
+    "a moved manifest reopens the surface audit",
+  );
+  assert.equal(result.ledger.commit, second);
 });

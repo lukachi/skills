@@ -248,6 +248,147 @@ export async function createReconstructionCoverage(
   };
 }
 
+export type CoverageRebaseKind = "unchanged" | "modified" | "added" | "removed";
+
+export interface CoverageRebaseChange {
+  path: string;
+  kind: CoverageRebaseKind;
+  previousStatus: CoverageState;
+  droppedReceipts: string[];
+}
+
+export interface CoverageRebaseResult {
+  ledger: ReconstructionCoverageLedger;
+  fromCommit: string;
+  toCommit: string;
+  counts: Record<CoverageRebaseKind, number>;
+  changes: CoverageRebaseChange[];
+  invalidatedReceipts: string[];
+}
+
+/**
+ * Move a coverage ledger from the commit it was frozen at to a later one
+ * without discarding the reading behind it.
+ *
+ * The comparison is content-addressed rather than heuristic: every manifest
+ * entry and every receipt already carries the Git blob `objectId`, so a path
+ * whose blob is byte-identical at the new commit carries its disposition and
+ * receipts across verbatim, because they were assertions about that exact
+ * content. A blob that changed returns to `pending` and loses its receipts,
+ * which is the conservative reading — a receipt covers line ranges of the old
+ * object and says nothing about the new one. Ownership is recomputed rather
+ * than carried, since which files belong to the workflow is a fact about the
+ * new commit.
+ */
+export async function rebaseReconstructionCoverage(
+  previous: ReconstructionCoverageLedger,
+  root: string,
+  commit: string,
+  graphPath: string,
+  now: Date,
+): Promise<CoverageRebaseResult> {
+  const fresh = await createReconstructionCoverage(
+    root,
+    previous.repository,
+    commit,
+    graphPath,
+    now,
+  );
+  const before = new Map(previous.manifest.files.map((file) => [file.path, file]));
+  const counts: Record<CoverageRebaseKind, number> = {
+    unchanged: 0,
+    modified: 0,
+    added: 0,
+    removed: 0,
+  };
+  const changes: CoverageRebaseChange[] = [];
+  const invalidatedReceipts: string[] = [];
+
+  for (const file of fresh.manifest.files) {
+    const prior = before.get(file.path);
+    before.delete(file.path);
+    if (!prior) {
+      counts.added += 1;
+      continue;
+    }
+    if (prior.objectId !== file.objectId) {
+      counts.modified += 1;
+      const dropped = prior.receipts.map((receipt) => receipt.id);
+      invalidatedReceipts.push(...dropped);
+      changes.push({
+        path: file.path,
+        kind: "modified",
+        previousStatus: prior.status,
+        droppedReceipts: dropped,
+      });
+      continue;
+    }
+    counts.unchanged += 1;
+    // `workflow-asset` is decided by the new commit's ownership records, so a
+    // fresh verdict wins; every other category was an agent's classification of
+    // this exact blob and still holds.
+    if (file.category !== "workflow-asset") {
+      file.category = prior.category;
+      file.status = prior.status;
+      file.reason = prior.reason;
+      file.receipts = prior.receipts;
+    }
+  }
+
+  for (const gone of before.values()) {
+    counts.removed += 1;
+    const dropped = gone.receipts.map((receipt) => receipt.id);
+    invalidatedReceipts.push(...dropped);
+    changes.push({
+      path: gone.path,
+      kind: "removed",
+      previousStatus: gone.status,
+      droppedReceipts: dropped,
+    });
+  }
+
+  // Community and surface identities survive a graph rebuild only when the
+  // structure they name survives it, so carry by id and let the rest reset.
+  const priorCommunities = new Map(
+    previous.graphify.communities.map((community) => [community.id, community]),
+  );
+  fresh.graphify.communities = fresh.graphify.communities.map((community) => {
+    const prior = priorCommunities.get(community.id);
+    return prior
+      ? { ...community, status: prior.status, note: prior.note, queries: prior.queries }
+      : community;
+  });
+  const priorSurfaces = new Map(
+    previous.surfaces.map((surface) => [surface.id, surface]),
+  );
+  fresh.surfaces = fresh.surfaces.map((surface) => {
+    const prior = priorSurfaces.get(surface.id);
+    return prior ? { ...surface, ...prior } : surface;
+  });
+  for (const surface of previous.surfaces) {
+    if (!fresh.surfaces.some((entry) => entry.id === surface.id)) {
+      fresh.surfaces.push(surface);
+    }
+  }
+  const moved = counts.modified + counts.added + counts.removed;
+  fresh.surfaceAudit = moved === 0
+    ? previous.surfaceAudit
+    : {
+      status: "pending",
+      note: `Reset by a repin from ${previous.commit} to ${commit}; `
+        + `${moved} manifest entries moved.`,
+    };
+
+  return {
+    ledger: fresh,
+    fromCommit: previous.commit,
+    toCommit: commit,
+    counts,
+    changes: changes.sort((left, right) => left.path.localeCompare(right.path)),
+    invalidatedReceipts: [...new Set(invalidatedReceipts)].sort(),
+  };
+}
+
 export async function readReconstructionCoverage(
   path: string,
 ): Promise<ReconstructionCoverageLedger> {

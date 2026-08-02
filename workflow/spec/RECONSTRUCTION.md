@@ -37,24 +37,33 @@ At case start, every selected leaf is bound to:
 Absolute checkout paths live only in ignored runtime bindings. The durable case
 must remain portable.
 
-A pin cannot be moved. There is no repin, rebase, or resync operation: a case
-finishes on the commits it was started with, or it is abandoned. The pinned tree
-itself is durable — reading goes through Git objects, which later commits never
-remove — so advancing a leaf does not destroy recorded work. What breaks is the
-Graphify graph, which lives in the working tree at `HEAD` rather than at a
-commit, and therefore stops describing what the case reads. Anything that
-advances a bound leaf, `wfctl upgrade` included, must surface that before it
-writes.
+A pin is stable but not permanent. Nothing in a case moves on its own, and
+advancing a leaf never destroys recorded work: reading goes through Git objects,
+which later commits do not remove, so the pinned tree stays readable. What
+advancing does break is the Graphify graph, which lives in the working tree at
+`HEAD` rather than at a commit and therefore stops describing what the case
+reads. Anything that advances a bound leaf, `wfctl upgrade` included, must
+surface that before it writes.
 
-This is a known gap rather than a design position, and the data for closing it
-is already recorded: every manifest entry and every source-read receipt carries
-the Git blob `objectId`. A repin is therefore a content-addressed comparison
-rather than a heuristic — an unchanged blob keeps its disposition and receipts
-verbatim, a changed one returns to `pending` with a recorded reason, a deleted
-one flags the claims that cited it, and a new one enters as `pending`. Auditing
-a finished baseline against advanced source is the ordinary case, not an
-accident, so the absence is worth stating plainly instead of leaving the next
-agent to invent a workaround.
+`wfctl knowledge reconstruct repin` moves one bound repository to its
+checkout's current commit and carries the reading across. The comparison is
+content-addressed rather than heuristic, because every manifest entry and every
+source-read receipt already carries the Git blob `objectId`. A path whose blob
+is byte-identical keeps its category, disposition, and receipts verbatim: they
+were assertions about that exact content. A changed blob returns to `pending`
+and loses its receipts, since a receipt covers line ranges of the old object and
+establishes nothing about the new one. Deleted paths leave the manifest, added
+ones enter as `pending`, workflow ownership is recomputed against the new
+commit, and a moved manifest reopens the surface audit. Communities and surfaces
+carry by identity and reset when the structure that named them does not survive
+the graph rebuild.
+
+Claims are reported, never rewritten. The command lists every candidate whose
+evidence resolved to a receipt the move invalidated and stops there: whether a
+finding still holds against changed source is a judgment about the finding, and
+a repin has no standing to make it. Repinning requires a clean checkout so the
+new pin matches `HEAD`, and refreshes the Graphify graph so the structural lane
+describes the commit the case now reads.
 
 ## Three coverage lanes
 

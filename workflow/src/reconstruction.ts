@@ -35,6 +35,7 @@ import {
   SURFACE_KINDS,
   createReconstructionCoverage,
   evidencePathFromResource,
+  rebaseReconstructionCoverage,
   markCoverageCommunity,
   markCoverageFiles,
   markSurfaceAudit,
@@ -45,6 +46,8 @@ import {
   validateReconstructionCoverage,
   validateReconstructionCoverageReceipt,
   writeReconstructionCoverage,
+  type CoverageRebaseChange,
+  type CoverageRebaseKind,
   type CoverageState,
   type CoverageSummary,
   type FileCategory,
@@ -1502,6 +1505,145 @@ export async function approveReconstructionRawScope(
   };
 }
 
+export interface RepinReconstructionOptions {
+  target: string;
+  id: string;
+  repository: string;
+  runner?: ToolRunner;
+  now?: Date;
+}
+
+export interface RepinReconstructionResult {
+  id: string;
+  repository: string;
+  fromCommit: string;
+  toCommit: string;
+  counts: Record<CoverageRebaseKind, number>;
+  invalidatedReceipts: string[];
+  affectedClaims: string[];
+  changes: CoverageRebaseChange[];
+}
+
+/**
+ * Move one bound repository to its checkout's current commit and carry the
+ * reading across.
+ *
+ * A pin was previously immovable, so a leaf that advanced left only two
+ * outcomes: finish the baseline against a tree the graph no longer describes,
+ * or abandon it and re-read everything. Neither is proportionate when the delta
+ * is a handful of files, and auditing a finished baseline against advanced
+ * source is the ordinary case rather than an accident.
+ *
+ * What survives is decided by blob identity, never by resemblance. Claims whose
+ * evidence resolved to a receipt the move invalidated are reported rather than
+ * rewritten: whether a finding still holds against changed source is a judgment
+ * about the finding, and this command has no standing to make it.
+ */
+export async function repinReconstructionRepository(
+  options: RepinReconstructionOptions,
+): Promise<RepinReconstructionResult> {
+  const target = await requireKnowledgeRepository(options.target);
+  const casePath = reconstructionCasePath(target, "active", options.id);
+  const document = parseWorkSpec(await readFile(casePath, "utf8"));
+  const repositories = recordArray(document.metadata.repositories);
+  const entry = repositories.find((record) =>
+    stringValue(record.repository) === options.repository
+  );
+  if (!entry) {
+    throw new Error(
+      `${options.id}: reconstruction does not bind repository ${options.repository}`,
+    );
+  }
+  const bindingIssues: string[] = [];
+  const binding = await readBinding(target, options.id, bindingIssues);
+  const bound = binding?.repositories.find((record) =>
+    record.repository === options.repository
+  );
+  if (!bound) {
+    throw new Error(
+      bindingIssues[0]
+        ?? `${options.repository}: no local checkout is bound to this reconstruction`,
+    );
+  }
+
+  const metadata = readRepositoryMetadata(bound.root);
+  if (metadata.dirty) {
+    throw new Error(
+      `Repinning requires a clean checkout so the new pin matches HEAD: ${bound.root}`,
+    );
+  }
+  if (!/^[0-9a-f]{40}$/i.test(metadata.commit)) {
+    throw new Error(`Leaf HEAD is not a full Git commit: ${bound.root}`);
+  }
+  const fromCommit = stringValue(entry.commit);
+  if (metadata.commit === fromCommit) {
+    throw new Error(
+      `${options.repository} is already pinned at ${fromCommit}; there is nothing to move`,
+    );
+  }
+
+  const runner = options.runner ?? runTool;
+  const updated = updateGraphifyGraph(bound.root, runner);
+  if (updated.status !== 0) {
+    throw new Error(
+      `Graphify update failed for ${options.repository}: ${commandFailure(updated)}`,
+    );
+  }
+  const graph = await graphSummary(bound.root);
+
+  const coveragePath = join(
+    dirname(casePath),
+    stringValue(entry.coverage),
+  );
+  const previous = await readReconstructionCoverage(coveragePath);
+  const now = options.now ?? new Date();
+  const rebase = await rebaseReconstructionCoverage(
+    previous,
+    bound.root,
+    metadata.commit,
+    join(bound.root, "graphify-out/graph.json"),
+    now,
+  );
+  await writeReconstructionCoverage(coveragePath, rebase.ledger);
+
+  entry.commit = metadata.commit;
+  entry.branch = metadata.branch;
+  entry.graphify = {
+    status: "ready",
+    nodes: graph.nodes,
+    content_hash: graph.contentHash,
+  };
+  document.metadata.updated_at = now.toISOString();
+  await writeFile(casePath, serializeWorkSpec(document), "utf8");
+
+  bound.commit = metadata.commit;
+  await writeFile(
+    reconstructionBindingPath(target, options.id),
+    `${JSON.stringify(binding, null, 2)}\n`,
+    "utf8",
+  );
+
+  const invalidated = new Set(rebase.invalidatedReceipts);
+  const affectedClaims = recordArray(document.metadata.candidates)
+    .filter((candidate) =>
+      stringArray(candidate.evidence_refs).some((reference) => invalidated.has(reference))
+    )
+    .map((candidate) => stringValue(candidate.id))
+    .filter((id) => id !== "")
+    .sort();
+
+  return {
+    id: options.id,
+    repository: options.repository,
+    fromCommit,
+    toCommit: metadata.commit,
+    counts: rebase.counts,
+    invalidatedReceipts: rebase.invalidatedReceipts,
+    affectedClaims,
+    changes: rebase.changes,
+  };
+}
+
 export async function updateReconstructionCheckpoint(
   options: UpdateReconstructionCheckpointOptions,
 ): Promise<KnowledgeSessionCheckpointSummary> {
@@ -1693,9 +1835,9 @@ export interface ActiveReconstructionPin {
 
 /**
  * Which active reconstructions read this repository, and at which commit.
- * A pin is frozen at `reconstruct start` and nothing moves it, so anything
- * that advances the leaf has to be visible before it happens rather than
- * discovered later as a graph that no longer matches its case.
+ * Nothing moves a pin on its own, so anything that advances the leaf has to be
+ * visible before it happens rather than discovered later as a graph that no
+ * longer matches its case. `reconstruct repin` is the deliberate move.
  */
 export async function activeReconstructionPins(
   knowledgeInput: string,

@@ -75,6 +75,7 @@ import {
   markReconstructionFiles,
   readReconstructionSource,
   recordReconstructionSurface,
+  repinReconstructionRepository,
   reviewReconstructionWorkstream,
   reviewReconstructionSurfaces,
   submitReconstructionWorkstream,
@@ -342,12 +343,13 @@ async function reconstructionPinChecks(input: {
           + `while HEAD is ${abbreviate(head)}. The pinned tree stays readable, but the `
           + "Graphify graph already describes a different commit.",
       remediation: {
-        title: "A pin is frozen at reconstruct start and nothing moves it",
+        title: "Advancing a bound leaf leaves the graph describing another commit",
         steps: [
           {
+            command: "wfctl knowledge reconstruct repin",
             detail:
-              "Finish or abandon the baseline before advancing this leaf; its evidence "
-              + "survives either way, but it cannot be re-pinned.",
+              "Move the case to this checkout's new commit afterwards. Byte-identical "
+              + "blobs keep their reading; changed ones return to pending.",
           },
           {
             command: "wfctl upgrade",
@@ -2074,6 +2076,45 @@ function knowledgeReconstructCommand() {
                 + `Status: ${result.status}; frozen files: ${result.rawFiles}\n`
                 + `Decision: ${result.approvedBy} at ${result.approvedAt}\n`
                 + `Paths: ${result.paths.length > 0 ? result.paths.join(", ") : "none"}\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "repin",
+      new Command()
+        .description(
+          "Move one bound repository to its checkout's current commit.\n"
+            + "Carries dispositions and receipts across every byte-identical blob;\n"
+            + "changed, added, and deleted paths return to pending.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--repository <name:string>", "Durable repository identity to move.", {
+          required: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await repinReconstructionRepository({
+            target: options.target,
+            id,
+            repository: options.repository,
+          });
+          if (options.json) {
+            printJson(result);
+            return;
+          }
+          process.stdout.write(
+            `Repinned ${result.repository}\n`
+              + `${result.fromCommit} -> ${result.toCommit}\n`
+              + `unchanged ${result.counts.unchanged}  modified ${result.counts.modified}  `
+              + `added ${result.counts.added}  removed ${result.counts.removed}\n`
+              + `Receipts invalidated: ${result.invalidatedReceipts.length}\n`,
+          );
+          if (result.affectedClaims.length > 0) {
+            process.stdout.write(
+              `Claims citing an invalidated receipt: ${result.affectedClaims.join(", ")}\n`
+                + "Re-verify each against the new pin; none were rewritten.\n",
             );
           }
         }),
