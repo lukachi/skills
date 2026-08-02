@@ -36594,6 +36594,7 @@ import { resolve as resolve19 } from "node:path";
 import { readdir as readdir12, readFile as readFile20, stat as stat3 } from "node:fs/promises";
 import { join as join18 } from "node:path";
 init_config();
+init_dependencies();
 init_repository_registry();
 init_types();
 init_work_spec();
@@ -36601,6 +36602,7 @@ var STATE_COLLECTORS = [
   installCollector(),
   sourcesCollector(),
   corpusCollector(),
+  retrievalCollector(),
   reconstructionCollector(),
   intakeCollector(),
   rawCollector(),
@@ -36754,6 +36756,32 @@ function corpusCollector() {
         });
       }
       return signals2;
+    }
+  };
+}
+function retrievalCollector() {
+  return {
+    id: "retrieval",
+    profiles: ["knowledge"],
+    async collect(context) {
+      const result = runTool("qmd", ["status"], { cwd: context.knowledgeRoot });
+      if (result.status !== 0) {
+        return [];
+      }
+      const pending = Number(
+        /^\s*Pending:\s+(\d+)\s+need embedding/mi.exec(result.stdout)?.[1] ?? "0"
+      );
+      if (!Number.isFinite(pending) || pending <= 0) {
+        return [];
+      }
+      return [{
+        id: "corpus.embeddings-stale",
+        domain: "corpus",
+        level: "info",
+        summary: "Indexed documents have no semantic vectors; search falls back to lexical BM25",
+        facts: { documents: pending, command: "qmd embed" },
+        awaits: "agent"
+      }];
     }
   };
 }
@@ -37866,10 +37894,11 @@ async function briefContext(target) {
       "rediscover this by scanning records, and do not read it back as a list.",
       "Open with one short orientation and offer what is available.",
       "",
-      "While executing accepted work: quote the accepted material before asking",
-      "the maintainer anything, treat a report as progress rather than",
-      "completion, and record a discovery instead of stopping for it. This does",
-      "not apply while shaping or specifying. Full text in",
+      "While executing accepted work: never announce the next action and then",
+      "end the turn \u2014 take it. Quote the accepted material before asking the",
+      "maintainer anything, treat a report as progress rather than completion,",
+      "and record a discovery instead of stopping for it. This does not apply",
+      "while shaping or specifying. Full text in",
       "`.workflow/rules/execution-continuity.md`.",
       "",
       JSON.stringify(report, null, 2)

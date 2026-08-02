@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { listCaptures } from "./capture.js";
 import { isMissingFileError } from "./config.js";
+import { runTool } from "./dependencies.js";
 import { listRepositoryConnections } from "./repository-registry.js";
 import type { StateCollector, StateContext, StateSignal } from "./state.js";
 import { WORKFLOW_VERSION } from "./types.js";
@@ -15,6 +16,7 @@ export const STATE_COLLECTORS: readonly StateCollector[] = [
   installCollector(),
   sourcesCollector(),
   corpusCollector(),
+  retrievalCollector(),
   reconstructionCollector(),
   intakeCollector(),
   rawCollector(),
@@ -176,6 +178,42 @@ function corpusCollector(): StateCollector {
         });
       }
       return signals;
+    },
+  };
+}
+
+/**
+ * Indexing and embedding are separate operations: `qmd update` records new
+ * documents and marks them as needing vectors, and only `qmd embed` builds
+ * them. Nothing in the workflow runs the second one, so an agent writing
+ * reconstruction packets all day leaves semantic search behind on exactly the
+ * material it just produced and is never told. `qmd status` answers in about
+ * a fifth of a second and prints the pending line only when work is waiting.
+ */
+function retrievalCollector(): StateCollector {
+  return {
+    id: "retrieval",
+    profiles: ["knowledge"],
+    async collect(context) {
+      const result = runTool("qmd", ["status"], { cwd: context.knowledgeRoot });
+      if (result.status !== 0) {
+        // Tool availability is the doctor's subject, not the repository's state.
+        return [];
+      }
+      const pending = Number(
+        /^\s*Pending:\s+(\d+)\s+need embedding/mi.exec(result.stdout)?.[1] ?? "0",
+      );
+      if (!Number.isFinite(pending) || pending <= 0) {
+        return [];
+      }
+      return [{
+        id: "corpus.embeddings-stale",
+        domain: "corpus",
+        level: "info",
+        summary: "Indexed documents have no semantic vectors; search falls back to lexical BM25",
+        facts: { documents: pending, command: "qmd embed" },
+        awaits: "agent",
+      }];
     },
   };
 }
