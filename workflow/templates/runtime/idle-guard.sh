@@ -23,11 +23,31 @@ usage() {
 
 log_size() { wc -c <"$1" 2>/dev/null | tr -d ' ' || echo 0; }
 
+# Consumed CPU in seconds. A process that prints a heartbeat while blocked looks
+# healthy to a silence test and stalled to this one.
+cpu_seconds() {
+  local raw
+  raw=$(ps -o time= -p "$1" 2>/dev/null | tr -d ' ') || return 1
+  [ -n "$raw" ] || return 1
+  printf '%s' "$raw" | awk -F: '{s=0; for(i=1;i<=NF;i++) s=s*60+$i; printf "%d", s}'
+}
+
+# Fast commands must not pay for the watch, long ones must not spin: start
+# tight, relax once it is clear this is not a quick command.
+poll_interval() {
+  local ran="$1"
+  [ -n "$POLL" ] && { printf '%s' "$POLL"; return; }
+  if   [ "$ran" -lt 5 ];  then printf '0.1'
+  elif [ "$ran" -lt 30 ]; then printf '1'
+  else                         printf '5'
+  fi
+}
+
 report() {
-  local pid="$1" quiet="$2" started="$3" log="$4" command="$5"
+  local pid="$1" started="$2" log="$3" command="$4" trigger="$5"
   local elapsed=$(( $(date +%s) - started ))
   {
-    echo "idle-guard: no output for ${quiet}s — this is a prompt to check, not a verdict."
+    echo "idle-guard: ${trigger} — this is a prompt to check, not a verdict."
     echo "  command    : ${command}"
     echo "  pid        : ${pid}   still running, untouched"
     echo "  elapsed    : ${elapsed}s"
@@ -52,19 +72,26 @@ report() {
 
 watch_pid() {
   local pid="$1" log="$2" command="$3" started="$4"
-  local last size quiet
-  last=$(date +%s)
-  size=$(log_size "$log")
+  local last size cpu_last cpu_at now quiet stalled
+  last=$(date +%s); cpu_at=$last
+  size=$(log_size "$log"); cpu_last=$(cpu_seconds "$pid" || echo 0)
   while kill -0 "$pid" 2>/dev/null; do
-    sleep "$POLL"
-    local now
+    sleep "$(poll_interval $(( $(date +%s) - started )))"
     now=$(log_size "$log")
     if [ "$now" != "$size" ]; then size="$now"; last=$(date +%s); fi
+    stalled=$(cpu_seconds "$pid" || echo "$cpu_last")
+    if [ "$stalled" != "$cpu_last" ]; then cpu_last="$stalled"; cpu_at=$(date +%s); fi
+
     quiet=$(( $(date +%s) - last ))
     if [ "$quiet" -ge "$IDLE" ]; then
-      report "$pid" "$quiet" "$started" "$log" "$command"
+      report "$pid" "$started" "$log" "$command" "no output for ${quiet}s"
       return 125
     fi
+    # A CPU stall was tried as a second trigger and dropped: I/O-bound work —
+    # downloads, network waits, a shell loop around sleep — consumes almost no
+    # CPU while progressing perfectly well, so it fired on healthy commands.
+    # Consumed CPU stays in the report, where it tells the agent whether a
+    # silent process is waiting or working. It is evidence, not a verdict.
   done
   return 0
 }

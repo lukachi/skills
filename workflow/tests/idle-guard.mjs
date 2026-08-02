@@ -34,6 +34,21 @@ assert.equal(talkative.status, 7, "the guard must not swallow the exit code");
 assert.match(talkative.stdout, /step 5/);
 assert.doesNotMatch(talkative.stderr, /no output for/);
 
+// The watch must not tax a command that finishes immediately.
+const started = Date.now();
+const quick = runGuard("echo hi", 600);
+assert.equal(quick.status, 0);
+assert.ok(
+  Date.now() - started < 1500,
+  `a fast command must not wait on the watch (took ${Date.now() - started}ms)`,
+);
+
+// I/O-bound work consumes almost no CPU while progressing normally, so a CPU
+// stall must never be a trigger on its own.
+const chatty = runGuard("for i in 1 2 3 4 5 6; do echo tick; sleep 1; done", 3);
+assert.equal(chatty.status, 0, "a low-CPU command that keeps reporting is healthy");
+assert.doesNotMatch(chatty.stderr, /idle-guard:/);
+
 // A silent command is reported, never judged, and keeps running.
 const silent = runGuard("sleep 45", 3);
 assert.equal(silent.status, 125);
@@ -59,11 +74,10 @@ assert.match(
 );
 assert.equal(wrapped.hookSpecificOutput.permissionDecision, "allow");
 
-assert.equal(
-  askHook({ tool_name: "Bash", tool_input: { command: "ls" } }),
-  undefined,
-  "foreground commands carry their own limit and must be left alone",
-);
+// Foreground commands are wrapped too: the host promotes one to the background
+// once it runs long enough, and the watch has to already be in place by then.
+const foreground = askHook({ tool_name: "Bash", tool_input: { command: "ls" } });
+assert.match(foreground.hookSpecificOutput.updatedInput.command, /idle-guard\.sh' --shell 'ls'/);
 assert.equal(
   askHook({
     tool_name: "Bash",
@@ -98,4 +112,4 @@ const garbage = spawnSync("node", [hook], { input: "not json", encoding: "utf8" 
 assert.equal(garbage.status, 0);
 assert.equal(garbage.stdout.trim(), "");
 
-process.stdout.write("idle-guard: reports silence, judges nothing, wraps only background work\n");
+process.stdout.write("idle-guard: reports silence, judges nothing, watches every shell command\n");

@@ -1,10 +1,14 @@
 #!/usr/bin/env node
-// PreToolUse hook: put a silence watch around every background shell command.
+// PreToolUse hook: put a stall watch around every shell command.
 //
-// A background command has no deadline and no stall detection, so a command
-// that never finishes is simply never heard from again. The watch does not
-// judge the command; it reports silence so the agent can check. Foreground
-// commands are left alone — they carry their own limit.
+// A background command has no deadline and no stall detection, so one that
+// stops progressing is never heard from again. Foreground commands are not
+// exempt: the host moves one to the background once it runs long enough, and
+// the watch has to be in place before that happens rather than after. Wrapping
+// everything is also what keeps this free of guesses about which commands are
+// worth watching.
+//
+// The watch does not judge the command; it reports so the agent can check.
 //
 // This runs before every tool call, so it must never fail and never block:
 // any unexpected input produces no decision and the call proceeds unchanged.
@@ -31,7 +35,7 @@ function main() {
     return;
   }
   const input = payload.tool_input;
-  if (!input || input.run_in_background !== true) {
+  if (!input) {
     return;
   }
   const command = typeof input.command === "string" ? input.command : "";

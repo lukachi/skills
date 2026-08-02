@@ -229,7 +229,9 @@ A background shell command has no deadline and no stall detection. One that
 stops making progress is simply never heard from again, and the loss is measured
 in hours because nothing is wrong enough to report.
 
-Installation therefore places a `PreToolUse` watch on background shell commands.
+Installation therefore places a `PreToolUse` watch on every shell command.
+Foreground commands are not exempt: the host promotes one to the background once
+it runs long enough, so the watch has to be in place before that, not after.
 Duration is never the test: a talkative hour-long build is healthy and a silent
 loop is not. After a threshold of no output the watch reports and exits, which
 is what reaches a working agent — a finished background task is the only channel
@@ -246,6 +248,12 @@ Three properties are load-bearing:
   matching a process name — a name pattern matches the checking shell too.
 - **The watch can be re-armed** onto a running process. A one-shot report would
   leave anything judged healthy unwatched for the rest of its life.
+
+Silence is the only trigger. A CPU stall was tried as a second one and dropped:
+I/O-bound work consumes almost no CPU while progressing perfectly well, so it
+fired on healthy commands. Consumed CPU remains in the report, where it
+distinguishes a waiting process from a working one. A signal that costs the
+agent a turn has to earn it.
 
 The watch never inspects what the command does. A command that keeps printing
 while doing the wrong thing is a different failure, answered by verifying the
