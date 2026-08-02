@@ -317,12 +317,25 @@ and the failure it catches is not, so trading recall for quiet is the wrong
 direction. A signal awaiting the maintainer never arms it — that is a question
 for them, and forcing a turn on it would only make the agent answer itself.
 
-The bounds that remain are about not burning a session rather than about noise:
-a continuation turn is never blocked again, and a turn spent waiting on a
-background task passes because the host re-invokes the agent when that task
-finishes. An unreadable state, a missing CLI, or malformed input ends the turn
-rather than trapping the session. The guard measures nothing and has no
-threshold; it reads state and decides once.
+Re-entry continues while the repository moves. A single re-entry was the first
+bound and it was too weak: an agent re-entered once, did real work, stopped
+again, and that second stop passed unconditionally, so the run parked itself for
+the night with the frontier still full. Whether the last turn moved anything is
+observable without judging it — the collected signals either changed or they did
+not — so the guard keeps returning while each turn changes them and releases on
+the first turn that does not.
+
+Three bounds keep that from becoming its own failure. A turn spent waiting on a
+background task passes, because the host re-invokes the agent when the task
+finishes. A repeated answer releases even while the state moves, which is what a
+genuinely stuck agent looks like when something else is writing underneath it.
+A hard ceiling ends the turn regardless: state can move for reasons unrelated to
+the turn, and a live run against a stub whose counter advanced on every read had
+a blocked agent restating the same refusal thirteen times before the ceiling
+stopped it. Progress comparison needs durable memory, so a repository that
+cannot store it degrades to the weaker single re-entry rather than risking a
+turn that cannot end. An unreadable state, a missing CLI, or malformed input
+ends the turn rather than trapping the session.
 
 One failure stays uncovered and should not be claimed otherwise: when a turn
 produces no text after a tool result, the host fires no `Stop` event at all.
