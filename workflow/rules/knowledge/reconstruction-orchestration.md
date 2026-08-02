@@ -6,6 +6,12 @@ or resuming `reconstruct-project-knowledge`.
 - Keep one orchestrator as the sole writer of the parent reconstruction case,
   repository dossiers, final coverage dispositions, candidate synthesis, and
   curated `knowledge/` documents.
+- Tell the maintainer plainly when they propose advancing a bound leaf while a
+  baseline is open, `wfctl upgrade` included. A pin cannot be moved: the pinned
+  tree stays readable, but the Graphify graph lives at `HEAD` and stops
+  describing what the case reads, and the baseline then finishes on the old pin
+  or is abandoned. Upgrading the knowledge repository carries rules and skills
+  to this agent without touching a pin.
 - Use platform-native subagents only when the frozen frontier contains
   genuinely independent, read-heavy research units or would pollute one
   context window. Do not spawn workers merely because subagents exist.

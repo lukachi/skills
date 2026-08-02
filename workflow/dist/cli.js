@@ -22241,6 +22241,44 @@ async function reviewReconstructionSurfaces(options) {
     }
   );
 }
+async function activeReconstructionPins(knowledgeInput, repository) {
+  const target = await requireKnowledgeRepository4(knowledgeInput);
+  const activeRoot = join10(target, "reconstruction/active");
+  let directories;
+  try {
+    directories = await readdir7(activeRoot);
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return [];
+    }
+    throw error2;
+  }
+  const pins = [];
+  for (const name of directories) {
+    let content3;
+    try {
+      content3 = await readFile13(join10(activeRoot, name, "case.md"), "utf8");
+    } catch (error2) {
+      if (isMissingFileError(error2)) {
+        continue;
+      }
+      throw error2;
+    }
+    const document3 = parseWorkSpec(content3);
+    for (const record2 of recordArray4(document3.metadata.repositories)) {
+      if (stringValue7(record2.repository) !== repository) {
+        continue;
+      }
+      pins.push({
+        caseId: name,
+        repository,
+        commit: stringValue7(record2.commit),
+        checkout: stringValue7(record2.checkout)
+      });
+    }
+  }
+  return pins.sort((left, right) => left.caseId.localeCompare(right.caseId));
+}
 async function inspectProjectReconstruction(targetInput, id) {
   const receipt = await inspectProjectReconstructionReceipt(
     targetInput,
@@ -37542,6 +37580,41 @@ function upgradeCommand() {
     });
   });
 }
+async function reconstructionPinChecks(input) {
+  if (input.profile !== "leaf" || !input.knowledge) {
+    return [];
+  }
+  let repository;
+  let head;
+  try {
+    const metadata = readRepositoryMetadata(input.target);
+    repository = metadata.repository;
+    head = metadata.commit;
+    const pins = await activeReconstructionPins(input.knowledge, repository);
+    return pins.map((pin) => ({
+      name: "reconstruction-pin",
+      status: "warn",
+      message: pin.commit === head ? `Reconstruction ${pin.caseId} reads this repository at ${abbreviate(pin.commit)}, which is the current HEAD. Upgrading refreshes the Graphify graph and adds a workflow-asset commit, so the graph stops matching the pin.` : `Reconstruction ${pin.caseId} reads this repository at ${abbreviate(pin.commit)} while HEAD is ${abbreviate(head)}. The pinned tree stays readable, but the Graphify graph already describes a different commit.`,
+      remediation: {
+        title: "A pin is frozen at reconstruct start and nothing moves it",
+        steps: [
+          {
+            detail: "Finish or abandon the baseline before advancing this leaf; its evidence survives either way, but it cannot be re-pinned."
+          },
+          {
+            command: "wfctl upgrade",
+            detail: "Run it in the knowledge repository instead. Rules and skills reach the reconstruction agent from there, and that upgrade touches no pin."
+          }
+        ]
+      }
+    }));
+  } catch {
+    return [];
+  }
+}
+function abbreviate(commit) {
+  return commit.length > 8 ? commit.slice(0, 8) : commit;
+}
 async function installWorkflow(input) {
   if (input.json && !input.dryRun && !input.yes) {
     throw new Error("--json requires --dry-run or --yes");
@@ -37554,14 +37627,17 @@ async function installWorkflow(input) {
     distributionRoot,
     skills: { scope: input.scope, agents: input.agents }
   });
-  const preflight = runInstallPreflight({
-    target: input.target,
-    profile: input.profile,
-    ...input.knowledge ? { knowledge: input.knowledge } : {},
-    initializeGit: input.initializeGit === true,
-    requireQmdSkill: input.scope !== "none",
-    agents: input.agents
-  });
+  const preflight = [
+    ...runInstallPreflight({
+      target: input.target,
+      profile: input.profile,
+      ...input.knowledge ? { knowledge: input.knowledge } : {},
+      initializeGit: input.initializeGit === true,
+      requireQmdSkill: input.scope !== "none",
+      agents: input.agents
+    }),
+    ...await reconstructionPinChecks(input)
+  ];
   const preflightPassed = preflight.every((check) => check.status !== "fail");
   if (input.dryRun) {
     if (input.json) {
@@ -40163,6 +40239,7 @@ function checkLabel(name) {
     git: "Git repository",
     "agent-skills": "Agent skills",
     "workflow-skills": "Agent skills",
+    "reconstruction-pin": "Reconstruction pin",
     "qmd-version": "QMD version",
     "qmd-native-skill": "QMD agent skill",
     "qmd-index-config": "QMD collections",

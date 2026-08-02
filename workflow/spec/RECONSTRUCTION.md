@@ -37,6 +37,25 @@ At case start, every selected leaf is bound to:
 Absolute checkout paths live only in ignored runtime bindings. The durable case
 must remain portable.
 
+A pin cannot be moved. There is no repin, rebase, or resync operation: a case
+finishes on the commits it was started with, or it is abandoned. The pinned tree
+itself is durable — reading goes through Git objects, which later commits never
+remove — so advancing a leaf does not destroy recorded work. What breaks is the
+Graphify graph, which lives in the working tree at `HEAD` rather than at a
+commit, and therefore stops describing what the case reads. Anything that
+advances a bound leaf, `wfctl upgrade` included, must surface that before it
+writes.
+
+This is a known gap rather than a design position, and the data for closing it
+is already recorded: every manifest entry and every source-read receipt carries
+the Git blob `objectId`. A repin is therefore a content-addressed comparison
+rather than a heuristic — an unchanged blob keeps its disposition and receipts
+verbatim, a changed one returns to `pending` with a recorded reason, a deleted
+one flags the claims that cited it, and a new one enters as `pending`. Auditing
+a finished baseline against advanced source is the ordinary case, not an
+accident, so the absence is worth stating plainly instead of leaving the next
+agent to invent a workaround.
+
 ## Three coverage lanes
 
 ### Git inventory lane

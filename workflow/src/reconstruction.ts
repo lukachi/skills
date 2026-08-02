@@ -1684,6 +1684,61 @@ export async function reviewReconstructionSurfaces(
   );
 }
 
+export interface ActiveReconstructionPin {
+  caseId: string;
+  repository: string;
+  commit: string;
+  checkout: string;
+}
+
+/**
+ * Which active reconstructions read this repository, and at which commit.
+ * A pin is frozen at `reconstruct start` and nothing moves it, so anything
+ * that advances the leaf has to be visible before it happens rather than
+ * discovered later as a graph that no longer matches its case.
+ */
+export async function activeReconstructionPins(
+  knowledgeInput: string,
+  repository: string,
+): Promise<ActiveReconstructionPin[]> {
+  const target = await requireKnowledgeRepository(knowledgeInput);
+  const activeRoot = join(target, "reconstruction/active");
+  let directories: string[];
+  try {
+    directories = await readdir(activeRoot);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return [];
+    }
+    throw error;
+  }
+  const pins: ActiveReconstructionPin[] = [];
+  for (const name of directories) {
+    let content: string;
+    try {
+      content = await readFile(join(activeRoot, name, "case.md"), "utf8");
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        continue;
+      }
+      throw error;
+    }
+    const document = parseWorkSpec(content);
+    for (const record of recordArray(document.metadata.repositories)) {
+      if (stringValue(record.repository) !== repository) {
+        continue;
+      }
+      pins.push({
+        caseId: name,
+        repository,
+        commit: stringValue(record.commit),
+        checkout: stringValue(record.checkout),
+      });
+    }
+  }
+  return pins.sort((left, right) => left.caseId.localeCompare(right.caseId));
+}
+
 export async function inspectProjectReconstruction(
   targetInput: string,
   id: string,

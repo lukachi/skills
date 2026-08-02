@@ -55,8 +55,13 @@ import {
   type ReconstructionSelection,
   selectLeafRepository,
 } from "./repository-registry.js";
-import { initializeGitRepository, isGitRepository } from "./git.js";
 import {
+  initializeGitRepository,
+  isGitRepository,
+  readRepositoryMetadata,
+} from "./git.js";
+import {
+  activeReconstructionPins,
   approveReconstructionRawScope,
   beginProjectReconstruction,
   claimReconstructionWorkstream,
@@ -301,6 +306,68 @@ function upgradeCommand() {
     });
 }
 
+/**
+ * A reconstruction reads a leaf at a commit frozen when the case started, and
+ * nothing moves a pin. Upgrading a leaf refreshes its checkout-local Graphify
+ * graph and adds a workflow-asset commit, so the graph stops describing the
+ * commit the case reads. That belongs in preflight, before the prompt: after
+ * the write the only remaining choices are finishing on the old pin or
+ * abandoning the baseline. It warns rather than fails because an abandoned or
+ * already-drifted case is a legitimate reason to go ahead.
+ */
+async function reconstructionPinChecks(input: {
+  target: string;
+  profile: Profile;
+  knowledge?: string;
+}): Promise<DoctorCheck[]> {
+  if (input.profile !== "leaf" || !input.knowledge) {
+    return [];
+  }
+  let repository: string;
+  let head: string;
+  try {
+    const metadata = readRepositoryMetadata(input.target);
+    repository = metadata.repository;
+    head = metadata.commit;
+    const pins = await activeReconstructionPins(input.knowledge, repository);
+    return pins.map((pin) => ({
+      name: "reconstruction-pin",
+      status: "warn" as const,
+      message: pin.commit === head
+        ? `Reconstruction ${pin.caseId} reads this repository at ${abbreviate(pin.commit)}, `
+          + "which is the current HEAD. Upgrading refreshes the Graphify graph and adds a "
+          + "workflow-asset commit, so the graph stops matching the pin."
+        : `Reconstruction ${pin.caseId} reads this repository at ${abbreviate(pin.commit)} `
+          + `while HEAD is ${abbreviate(head)}. The pinned tree stays readable, but the `
+          + "Graphify graph already describes a different commit.",
+      remediation: {
+        title: "A pin is frozen at reconstruct start and nothing moves it",
+        steps: [
+          {
+            detail:
+              "Finish or abandon the baseline before advancing this leaf; its evidence "
+              + "survives either way, but it cannot be re-pinned.",
+          },
+          {
+            command: "wfctl upgrade",
+            detail:
+              "Run it in the knowledge repository instead. Rules and skills reach the "
+              + "reconstruction agent from there, and that upgrade touches no pin.",
+          },
+        ],
+      },
+    }));
+  } catch {
+    // Orientation only. A leaf outside Git, an unreadable knowledge root, or a
+    // malformed case must never stop an upgrade the maintainer asked for.
+    return [];
+  }
+}
+
+function abbreviate(commit: string): string {
+  return commit.length > 8 ? commit.slice(0, 8) : commit;
+}
+
 async function installWorkflow(input: {
   target: string;
   profile: Profile;
@@ -323,14 +390,17 @@ async function installWorkflow(input: {
     distributionRoot,
     skills: { scope: input.scope, agents: input.agents },
   });
-  const preflight = runInstallPreflight({
-    target: input.target,
-    profile: input.profile,
-    ...(input.knowledge ? { knowledge: input.knowledge } : {}),
-    initializeGit: input.initializeGit === true,
-    requireQmdSkill: input.scope !== "none",
-    agents: input.agents,
-  });
+  const preflight = [
+    ...runInstallPreflight({
+      target: input.target,
+      profile: input.profile,
+      ...(input.knowledge ? { knowledge: input.knowledge } : {}),
+      initializeGit: input.initializeGit === true,
+      requireQmdSkill: input.scope !== "none",
+      agents: input.agents,
+    }),
+    ...await reconstructionPinChecks(input),
+  ];
   const preflightPassed = preflight.every((check) => check.status !== "fail");
 
   if (input.dryRun) {
@@ -3692,6 +3762,7 @@ function checkLabel(name: string): string {
     git: "Git repository",
     "agent-skills": "Agent skills",
     "workflow-skills": "Agent skills",
+    "reconstruction-pin": "Reconstruction pin",
     "qmd-version": "QMD version",
     "qmd-native-skill": "QMD agent skill",
     "qmd-index-config": "QMD collections",
