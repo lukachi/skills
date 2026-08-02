@@ -39,7 +39,22 @@ export function createConfig(
 
 export async function readConfig(target: string): Promise<WorkflowConfig> {
   const path = resolve(target, ".workflow/config.json");
-  const raw = JSON.parse(await readFile(path, "utf8")) as Partial<WorkflowConfig>;
+  let content: string;
+  try {
+    content = await readFile(path, "utf8");
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      // Reached by running a command from a case, packet, or knowledge
+      // subdirectory, which reads as a broken installation unless the message
+      // says which directory was searched and what to do instead.
+      throw new Error(
+        `No workflow installation in ${resolve(target)}: ${path} does not exist. `
+          + "Run from the repository root, or pass --target with it.",
+      );
+    }
+    throw error;
+  }
+  const raw = JSON.parse(content) as Partial<WorkflowConfig>;
   if (raw.schemaVersion !== CONFIG_SCHEMA_VERSION) {
     throw new Error(`Unsupported workflow config schema in ${path}`);
   }

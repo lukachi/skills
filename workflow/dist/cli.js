@@ -6971,7 +6971,18 @@ function createConfig(profile, target, knowledge, skills = { scope: "project", a
 }
 async function readConfig(target) {
   const path = resolve2(target, ".workflow/config.json");
-  const raw = JSON.parse(await readFile2(path, "utf8"));
+  let content3;
+  try {
+    content3 = await readFile2(path, "utf8");
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      throw new Error(
+        `No workflow installation in ${resolve2(target)}: ${path} does not exist. Run from the repository root, or pass --target with it.`
+      );
+    }
+    throw error2;
+  }
+  const raw = JSON.parse(content3);
   if (raw.schemaVersion !== CONFIG_SCHEMA_VERSION) {
     throw new Error(`Unsupported workflow config schema in ${path}`);
   }
