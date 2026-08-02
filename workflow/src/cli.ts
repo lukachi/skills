@@ -150,6 +150,7 @@ import type { CapabilityState, StateLevel, StateReport } from "./state.js";
 import {
   installBackgroundGuardHook,
   installSessionBriefHook,
+  installStopGuardHook,
   removeSessionBriefHook,
   SESSION_BRIEF_COMMAND,
   sessionBriefHookInstalled,
@@ -473,6 +474,9 @@ async function installWorkflow(input: {
   // notices hours later, so the silence watch ships with the workflow rather
   // than waiting to be requested.
   const backgroundGuard = await installBackgroundGuardHook(input.target);
+  // Same reason, the other half of the same loss: a turn that ends on a stated
+  // next action leaves the work parked with nothing reported as wrong.
+  const stopGuard = await installStopGuardHook(input.target);
   const graphifyUpdate = input.profile === "leaf"
     ? await refreshGraphifyGraph(input.target, input.json)
     : undefined;
@@ -493,6 +497,13 @@ async function installWorkflow(input: {
     message: backgroundGuard.outcome === "already-installed"
       ? "Background shell commands are already watched for silence"
       : `Background shell commands are now watched for silence (${backgroundGuard.path})`,
+  });
+  report.checks.push({
+    name: "stop-guard",
+    status: "pass",
+    message: stopGuard.outcome === "already-installed"
+      ? "A turn ending while work awaits the agent is already re-entered once"
+      : `A turn ending while work awaits the agent is now re-entered once (${stopGuard.path})`,
   });
   if (graphifyUpdate) {
     report.checks.push({

@@ -37388,6 +37388,8 @@ var SESSION_BRIEF_COMMAND = "wfctl brief --hook";
 var SESSION_START_EVENT = "SessionStart";
 var BACKGROUND_GUARD_COMMAND = '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true';
 var PRE_TOOL_USE_EVENT = "PreToolUse";
+var STOP_GUARD_COMMAND = '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" || true';
+var STOP_EVENT = "Stop";
 async function installHookEntry(target, eventName, matcher, command) {
   const path = settingsPath(target);
   const settings = await readSettings(path);
@@ -37419,6 +37421,9 @@ function installBackgroundGuardHook(target) {
     "Bash",
     BACKGROUND_GUARD_COMMAND
   );
+}
+function installStopGuardHook(target) {
+  return installHookEntry(target, STOP_EVENT, "*", STOP_GUARD_COMMAND);
 }
 async function removeHookEntry(target, eventName, command) {
   const path = settingsPath(target);
@@ -37727,6 +37732,7 @@ async function installWorkflow(input) {
   }
   const repositoryCheckout = input.profile === "knowledge" ? (await ensureRepositoryRegistry(input.target), void 0) : await addLeafRepository(input.knowledge, input.target);
   const backgroundGuard = await installBackgroundGuardHook(input.target);
+  const stopGuard = await installStopGuardHook(input.target);
   const graphifyUpdate = input.profile === "leaf" ? await refreshGraphifyGraph(input.target, input.json) : void 0;
   if (input.profile === "knowledge") {
     const validation = await validateKnowledge(input.target);
@@ -37741,6 +37747,11 @@ async function installWorkflow(input) {
     name: "background-guard",
     status: "pass",
     message: backgroundGuard.outcome === "already-installed" ? "Background shell commands are already watched for silence" : `Background shell commands are now watched for silence (${backgroundGuard.path})`
+  });
+  report.checks.push({
+    name: "stop-guard",
+    status: "pass",
+    message: stopGuard.outcome === "already-installed" ? "A turn ending while work awaits the agent is already re-entered once" : `A turn ending while work awaits the agent is now re-entered once (${stopGuard.path})`
   });
   if (graphifyUpdate) {
     report.checks.push({

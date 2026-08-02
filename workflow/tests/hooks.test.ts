@@ -12,6 +12,9 @@ import {
   SESSION_BRIEF_COMMAND,
   sessionBriefHookInstalled,
   sessionStartEnvelope,
+  STOP_GUARD_COMMAND,
+  installStopGuardHook,
+  stopGuardHookInstalled,
 } from "../src/hooks.js";
 
 async function workspace(settings?: unknown): Promise<string> {
@@ -163,5 +166,32 @@ test("anchors the watch on the project directory so the settings file stays port
     BACKGROUND_GUARD_COMMAND,
     /\[ -f .* \] &&/,
     "a session outside an installed repository must not fail every shell call",
+  );
+});
+
+test("installs the stop guard beside an unrelated Stop entry without disturbing it", async () => {
+  const root = await workspace({
+    hooks: {
+      Stop: [{ matcher: "*", hooks: [{ type: "command", command: "echo mine" }] }],
+    },
+  });
+  const first = await installStopGuardHook(root);
+  const second = await installStopGuardHook(root);
+
+  assert.equal(first.outcome, "installed");
+  assert.equal(second.outcome, "already-installed");
+  assert.equal(await stopGuardHookInstalled(root), true);
+
+  const settings = await settingsOf(root);
+  const stop = (settings.hooks as Record<string, unknown[]>).Stop ?? [];
+  assert.equal(stop.length, 2, "the maintainer's own Stop entry must survive");
+});
+
+test("anchors the stop guard on the project directory and never fails a turn", () => {
+  assert.match(STOP_GUARD_COMMAND, /\$CLAUDE_PROJECT_DIR/);
+  assert.match(
+    STOP_GUARD_COMMAND,
+    /\|\| true$/,
+    "a guard that errors must end the turn rather than trap the session",
   );
 });

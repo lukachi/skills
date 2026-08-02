@@ -16,6 +16,11 @@ export const BACKGROUND_GUARD_COMMAND =
   + '&& node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true';
 export const PRE_TOOL_USE_EVENT = "PreToolUse";
 
+export const STOP_GUARD_COMMAND =
+  '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" ] '
+  + '&& node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" || true';
+export const STOP_EVENT = "Stop";
+
 export type HookOutcome = "installed" | "already-installed" | "removed" | "absent";
 
 export interface HookResult {
@@ -87,6 +92,19 @@ export function installBackgroundGuardHook(target: string): Promise<HookResult> 
     "Bash",
     BACKGROUND_GUARD_COMMAND,
   );
+}
+
+/**
+ * Installed with the rest of the workflow for the same reason as the silence
+ * watch: a turn that ends on a stated next action costs hours and looks like
+ * nothing went wrong. The guard never judges completion; it costs one turn.
+ */
+export function installStopGuardHook(target: string): Promise<HookResult> {
+  return installHookEntry(target, STOP_EVENT, "*", STOP_GUARD_COMMAND);
+}
+
+export function stopGuardHookInstalled(target: string): Promise<boolean> {
+  return hookEntryInstalled(target, STOP_EVENT, STOP_GUARD_COMMAND);
 }
 
 export async function removeHookEntry(

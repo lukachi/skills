@@ -299,6 +299,26 @@ Placement is not compliance. The Graphify instructions sit in the same loaded
 block and are ignored just as often. A norm changes the odds; only a mechanism
 that re-enters the turn changes the outcome.
 
+Installation therefore places a `Stop` watch beside the shell one. When a turn
+ends while the state reports work awaiting the agent, the watch blocks that
+ending once: it quotes the text the turn ended with, lists the outstanding
+work, and hands the judgment back. It never decides whether the work is
+finished. That distinction is the whole safety argument — a guard that keeps
+answering "not finished" forces turns the model cannot satisfy and runs a
+session to its token cap.
+
+The mechanism is not persuasion. Inside the forced turn the announced action is
+the cheapest available move, so the failure corrects itself without the agent
+having to obey anything. Three bounds keep it from becoming a cost of its own:
+a continuation turn is never blocked again, a turn spent waiting on a
+background task is legitimate and passes, and only `attention` or `blocked`
+signals arm it, so housekeeping such as an unembedded document never costs a
+turn. An unreadable state, a missing CLI, or malformed input ends the turn
+rather than trapping the session.
+
+One failure stays uncovered and should not be claimed otherwise: when a turn
+produces no text after a tool result, the host fires no `Stop` event at all.
+
 ## Non-goals
 
 The engine does not:
