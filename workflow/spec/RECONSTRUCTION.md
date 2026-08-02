@@ -121,7 +121,15 @@ Source and test evidence comes from pinned Git blobs. Reading receipts record:
 - timestamp.
 
 An inspected text file is complete only when its receipts cover the whole file
-without gaps. Blob reads stream through Git and retain only the requested line
+without gaps. Gap-free receipts are the precondition for that disposition and
+never the act: retrieval establishes that the bytes were fetched and nothing
+about whether anyone read them, so the read command must not promote a status it
+cannot observe. A ledger that promotes on retrieval counts downloads while
+reading like a measure of comprehension, and every figure derived from it —
+coverage, completion, the weight behind a claim — inherits the overstatement.
+Asserting `inspected` stays a separate, attributable act, and what was actually
+understood belongs in the dossier, which can say that a file was received and
+skimmed. Blob reads stream through Git and retain only the requested line
 window, so a large file is not loaded into CLI memory as one buffer. Agents may
 explore with any safe read-only tool, but final workstream evidence must resolve
 to a receipt owned by that worker. Confirmed source-code evidence must resolve

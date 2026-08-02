@@ -2238,11 +2238,14 @@ No consequential repository-local discoveries remain outside the candidate ledge
     now: new Date("2026-07-28T13:30:00.000Z"),
   });
   assert.equal(sourceRead.complete, true);
+  // Complete receipts are the precondition for `inspected`, never the act:
+  // retrieval proves the bytes arrived and says nothing about comprehension.
   await markReconstructionFiles({
     target,
     id: started.id,
     paths: ["src/main.ts"],
     category: "source",
+    status: "inspected",
   });
   await markReconstructionCommunity({
     target,

@@ -19259,10 +19259,6 @@ async function readPinnedSource(ledger, root, path, input = {}) {
     readAt: (input.now ?? /* @__PURE__ */ new Date()).toISOString()
   };
   file.receipts = mergeReceipts([...file.receipts, receipt]);
-  if (receiptsCoverFile(file.receipts)) {
-    file.status = "inspected";
-    file.reason = "";
-  }
   return {
     repository: ledger.repository,
     commit: ledger.commit,

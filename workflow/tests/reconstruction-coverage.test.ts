@@ -108,6 +108,14 @@ test("accounts for the complete Git tree beyond Graphify and requires full reads
     actor: "workflow-agent/test",
     now: new Date("2026-07-30T10:03:00.000Z"),
   });
+  // Retrieval proves the bytes were fetched and nothing more, so a fully
+  // received file stays pending until someone asserts they read it.
+  assert.equal(
+    ledger.manifest.files.find((file) => file.path === "src/main.ts")?.status,
+    "pending",
+    "complete receipts must not promote a file on their own",
+  );
+  markCoverageFiles(ledger, ["src/main.ts", ".gitignore"], { status: "inspected" });
   markCoverageFiles(ledger, ["contracts/service.proto"], {
     status: "irrelevant",
     reason: "The fixture contract is deliberately outside the bounded question.",

@@ -173,7 +173,12 @@ who owns a conclusion, not what an agent is allowed to see. Material expansion
 is recorded for synthesis. Pinned `wfctl` reads turn selected source ranges into
 stable, actor-attributed receipt IDs. Final workstream evidence must resolve to
 those receipts; a path written in prose is not evidence. An inspected text file
-is complete only when receipts cover every line. `structural-only` is for
+is complete only when receipts cover every line, and those receipts are the
+precondition for the disposition rather than the disposition itself. Reading a
+blob proves the bytes were fetched; asserting `inspected` is a separate claim
+that someone read them, and it is made with `files --status inspected` after the
+reading. Record in the dossier what was actually understood and what was only
+received, because the ledger cannot tell them apart. `structural-only` is for
 non-product-bearing structure and always needs a reason; it cannot close
 source, tests, contracts, configuration, product data, or documentation.
 `irrelevant` also needs a scoped reason. Pending and blocked entries prevent a

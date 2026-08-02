@@ -730,11 +730,13 @@ export async function readPinnedSource(
     actor,
     readAt: (input.now ?? new Date()).toISOString(),
   };
+  // Retrieval never promotes the disposition. Streaming every byte of a blob
+  // through this command proves the bytes were fetched and nothing about
+  // whether anyone read them, and a status produced as a side effect of
+  // fetching turns the coverage ledger into a download counter that reads like
+  // a comprehension measure. Complete receipts stay the precondition for
+  // `inspected`; asserting it remains a separate, attributable act.
   file.receipts = mergeReceipts([...file.receipts, receipt]);
-  if (receiptsCoverFile(file.receipts)) {
-    file.status = "inspected";
-    file.reason = "";
-  }
   return {
     repository: ledger.repository,
     commit: ledger.commit,
