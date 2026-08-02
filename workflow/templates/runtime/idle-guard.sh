@@ -21,7 +21,15 @@ usage() {
   exit 64
 }
 
-log_size() { wc -c <"$1" 2>/dev/null | tr -d ' ' || echo 0; }
+# Progress is the two streams together; they stay separate everywhere else,
+# because merging them would change what the caller sees on a healthy run.
+log_size() {
+  local total=0 file
+  for file in "$@"; do
+    total=$(( total + $(wc -c <"$file" 2>/dev/null | tr -d ' ' || echo 0) ))
+  done
+  printf '%s' "$total"
+}
 
 # Consumed CPU in seconds. A process that prints a heartbeat while blocked looks
 # healthy to a silence test and stalled to this one.
@@ -45,6 +53,7 @@ poll_interval() {
 
 report() {
   local pid="$1" started="$2" log="$3" command="$4" trigger="$5"
+  local err="${log}.err"
   local elapsed=$(( $(date +%s) - started ))
   {
     echo "idle-guard: ${trigger} — this is a prompt to check, not a verdict."
@@ -53,9 +62,9 @@ report() {
     echo "  elapsed    : ${elapsed}s"
     ps -o time=,%cpu=,state= -p "$pid" 2>/dev/null \
       | sed 's/^ *//' | sed 's/^/  cpu,%,state: /'
-    echo "  full log   : ${log}"
+    echo "  full log   : ${log} (stderr: ${err})"
     echo "  last output:"
-    tail -n 5 "$log" 2>/dev/null | sed 's/^/    | /'
+    tail -n 5 "$log" "$err" 2>/dev/null | grep -v '^==>' | sed 's/^/    | /'
     echo
     echo "  Silence is not evidence of failure. Do NOT kill or restart on this"
     echo "  report alone, and do NOT agree that something is wrong because it was"
@@ -74,10 +83,10 @@ watch_pid() {
   local pid="$1" log="$2" command="$3" started="$4"
   local last size cpu_last cpu_at now quiet stalled
   last=$(date +%s); cpu_at=$last
-  size=$(log_size "$log"); cpu_last=$(cpu_seconds "$pid" || echo 0)
+  size=$(log_size "$log" "${log}.err"); cpu_last=$(cpu_seconds "$pid" || echo 0)
   while kill -0 "$pid" 2>/dev/null; do
     sleep "$(poll_interval $(( $(date +%s) - started )))"
-    now=$(log_size "$log")
+    now=$(log_size "$log" "${log}.err")
     if [ "$now" != "$size" ]; then size="$now"; last=$(date +%s); fi
     stalled=$(cpu_seconds "$pid" || echo "$cpu_last")
     if [ "$stalled" != "$cpu_last" ]; then cpu_last="$stalled"; cpu_at=$(date +%s); fi
@@ -102,21 +111,27 @@ case "${1:-}" in
   command="$2"
   log="${TMPDIR:-/tmp}/idle-guard.$$.log"
   : >"$log"
+  : >"${log}.err"
+  # Bash hands a background job /dev/null unless stdin is redirected explicitly,
+  # which would silently starve any command that reads it.
   if command -v stdbuf >/dev/null 2>&1; then
-    stdbuf -oL -eL bash -c "$command" >"$log" 2>&1 &
+    stdbuf -oL -eL bash -c "$command" >"$log" 2>"${log}.err" <&0 &
   else
-    bash -c "$command" >"$log" 2>&1 &
+    bash -c "$command" >"$log" 2>"${log}.err" <&0 &
   fi
   child=$!
   tail -n +1 -f "$log" 2>/dev/null &
   streamer=$!
+  tail -n +1 -f "${log}.err" >&2 2>/dev/null &
+  streamer_err=$!
+  disown "$streamer_err" 2>/dev/null || true
   # Drop it from the job table so terminating it does not print job-control
   # noise into the output the agent reads.
   disown "$streamer" 2>/dev/null || true
   started=$(date +%s)
   watch_pid "$child" "$log" "$command" "$started"
   stalled=$?
-  kill "$streamer" 2>/dev/null
+  kill "$streamer" "$streamer_err" 2>/dev/null
   if [ "$stalled" -eq 125 ]; then
     # Leave the child and its log in place: the agent decides, and --watch
     # re-arms onto the same pair without losing a second of work.
@@ -124,7 +139,7 @@ case "${1:-}" in
   fi
   wait "$child"
   code=$?
-  rm -f "$log"
+  rm -f "$log" "${log}.err"
   exit "$code"
   ;;
 --watch)

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +14,11 @@ function runGuard(command, idle) {
     env: { ...process.env, IDLE: String(idle), IDLE_GUARD_POLL: "1" },
     timeout: 60_000,
   });
+}
+
+function existingLogs() {
+  const dir = process.env.TMPDIR || "/tmp";
+  return readdirSync(dir).filter((name) => name.startsWith("idle-guard.")).length;
 }
 
 function askHook(payload) {
@@ -48,6 +54,36 @@ assert.ok(
 const chatty = runGuard("for i in 1 2 3 4 5 6; do echo tick; sleep 1; done", 3);
 assert.equal(chatty.status, 0, "a low-CPU command that keeps reporting is healthy");
 assert.doesNotMatch(chatty.stderr, /idle-guard:/);
+
+// On a healthy run the wrapper must be invisible: same streams, same order,
+// same exit code, nothing lost at the end, nothing left behind.
+const clean = spawnSync("bash", [guard, "--shell", "echo OUT; echo ERR >&2; exit 0"], {
+  encoding: "utf8",
+  timeout: 30_000,
+});
+assert.equal(clean.status, 0);
+assert.equal(clean.stdout.trim(), "OUT", "stderr must not be merged into stdout");
+assert.equal(clean.stderr.trim(), "ERR", "stderr must still arrive on stderr");
+
+const bulk = spawnSync("bash", [guard, "--shell", "seq 1 20000"], {
+  encoding: "utf8",
+  maxBuffer: 8 * 1024 * 1024,
+  timeout: 60_000,
+});
+const lines = bulk.stdout.trim().split("\n");
+assert.equal(lines.length, 20_000, "large output must not be truncated");
+assert.equal(lines.at(-1), "20000", "the final line must not be lost to the streamer");
+
+const piped = spawnSync("bash", [guard, "--shell", "cat"], {
+  input: "from-stdin\n",
+  encoding: "utf8",
+  timeout: 30_000,
+});
+assert.equal(piped.stdout.trim(), "from-stdin", "the command must still read stdin");
+
+const before = existingLogs();
+spawnSync("bash", [guard, "--shell", "true"], { encoding: "utf8", timeout: 30_000 });
+assert.equal(existingLogs(), before, "a clean run must leave no log behind");
 
 // A silent command is reported, never judged, and keeps running.
 const silent = runGuard("sleep 45", 3);

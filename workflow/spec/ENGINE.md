@@ -249,6 +249,11 @@ Three properties are load-bearing:
 - **The watch can be re-armed** onto a running process. A one-shot report would
   leave anything judged healthy unwatched for the rest of its life.
 
+On a healthy run the watch must be invisible. It preserves the exit code, keeps
+stdout and stderr separate, delivers the final line, passes stdin through, and
+leaves no file behind. A wrapper that quietly alters a successful command is
+worse than no wrapper, because every later result is measured through it.
+
 Silence is the only trigger. A CPU stall was tried as a second one and dropped:
 I/O-bound work consumes almost no CPU while progressing perfectly well, so it
 fired on healthy commands. Consumed CPU remains in the report, where it
