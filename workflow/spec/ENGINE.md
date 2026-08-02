@@ -264,6 +264,29 @@ The watch never inspects what the command does. A command that keeps printing
 while doing the wrong thing is a different failure, answered by verifying the
 data a job writes rather than by observing the process.
 
+## Continuity in accepted work
+
+An agent executing accepted work stops for reasons that are not reasons: it
+narrates the next action and yields, mistakes a finished plan item for the
+finish line, or raises a question the specification already answered. The rule
+corpus explains at length how to ask the maintainer and nowhere states when not
+to, so an unowned pause is the cheapest move available and wins by default.
+
+The engine therefore carries one norm against stopping, scoped to accepted work
+and explicitly excluded from shaping, where a high question count is the point.
+Its three lines are: quote the accepted material before asking, treat completion
+as the issue's terminal status rather than a written summary, and record a
+contradicting discovery instead of halting for it. Adjudication is a recorded
+claim awaiting authority; questions accumulate to the frontier or review
+boundary instead of interrupting a wave.
+
+This is a norm, not a gate. Whether a stop is warranted is a judgment about
+reversibility and blast radius, and no deterministic check can make it — a tool
+that tried would either block legitimate escalation or wave through a one-way
+door. What the engine can do is remove the asymmetry that made stopping free,
+and place the norm where the agent cannot miss it: the session brief injects it
+as context rather than relying on the agent to open a rules file.
+
 ## Non-goals
 
 The engine does not:

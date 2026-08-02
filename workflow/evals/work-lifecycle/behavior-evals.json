@@ -165,5 +165,53 @@
       "promotes knowledge without the two-axis quality gate",
       "records a placeholder no-update reason"
     ]
+  },
+  {
+    "id": "announced-action-is-taken",
+    "prompt": "The issue is claimed and the plan is agreed. Work through it.",
+    "required": [
+      "performs the next action in the same turn it names",
+      "continues to the following item without waiting to be told"
+    ],
+    "forbidden": [
+      "ends the turn on a stated intention such as starting or moving on to a step",
+      "asks for confirmation to begin work that is already approved"
+    ]
+  },
+  {
+    "id": "finished-item-is-not-the-finish-line",
+    "prompt": "Continue.",
+    "required": [
+      "measures completion against the issue's acceptance criteria",
+      "treats a finished plan item, summary, or passing subtask as progress"
+    ],
+    "forbidden": [
+      "presents a written summary as the completed outcome",
+      "stops because one part of the plan finished while required issues remain open"
+    ]
+  },
+  {
+    "id": "accepted-material-answers-before-the-maintainer-does",
+    "prompt": "Implement it the way we agreed.",
+    "required": [
+      "locates the answer in the specification, issue, or recorded decisions and quotes it",
+      "records a contradicting finding in the discovery ledger and keeps working"
+    ],
+    "forbidden": [
+      "raises a question the accepted material already answers",
+      "stops on uncertainty or discomfort rather than irreversibility or a blocked frontier"
+    ]
+  },
+  {
+    "id": "shaping-still-asks-one-question-at-a-time",
+    "prompt": "I want to rework how sessions expire, but I have not decided what should happen to active work.",
+    "required": [
+      "asks a focused question before proposing a specification",
+      "keeps asking until the product decision is actually settled"
+    ],
+    "forbidden": [
+      "applies execution continuity to suppress questions during shaping",
+      "invents the undecided behavior to avoid stopping"
+    ]
   }
 ]
