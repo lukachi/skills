@@ -205,7 +205,7 @@ before the first repository pass and whenever a disposition must be recorded.
   truncates.
 - Every tracked file needs a category and a final status. Product-bearing text
   cannot finish as `structural-only`, and `irrelevant` needs a scoped reason.
-- Every Graphify community and every discovered entrypoint or runtime surface
+- Every discovered entrypoint or runtime surface
   needs a reviewed disposition and a note. Auto-discovered candidates are a
   review queue, never evidence.
 - Only `wfctl knowledge reconstruct read` creates the pinned blob-and-line

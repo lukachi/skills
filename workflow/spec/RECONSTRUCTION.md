@@ -55,13 +55,29 @@ A completed case rejects:
 
 ### Graphify structural lane
 
-Graphify is a navigation aid. Every indexed source file is reconciled with the
-Git manifest, and every Graphify community receives a final disposition and
-note.
+Graphify is a map of nodes and the relationships between them. Its value is that
+a relationship cannot be seen in a file name: text search finds where a word
+occurs, the graph shows what actually reaches what. It exists so an
+investigation misses less, not so it can name the project's parts.
 
-Communities are technical clusters, not product Areas or capabilities. Each
-repository dossier maps a community to product concepts or explains why no
-mapping is appropriate.
+Communities are technical clusters. They are not product Areas, capabilities, or
+subsystems, and their generated names frequently describe nothing that exists in
+the project. Nothing may be concluded about product meaning from a community
+name or boundary.
+
+Communities are therefore an index for navigation, not a unit of accounting. The
+Git manifest already accounts for every tracked file, and a community is a
+second index over those same files; requiring a disposition for each one adds no
+completeness while demanding thousands of verdicts about a question communities
+cannot answer. Coverage keeps one check here, the one this index can prove: every
+indexed source file must reconcile with the pinned manifest, and drift between
+the graph and the tree is an error.
+
+The evidence obligation moves to the claims the graph supports. A confirmed
+architecture or contract claim asserts that parts relate, which paths and file
+names cannot establish, so it must carry a recorded Graphify query. A query that
+returned nothing useful still satisfies this and is itself a finding: it belongs
+in the repository's source condition as evidence that this lane is degraded here.
 
 Graphify absence never proves project absence.
 
@@ -191,7 +207,10 @@ state, not a verdict.
 
 ## Communities and runtime surfaces
 
-Every Graphify community uses the same state model and requires a note.
+A Graphify community may carry a state and a note when an agent has something to
+record about it, and an `inspected` community still requires a recorded query.
+Neither is demanded of every community, and an undispositioned one does not block
+completion.
 
 Every discovered entrypoint, runtime surface, and boundary records relevant
 paths and a final disposition. Each repository has a final surface audit. An
@@ -201,7 +220,8 @@ The initial ledger conservatively proposes likely entrypoints, boundaries, and
 runtime surfaces from manifest paths. Each proposal remains `pending` until an
 agent inspects or rejects it; discovery is a review queue, never truth.
 
-Unexplained communities or runtime surfaces block completion.
+Unexplained runtime surfaces block completion. Communities do not: they index
+files the manifest already covers.
 
 ## Repository dossiers
 

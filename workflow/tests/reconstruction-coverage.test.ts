@@ -370,3 +370,71 @@ test("explains a stale Graphify pin instead of implying the source is corrupt", 
     },
   );
 });
+
+test("keeps communities as navigation rather than a completion gate", async () => {
+  const { root, graphPath } = await workflowLeafFixture();
+  const metadata = readRepositoryMetadata(root);
+  const ledger = await createReconstructionCoverage(
+    root,
+    metadata.repository,
+    metadata.commit,
+    graphPath,
+    new Date("2026-08-02T10:00:00.000Z"),
+  );
+  for (const file of ledger.manifest.files) {
+    if (file.status === "pending") {
+      file.status = "irrelevant";
+      file.reason = "fixture";
+    }
+  }
+  markSurfaceAudit(ledger, "not-relevant", "fixture");
+  for (const surface of ledger.surfaces) {
+    surface.status = "irrelevant";
+    surface.note = "fixture";
+  }
+
+  assert.equal(
+    ledger.graphify.communities.every((community) => community.status === "pending"),
+    true,
+    "the fixture must leave every community undispositioned",
+  );
+  const issues = await validateReconstructionCoverage(
+    ledger,
+    root,
+    metadata.repository,
+    metadata.commit,
+    graphPath,
+  );
+  assert.deepEqual(
+    issues.filter((issue) => /community/i.test(issue)),
+    [],
+    "an undispositioned community must not block completion; the Git manifest "
+      + "already accounts for the same files",
+  );
+});
+
+test("still reconciles communities against the pinned manifest", async () => {
+  const { root, graphPath } = await workflowLeafFixture();
+  const metadata = readRepositoryMetadata(root);
+  const ledger = await createReconstructionCoverage(
+    root,
+    metadata.repository,
+    metadata.commit,
+    graphPath,
+    new Date("2026-08-02T10:00:00.000Z"),
+  );
+  ledger.graphify.communities[0]!.files = ["src/does-not-exist.ts"];
+
+  const issues = await validateReconstructionCoverage(
+    ledger,
+    root,
+    metadata.repository,
+    metadata.commit,
+    graphPath,
+  );
+  assert.equal(
+    issues.some((issue) => /does not match the bound graph|unknown file/.test(issue)),
+    true,
+    "drift between the graph and the manifest is the one thing this index proves",
+  );
+});

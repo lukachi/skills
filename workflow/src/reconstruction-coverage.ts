@@ -426,14 +426,22 @@ export function validateReconstructionCoverageReceipt(
       issues.push(`Graphify community has a missing or duplicated ID: ${community.id}`);
     }
     seenCommunities.add(community.id);
+    // A community is a second index over files the Git manifest already
+    // accounts for, so a per-community disposition adds no completeness and
+    // asks a question communities cannot answer: they are technical clusters,
+    // never product concepts. Requiring one produced thousands of verdicts
+    // nobody could mean, which is how a whole lane came to be closed by script.
+    // Communities stay navigation; the evidence requirement lives on the claims
+    // they support. Reconciliation against the manifest is kept, because that
+    // is the one thing this index can prove.
     if (!COVERAGE_STATES.includes(community.status)) {
       issues.push(`Graphify community ${community.id} has an unknown status`);
-    } else if (community.status === "pending") {
-      issues.push(`Graphify community ${community.id} coverage is pending`);
-    } else if (community.status === "blocked") {
-      issues.push(`Graphify community ${community.id} coverage is blocked`);
     }
-    if (community.status !== "pending" && !community.note.trim()) {
+    if (
+      community.status !== "pending"
+      && community.status !== "blocked"
+      && !community.note.trim()
+    ) {
       issues.push(`Graphify community ${community.id} requires a review note`);
     }
     if (community.status === "inspected" && community.queries.length === 0) {
@@ -883,12 +891,12 @@ function validateCommunities(
     }
     if (!COVERAGE_STATES.includes(community.status)) {
       issues.push(`Graphify community ${expected.id} has an unknown status`);
-    } else if (community.status === "pending") {
-      issues.push(`Graphify community ${expected.id} coverage is pending`);
-    } else if (community.status === "blocked") {
-      issues.push(`Graphify community ${expected.id} coverage is blocked`);
     }
-    if (community.status !== "pending" && !community.note.trim()) {
+    if (
+      community.status !== "pending"
+      && community.status !== "blocked"
+      && !community.note.trim()
+    ) {
       issues.push(`Graphify community ${expected.id} requires a review note`);
     }
     if (community.status === "inspected" && community.queries.length === 0) {

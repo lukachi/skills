@@ -118,6 +118,12 @@ maintainer expecting the code to move.
 - `history` needs pinned version-control evidence.
 - `product-intent`, `product-meaning`, `architecture`, `ownership`, and
   `contract` need explicit maintainer adjudication.
+- `architecture` and `contract` additionally need a recorded Graphify query,
+  recorded as `graph-query` evidence with the resource
+  `graphify:<repository>#<query>`. They assert that parts relate, and a path or
+  a file name cannot show a relationship. A query that found nothing still
+  counts and is itself a finding about the lane; record it in the dossier's
+  source condition.
 - `uncertainty` records a supported current question, not an unsupported guess.
 
 `confirmed` means the claim may enter current knowledge. `deferred` means it was
@@ -151,8 +157,7 @@ tokens and gaps after graph traversal. No tool proves semantic completeness.
 The coverage ledger keeps three independent accounts:
 
 - every Git-tracked entry, including formats Graphify does not parse;
-- every Graphify community and its product mapping or explicit no-mapping
-  result;
+- every recorded Graphify query and what it established or failed to establish;
 - every declared entrypoint, runtime surface, and boundary.
 
 Read-only exploration remains free to cross a workstream slice: the slice says
@@ -178,7 +183,7 @@ The coverage audit must reconcile:
 - every repository durably registered for a baseline, not merely the checkout
   paths remembered by the current agent;
 - every tracked file, Graphify-indexed or not;
-- every Graphify community without confusing a technical cluster for a product
+- graph-to-manifest reconciliation, without confusing a technical cluster for a product
   Area or capability;
 - every discovered entrypoint, runtime surface, and boundary;
 - exact direct-reading receipts behind source-code evidence;

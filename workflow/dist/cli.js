@@ -19025,12 +19025,8 @@ function validateReconstructionCoverageReceipt(ledger, repository, commit) {
     seenCommunities.add(community.id);
     if (!COVERAGE_STATES.includes(community.status)) {
       issues.push(`Graphify community ${community.id} has an unknown status`);
-    } else if (community.status === "pending") {
-      issues.push(`Graphify community ${community.id} coverage is pending`);
-    } else if (community.status === "blocked") {
-      issues.push(`Graphify community ${community.id} coverage is blocked`);
     }
-    if (community.status !== "pending" && !community.note.trim()) {
+    if (community.status !== "pending" && community.status !== "blocked" && !community.note.trim()) {
       issues.push(`Graphify community ${community.id} requires a review note`);
     }
     if (community.status === "inspected" && community.queries.length === 0) {
@@ -19371,12 +19367,8 @@ function validateCommunities(ledger, expectedGraph) {
     }
     if (!COVERAGE_STATES.includes(community.status)) {
       issues.push(`Graphify community ${expected.id} has an unknown status`);
-    } else if (community.status === "pending") {
-      issues.push(`Graphify community ${expected.id} coverage is pending`);
-    } else if (community.status === "blocked") {
-      issues.push(`Graphify community ${expected.id} coverage is blocked`);
     }
-    if (community.status !== "pending" && !community.note.trim()) {
+    if (community.status !== "pending" && community.status !== "blocked" && !community.note.trim()) {
       issues.push(`Graphify community ${expected.id} requires a review note`);
     }
     if (community.status === "inspected" && community.queries.length === 0) {
@@ -22766,8 +22758,13 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
       const kind = stringValue7(item.kind);
       const resource = stringValue7(item.resource);
       evidenceKinds.add(kind);
-      if (!["source-code", "runtime-check", "version-control", "external-primary"].includes(kind)) {
+      if (!["source-code", "runtime-check", "version-control", "external-primary", "graph-query"].includes(kind)) {
         issues.push(`${itemPrefix}.kind is not an independent evidence class`);
+      }
+      if (kind === "graph-query" && !isGraphQueryResource(resource)) {
+        issues.push(
+          `${itemPrefix}.resource must name the repository and the Graphify query, as graphify:<repository>#<query>`
+        );
       }
       if (kind === "source-code" && !isPinnedCodeResource2(resource)) {
         issues.push(`${itemPrefix}.resource must pin repository, commit, and path`);
@@ -22790,6 +22787,11 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
     }
     if (disposition === "confirmed" && claimClass === "history" && !evidenceKinds.has("version-control")) {
       issues.push(`${prefix}: confirmed history requires pinned version-control evidence`);
+    }
+    if (disposition === "confirmed" && ["architecture", "contract"].includes(claimClass) && !evidenceKinds.has("graph-query")) {
+      issues.push(
+        `${prefix}: confirmed ${claimClass} requires a recorded Graphify query; a relationship cannot be established from file paths`
+      );
     }
     if (disposition === "confirmed" && normativeClaim) {
       const decision = recordValue7(candidate.maintainer_decision);
@@ -23564,6 +23566,9 @@ function containsUntrustedResource2(value) {
 }
 function isPinnedCodeResource2(value) {
   return /^git:.+@[0-9a-f]{40}#[^#\s]+$/i.test(value);
+}
+function isGraphQueryResource(value) {
+  return /^graphify:[^#\s]+#\S.*$/.test(value);
 }
 function isVersionControlResource2(value) {
   return /^git:.+@[0-9a-f]{40}(?:#[^#\s]+)?$/i.test(value) || /^https?:\/\/\S+\/(?:pull|merge_requests|commit|commits)\/\S+$/i.test(value);

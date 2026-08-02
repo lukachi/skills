@@ -2285,8 +2285,17 @@ function reconstructionMetadataIssues(
       const kind = stringValue(item.kind);
       const resource = stringValue(item.resource);
       evidenceKinds.add(kind);
-      if (!["source-code", "runtime-check", "version-control", "external-primary"].includes(kind)) {
+      if (
+        !["source-code", "runtime-check", "version-control", "external-primary", "graph-query"]
+          .includes(kind)
+      ) {
         issues.push(`${itemPrefix}.kind is not an independent evidence class`);
+      }
+      if (kind === "graph-query" && !isGraphQueryResource(resource)) {
+        issues.push(
+          `${itemPrefix}.resource must name the repository and the Graphify query, `
+            + "as graphify:<repository>#<query>",
+        );
       }
       if (kind === "source-code" && !isPinnedCodeResource(resource)) {
         issues.push(`${itemPrefix}.resource must pin repository, commit, and path`);
@@ -2312,6 +2321,20 @@ function reconstructionMetadataIssues(
     }
     if (disposition === "confirmed" && claimClass === "history" && !evidenceKinds.has("version-control")) {
       issues.push(`${prefix}: confirmed history requires pinned version-control evidence`);
+    }
+    // Architecture and contracts are claims about how parts relate, and paths
+    // and file names do not show a relationship. The graph is the one tool here
+    // that does, so a traversal must be on the record — including one that
+    // returned nothing useful, which is itself a finding about the lane.
+    if (
+      disposition === "confirmed"
+      && ["architecture", "contract"].includes(claimClass)
+      && !evidenceKinds.has("graph-query")
+    ) {
+      issues.push(
+        `${prefix}: confirmed ${claimClass} requires a recorded Graphify query; `
+          + "a relationship cannot be established from file paths",
+      );
     }
     if (
       disposition === "confirmed"
@@ -3319,6 +3342,10 @@ function containsUntrustedResource(value: string): boolean {
 
 function isPinnedCodeResource(value: string): boolean {
   return /^git:.+@[0-9a-f]{40}#[^#\s]+$/i.test(value);
+}
+
+function isGraphQueryResource(value: string): boolean {
+  return /^graphify:[^#\s]+#\S.*$/.test(value);
 }
 
 function isVersionControlResource(value: string): boolean {

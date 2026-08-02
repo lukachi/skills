@@ -129,7 +129,7 @@ Reconstruction uses the complete pinned Git tree as its enumeration authority.
 After start, operate the CLI-owned coverage ledger through `wfctl knowledge
 reconstruct coverage|read|files|community|surface|surfaces`; never edit its
 JSON manually. Account for every tracked file, including Graphify-unindexed
-formats, every Graphify community, and every discovered entrypoint/runtime
+formats, graph-to-manifest reconciliation, and every discovered entrypoint/runtime
 surface. Only `wfctl ... reconstruct read` creates the exact blob-and-line
 receipt required by an inspected text file and source-code evidence. Pending,
 blocked, unclassified, unexplained structural-only or irrelevant entries, and
