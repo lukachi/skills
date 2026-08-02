@@ -154,6 +154,20 @@ what was once believed. It is downgraded as evidence, not discarded as input,
 and a source that contradicts itself across time is reconciled by that
 chronology rather than by choosing one version.
 
+**Coverage is measured, not inferred.** A document establishes what it covers
+and nothing past its edge, and where that edge falls is a fact to observe rather
+than a quality to judge. Reading four files and concluding that the
+documentation lane establishes nothing, then reading seventy and concluding it
+is the project's authoritative statement of intent, is the same mistake twice: a
+verdict about a class drawn from a sample, corrected by overshooting. Unfinished
+is not unreliable. A nine-page handbook is exact within its nine pages and
+silent past them, and that silence is not a negative finding about anything.
+Establish what a document covers, what it declares out of scope, and when it was
+written, then use it strictly inside that. A document that names its own
+boundary — an unbuilt layer, an open to-do, a coverage figure — is stating
+intent as of its writing, which is chronology to reconcile rather than current
+truth to adopt.
+
 **`unknown` is a result.** When no source can establish intended meaning, the
 correct baseline records `intent: unknown` beside its observed delivery. A
 baseline where most capabilities carry unknown intent is an accurate description

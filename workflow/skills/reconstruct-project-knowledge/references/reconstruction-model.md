@@ -42,6 +42,14 @@ believed. Downgrade it as evidence; do not drop it as input. Where one source
 contradicts itself over time, reconcile by chronology instead of picking a
 version.
 
+**Measure what a document covers before using it.** An unfinished document is
+not an unreliable one. It is exact inside its edge and silent past it, and the
+silence establishes nothing either way. Judging the lane from a sample produces
+a verdict that a fuller reading then overshoots in the opposite direction, and
+both verdicts are wrong for the same reason. Record what the document covers,
+what it puts out of scope, and when it was written, and read it as a statement
+of intent at that date rather than as current truth.
+
 **Report `unknown` rather than inventing.** If no source establishes intended
 meaning, record `intent: unknown` next to the observed delivery and put the
 question to the maintainer. A baseline that is mostly unknown intent is the
