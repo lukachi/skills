@@ -189,6 +189,11 @@ function corpusCollector(): StateCollector {
  * reconstruction packets all day leaves semantic search behind on exactly the
  * material it just produced and is never told. `qmd status` answers in about
  * a fifth of a second and prints the pending line only when work is waiting.
+ *
+ * This awaits nobody. Embedding is needed before retrieval rather than after
+ * writing, so the obligation belongs to the paths that search — they already
+ * read `qmd status` — and a signal that claimed the agent owed work here would
+ * cost a turn on every reply until someone ran a maintenance command.
  */
 function retrievalCollector(): StateCollector {
   return {
@@ -212,7 +217,6 @@ function retrievalCollector(): StateCollector {
         level: "info",
         summary: "Indexed documents have no semantic vectors; search falls back to lexical BM25",
         facts: { documents: pending, command: "qmd embed" },
-        awaits: "agent",
       }];
     },
   };

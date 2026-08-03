@@ -85,10 +85,12 @@ or resuming `reconstruct-project-knowledge`.
 - Run fan-out in bounded waves. Start broad, fan in, compare results with the
   complete deterministic frontier, and create later workers only for concrete
   gaps, contradictions, cross-repository links, or high-risk negative claims.
-- Run `qmd embed` after merging a wave. Indexing and embedding are separate:
-  `qmd update` records the packets and marks them as needing vectors, and only
-  `qmd embed` builds them. Skipping it leaves the next wave searching the
-  material this one produced with lexical BM25 alone.
+- Embed before retrieving, not after writing. Indexing and embedding are
+  separate: `qmd update` records new packets and marks them as needing vectors,
+  and only `qmd embed` builds them. A merged wave is the usual moment because
+  the next wave searches what it produced, but the trigger is the search rather
+  than the merge — `qmd status` reports what is pending, and running a semantic
+  query past that line searches the newest material with lexical BM25 alone.
 - Use a per-resource write barrier during a wave: never let a worker and the
   orchestrator mutate the same intake case or packet concurrently. Accepted
   packets from completed workers may be reviewed while unrelated workers keep

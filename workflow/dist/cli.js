@@ -36965,8 +36965,7 @@ function retrievalCollector() {
         domain: "corpus",
         level: "info",
         summary: "Indexed documents have no semantic vectors; search falls back to lexical BM25",
-        facts: { documents: pending, command: "qmd embed" },
-        awaits: "agent"
+        facts: { documents: pending, command: "qmd embed" }
       }];
     }
   };
