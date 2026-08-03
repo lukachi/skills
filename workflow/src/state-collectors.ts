@@ -248,11 +248,17 @@ function reconstructionCollector(): StateCollector {
           totals.communities += communities.length;
           totals.pendingCommunities += communities.filter(isPending).length;
         }
+        const decisions = pendingDecisions(metadata);
+        const frontierClear = totals.pendingFiles === 0 && totals.files > 0;
         signals.push({
-          id: "reconstruction.active",
+          id: frontierClear && decisions > 0
+            ? "reconstruction.awaiting-decision"
+            : "reconstruction.active",
           domain: "reconstruction",
           level: "attention",
-          summary: "A reconstruction is in progress",
+          summary: frontierClear && decisions > 0
+            ? "A reconstruction has read its frontier and is waiting on a maintainer decision"
+            : "A reconstruction is in progress",
           subject: entry.id,
           facts: {
             title: stringValue(metadata.title) || entry.id,
@@ -262,11 +268,12 @@ function reconstructionCollector(): StateCollector {
             files: totals.files,
             communitiesReviewed: totals.communities - totals.pendingCommunities,
             communities: totals.communities,
+            ...(decisions > 0 ? { decisions } : {}),
           },
           ...(stringValue(metadata.updated_at)
             ? { since: stringValue(metadata.updated_at) }
             : {}),
-          awaits: "agent",
+          awaits: frontierClear && decisions > 0 ? "maintainer" : "agent",
         });
         signals.push(...checkpointSignals("reconstruction", entry.id, metadata, context));
         signals.push(...await workstreamSignals(entry));
@@ -291,6 +298,21 @@ function reconstructionCollector(): StateCollector {
   };
 }
 
+/**
+ * Candidates whose `maintainer_decision` is `required` and unanswered. A case
+ * that has finished reading and holds one of these is not waiting on the agent
+ * for anything: every remaining move is the maintainer's. Reporting it as
+ * agent-owned work is how eleven finished reviews sat unmentioned for a week
+ * while the one rule written to protect the maintainer's attention — a signal
+ * with `awaits: maintainer` is a question for them — had nothing to fire on.
+ */
+function pendingDecisions(metadata: Record<string, unknown>): number {
+  return recordArray(metadata.candidate_claims).filter((candidate) => {
+    const decision = recordValue(candidate.maintainer_decision);
+    return stringValue(decision?.status) === "required" && !stringValue(decision?.at);
+  }).length;
+}
+
 function intakeCollector(): StateCollector {
   return {
     id: "intake",
@@ -307,22 +329,43 @@ function intakeCollector(): StateCollector {
         const blocked = sources.filter((source) =>
           source.status === "needs-maintainer" || source.status === "unreadable"
         ).length;
-        signals.push({
-          id: "intake.active",
-          domain: "intake",
-          level: "attention",
-          summary: "A raw-intake case is in progress",
-          subject: entry.id,
-          facts: {
-            title: stringValue(metadata.title) || entry.id,
-            reviewed,
-            sources: sources.length,
-          },
-          ...(stringValue(metadata.updated_at)
-            ? { since: stringValue(metadata.updated_at) }
-            : {}),
-          awaits: "agent",
-        });
+        const decisions = pendingDecisions(metadata);
+        const readingDone = reviewed === sources.length && sources.length > 0;
+        const since = stringValue(metadata.updated_at)
+          ? { since: stringValue(metadata.updated_at) }
+          : {};
+        signals.push(
+          readingDone && decisions > 0
+            ? {
+              id: "intake.awaiting-decision",
+              domain: "intake",
+              level: "attention",
+              summary: "A raw-intake case is read and waiting on a maintainer decision",
+              subject: entry.id,
+              facts: {
+                title: stringValue(metadata.title) || entry.id,
+                sources: sources.length,
+                decisions,
+              },
+              ...since,
+              awaits: "maintainer",
+            }
+            : {
+              id: "intake.active",
+              domain: "intake",
+              level: "attention",
+              summary: "A raw-intake case is in progress",
+              subject: entry.id,
+              facts: {
+                title: stringValue(metadata.title) || entry.id,
+                reviewed,
+                sources: sources.length,
+                ...(decisions > 0 ? { decisions } : {}),
+              },
+              ...since,
+              awaits: "agent",
+            },
+        );
         if (blocked > 0) {
           signals.push({
             id: "intake.blocked-sources",

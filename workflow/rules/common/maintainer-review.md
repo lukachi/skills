@@ -59,6 +59,14 @@ product-level description yet, and recording that gap is part of the answer.
 One decision per packet. Several stacked in one message read as a status report
 and get answered as none of them.
 
+Report waiting decisions by name and subject, or do not report them. Never by
+count. "Eleven cases are gate-clean and none can close without your decision"
+is accurate, reads as brevity, and works as concealment: it says nothing about
+what the eleven contain, and the longer the queue the more it hides. Name each
+one and what it turns on, one at a time; if that is too long for a single
+message, that is a fact about the backlog, not a reason to compress it into a
+number.
+
 Confirming a written record is the exception, and it is one decision rather than
 many. When the material already carries the maintainer's own dated decisions,
 ask whether they still stand — once for the record, with named exceptions —

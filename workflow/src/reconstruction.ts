@@ -1624,7 +1624,7 @@ export async function repinReconstructionRepository(
   );
 
   const invalidated = new Set(rebase.invalidatedReceipts);
-  const affectedClaims = recordArray(document.metadata.candidates)
+  const affectedClaims = recordArray(document.metadata.candidate_claims)
     .filter((candidate) =>
       stringArray(candidate.evidence_refs).some((reference) => invalidated.has(reference))
     )

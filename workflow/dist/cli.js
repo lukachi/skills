@@ -22260,7 +22260,7 @@ async function repinReconstructionRepository(options) {
     "utf8"
   );
   const invalidated = new Set(rebase.invalidatedReceipts);
-  const affectedClaims = recordArray4(document3.metadata.candidates).filter(
+  const affectedClaims = recordArray4(document3.metadata.candidate_claims).filter(
     (candidate) => stringArray6(candidate.evidence_refs).some((reference) => invalidated.has(reference))
   ).map((candidate) => stringValue7(candidate.id)).filter((id) => id !== "").sort();
   return {
@@ -36999,11 +36999,13 @@ function reconstructionCollector() {
           totals.communities += communities.length;
           totals.pendingCommunities += communities.filter(isPending).length;
         }
+        const decisions = pendingDecisions(metadata);
+        const frontierClear = totals.pendingFiles === 0 && totals.files > 0;
         signals2.push({
-          id: "reconstruction.active",
+          id: frontierClear && decisions > 0 ? "reconstruction.awaiting-decision" : "reconstruction.active",
           domain: "reconstruction",
           level: "attention",
-          summary: "A reconstruction is in progress",
+          summary: frontierClear && decisions > 0 ? "A reconstruction has read its frontier and is waiting on a maintainer decision" : "A reconstruction is in progress",
           subject: entry.id,
           facts: {
             title: stringValue10(metadata.title) || entry.id,
@@ -37012,10 +37014,11 @@ function reconstructionCollector() {
             filesReviewed: totals.files - totals.pendingFiles,
             files: totals.files,
             communitiesReviewed: totals.communities - totals.pendingCommunities,
-            communities: totals.communities
+            communities: totals.communities,
+            ...decisions > 0 ? { decisions } : {}
           },
           ...stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {},
-          awaits: "agent"
+          awaits: frontierClear && decisions > 0 ? "maintainer" : "agent"
         });
         signals2.push(...checkpointSignals("reconstruction", entry.id, metadata, context));
         signals2.push(...await workstreamSignals(entry));
@@ -37038,6 +37041,12 @@ function reconstructionCollector() {
     }
   };
 }
+function pendingDecisions(metadata) {
+  return recordArray7(metadata.candidate_claims).filter((candidate) => {
+    const decision = recordValue10(candidate.maintainer_decision);
+    return stringValue10(decision?.status) === "required" && !stringValue10(decision?.at);
+  }).length;
+}
 function intakeCollector() {
   return {
     id: "intake",
@@ -37054,20 +37063,39 @@ function intakeCollector() {
         const blocked = sources.filter(
           (source) => source.status === "needs-maintainer" || source.status === "unreadable"
         ).length;
-        signals2.push({
-          id: "intake.active",
-          domain: "intake",
-          level: "attention",
-          summary: "A raw-intake case is in progress",
-          subject: entry.id,
-          facts: {
-            title: stringValue10(metadata.title) || entry.id,
-            reviewed,
-            sources: sources.length
-          },
-          ...stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {},
-          awaits: "agent"
-        });
+        const decisions = pendingDecisions(metadata);
+        const readingDone = reviewed === sources.length && sources.length > 0;
+        const since = stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {};
+        signals2.push(
+          readingDone && decisions > 0 ? {
+            id: "intake.awaiting-decision",
+            domain: "intake",
+            level: "attention",
+            summary: "A raw-intake case is read and waiting on a maintainer decision",
+            subject: entry.id,
+            facts: {
+              title: stringValue10(metadata.title) || entry.id,
+              sources: sources.length,
+              decisions
+            },
+            ...since,
+            awaits: "maintainer"
+          } : {
+            id: "intake.active",
+            domain: "intake",
+            level: "attention",
+            summary: "A raw-intake case is in progress",
+            subject: entry.id,
+            facts: {
+              title: stringValue10(metadata.title) || entry.id,
+              reviewed,
+              sources: sources.length,
+              ...decisions > 0 ? { decisions } : {}
+            },
+            ...since,
+            awaits: "agent"
+          }
+        );
         if (blocked > 0) {
           signals2.push({
             id: "intake.blocked-sources",
