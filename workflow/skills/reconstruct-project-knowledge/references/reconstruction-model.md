@@ -87,6 +87,33 @@ Examples:
 Document lifecycle (`draft`, `stable`, `deprecated`) is separate. It describes
 the knowledge file, not product delivery.
 
+## Demonstration surfaces are not delivery
+
+Stories, fixtures, test doubles, benchmark harnesses, and showcase pages exist
+to exercise a product, not to be one. Code that a reader meets first inside one
+of them reads exactly like shipped behavior — it compiles, it runs, it has a
+screen — and counting it as delivery is the most flattering mistake a baseline
+can make, because it inflates the axis the maintainer trusts most.
+
+Two situations look identical from a file listing and land in different places
+on the axis that already exists. No new vocabulary is needed for either.
+
+| What is true | Delivery | The debt |
+| --- | --- | --- |
+| The behavior exists only inside a story, test, or fixture; deleting that file leaves nothing behind | `absent`, or `partial` when a real fragment exists beside it | implementation |
+| The code lives in a product package, but the only thing that ever reaches it is a test or a story | `implemented`, never `verified` | exercise against the real path |
+
+`verified` means something ran the production path and someone checked the
+result. A green test proves the test passed. It moves nothing to `verified` on
+its own, and a suite that only calls the code it ships with is a closed loop.
+
+Establishing which situation holds is a relationship question — what actually
+reaches this symbol — so it takes graph traversal and a recorded query, not a
+file listing. Text search cannot answer it: a symbol exported from a story file
+and a symbol imported by one are the same match. Record which surfaces were
+checked, and where the answer is unknown, say so rather than assuming the
+generous reading.
+
 ## When the maintainer says it should work differently
 
 This is the most common adjudication answer and it carries two different

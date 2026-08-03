@@ -135,9 +135,14 @@ project records that footing in its source, because it has the shape of
 established knowledge and the reach of one task. A reconstruction stays a
 recommendation and never becomes a precondition for doing the work.
 
-Fixtures, mocks, demonstrations, and fakes must be identified during
-verification and cannot establish production delivery unless they are the
-explicit accepted scope.
+Fixtures, mocks, demonstrations, stories, showcase pages, and fakes must be
+identified during verification and cannot establish production delivery unless
+they are the explicit accepted scope. The same holds when reading an existing
+project rather than reviewing a change: behavior found only inside a
+demonstration surface is not delivered, and behavior whose only caller is a test
+is implemented but never verified. Both look like shipped work in a file
+listing, and telling them apart is a question about what reaches the code, which
+takes graph traversal rather than search.
 
 The agent updates the owning semantic record after every material discussion
 or investigation turn. Consequential new understanding passes an
