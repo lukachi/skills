@@ -331,11 +331,20 @@ function intakeCollector(): StateCollector {
         ).length;
         const decisions = pendingDecisions(metadata);
         const readingDone = reviewed === sources.length && sources.length > 0;
+        // A record that says it is blocked is blocked. Gating the maintainer's
+        // queue on unanswered candidates alone made the queue shed a case the
+        // moment its last candidate was answered, so the more finished a case
+        // was the more reliably it vanished — and the stop guard, reading the
+        // same signal, pushed every new session to re-read sources whose own
+        // next action says not to.
+        const checkpoint = recordValue(metadata.checkpoint);
+        const heldForMaintainer = stringValue(checkpoint?.status) === "blocked"
+          || (Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0);
         const since = stringValue(metadata.updated_at)
           ? { since: stringValue(metadata.updated_at) }
           : {};
         signals.push(
-          readingDone && decisions > 0
+          readingDone && (decisions > 0 || heldForMaintainer)
             ? {
               id: "intake.awaiting-decision",
               domain: "intake",
@@ -346,6 +355,7 @@ function intakeCollector(): StateCollector {
                 title: stringValue(metadata.title) || entry.id,
                 sources: sources.length,
                 decisions,
+                ...(heldForMaintainer ? { blocked: true } : {}),
               },
               ...since,
               awaits: "maintainer",

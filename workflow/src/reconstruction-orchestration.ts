@@ -896,19 +896,28 @@ export function reconstructionWorkstreamSetIssues(
       "orchestration independent review actor must be fresh, not a workstream owner; record final assurance in the parent case",
     );
   }
-  const reviewHostRun = `${stringValue(review?.host)}\u0000${stringValue(review?.run_id)}`;
+  // A run id the host refused to expose is recorded as `unavailable:<why>`,
+  // and every agent on that host records the same words. Comparing those
+  // strings turns two unknowns into one shared known run and fails a review
+  // that was genuinely independent — while an agent that invented a plausible
+  // id would pass. Identity that was never issued cannot establish sameness.
+  const identified = (value: string) => value !== "" && !value.startsWith("unavailable:");
+  const reviewRunId = stringValue(review?.run_id);
+  const reviewHostRun = `${stringValue(review?.host)}\u0000${reviewRunId}`;
   const workerHostRuns = new Set(
     records.flatMap((record) => {
       const routing = recordValue(record.document.metadata.routing);
-      return recordArray(routing?.execution_history).map((execution) =>
-        `${stringValue(execution.host)}\u0000${stringValue(execution.run_id)}`
-      );
+      return recordArray(routing?.execution_history)
+        .filter((execution) => identified(stringValue(execution.run_id)))
+        .map((execution) =>
+          `${stringValue(execution.host)}\u0000${stringValue(execution.run_id)}`
+        );
     }),
   );
   if (
     stringValue(review?.assurance) !== "maintainer"
     && stringValue(review?.host)
-    && stringValue(review?.run_id)
+    && identified(reviewRunId)
     && workerHostRuns.has(reviewHostRun)
   ) {
     issues.push(

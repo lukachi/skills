@@ -21116,16 +21116,18 @@ function reconstructionWorkstreamSetIssues(records, metadata) {
       "orchestration independent review actor must be fresh, not a workstream owner; record final assurance in the parent case"
     );
   }
-  const reviewHostRun = `${stringValue6(review?.host)}\0${stringValue6(review?.run_id)}`;
+  const identified = (value) => value !== "" && !value.startsWith("unavailable:");
+  const reviewRunId = stringValue6(review?.run_id);
+  const reviewHostRun = `${stringValue6(review?.host)}\0${reviewRunId}`;
   const workerHostRuns = new Set(
     records.flatMap((record2) => {
       const routing = recordValue6(record2.document.metadata.routing);
-      return recordArray3(routing?.execution_history).map(
+      return recordArray3(routing?.execution_history).filter((execution) => identified(stringValue6(execution.run_id))).map(
         (execution) => `${stringValue6(execution.host)}\0${stringValue6(execution.run_id)}`
       );
     })
   );
-  if (stringValue6(review?.assurance) !== "maintainer" && stringValue6(review?.host) && stringValue6(review?.run_id) && workerHostRuns.has(reviewHostRun)) {
+  if (stringValue6(review?.assurance) !== "maintainer" && stringValue6(review?.host) && identified(reviewRunId) && workerHostRuns.has(reviewHostRun)) {
     issues.push(
       "orchestration independent review must use a host run distinct from every research workstream"
     );
@@ -37102,9 +37104,11 @@ function intakeCollector() {
         ).length;
         const decisions = pendingDecisions(metadata);
         const readingDone = reviewed === sources.length && sources.length > 0;
+        const checkpoint = recordValue10(metadata.checkpoint);
+        const heldForMaintainer = stringValue10(checkpoint?.status) === "blocked" || Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0;
         const since = stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {};
         signals2.push(
-          readingDone && decisions > 0 ? {
+          readingDone && (decisions > 0 || heldForMaintainer) ? {
             id: "intake.awaiting-decision",
             domain: "intake",
             level: "attention",
@@ -37113,7 +37117,8 @@ function intakeCollector() {
             facts: {
               title: stringValue10(metadata.title) || entry.id,
               sources: sources.length,
-              decisions
+              decisions,
+              ...heldForMaintainer ? { blocked: true } : {}
             },
             ...since,
             awaits: "maintainer"
