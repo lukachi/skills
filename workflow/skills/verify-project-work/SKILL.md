@@ -56,6 +56,15 @@ two-axis knowledge quality gate, validate every changed concept, and list exact
 concepts under `knowledge_promotion`. Otherwise record a concrete no-update
 reason.
 
+A concept promoted from a bundle in a project with no reconstructed baseline
+carries the same shape as one established by whole-project reading and a much
+narrower footing: it was derived from whatever this task happened to touch. Say
+so in its `maintainer-decision` source — name the bundle and state that no
+reconstruction has covered this subject — so a later baseline knows to re-derive
+it rather than treat it as already settled. Promote it anyway: knowledge grown
+from real work is better than none, and the cost of the shortcut is only hidden
+when nobody writes it down.
+
 Present acceptance results, engineering findings, checks, deviations, risks,
 and knowledge delta as one completion review packet. Record the maintainer's
 explicit decision through the approval command; never write the receipt by

@@ -59,6 +59,25 @@ root`, update only the returned bundle files, and inspect implementation only
 from exact `Code roots`. Do not treat the knowledge repository as the
 implementation checkout.
 
+## When there is no baseline yet
+
+An existing project installed into this workflow starts with an empty or barely
+populated `knowledge/`, and that is a supported state, not an error. A
+reconstruction is expensive enough that nobody runs one before their first fix,
+so most first tasks in a real repository run without one.
+
+Report absence rather than a clean result. "No conflicts with curated knowledge"
+is literally true against an empty corpus and tells the reader nothing, while
+reading exactly like a completed check. Record instead that no curated concept
+covers this work, that the contract is therefore unaligned by absence rather
+than by verification, and what the alignment rested on instead — pinned source,
+tests, maintainer statements. The same applies to a populated corpus that simply
+has nothing about this Area: coverage is per-subject, not per-repository.
+
+Recommend a reconstruction when the gap is material and say what it would
+establish, then proceed if the maintainer declines. It is a recommendation, and
+it never becomes a precondition for doing the work.
+
 ## Conflicts
 
 - `raw/` is neither evidence nor current truth. It is an untrusted clue source

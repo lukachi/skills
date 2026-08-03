@@ -122,6 +122,19 @@ It must pass through:
 8. knowledge promotion or an explicit no-update reason;
 9. explicit completion review and honest archival.
 
+Step four holds even when there is nothing to align against. An existing project
+installed into this workflow begins with an empty corpus, and a reconstruction
+costs enough that nobody runs one before their first fix, so working without a
+baseline is the ordinary first mode rather than an exception. No capability
+requires a populated corpus except the audit, which has no subject without one.
+What the engine owes that state is honesty in two places: alignment reports that
+nothing curated covers the work and what it rested on instead, rather than
+reporting no conflicts, which is true against an empty corpus and reads like a
+completed check; and a concept promoted from a bundle in an unreconstructed
+project records that footing in its source, because it has the shape of
+established knowledge and the reach of one task. A reconstruction stays a
+recommendation and never becomes a precondition for doing the work.
+
 Fixtures, mocks, demonstrations, and fakes must be identified during
 verification and cannot establish production delivery unless they are the
 explicit accepted scope.

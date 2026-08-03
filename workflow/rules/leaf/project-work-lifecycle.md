@@ -9,6 +9,10 @@ repository owns significant-work bundles and current project knowledge.
 3. Use `specify-project-change` for a bounded contract or
    `shape-project-direction` only for explicit Wayfinder.
 4. Align the contract with curated knowledge and analyze source Graphify-first.
+   An empty or uncovering corpus is a supported state in an existing project:
+   report that nothing curated covers this work and what the alignment rested on
+   instead, rather than reporting no conflicts. Recommend a reconstruction when
+   the gap is material; never treat one as a precondition for the work.
 5. Record explicit framing approval before code edits.
 6. Use `split-project-change` for multi-session work. It creates central issues,
    never leaf-local tickets.
