@@ -285,8 +285,12 @@ data a job writes rather than by observing the process.
 ## Continuity in accepted work
 
 An agent executing accepted work stops for reasons that are not reasons: it
-narrates the next action and yields, mistakes a finished plan item for the
-finish line, or raises a question the specification already answered. The rule
+narrates the next action and yields, closes on "the work continues by itself"
+while nothing continues, mistakes a finished plan item for the finish line, or
+raises a question the specification already answered. Framing the norm around a
+stated next action catches only the visible half; the test is whether the agent
+is waiting on the maintainer, which holds whether or not anything was
+announced. The rule
 corpus explains at length how to ask the maintainer and nowhere states when not
 to, so an unowned pause is the cheapest move available and wins by default.
 

@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-// Stop hook. A turn that ends on a stated next action is the most common way
-// autonomous work dies: nothing is blocked, nothing failed, and the transcript
-// simply stops. Instructions do not fix it — the managed agent block already
-// says "announce it and continue" and is ignored. What fixes it is costing the
-// model another turn, because inside that turn the announced action is the
-// cheapest thing to do.
+// Stop hook. Autonomous work dies when a turn ends while nothing is blocked:
+// nothing failed, the transcript simply stops, and hours pass before anyone
+// notices. Instructions do not fix it — the managed agent block already says to
+// continue and is ignored. What fixes it is costing the model another turn,
+// because inside that turn the next action is the cheapest thing to do.
+//
+// The question asked is whether the agent is waiting on the maintainer, not
+// what its last message said. Framing it around a stated next action missed the
+// larger half of the failure: a turn that ends on "the work continues by
+// itself" or "the rest can wait" announces nothing, blocks on nothing, and
+// parks just as completely.
 //
 // This never decides whether the work is done. It reports what the turn ended
 // with and what the repository says is outstanding, and hands the judgment
@@ -199,14 +204,18 @@ function reason(message, awaiting) {
     "The repository reports work awaiting the agent:",
     outstanding,
     "",
-    "If that text stated a next action that was not taken, take it now.",
-    "Continue while there is work you can do without the maintainer; this check",
-    "keeps returning as long as each turn moves the repository, and releases on",
-    "the first turn that does not.",
+    "Ending a turn hands control to the maintainer, so the question is not what",
+    "your last message said. It is whether you are waiting on them. If you are",
+    "not, you have not finished: take the next action you can take alone. That",
+    "includes an action you named, and equally one you never mentioned.",
     "",
-    "If the outstanding work genuinely needs the maintainer, say what you need",
-    "from them in one line and end. Do not acknowledge this check, agree with",
-    "it, explain yourself, or answer with an empty turn.",
+    "If you are waiting on them, name in one line what you need and end. \"The",
+    "work continues by itself\" is not that line — nothing continues once the",
+    "turn is over.",
+    "",
+    "This check returns while each turn moves the repository and releases on the",
+    "first turn that does not. Do not acknowledge it, agree with it, explain",
+    "yourself, or answer with an empty turn.",
   ].join("\n");
 }
 
