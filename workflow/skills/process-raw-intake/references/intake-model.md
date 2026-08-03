@@ -162,7 +162,12 @@ one question with named exceptions, not twenty questions.
 - `change`: reviewed proposed work with an active owner under
   `changes/active/`; do not present it as current knowledge.
 - `capture`: useful pending material without an active or curated owner. Its
-  destination is one receipt under `changes/inbox/`, not project truth.
+  destination is one receipt under `changes/inbox/`, not project truth. Set
+  `awaits: maintainer` on a capture carrying candidates only they can settle —
+  `intent_state: unknown`, a decision to confirm or revoke, a route between
+  materially different options — and `awaits: agent` on material that still
+  needs placing. Both land in the same directory, and without the distinction a
+  queue of open questions reads as housekeeping and reaches nobody.
 - `case-only`: rejected or unresolved material. It remains discoverable in the
   operational case but produces no authoritative derivative.
 

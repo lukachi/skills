@@ -34903,6 +34903,7 @@ async function createCapture(options) {
     title: requireText2(options.title, "Capture title"),
     status: "pending",
     created_at: now.toISOString(),
+    awaits: options.awaits ?? "agent",
     source: durableSource(context.source)
   };
   await writeFile9(path, serializeWorkSpec(template), {
@@ -34933,6 +34934,7 @@ async function listCaptures(target) {
       status: "pending",
       path,
       createdAt: parsed.createdAt,
+      awaits: parsed.awaits,
       legacy: parsed.legacy
     });
   }
@@ -35008,7 +35010,8 @@ function parsePendingCapture(content3, path) {
     id,
     title: requireText2(document3.metadata.title, `${path}: title`),
     createdAt: requireText2(document3.metadata.created_at, `${path}: created_at`),
-    legacy
+    legacy,
+    awaits: document3.metadata.awaits === "maintainer" ? "maintainer" : "agent"
   };
 }
 async function normalizeDestinations(knowledgeRoot, inputs) {
@@ -37179,16 +37182,39 @@ function inboxCollector() {
       if (captures.captures.length === 0) {
         return [];
       }
-      const oldest = captures.captures.map((capture) => capture.createdAt).filter(Boolean).sort()[0];
-      return [{
-        id: "inbox.pending",
-        domain: "inbox",
-        level: "attention",
-        summary: "Captures are waiting for triage",
-        facts: { captures: captures.captures.length },
-        ...oldest ? { since: oldest } : {},
-        awaits: "agent"
-      }];
+      const since = (entries) => entries.map((capture) => capture.createdAt).filter(Boolean).sort()[0];
+      const decisions = captures.captures.filter((capture) => capture.awaits === "maintainer");
+      const triage = captures.captures.filter((capture) => capture.awaits !== "maintainer");
+      const signals2 = [];
+      if (decisions.length > 0) {
+        const oldest = since(decisions);
+        signals2.push({
+          id: "inbox.awaiting-decision",
+          domain: "inbox",
+          level: "attention",
+          summary: "Captures are waiting for a maintainer decision",
+          facts: {
+            captures: decisions.length,
+            command: "wfctl work capture list",
+            subjects: decisions.map((capture) => capture.id).join(", ")
+          },
+          ...oldest ? { since: oldest } : {},
+          awaits: "maintainer"
+        });
+      }
+      if (triage.length > 0) {
+        const oldest = since(triage);
+        signals2.push({
+          id: "inbox.pending",
+          domain: "inbox",
+          level: "attention",
+          summary: "Captures are waiting for triage",
+          facts: { captures: triage.length },
+          ...oldest ? { since: oldest } : {},
+          awaits: "agent"
+        });
+      }
+      return signals2;
     }
   };
 }
@@ -38424,11 +38450,15 @@ function workCaptureCommand() {
     "add",
     new Command().description("Add material that matters but has no active or curated owner yet.").arguments("<slug:string>").option("-t, --target <path:string>", "Workflow repository.", { default: "." }).option("--title <title:string>", "Human-readable capture title.", {
       required: true
-    }).option("--json", "Print machine-readable JSON.").action(async (options, slug) => {
+    }).option(
+      "--awaits <audience:string>",
+      "maintainer when only they can answer it; agent otherwise."
+    ).option("--json", "Print machine-readable JSON.").action(async (options, slug) => {
       const result = await createCapture({
         target: options.target,
         slug,
-        title: options.title
+        title: options.title,
+        awaits: options.awaits === "maintainer" ? "maintainer" : "agent"
       });
       if (options.json) {
         printJson(result);
@@ -38453,13 +38483,27 @@ Pending capture: ${result.path}
       } else {
         process.stdout.write(`Pending captures in ${result.knowledgeRoot}:
 `);
-        for (const capture of result.captures) {
-          process.stdout.write(
-            `- ${capture.id}: ${capture.title}${capture.legacy ? " [legacy handoff]" : ""}
+        const decisions = result.captures.filter(
+          (capture) => capture.awaits === "maintainer"
+        );
+        const triage = result.captures.filter((capture) => capture.awaits !== "maintainer");
+        const section = (title, entries) => {
+          if (entries.length === 0) {
+            return;
+          }
+          process.stdout.write(`
+${title}
+`);
+          for (const capture of entries) {
+            process.stdout.write(
+              `- ${capture.id}: ${capture.title}${capture.legacy ? " [legacy handoff]" : ""}
   ${capture.path}
 `
-          );
-        }
+            );
+          }
+        };
+        section(`Waiting for your decision (${decisions.length})`, decisions);
+        section(`Waiting for agent triage (${triage.length})`, triage);
       }
     })
   ).command(

@@ -449,19 +449,43 @@ function inboxCollector(): StateCollector {
       if (captures.captures.length === 0) {
         return [];
       }
-      const oldest = captures.captures
-        .map((capture) => capture.createdAt)
-        .filter(Boolean)
-        .sort()[0];
-      return [{
-        id: "inbox.pending",
-        domain: "inbox",
-        level: "attention",
-        summary: "Captures are waiting for triage",
-        facts: { captures: captures.captures.length },
-        ...(oldest ? { since: oldest } : {}),
-        awaits: "agent",
-      }];
+      const since = (entries: typeof captures.captures) =>
+        entries.map((capture) => capture.createdAt).filter(Boolean).sort()[0];
+      // A capture the maintainer has to answer is a question, not a chore. Both
+      // sat under one triage signal, so a queue of adjudications read as agent
+      // housekeeping and the maintainer was never told it existed.
+      const decisions = captures.captures.filter((capture) => capture.awaits === "maintainer");
+      const triage = captures.captures.filter((capture) => capture.awaits !== "maintainer");
+      const signals: StateSignal[] = [];
+      if (decisions.length > 0) {
+        const oldest = since(decisions);
+        signals.push({
+          id: "inbox.awaiting-decision",
+          domain: "inbox",
+          level: "attention",
+          summary: "Captures are waiting for a maintainer decision",
+          facts: {
+            captures: decisions.length,
+            command: "wfctl work capture list",
+            subjects: decisions.map((capture) => capture.id).join(", "),
+          },
+          ...(oldest ? { since: oldest } : {}),
+          awaits: "maintainer",
+        });
+      }
+      if (triage.length > 0) {
+        const oldest = since(triage);
+        signals.push({
+          id: "inbox.pending",
+          domain: "inbox",
+          level: "attention",
+          summary: "Captures are waiting for triage",
+          facts: { captures: triage.length },
+          ...(oldest ? { since: oldest } : {}),
+          awaits: "agent",
+        });
+      }
+      return signals;
     },
   };
 }

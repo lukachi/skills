@@ -1119,12 +1119,17 @@ function workCaptureCommand() {
         .option("--title <title:string>", "Human-readable capture title.", {
           required: true,
         })
+        .option(
+          "--awaits <audience:string>",
+          "maintainer when only they can answer it; agent otherwise.",
+        )
         .option("--json", "Print machine-readable JSON.")
         .action(async (options, slug) => {
           const result = await createCapture({
             target: options.target,
             slug,
             title: options.title,
+            awaits: options.awaits === "maintainer" ? "maintainer" : "agent",
           });
           if (options.json) {
             printJson(result);
@@ -1152,12 +1157,27 @@ function workCaptureCommand() {
             process.stdout.write("No pending captures.\n");
           } else {
             process.stdout.write(`Pending captures in ${result.knowledgeRoot}:\n`);
-            for (const capture of result.captures) {
-              process.stdout.write(
-                `- ${capture.id}: ${capture.title}${capture.legacy ? " [legacy handoff]" : ""}\n`
-                  + `  ${capture.path}\n`,
-              );
-            }
+            const decisions = result.captures.filter((capture) =>
+              capture.awaits === "maintainer"
+            );
+            const triage = result.captures.filter((capture) => capture.awaits !== "maintainer");
+            const section = (title: string, entries: typeof result.captures) => {
+              if (entries.length === 0) {
+                return;
+              }
+              process.stdout.write(`\n${title}\n`);
+              for (const capture of entries) {
+                process.stdout.write(
+                  `- ${capture.id}: ${capture.title}${
+                    capture.legacy ? " [legacy handoff]" : ""
+                  }\n  ${capture.path}\n`,
+                );
+              }
+            };
+            // The maintainer's questions first and named as theirs. Listed
+            // together with triage they read as a backlog nobody owes an answer.
+            section(`Waiting for your decision (${decisions.length})`, decisions);
+            section(`Waiting for agent triage (${triage.length})`, triage);
           }
         }),
     )

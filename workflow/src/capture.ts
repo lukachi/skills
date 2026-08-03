@@ -25,6 +25,8 @@ export interface CreateCaptureOptions {
   target: string;
   slug: string;
   title: string;
+  /** Defaults to `agent`; `maintainer` marks a capture only they can answer. */
+  awaits?: CaptureAudience;
   distributionRoot?: string;
   now?: Date;
 }
@@ -36,6 +38,8 @@ export interface CreateCaptureResult {
   path: string;
 }
 
+export type CaptureAudience = "maintainer" | "agent";
+
 export interface CaptureSummary {
   id: string;
   title: string;
@@ -43,6 +47,13 @@ export interface CaptureSummary {
   path: string;
   createdAt: string;
   legacy: boolean;
+  /**
+   * Who the capture is for. A capture holding candidates nobody but the
+   * maintainer can adjudicate is a question addressed to them, not a triage
+   * item, and defaulting everything to `agent` hides those questions in a
+   * queue that reads like housekeeping.
+   */
+  awaits: CaptureAudience;
 }
 
 export interface ListCapturesResult {
@@ -89,6 +100,7 @@ export async function createCapture(
     title: requireText(options.title, "Capture title"),
     status: "pending",
     created_at: now.toISOString(),
+    awaits: options.awaits ?? "agent",
     source: durableSource(context.source),
   };
   await writeFile(path, serializeWorkSpec(template), {
@@ -120,6 +132,7 @@ export async function listCaptures(target: string): Promise<ListCapturesResult> 
       status: "pending",
       path,
       createdAt: parsed.createdAt,
+      awaits: parsed.awaits,
       legacy: parsed.legacy,
     });
   }
@@ -197,6 +210,7 @@ function parsePendingCapture(content: string, path: string): {
   title: string;
   createdAt: string;
   legacy: boolean;
+  awaits: CaptureAudience;
 } {
   const document = parseWorkSpec(content);
   const legacy = document.metadata.handoff_version === 1
@@ -216,6 +230,7 @@ function parsePendingCapture(content: string, path: string): {
     title: requireText(document.metadata.title, `${path}: title`),
     createdAt: requireText(document.metadata.created_at, `${path}: created_at`),
     legacy,
+    awaits: document.metadata.awaits === "maintainer" ? "maintainer" : "agent",
   };
 }
 
