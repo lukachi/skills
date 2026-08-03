@@ -15892,117 +15892,6 @@ var init_knowledge_graph = __esm({
   }
 });
 
-// src/file-lock.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdir as mkdir3, open, readFile as readFile6, stat, unlink as unlink2 } from "node:fs/promises";
-import { dirname as dirname4 } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
-async function withFileLock(lockPath, operation, options = {}) {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
-  const staleMs = options.staleMs ?? DEFAULT_STALE_MS;
-  const token = randomUUID2();
-  const startedAt = Date.now();
-  await mkdir3(dirname4(lockPath), { recursive: true });
-  while (true) {
-    try {
-      const handle = await open(lockPath, "wx", 384);
-      try {
-        const record2 = {
-          token,
-          pid: process.pid,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        await handle.writeFile(`${JSON.stringify(record2)}
-`, "utf8");
-      } finally {
-        await handle.close();
-      }
-      break;
-    } catch (error2) {
-      if (!hasCode(error2, "EEXIST")) {
-        throw error2;
-      }
-      if (await canRecoverStaleLock(lockPath, staleMs)) {
-        try {
-          await unlink2(lockPath);
-          continue;
-        } catch (unlinkError) {
-          if (!hasCode(unlinkError, "ENOENT")) {
-            throw unlinkError;
-          }
-          continue;
-        }
-      }
-      if (Date.now() - startedAt >= timeoutMs) {
-        throw new Error(
-          `Timed out waiting for workflow state lock: ${lockPath}`
-        );
-      }
-      await delay(retryMs);
-    }
-  }
-  try {
-    return await operation();
-  } finally {
-    await releaseOwnedLock(lockPath, token);
-  }
-}
-async function canRecoverStaleLock(lockPath, staleMs) {
-  try {
-    const info2 = await stat(lockPath);
-    if (Date.now() - info2.mtimeMs < staleMs) {
-      return false;
-    }
-    const parsed = JSON.parse(await readFile6(lockPath, "utf8"));
-    if (!isLockRecord(parsed)) {
-      return true;
-    }
-    return !isProcessAlive(parsed.pid);
-  } catch (error2) {
-    if (hasCode(error2, "ENOENT")) {
-      return false;
-    }
-    return false;
-  }
-}
-async function releaseOwnedLock(lockPath, token) {
-  try {
-    const parsed = JSON.parse(await readFile6(lockPath, "utf8"));
-    if (!isLockRecord(parsed) || parsed.token !== token) {
-      return;
-    }
-    await unlink2(lockPath);
-  } catch (error2) {
-    if (!hasCode(error2, "ENOENT")) {
-      throw error2;
-    }
-  }
-}
-function isProcessAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error2) {
-    return hasCode(error2, "EPERM");
-  }
-}
-function isLockRecord(value) {
-  return typeof value === "object" && value !== null && typeof value.token === "string" && typeof value.pid === "number" && typeof value.createdAt === "string";
-}
-function hasCode(error2, code2) {
-  return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === code2;
-}
-var DEFAULT_TIMEOUT_MS, DEFAULT_RETRY_MS, DEFAULT_STALE_MS;
-var init_file_lock = __esm({
-  "src/file-lock.ts"() {
-    "use strict";
-    DEFAULT_TIMEOUT_MS = 3e4;
-    DEFAULT_RETRY_MS = 50;
-    DEFAULT_STALE_MS = 5 * 6e4;
-  }
-});
-
 // src/pinned-git-read.ts
 import { spawn as spawn2 } from "node:child_process";
 async function readPinnedGitTextRange(root, gitArguments, options = {}) {
@@ -16187,6 +16076,117 @@ function validateRequestedRange(startLine, endLine, maxLines, operationName) {
 var init_pinned_git_read = __esm({
   "src/pinned-git-read.ts"() {
     "use strict";
+  }
+});
+
+// src/file-lock.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { mkdir as mkdir3, open, readFile as readFile6, stat, unlink as unlink2 } from "node:fs/promises";
+import { dirname as dirname4 } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+async function withFileLock(lockPath, operation, options = {}) {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
+  const staleMs = options.staleMs ?? DEFAULT_STALE_MS;
+  const token = randomUUID2();
+  const startedAt = Date.now();
+  await mkdir3(dirname4(lockPath), { recursive: true });
+  while (true) {
+    try {
+      const handle = await open(lockPath, "wx", 384);
+      try {
+        const record2 = {
+          token,
+          pid: process.pid,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        await handle.writeFile(`${JSON.stringify(record2)}
+`, "utf8");
+      } finally {
+        await handle.close();
+      }
+      break;
+    } catch (error2) {
+      if (!hasCode(error2, "EEXIST")) {
+        throw error2;
+      }
+      if (await canRecoverStaleLock(lockPath, staleMs)) {
+        try {
+          await unlink2(lockPath);
+          continue;
+        } catch (unlinkError) {
+          if (!hasCode(unlinkError, "ENOENT")) {
+            throw unlinkError;
+          }
+          continue;
+        }
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        throw new Error(
+          `Timed out waiting for workflow state lock: ${lockPath}`
+        );
+      }
+      await delay(retryMs);
+    }
+  }
+  try {
+    return await operation();
+  } finally {
+    await releaseOwnedLock(lockPath, token);
+  }
+}
+async function canRecoverStaleLock(lockPath, staleMs) {
+  try {
+    const info2 = await stat(lockPath);
+    if (Date.now() - info2.mtimeMs < staleMs) {
+      return false;
+    }
+    const parsed = JSON.parse(await readFile6(lockPath, "utf8"));
+    if (!isLockRecord(parsed)) {
+      return true;
+    }
+    return !isProcessAlive(parsed.pid);
+  } catch (error2) {
+    if (hasCode(error2, "ENOENT")) {
+      return false;
+    }
+    return false;
+  }
+}
+async function releaseOwnedLock(lockPath, token) {
+  try {
+    const parsed = JSON.parse(await readFile6(lockPath, "utf8"));
+    if (!isLockRecord(parsed) || parsed.token !== token) {
+      return;
+    }
+    await unlink2(lockPath);
+  } catch (error2) {
+    if (!hasCode(error2, "ENOENT")) {
+      throw error2;
+    }
+  }
+}
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error2) {
+    return hasCode(error2, "EPERM");
+  }
+}
+function isLockRecord(value) {
+  return typeof value === "object" && value !== null && typeof value.token === "string" && typeof value.pid === "number" && typeof value.createdAt === "string";
+}
+function hasCode(error2, code2) {
+  return typeof error2 === "object" && error2 !== null && "code" in error2 && error2.code === code2;
+}
+var DEFAULT_TIMEOUT_MS, DEFAULT_RETRY_MS, DEFAULT_STALE_MS;
+var init_file_lock = __esm({
+  "src/file-lock.ts"() {
+    "use strict";
+    DEFAULT_TIMEOUT_MS = 3e4;
+    DEFAULT_RETRY_MS = 50;
+    DEFAULT_STALE_MS = 5 * 6e4;
   }
 });
 
@@ -18942,10 +18942,10 @@ async function rebaseReconstructionCoverage(previous2, root, commit, graphPath, 
     counts.unchanged += 1;
     if (file.category !== "workflow-asset") {
       file.category = prior.category;
-      file.status = prior.status;
-      file.reason = prior.reason;
-      file.receipts = prior.receipts;
     }
+    file.status = prior.status;
+    file.reason = prior.reason;
+    file.receipts = prior.receipts;
   }
   for (const gone of before.values()) {
     counts.removed += 1;
@@ -19111,8 +19111,12 @@ function validateReconstructionCoverageReceipt(ledger, repository, commit) {
       )) {
         issues.push(`${file.path}: read receipt identity or metadata is invalid`);
       }
-      if (!receiptsCoverFile(file.receipts)) {
+      if (file.receipts.length > 0 && !receiptsCoverFile(file.receipts)) {
         issues.push(`${file.path}: inspected file lacks gap-free full-read receipts`);
+      } else if (file.receipts.length === 0 && !file.reason.trim()) {
+        issues.push(
+          `${file.path}: inspected file has no receipts and no reason naming how it was read`
+        );
       }
     }
   }
@@ -19218,13 +19222,19 @@ function markCoverageFiles(ledger, patterns, mutation) {
       file.category = mutation.category;
     }
     if (mutation.status !== void 0) {
-      if (mutation.status === "inspected" && !receiptsCoverFile(file.receipts)) {
+      const unreceiptable = mutation.unreceiptable?.has(file.path) === true;
+      if (mutation.status === "inspected" && !receiptsCoverFile(file.receipts) && !unreceiptable) {
         throw new Error(
           `${file.path}: inspected status requires complete wfctl read receipts`
         );
       }
+      if (mutation.status === "inspected" && unreceiptable && !reason) {
+        throw new Error(
+          `${file.path}: cannot be receipted, so inspected status requires --reason naming how it was read`
+        );
+      }
       file.status = mutation.status;
-      file.reason = mutation.status === "inspected" || mutation.status === "pending" ? "" : reason;
+      file.reason = mutation.status === "pending" ? "" : mutation.status === "inspected" && !unreceiptable ? "" : reason;
     }
   }
   return matches.length;
@@ -19639,6 +19649,9 @@ async function readGraphSnapshot(root, graphPath, tree, commit) {
       communityNames.set(communityId, communityName);
     }
     if (typeof valueNode.source_file !== "string") {
+      continue;
+    }
+    if (valueNode.source_file.trim() === "") {
       continue;
     }
     const path = normalizeGraphPath(root, valueNode.source_file);
@@ -22216,11 +22229,6 @@ async function repinReconstructionRepository(options) {
     throw new Error(`Leaf HEAD is not a full Git commit: ${bound.root}`);
   }
   const fromCommit = stringValue7(entry.commit);
-  if (metadata.commit === fromCommit) {
-    throw new Error(
-      `${options.repository} is already pinned at ${fromCommit}; there is nothing to move`
-    );
-  }
   const runner = options.runner ?? runTool;
   const updated = updateGraphifyGraph(bound.root, runner);
   if (updated.status !== 0) {
@@ -22242,6 +22250,12 @@ async function repinReconstructionRepository(options) {
     join10(bound.root, "graphify-out/graph.json"),
     now
   );
+  const derivedMoved = JSON.stringify(previous2.graphify.untrackedSources) !== JSON.stringify(rebase.ledger.graphify.untrackedSources) || previous2.graphify.nodes !== rebase.ledger.graphify.nodes;
+  if (metadata.commit === fromCommit && !derivedMoved) {
+    throw new Error(
+      `${options.repository} is already pinned at ${fromCommit} and its derived graph section matches; there is nothing to move`
+    );
+  }
   await writeReconstructionCoverage(coveragePath, rebase.ledger);
   entry.commit = metadata.commit;
   entry.branch = metadata.branch;
@@ -22316,6 +22330,26 @@ async function inspectReconstructionCoverage(targetInput, id, repository) {
     )
   };
 }
+async function unreceiptablePaths(context, patterns) {
+  const unreceiptable = /* @__PURE__ */ new Set();
+  for (const file of context.ledger.manifest.files) {
+    if (file.objectType !== "blob") {
+      continue;
+    }
+    if (!patterns.some((pattern) => file.path === pattern)) {
+      continue;
+    }
+    const read = await readPinnedGitTextRange(
+      context.root,
+      ["show", `${context.ledger.commit}:${file.path}`],
+      { startLine: 1, endLine: 1, operationName: `${file.path}: readability probe` }
+    );
+    if (read.kind !== "text") {
+      unreceiptable.add(file.path);
+    }
+  }
+  return unreceiptable;
+}
 async function markReconstructionFiles(options) {
   if (options.category !== void 0 && !FILE_CATEGORIES.includes(options.category)) {
     throw new Error(`Unknown file category: ${options.category}`);
@@ -22328,10 +22362,12 @@ async function markReconstructionFiles(options) {
     options.id,
     options.repository,
     async (context) => {
+      const unreceiptable = options.status === "inspected" ? await unreceiptablePaths(context, options.paths) : /* @__PURE__ */ new Set();
       const matched = markCoverageFiles(context.ledger, options.paths, {
         ...options.category === void 0 ? {} : { category: options.category },
         ...options.status === void 0 ? {} : { status: options.status },
-        ...options.reason === void 0 ? {} : { reason: options.reason }
+        ...options.reason === void 0 ? {} : { reason: options.reason },
+        unreceiptable
       });
       await writeReconstructionCoverage(context.coveragePath, context.ledger);
       return {
@@ -23823,6 +23859,7 @@ var init_reconstruction = __esm({
     init_dependencies();
     init_config();
     init_git();
+    init_pinned_git_read();
     init_file_lock();
     init_intake();
     init_reconstruction_coverage();

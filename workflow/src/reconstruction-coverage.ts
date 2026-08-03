@@ -325,14 +325,15 @@ export async function rebaseReconstructionCoverage(
     }
     counts.unchanged += 1;
     // `workflow-asset` is decided by the new commit's ownership records, so a
-    // fresh verdict wins; every other category was an agent's classification of
-    // this exact blob and still holds.
+    // fresh verdict wins on the category. The disposition is a separate
+    // assertion about this exact blob and carries regardless: dropping it for
+    // ownership reasons silently returned already-read files to `pending`.
     if (file.category !== "workflow-asset") {
       file.category = prior.category;
-      file.status = prior.status;
-      file.reason = prior.reason;
-      file.receipts = prior.receipts;
     }
+    file.status = prior.status;
+    file.reason = prior.reason;
+    file.receipts = prior.receipts;
   }
 
   for (const gone of before.values()) {
@@ -555,8 +556,18 @@ export function validateReconstructionCoverageReceipt(
       ) {
         issues.push(`${file.path}: read receipt identity or metadata is invalid`);
       }
-      if (!receiptsCoverFile(file.receipts)) {
+      // Zero receipts with a stated reason is the blob the reader refuses to
+      // stamp — `wfctl knowledge reconstruct files` verifies that against the
+      // pinned object before it will accept the status, and the reason records
+      // how the file was actually read. Partial receipts stay an error: that is
+      // an unfinished read rather than an unreadable object.
+      if (file.receipts.length > 0 && !receiptsCoverFile(file.receipts)) {
         issues.push(`${file.path}: inspected file lacks gap-free full-read receipts`);
+      } else if (file.receipts.length === 0 && !file.reason.trim()) {
+        issues.push(
+          `${file.path}: inspected file has no receipts and no reason naming how it `
+            + "was read",
+        );
       }
     }
   }
@@ -671,6 +682,15 @@ export function markCoverageFiles(
     category?: FileCategory;
     status?: CoverageState;
     reason?: string;
+    /**
+     * Paths the read command cannot receipt for a mechanical reason — a NUL
+     * byte inside otherwise ordinary UTF-8 source is the observed case. The
+     * file was read, and the tool refusing to stamp it is a fact about the
+     * tool. Without this the entry has no honest terminal state at all:
+     * receipts are impossible, `structural-only` cannot close product-bearing
+     * text, `irrelevant` would be a lie, and `blocked` fails the gate forever.
+     */
+    unreceiptable?: ReadonlySet<string>;
   },
 ): number {
   if (patterns.length === 0) {
@@ -699,16 +719,26 @@ export function markCoverageFiles(
       file.category = mutation.category;
     }
     if (mutation.status !== undefined) {
+      const unreceiptable = mutation.unreceiptable?.has(file.path) === true;
       if (
         mutation.status === "inspected"
         && !receiptsCoverFile(file.receipts)
+        && !unreceiptable
       ) {
         throw new Error(
           `${file.path}: inspected status requires complete wfctl read receipts`,
         );
       }
+      if (mutation.status === "inspected" && unreceiptable && !reason) {
+        throw new Error(
+          `${file.path}: cannot be receipted, so inspected status requires `
+            + "--reason naming how it was read",
+        );
+      }
       file.status = mutation.status;
-      file.reason = mutation.status === "inspected" || mutation.status === "pending"
+      file.reason = mutation.status === "pending"
+        ? ""
+        : mutation.status === "inspected" && !unreceiptable
         ? ""
         : reason;
     }
@@ -1268,6 +1298,14 @@ async function readGraphSnapshot(
       communityNames.set(communityId, communityName);
     }
     if (typeof valueNode.source_file !== "string") {
+      continue;
+    }
+    if (valueNode.source_file.trim() === "") {
+      // Graphify emits synthetic nodes for primitive and library types —
+      // `result`, `uuid`, `vec`, `option` — with no source file at all. They
+      // are not paths, so hashing the empty string collapsed thousands of them
+      // into one bucket that the gate then reported as a source path outside
+      // the pinned tree. Nothing is untracked here; there is nothing to track.
       continue;
     }
     const path = normalizeGraphPath(root, valueNode.source_file);

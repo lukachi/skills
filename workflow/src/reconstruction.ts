@@ -27,6 +27,7 @@ import {
   resolveKnowledgeRoot,
 } from "./config.js";
 import { readRepositoryMetadata } from "./git.js";
+import { readPinnedGitTextRange } from "./pinned-git-read.js";
 import { withFileLock } from "./file-lock.js";
 import { inventoryRaw, normalizeRawPathspecs } from "./intake.js";
 import {
@@ -1576,12 +1577,6 @@ export async function repinReconstructionRepository(
     throw new Error(`Leaf HEAD is not a full Git commit: ${bound.root}`);
   }
   const fromCommit = stringValue(entry.commit);
-  if (metadata.commit === fromCommit) {
-    throw new Error(
-      `${options.repository} is already pinned at ${fromCommit}; there is nothing to move`,
-    );
-  }
-
   const runner = options.runner ?? runTool;
   const updated = updateGraphifyGraph(bound.root, runner);
   if (updated.status !== 0) {
@@ -1604,6 +1599,20 @@ export async function repinReconstructionRepository(
     join(bound.root, "graphify-out/graph.json"),
     now,
   );
+  // Repinning to the same commit is not a no-op when the graph reader itself
+  // changed: a snapshot derived by an older `wfctl` can disagree with what the
+  // same `graph.json` yields today, and the completion gate compares the stored
+  // section against a fresh derivation. Every blob is identical there, so the
+  // rebase carries all reading across and only the derived section moves.
+  const derivedMoved = JSON.stringify(previous.graphify.untrackedSources)
+      !== JSON.stringify(rebase.ledger.graphify.untrackedSources)
+    || previous.graphify.nodes !== rebase.ledger.graphify.nodes;
+  if (metadata.commit === fromCommit && !derivedMoved) {
+    throw new Error(
+      `${options.repository} is already pinned at ${fromCommit} and its derived graph `
+        + "section matches; there is nothing to move",
+    );
+  }
   await writeReconstructionCoverage(coveragePath, rebase.ledger);
 
   entry.commit = metadata.commit;
@@ -1694,6 +1703,36 @@ export async function inspectReconstructionCoverage(
   };
 }
 
+/**
+ * Which of the matched paths the read command cannot stamp. A blob whose text
+ * range read reports anything but `text` will never accumulate receipts, so
+ * insisting on them leaves the entry permanently outside every terminal state.
+ * Established by reading the pinned blob, never by the caller saying so.
+ */
+async function unreceiptablePaths(
+  context: { root: string; ledger: ReconstructionCoverageLedger },
+  patterns: readonly string[],
+): Promise<Set<string>> {
+  const unreceiptable = new Set<string>();
+  for (const file of context.ledger.manifest.files) {
+    if (file.objectType !== "blob") {
+      continue;
+    }
+    if (!patterns.some((pattern) => file.path === pattern)) {
+      continue;
+    }
+    const read = await readPinnedGitTextRange(
+      context.root,
+      ["show", `${context.ledger.commit}:${file.path}`],
+      { startLine: 1, endLine: 1, operationName: `${file.path}: readability probe` },
+    );
+    if (read.kind !== "text") {
+      unreceiptable.add(file.path);
+    }
+  }
+  return unreceiptable;
+}
+
 export async function markReconstructionFiles(
   options: MarkReconstructionFilesOptions,
 ): Promise<{ repository: string; matched: number; summary: CoverageSummary }> {
@@ -1714,10 +1753,16 @@ export async function markReconstructionFiles(
     options.id,
     options.repository,
     async (context) => {
+      // Verified rather than asserted: the caller cannot declare a file
+      // unreceiptable, only the pinned blob can be shown to be.
+      const unreceiptable = options.status === "inspected"
+        ? await unreceiptablePaths(context, options.paths)
+        : new Set<string>();
       const matched = markCoverageFiles(context.ledger, options.paths, {
         ...(options.category === undefined ? {} : { category: options.category }),
         ...(options.status === undefined ? {} : { status: options.status }),
         ...(options.reason === undefined ? {} : { reason: options.reason }),
+        unreceiptable,
       });
       await writeReconstructionCoverage(context.coveragePath, context.ledger);
       return {
