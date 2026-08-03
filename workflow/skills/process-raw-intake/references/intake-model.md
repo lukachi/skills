@@ -114,6 +114,44 @@ references use `intake:<case-id>#<candidate-id>` or
 `reconstruction:<case-id>#<candidate-id>`. `supersedes` /
 `superseded_by` and `contradicts` are reciprocal. Supersession must be acyclic.
 
+## A recorded decision is not an observation
+
+`semantic_role: decision` already separates a decision from a note, and the
+distinction has to change what is asked next. Raw holds two very different
+things. Most of it is somebody's description of the world — an audit, a
+scratch note, a stale design — and none of that can establish intent, because
+describing something is not deciding it. But raw also holds the maintainer's own
+decisions: numbered, dated, written down at the time, sometimes as a formal
+record with a status of its own.
+
+Treating the second kind like the first records a decision the maintainer made
+in writing as `intent_state: unknown`, and then asks them from scratch what they
+meant. That is the correct answer to the wrong question, and it scales badly: a
+package of twenty accepted decisions becomes twenty open adjudications, so the
+usual outcome is that none of them are answered and the whole body lands in a
+capture.
+
+When a candidate's role is `decision` and the source is the maintainer's own
+record rather than a report about them, the adjudication move is confirmation
+rather than recovery:
+
+> These decisions are recorded as accepted on `<date>`. Do they still stand?
+
+Answered yes, `intent_state` becomes `accepted` on the maintainer's authority,
+with provenance naming both the raw record that carries the wording and the
+confirmation that made it current. Answered no, it becomes `superseded` or
+`rejected` with the same date, which is durable history rather than a discarded
+candidate. Answered partially, the exceptions are named and the rest stands.
+
+This does not make raw an authority. The authority is the confirmation; raw only
+supplies the text, and the pinned reading still establishes delivery separately.
+An accepted decision whose delivery is absent is an ordinary baseline row —
+accepted intent, absent delivery, drifted alignment — not a reason to withhold
+promotion.
+
+Ask it as one batch per decision record. Twenty decisions from one package are
+one question with named exceptions, not twenty questions.
+
 ## Routing lanes
 
 - `current-knowledge`: confirmed current truth with accepted or

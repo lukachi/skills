@@ -26,6 +26,12 @@ external references, or explicit maintainer authority.
 - Source code is implementation authority at an exact revision.
 - Source code does not establish accepted product intent.
 - Raw material is a clue even when it accurately predicted later code.
+- A decision the maintainer recorded in raw is still not authority, but it is
+  not a clue either: it is their own wording, dated, awaiting confirmation
+  rather than recovery. Ask whether it still stands, once per decision record
+  with named exceptions, and let the confirmation carry the authority while the
+  record carries the text. Reopening written decisions as if nothing were
+  written turns a body of accepted work into an unanswered queue.
 - Git identity proves which corpus was reviewed, not what it means.
 - QMD retrieval and generated graphs locate relationships; they do not create
   authority.

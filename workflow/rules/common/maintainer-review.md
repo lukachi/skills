@@ -59,6 +59,14 @@ product-level description yet, and recording that gap is part of the answer.
 One decision per packet. Several stacked in one message read as a status report
 and get answered as none of them.
 
+Confirming a written record is the exception, and it is one decision rather than
+many. When the material already carries the maintainer's own dated decisions,
+ask whether they still stand — once for the record, with named exceptions —
+instead of reopening each from scratch. Recovering intent that was never written
+and confirming intent that was are different questions, and asking the harder
+one when the easier one applies is how a body of accepted work becomes an
+unanswered queue.
+
 For significant work, record framing and completion decisions with `wfctl work
 approve <id> --stage framing|completion --by human:<maintainer-id>`. That
 command needs an interactive terminal, or an out-of-band `--token` matching

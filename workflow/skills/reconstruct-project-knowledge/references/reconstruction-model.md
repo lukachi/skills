@@ -114,6 +114,27 @@ and a symbol imported by one are the same match. Record which surfaces were
 checked, and where the answer is unknown, say so rather than assuming the
 generous reading.
 
+## When the decision was already written down
+
+Adjudication assumes intent has to be recovered because nobody wrote it. Often
+that is true. Sometimes the opposite is true and the record is unusually good: a
+numbered decision set, dated, with a status the authors kept current, sitting in
+raw because that is where the work happened.
+
+Do not re-derive what is already stated. Ask whether it still stands, as one
+question per decision record with named exceptions, and record the answer as the
+authority. The wording comes from the record, currency comes from the
+maintainer, and delivery still comes from the pinned reading — a decision that
+was never built is `intent: accepted`, `delivery: absent`, `alignment: drifted`,
+which is an ordinary baseline row and belongs in the baseline.
+
+A design accepted and deliberately never authorised for implementation is one of
+the more useful things a baseline can carry, because the gap between it and the
+code is the project's own record of what it chose not to do yet. Withholding it
+because delivery is absent leaves a later reader to rediscover the whole
+package, and promoting it as current behavior claims the product works a way it
+does not. Both axes exist so that neither is necessary.
+
 ## When the maintainer says it should work differently
 
 This is the most common adjudication answer and it carries two different
