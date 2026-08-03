@@ -256,7 +256,14 @@ before the first repository pass and whenever a disposition must be recorded.
    wants to adopt it.
 7. Ask the maintainer to adjudicate product meaning, rationale, ownership,
    accepted architecture, and ambiguous chronology. Present claim, evidence,
-   conflicts, recommendation, and requested decision.
+   conflicts, recommendation, and requested decision, written for the product
+   owner as `maintainer-review` requires: what the product does today in its own
+   language, what is in doubt as a product question, what each answer records,
+   the recommendation, then the evidence last. A reconstruction packet is the
+   worst offender here, because the investigation that produced the claim is
+   fresh and the temptation is to lead with it. Adjudication asks whether the
+   project meant this, and no amount of pinned evidence answers that question
+   for the maintainer.
 
 ## Maintain the record during discussion
 

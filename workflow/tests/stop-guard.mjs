@@ -102,7 +102,7 @@ const open = report("attention", "agent");
   const w = workspace();
   w.state(open);
   let blocks = 0;
-  for (let turn = 0; turn < 40; turn += 1) {
+  for (let turn = 0; turn < 140; turn += 1) {
     // Every turn moves the state, so only the hard ceiling can end this.
     w.state(report("attention", "agent", { filesReviewed: turn }));
     const decision = w.ask({
@@ -116,7 +116,8 @@ const open = report("attention", "agent");
     blocks += 1;
   }
   assert.ok(blocks > 1, "steady progress must survive past a single re-entry");
-  assert.ok(blocks <= 7, `the ceiling must end the turn, got ${blocks} blocks`);
+  assert.ok(blocks <= 101, `the ceiling must end the turn, got ${blocks} blocks`);
+  assert.ok(blocks > 20, `a productive run must not be capped early, got ${blocks}`);
 }
 
 {

@@ -26,7 +26,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const MESSAGE_LIMIT = 600;
-const MAX_REENTRIES = 6;
+const MAX_REENTRIES = 100;
 
 function allow() {
   process.exit(0);
@@ -104,10 +104,13 @@ function main() {
       return;
     }
     if (carried.count >= MAX_REENTRIES) {
-      // State that keeps moving for reasons unrelated to this turn would
-      // otherwise re-enter forever. Observed live: a stub whose counter
-      // advanced on every read kept a blocked agent restating the same refusal
-      // thirteen times before the ceiling ended it.
+      // A runaway backstop and nothing more. It was six, chosen from a rigged
+      // test where the state moved on its own while the agent was stuck, and it
+      // became the only bound that ever fired: a productive overnight run hit
+      // it after six re-entries and parked for nine hours with work left. The
+      // two content bounds above are the real ones — unchanged state and a
+      // repeated answer both mean the next re-entry buys nothing — so this only
+      // has to guarantee the turn ends.
       writeMemory(cwd, { key, count: 0, fingerprint, answer });
       allow();
       return;
