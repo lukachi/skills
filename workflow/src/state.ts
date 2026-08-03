@@ -36,6 +36,12 @@ export interface StateSignal {
   subject?: string;
   facts?: Record<string, string | number | boolean>;
   since?: string;
+  /**
+   * Who owes an action, when someone does. It is not "who this concerns": a
+   * signal that describes a finished state names nobody, because everything
+   * downstream — the maintainer's queue, the stop guard — reads this as work
+   * outstanding and acts on it.
+   */
   awaits?: StateAudience;
   blocks?: string[];
 }

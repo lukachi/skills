@@ -583,6 +583,12 @@ async function workstreamSignals(entry: ActiveRecord): Promise<StateSignal[]> {
   if (counts.packets === 0) {
     return [];
   }
+  // Inventory, not a task. Packets that are all accepted describe finished work
+  // and owe nobody anything; only ones still claimed or submitted put an action
+  // on the agent. Marking the description as agent-owned made every turn in a
+  // completed reconstruction re-enter the stop guard forever, on a line that
+  // said 28 of 28 accepted.
+  const inFlight = counts.claimed + counts.submitted;
   const signals: StateSignal[] = [{
     id: "reconstruction.workstreams",
     domain: "reconstruction",
@@ -590,7 +596,7 @@ async function workstreamSignals(entry: ActiveRecord): Promise<StateSignal[]> {
     summary: "Worker packets are recorded for this reconstruction",
     subject: entry.id,
     facts: counts,
-    awaits: "agent",
+    ...(inFlight > 0 ? { awaits: "agent" as const } : {}),
   }];
   if (stranded.length > 0) {
     signals.push({

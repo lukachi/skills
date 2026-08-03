@@ -37314,6 +37314,7 @@ async function workstreamSignals(entry) {
   if (counts.packets === 0) {
     return [];
   }
+  const inFlight = counts.claimed + counts.submitted;
   const signals2 = [{
     id: "reconstruction.workstreams",
     domain: "reconstruction",
@@ -37321,7 +37322,7 @@ async function workstreamSignals(entry) {
     summary: "Worker packets are recorded for this reconstruction",
     subject: entry.id,
     facts: counts,
-    awaits: "agent"
+    ...inFlight > 0 ? { awaits: "agent" } : {}
   }];
   if (stranded.length > 0) {
     signals2.push({
