@@ -440,6 +440,19 @@ function workCollector(): StateCollector {
   };
 }
 
+/**
+ * A count is not actionable. Reporting fourteen pending captures and nothing
+ * else gives an agent no reason to open any of them, and they stay in the
+ * directory indefinitely whether or not anyone needed an answer. Naming them
+ * costs a line and makes the queue impossible to read past.
+ */
+function nameThem(captures: readonly { id: string }[]): string {
+  const shown = captures.slice(0, 20).map((capture) => capture.id);
+  return captures.length > shown.length
+    ? `${shown.join(", ")}, and ${captures.length - shown.length} more`
+    : shown.join(", ");
+}
+
 function inboxCollector(): StateCollector {
   return {
     id: "inbox",
@@ -467,7 +480,7 @@ function inboxCollector(): StateCollector {
           facts: {
             captures: decisions.length,
             command: "wfctl work capture list",
-            subjects: decisions.map((capture) => capture.id).join(", "),
+            waiting: nameThem(decisions),
           },
           ...(oldest ? { since: oldest } : {}),
           awaits: "maintainer",
@@ -480,7 +493,11 @@ function inboxCollector(): StateCollector {
           domain: "inbox",
           level: "attention",
           summary: "Captures are waiting for triage",
-          facts: { captures: triage.length },
+          facts: {
+            captures: triage.length,
+            command: "wfctl work capture list",
+            waiting: nameThem(triage),
+          },
           ...(oldest ? { since: oldest } : {}),
           awaits: "agent",
         });

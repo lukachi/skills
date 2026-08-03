@@ -64,7 +64,11 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   memory.
 - Use `changes/inbox/` only for pending captures that have no active or curated
   owner. Resolve each capture to existing destinations or discard it with a
-  reason; never duplicate active progress there.
+  reason; never duplicate active progress there. The brief names every pending
+  capture, so an unresolved one is not unknown to you — a queue that grows
+  without anyone opening it is the same as no queue. A capture only the
+  maintainer can settle is created with `--awaits maintainer` and presented to
+  them as one decision at a time, not listed as a backlog.
 - Do not create a competing leaf-local spec or issue tracker. Claim one central
   frontier issue from the exact bound checkout before implementation. Before
   completion, account for every bundle file at its current hash; a receipt

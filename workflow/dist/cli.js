@@ -37173,6 +37173,10 @@ function workCollector() {
     }
   };
 }
+function nameThem(captures) {
+  const shown = captures.slice(0, 20).map((capture) => capture.id);
+  return captures.length > shown.length ? `${shown.join(", ")}, and ${captures.length - shown.length} more` : shown.join(", ");
+}
 function inboxCollector() {
   return {
     id: "inbox",
@@ -37196,7 +37200,7 @@ function inboxCollector() {
           facts: {
             captures: decisions.length,
             command: "wfctl work capture list",
-            subjects: decisions.map((capture) => capture.id).join(", ")
+            waiting: nameThem(decisions)
           },
           ...oldest ? { since: oldest } : {},
           awaits: "maintainer"
@@ -37209,7 +37213,11 @@ function inboxCollector() {
           domain: "inbox",
           level: "attention",
           summary: "Captures are waiting for triage",
-          facts: { captures: triage.length },
+          facts: {
+            captures: triage.length,
+            command: "wfctl work capture list",
+            waiting: nameThem(triage)
+          },
           ...oldest ? { since: oldest } : {},
           awaits: "agent"
         });
