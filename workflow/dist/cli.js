@@ -25433,6 +25433,7 @@ var init_work_bundle = __esm({
 // src/knowledge.ts
 var knowledge_exports = {};
 __export(knowledge_exports, {
+  describeReconstructionCitation: () => describeReconstructionCitation,
   hashKnowledgeConcept: () => hashKnowledgeConcept,
   validateKnowledge: () => validateKnowledge
 });
@@ -25647,10 +25648,10 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
           resource,
           reconstructionIndex
         );
-        if (!reconstruction) {
+        if (!isResolvedCitation(reconstruction)) {
           errors.push({
             path,
-            message: `${prefix}.resource points to a missing or unconfirmed reconstruction decision`
+            message: `${prefix}.resource ${reconstruction.unresolved}`
           });
         } else if (!hasApprovedReconstructionReview(
           reconstruction.record,
@@ -25684,10 +25685,10 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
         resource,
         reconstructionIndex
       );
-      if (!reconstruction) {
+      if (!isResolvedCitation(reconstruction)) {
         errors.push({
           path,
-          message: `${prefix}.resource points to a missing or unconfirmed reconstruction claim`
+          message: `${prefix}.resource ${reconstruction.unresolved}`
         });
       } else if (!hasApprovedReconstructionCaseReview(reconstruction.record)) {
         errors.push({
@@ -26191,23 +26192,41 @@ function projectChangeRecordAny(resource, index2, archiveOnly) {
   const id = match[1];
   return index2.archive.get(id) ?? (!archiveOnly ? index2.active.get(id) : void 0);
 }
+function describeReconstructionCitation(resource, index2) {
+  return projectReconstructionDecision(resource, index2);
+}
+function isResolvedCitation(value) {
+  return !("unresolved" in value);
+}
 function projectReconstructionDecision(resource, index2) {
   const match = /^project-reconstruction:([^#]+)#(.+)$/.exec(resource);
   if (!match) {
-    return void 0;
+    return { unresolved: "is not a project-reconstruction candidate reference" };
   }
   const id = match[1];
   const candidateId = match[2];
   const archived = index2.archive.get(id);
   const active = index2.active.get(id);
   const record2 = archived?.outcome === "completed" ? archived : active;
-  if (!record2 || record2.__receiptReady !== true || !["active", "completed"].includes(stringValue9(record2.status))) {
-    return void 0;
+  if (!record2 || !["active", "completed"].includes(stringValue9(record2.status))) {
+    return { unresolved: `names reconstruction ${id}, which does not exist here` };
   }
-  const candidate = (Array.isArray(record2.candidate_claims) ? record2.candidate_claims.filter(isRecord5) : []).find(
-    (entry) => entry.id === candidateId && entry.disposition === "confirmed"
-  );
-  return candidate ? { record: record2, candidate } : void 0;
+  if (record2.__receiptReady !== true) {
+    return {
+      unresolved: `waits for reconstruction ${id} to become receipt-ready; run wfctl knowledge reconstruct check ${id}`
+    };
+  }
+  const claims = Array.isArray(record2.candidate_claims) ? record2.candidate_claims.filter(isRecord5) : [];
+  const candidate = claims.find((entry) => entry.id === candidateId);
+  if (!candidate) {
+    return { unresolved: `names candidate ${candidateId}, which reconstruction ${id} does not hold` };
+  }
+  if (candidate.disposition !== "confirmed") {
+    return {
+      unresolved: `names candidate ${candidateId}, whose disposition in reconstruction ${id} is ${stringValue9(candidate.disposition) || "unset"} rather than confirmed`
+    };
+  }
+  return { record: record2, candidate };
 }
 function hasApprovedHumanReview(metadata, requiredStage, actor) {
   const review = recordValue9(metadata.maintainer_review);

@@ -358,10 +358,10 @@ function validateConcept(
           resource,
           reconstructionIndex,
         );
-        if (!reconstruction) {
+        if (!isResolvedCitation(reconstruction)) {
           errors.push({
             path,
-            message: `${prefix}.resource points to a missing or unconfirmed reconstruction decision`,
+            message: `${prefix}.resource ${reconstruction.unresolved}`,
           });
         } else if (
           !hasApprovedReconstructionReview(
@@ -397,10 +397,10 @@ function validateConcept(
         resource,
         reconstructionIndex,
       );
-      if (!reconstruction) {
+      if (!isResolvedCitation(reconstruction)) {
         errors.push({
           path,
-          message: `${prefix}.resource points to a missing or unconfirmed reconstruction claim`,
+          message: `${prefix}.resource ${reconstruction.unresolved}`,
         });
       } else if (!hasApprovedReconstructionCaseReview(reconstruction.record)) {
         errors.push({
@@ -1022,36 +1022,81 @@ function projectChangeRecordAny(
   return index.archive.get(id) ?? (!archiveOnly ? index.active.get(id) : undefined);
 }
 
+/**
+ * Resolving a citation has four distinct ways to fail, and saying so matters
+ * more than it looks. A whole corpus can be red for one known reason — the
+ * reconstruction is still working — and a single genuinely broken citation then
+ * reads exactly like the rest. One did: a page cited an intake candidate
+ * through a reconstruction resource, naming something the reconstruction never
+ * held, and sat undetected inside twenty-eight identical messages.
+ *
+ * A red validator hiding a differently-red page is the real cost of a long
+ * in-progress reconstruction, so the message has to separate "not yet" from
+ * "not this".
+ */
+export type ReconstructionCitation =
+  | {
+    record: Record<string, unknown>;
+    candidate: Record<string, unknown>;
+  }
+  | { unresolved: string };
+
+/**
+ * Exported for tests only. Reaching every branch through `validateKnowledge`
+ * needs a receipt-ready reconstruction, which nothing in the suite builds — the
+ * reason a citation cycle shipped at all.
+ */
+export function describeReconstructionCitation(
+  resource: string,
+  index: { active: Map<string, Record<string, unknown>>; archive: Map<string, Record<string, unknown>> },
+): ReconstructionCitation {
+  return projectReconstructionDecision(resource, index);
+}
+
+function isResolvedCitation(
+  value: ReconstructionCitation,
+): value is { record: Record<string, unknown>; candidate: Record<string, unknown> } {
+  return !("unresolved" in value);
+}
+
 function projectReconstructionDecision(
   resource: string,
   index: ProjectReconstructionIndex,
-): {
-  record: Record<string, unknown>;
-  candidate: Record<string, unknown>;
-} | undefined {
+): ReconstructionCitation {
   const match = /^project-reconstruction:([^#]+)#(.+)$/.exec(resource);
   if (!match) {
-    return undefined;
+    return { unresolved: "is not a project-reconstruction candidate reference" };
   }
   const id = match[1]!;
   const candidateId = match[2]!;
   const archived = index.archive.get(id);
   const active = index.active.get(id);
   const record = archived?.outcome === "completed" ? archived : active;
-  if (
-    !record
-    || record.__receiptReady !== true
-    || !["active", "completed"].includes(stringValue(record.status))
-  ) {
-    return undefined;
+  if (!record || !["active", "completed"].includes(stringValue(record.status))) {
+    return { unresolved: `names reconstruction ${id}, which does not exist here` };
   }
-  const candidate = (Array.isArray(record.candidate_claims)
+  if (record.__receiptReady !== true) {
+    return {
+      unresolved:
+        `waits for reconstruction ${id} to become receipt-ready; run wfctl knowledge reconstruct check ${id}`,
+    };
+  }
+  const claims = Array.isArray(record.candidate_claims)
     ? record.candidate_claims.filter(isRecord)
-    : []
-  ).find((entry) =>
-    entry.id === candidateId && entry.disposition === "confirmed"
-  );
-  return candidate ? { record, candidate } : undefined;
+    : [];
+  const candidate = claims.find((entry) => entry.id === candidateId);
+  if (!candidate) {
+    return { unresolved: `names candidate ${candidateId}, which reconstruction ${id} does not hold` };
+  }
+  if (candidate.disposition !== "confirmed") {
+    return {
+      unresolved:
+        `names candidate ${candidateId}, whose disposition in reconstruction ${id} is ${
+          stringValue(candidate.disposition) || "unset"
+        } rather than confirmed`,
+    };
+  }
+  return { record, candidate };
 }
 
 function hasApprovedHumanReview(

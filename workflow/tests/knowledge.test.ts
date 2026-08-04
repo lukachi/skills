@@ -30,6 +30,7 @@ import {
   hashKnowledgeConcept,
   validateKnowledge,
 } from "../src/knowledge.js";
+import { describeReconstructionCitation } from "../src/knowledge.js";
 import { writeKnowledgeGraph } from "../src/knowledge-graph.js";
 import {
   compileClaimLedger,
@@ -2139,6 +2140,45 @@ test("raw scope decision upgrades a legacy reconstruction case", async () => {
   assert.equal(
     (((upgraded.metadata.supplemental_inputs as Record<string, unknown>).raw as Record<string, unknown>).scope as Record<string, unknown>).mode,
     "excluded",
+  );
+});
+
+test("a failed citation says which of four things went wrong", () => {
+  const ready = {
+    status: "active",
+    __receiptReady: true,
+    candidate_claims: [
+      { id: "confirmed-claim", disposition: "confirmed" },
+      { id: "open-claim", disposition: "unresolved" },
+    ],
+  };
+  const working = { status: "active", __receiptReady: false, candidate_claims: [] };
+  const index = {
+    active: new Map([["ready-case", ready], ["working-case", working]]),
+    archive: new Map<string, Record<string, unknown>>(),
+  };
+  const describe = (resource: string) => {
+    const result = describeReconstructionCitation(resource, index);
+    return "unresolved" in result ? result.unresolved : "resolved";
+  };
+
+  assert.equal(describe("project-reconstruction:ready-case#confirmed-claim"), "resolved");
+  assert.match(describe("project-reconstruction:absent-case#any"), /does not exist here/);
+  assert.match(
+    describe("project-reconstruction:working-case#any"),
+    /waits for reconstruction working-case to become receipt-ready/,
+  );
+  // The distinction that matters most in practice: a corpus red for the known
+  // reason above hides a page red for this one, which is how a citation naming
+  // an intake candidate through a reconstruction resource survived inside
+  // twenty-eight identical messages.
+  assert.match(
+    describe("project-reconstruction:ready-case#absent-claim"),
+    /names candidate absent-claim, which reconstruction ready-case does not hold/,
+  );
+  assert.match(
+    describe("project-reconstruction:ready-case#open-claim"),
+    /disposition in reconstruction ready-case is unresolved rather than confirmed/,
   );
 });
 
