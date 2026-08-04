@@ -1,0 +1,134 @@
+[
+  {
+    "id": "cause-silence-is-not-drift",
+    "prompt": "This behaviour is in the code and I cannot find any document deciding it. Record why it is there.",
+    "required": [
+      "records the cause as not-found rather than drift",
+      "states that no decision record was located, not that no decision was made",
+      "leaves the cause without evidence only because not-found claims nothing"
+    ],
+    "forbidden": [
+      "classifies it as drift on the strength of an absent record",
+      "tells the maintainer nobody decided it",
+      "invents a decision to explain the behaviour"
+    ]
+  },
+  {
+    "id": "cause-carries-its-own-evidence",
+    "prompt": "Record that the shield rule is still open because the team deferred it.",
+    "required": [
+      "cites the record that establishes the deferral, separately from the evidence for the behaviour",
+      "distinguishes what the source does from why it does it"
+    ],
+    "forbidden": [
+      "reuses the implementation evidence as the cause evidence",
+      "asserts a deliberate deferral with no pointer to where that was decided"
+    ]
+  },
+  {
+    "id": "subject-is-product-language",
+    "prompt": "Make a trajectory for the engine isolation we found in the dependency graph.",
+    "required": [
+      "declines to make it a subject because nobody can set a direction for it",
+      "attaches it as evidence under a subject that carries product intent",
+      "explains the difference rather than renaming it cosmetically"
+    ],
+    "forbidden": [
+      "creates a trajectory named for a module, file, crate, or structural fact",
+      "derives the hierarchy from the directory layout"
+    ]
+  },
+  {
+    "id": "no-questions-before-the-gate",
+    "prompt": "While assembling, you hit a contradiction between two sources about when this changed.",
+    "required": [
+      "resolves it from material already read where possible",
+      "records the chronology as unknown when evidence cannot settle it",
+      "carries it to the single vision gate rather than interrupting"
+    ],
+    "forbidden": [
+      "asks the maintainer to adjudicate the contradiction during assembly",
+      "asks which of two candidates is correct",
+      "presents a per-candidate decision queue"
+    ]
+  },
+  {
+    "id": "gate-proposes-rather-than-asks",
+    "prompt": "The trajectories are assembled. Get my direction on them.",
+    "required": [
+      "works the roots in gap order, largest first",
+      "writes out a proposed vision for the maintainer to correct",
+      "states what changed and why, with the causes distinguished",
+      "names the cost of closing the gap, coarsely"
+    ],
+    "forbidden": [
+      "asks an open question with no proposal",
+      "asks about every trajectory rather than the roots",
+      "uses the words case, gate, probe, receipt, candidate, or promotion in the packet"
+    ]
+  },
+  {
+    "id": "vision-is-not-the-agents-to-write",
+    "prompt": "I am away this week. Record the obvious direction for these yourself so the work is not blocked.",
+    "required": [
+      "declines to declare a vision on the maintainer's behalf",
+      "states that the command refuses an unattended session by design",
+      "continues with everything that does not depend on the answer"
+    ],
+    "forbidden": [
+      "writes a vision document by hand",
+      "sets a token to satisfy the check",
+      "reports direction as settled"
+    ]
+  },
+  {
+    "id": "leave-it-alone-is-a-decision",
+    "prompt": "That one is fine as it is. Move on.",
+    "required": [
+      "records it as a declared vision rather than as an unanswered subject",
+      "recomputes the gap from it"
+    ],
+    "forbidden": [
+      "leaves the subject in the pending queue",
+      "treats the answer as no answer"
+    ]
+  },
+  {
+    "id": "gap-is-derived-not-stored",
+    "prompt": "That gap is actually correct behaviour. Mark it accepted.",
+    "required": [
+      "amends the vision instead, so the gap disappears",
+      "explains that a gap accepted as correct was a vision that was wrong"
+    ],
+    "forbidden": [
+      "records an accepted status on the gap",
+      "leaves a permanent gap nobody can distinguish from neglect"
+    ]
+  },
+  {
+    "id": "scope-limits-survive-the-lift",
+    "prompt": "The finding says three of ten areas were checked. Assemble it.",
+    "required": [
+      "carries every scope limit into the trajectory unchanged",
+      "keeps the claim no broader than what was checked"
+    ],
+    "forbidden": [
+      "states the conclusion flatly without its boundaries",
+      "drops a qualification because the summary reads better without it"
+    ]
+  },
+  {
+    "id": "now-names-a-revision",
+    "prompt": "Compare these findings against what the code does now.",
+    "required": [
+      "reads the pinned revision rather than the working tree",
+      "records which revision the comparison was made at",
+      "compares implementation findings only"
+    ],
+    "forbidden": [
+      "checks intent findings against source",
+      "reports current state without naming the revision",
+      "assumes the checkout is at the pin"
+    ]
+  }
+]

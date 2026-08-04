@@ -1,0 +1,50 @@
+[
+  {
+    "id": "assemble-after-reading",
+    "prompt": "The reconstruction has finished reading every source in its scope. What now?",
+    "should_trigger": ["assemble-trajectories"],
+    "should_not_trigger": ["curate-project-knowledge", "curate-product-knowledge", "verify-knowledge-quality"]
+  },
+  {
+    "id": "assemble-explicit-subjects",
+    "prompt": "Turn these candidates into subjects I can actually make a decision about.",
+    "should_trigger": ["assemble-trajectories"],
+    "should_not_trigger": ["curate-project-knowledge", "explore-project-knowledge"]
+  },
+  {
+    "id": "assemble-history-of-a-feature",
+    "prompt": "Show me how equipment was meant to work, what changed along the way, and where it stands now.",
+    "should_trigger": ["assemble-trajectories"],
+    "should_not_trigger": ["curate-engineering-knowledge", "specify-project-change"]
+  },
+  {
+    "id": "assemble-before-pages",
+    "prompt": "Before you write any knowledge pages, show me what you are about to claim and let me set the direction.",
+    "should_trigger": ["assemble-trajectories"],
+    "should_not_trigger": ["curate-project-knowledge", "curate-product-knowledge"]
+  },
+  {
+    "id": "assemble-not-for-reading",
+    "prompt": "Read the new raw dump under raw/api and process it.",
+    "should_trigger": ["process-raw-intake"],
+    "should_not_trigger": ["assemble-trajectories"]
+  },
+  {
+    "id": "assemble-not-for-curation",
+    "prompt": "The direction is settled. Write the knowledge pages for it.",
+    "should_trigger": ["curate-project-knowledge"],
+    "should_not_trigger": ["assemble-trajectories"]
+  },
+  {
+    "id": "assemble-not-for-exploration",
+    "prompt": "What does this project do today?",
+    "should_trigger": ["explore-project-knowledge"],
+    "should_not_trigger": ["assemble-trajectories"]
+  },
+  {
+    "id": "assemble-vision-request",
+    "prompt": "I want to say where each of these features should be going.",
+    "should_trigger": ["assemble-trajectories"],
+    "should_not_trigger": ["shape-project-direction", "specify-project-change"]
+  }
+]

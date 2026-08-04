@@ -6,12 +6,15 @@ do not create, repair, promote, or verify concepts merely because someone asked
 what the project does. Report a discovered gap and wait for a separate repair,
 audit, reconstruction, or curation request.
 
-The repository has five separate surfaces:
+The repository has six separate surfaces:
 
 - `raw/`: continuous untrusted input; never evidence and never current truth.
 - `intake/`: Git-frozen reconciliation state; never cited from knowledge.
 - `reconstruction/`: bounded source-first baselines and audits with reviewed
   repository dossiers; not a default truth surface.
+- `trajectories/`: product subjects as lines — conception, what changed and why,
+  what the source shows now — plus the maintainer's declared visions. This is
+  where a product decision is asked for, and the only surface they see.
 - `changes/`: active proposals and archived historical change records.
 - `knowledge/`: curated OKF v0.2 current project knowledge.
 
@@ -28,8 +31,9 @@ ambiguous source/worktree choice, then execute the resulting operation.
 
 Use `operate-project-knowledge` as the default router for these common
 knowledge-repository requests. It must delegate raw intake to
-`process-raw-intake`, semantic promotion to `curate-project-knowledge`, and
-whole-project source baselines to `reconstruct-project-knowledge`.
+`process-raw-intake`, semantic promotion to `curate-project-knowledge`,
+whole-project source baselines to `reconstruct-project-knowledge`, and the lift
+from read material into decidable subjects to `assemble-trajectories`.
 Code-backed verification always delegates to `analyze-with-graphify` in the
 exact leaf.
 

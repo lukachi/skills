@@ -321,6 +321,24 @@ After compaction or interruption:
 
 Then render the current reconstruction frontier before continuing analysis.
 
+## Assemble trajectories before writing anything
+
+Once the scope has been read, invoke `assemble-trajectories`. It lifts findings
+into product subjects, compares the implementation ones against the pinned
+source, and produces the single question the maintainer answers: where each
+subject should be going.
+
+Do this before drafting a page. A page written first fixes a claim about current
+truth made while reading, and reading is exactly when the material that would
+contradict it has not been read yet. `wfctl knowledge trajectory check` reports
+what is still yours to fix; none of its errors is a maintainer question.
+
+Existing candidates convert rather than restart. They already carry routing and
+time, so their history will be thin; record that honestly rather than inventing
+the part that was never captured. Curated pages convert through their `sources`
+entries and not their prose — a page is an interpretation, and putting one in the
+observation layer turns an earlier mistake into evidence.
+
 ## Promote and close
 
 1. Invoke `curate-project-knowledge`.
