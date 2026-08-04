@@ -257,6 +257,15 @@ compact packet containing the candidate, supporting and conflicting
 observations, the missing fact, and a recommendation. Record their explicit
 answer or keep the candidate unresolved outside `knowledge/`.
 
+Re-establish the subject first, as `maintainer-review` requires, and rebuild it
+from the material rather than from the candidate row: re-read the frozen sources
+that mention it — every one, not only the source the candidate cites — and check
+the current implementation where one exists. Then gather every candidate about
+that same subject into one packet. A claim recorded atomically keeps only what
+separates it from its neighbors, so a packet built directly from one asks about
+a difference with no thing attached to it. Withdraw any question the material
+turns out to answer, and record that it was answered.
+
 ## Promotion
 
 1. Route each candidate before authoring output:

@@ -20,6 +20,15 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   a hand-written approval receipt fails verification.
 - Ask one material question at a time, include a recommendation, and update
   the durable record before continuing.
+- Write every maintainer-facing message in the product's own language, not only
+  review packets. A blocker, a status line, and a progress report reach the same
+  reader as a decision packet does. Identifiers the workflow generated —
+  acceptance criteria, issue and discovery numbers, workstream and packet names,
+  candidate ids, record slugs — mean nothing outside the records that define
+  them. Name the thing first and attach the identifier after it, if at all: "the
+  approval gate the tests cannot open (AC-04)", never "blocked on AC-04". The
+  same holds for internal vocabulary: say what a term does for the product
+  before, or instead of, using it.
 - Preserve uncertainty and report missing evidence instead of guessing.
 - Execute required `wfctl` commands yourself when tool access permits. Do not
   delegate routine CLI operation, spec editing, or record maintenance to the

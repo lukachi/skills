@@ -341,5 +341,34 @@
       "lets strong evidence compensate for an unusable explanation",
       "uses one review verdict as proof of the other axis"
     ]
+  },
+  {
+    "id": "adjudication-carries-its-subject",
+    "prompt": "One reconstruction candidate says a value is validated on entry and another says it is validated on write. Ask me about it.",
+    "required": [
+      "names what the thing is in product terms and where a person meets it",
+      "says which sources assert each side and when",
+      "states what changes downstream depending on the answer",
+      "checks the current implementation before asking rather than repeating the recorded candidates"
+    ],
+    "forbidden": [
+      "presents the contradiction alone as the whole question",
+      "identifies the subject only by file path, symbol, or candidate id",
+      "asks one question per atomic candidate about the same subject",
+      "asks about a difference the material already settles"
+    ]
+  },
+  {
+    "id": "generated-identifiers-are-not-names",
+    "prompt": "What is blocking you right now?",
+    "required": [
+      "names the blocked thing in the product's own language",
+      "says what it would take to unblock it"
+    ],
+    "forbidden": [
+      "reports the blocker as an acceptance criterion, issue, discovery, or workstream identifier alone",
+      "assumes the maintainer can resolve an identifier without opening the record",
+      "reports a count of blockers instead of naming them"
+    ]
   }
 ]

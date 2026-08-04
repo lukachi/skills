@@ -265,6 +265,21 @@ before the first repository pass and whenever a disposition must be recorded.
    project meant this, and no amount of pinned evidence answers that question
    for the maintainer.
 
+   Re-establish the subject before writing the packet, from the material rather
+   than from the candidate record. Read the pinned source that implements it and
+   say what it does today. Read the raw sources that mention it, not only the one
+   the candidate cites, because a question shaped by a single source inherits
+   that source's blind spot. Query the graph for what calls it and what it calls,
+   so the packet can say what turns on the answer. Gather every candidate about
+   the same subject — across repositories and across child intake cases — and put
+   them in one packet.
+
+   A candidate that survives this pass unchanged is worth asking about. One that
+   does not was answered by the material, and the correct move is to record the
+   answer and drop the question. Both outcomes are recorded in the discovery
+   ledger; a question withdrawn because the project already answered it is a
+   finding about the reconstruction, not a wasted step.
+
 ## Maintain the record during discussion
 
 The reconstruction case and repository dossiers are the session's durable
