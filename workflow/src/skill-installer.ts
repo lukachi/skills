@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { resolveQmdSkillSource } from "./dependencies.js";
+import { resolveQmdSkillSource, type ToolRunner } from "./dependencies.js";
 import type { AgentTarget, Profile, SkillScope } from "./types.js";
 import {
   allWorkflowSkills,
@@ -27,6 +27,14 @@ export interface InstallSkillsOptions {
   scope: SkillScope;
   agents: AgentTarget[];
   yes: boolean;
+  /**
+   * How QMD is asked where its native skill lives. Defaults to running the real
+   * binary; a test supplies its own so that installing skills — a question
+   * about this installer's layout and agent targets — does not require an
+   * external tool on PATH. The real resolution stays covered by the QMD
+   * integration test, which runs in the job that installs QMD.
+   */
+  runner?: ToolRunner;
 }
 
 export interface InstalledSkill {
@@ -52,7 +60,7 @@ export function installSkillsTransactional(
     reconcileProjectWorkflowSkills(options);
     if (options.scope !== "none" && options.agents.length > 0) {
       const cli = resolveSkillsCli();
-      const qmdSkillSource = resolveQmdSkillSource();
+      const qmdSkillSource = resolveQmdSkillSource(options.runner);
       installSkillSource(
         cli,
         resolve(options.distributionRoot),

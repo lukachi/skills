@@ -9,6 +9,7 @@ import {
   realpath,
   writeFile,
 } from "node:fs/promises";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -379,6 +380,7 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
     scope: "project",
     agents: ["codex", "claude"],
     yes: true,
+    runner: healthyToolRunner,
   });
   installSkills({
     target: leaf,
@@ -387,6 +389,7 @@ test("doctor accepts initialized knowledge and leaf repositories", async () => {
     scope: "project",
     agents: ["codex", "claude"],
     yes: true,
+    runner: healthyToolRunner,
   });
 
   await access(join(knowledge, ".agents/skills/operate-project-knowledge/SKILL.md"));
@@ -623,9 +626,33 @@ test("registers many worktrees without silently changing the active selection", 
   );
 });
 
+/**
+ * A stand-in for QMD's own native skill directory. What the unit test needs to
+ * prove is that this installer places a third-party skill under both agent
+ * roots for the right profile — a claim about the installer, not about QMD.
+ * Resolving the real path needs `qmd` on PATH, which the unit job deliberately
+ * does not have, and `tests/qmd-integration.mjs` already asserts the same two
+ * files against the real binary in the job that installs it.
+ */
+function qmdSkillFixture(): string {
+  const source = mkdtempSync(join(tmpdir(), "wfctl-qmd-skill-"));
+  const skill = join(source, "qmd");
+  mkdirSync(skill, { recursive: true });
+  writeFileSync(
+    join(skill, "SKILL.md"),
+    "---\nname: qmd\ndescription: Retrieve Markdown through the QMD index.\n---\n\n"
+      + "# QMD\n\nFixture stand-in for the native skill.\n",
+    "utf8",
+  );
+  return skill;
+}
+
 const healthyToolRunner: ToolRunner = (command, args) => {
   if (command === "git" && args[0] === "check-ignore") {
     return { status: 0, stdout: "", stderr: "" };
+  }
+  if (command === "qmd" && args.join(" ") === "skills path qmd") {
+    return { status: 0, stdout: `${qmdSkillFixture()}\n`, stderr: "" };
   }
   if (command === "graphify") {
     return { status: 0, stdout: "graphify 0.9.26\n", stderr: "" };

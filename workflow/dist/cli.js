@@ -35225,7 +35225,7 @@ function installSkillsTransactional(options) {
     reconcileProjectWorkflowSkills(options);
     if (options.scope !== "none" && options.agents.length > 0) {
       const cli = resolveSkillsCli();
-      const qmdSkillSource = resolveQmdSkillSource();
+      const qmdSkillSource = resolveQmdSkillSource(options.runner);
       installSkillSource(
         cli,
         resolve16(options.distributionRoot),
