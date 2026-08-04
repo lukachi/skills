@@ -214,3 +214,23 @@ and link product meaning instead of claiming it from code.
 
 Run `wfctl knowledge validate` and `wfctl knowledge build` after promotion. A
 failed validation or build blocks a completed knowledge update.
+
+## Promotion order runs opposite ways, and the source decides which
+
+A curated page cites the record that gives it authority, and the two kinds of
+record become citable at opposite moments.
+
+| Source | When its pages may enter `knowledge/` |
+| --- | --- |
+| Change bundle | **After** completion approval is recorded. The citation resolves only from a receipt-ready change, and receipt-readiness requires that approval. |
+| Reconstruction | **Before** the case closes. The case's own promotion is what closure is waiting for, so the gate exempts it while promoting. |
+
+Reading one and applying it to the other is a natural mistake and produces a
+wall rather than a hint: pages get written, `wfctl knowledge validate` reports
+that the decision cannot cite an unfinished change, and the corpus is invalid
+until they are removed again.
+
+Drafting either kind early is free and often right — the understanding is
+freshest while the work is. Keep the drafts in the owning bundle or case until
+their moment, and say plainly that they are drafts rather than leaving them
+somewhere the validator has to reject.

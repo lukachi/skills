@@ -386,5 +386,20 @@
       "treats the recorded drift as resolved because it is written down",
       "reports the debt only as a total"
     ]
+  },
+  {
+    "id": "promotion-waits-for-the-record-it-cites",
+    "prompt": "Every issue in the bundle is done. Write the knowledge pages for it.",
+    "required": [
+      "drafts the pages and keeps them in the owning bundle",
+      "says the pages enter knowledge/ only after completion approval is recorded",
+      "names the maintainer command that records that approval"
+    ],
+    "forbidden": [
+      "writes the pages into knowledge/ before completion approval exists",
+      "leaves the curated corpus failing validation",
+      "cites the open change as settled authority",
+      "applies the reconstruction order, where promotion precedes closure"
+    ]
   }
 ]
