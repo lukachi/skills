@@ -1965,11 +1965,25 @@ export async function inspectProjectReconstruction(
   };
 }
 
+/**
+ * `duringPromotion` reads the case the way promotion itself has to: the records
+ * that close at the end have not closed yet. Promotion writes curated pages,
+ * then flips states, then validates — so every check here that only becomes
+ * true after that sequence finishes must be deferred, or the sequence can never
+ * start. Deferred, not dropped: `reconstruct check` runs the same inspection
+ * with the flag off and refuses to close the case until all of them hold.
+ *
+ * Getting this set wrong produces a state no order of operations can reach, and
+ * one such state shipped: a curated page must cite a maintainer decision, that
+ * citation resolves only from a receipt-ready reconstruction, receipt-readiness
+ * required every child intake case archived and completed, and a child case
+ * closes only once its own gate validates that same page.
+ */
 export async function inspectProjectReconstructionReceipt(
   targetInput: string,
   id: string,
   lifecycle: "active" | "archive" = "active",
-  allowPendingPromotionValidation = false,
+  duringPromotion = false,
 ): Promise<ReconstructionInspection> {
   const target = await requireKnowledgeRepository(targetInput);
   const path = reconstructionCasePath(target, lifecycle, id);
@@ -1977,7 +1991,7 @@ export async function inspectProjectReconstructionReceipt(
   const issues = reconstructionMetadataIssues(
     document.metadata,
     lifecycle,
-    allowPendingPromotionValidation,
+    duringPromotion,
   );
   if (
     document.metadata.session_record_version !== undefined
@@ -1989,7 +2003,7 @@ export async function inspectProjectReconstructionReceipt(
     issues.push(...discoveryLedgerIssues(document.body, "case.md", true));
   }
   issues.push(
-    ...await supplementalInputIssues(target, document.metadata, lifecycle),
+    ...await supplementalInputIssues(target, document.metadata, lifecycle, duringPromotion),
   );
   const repositories = recordArray(document.metadata.repositories);
   const candidates = recordArray(document.metadata.candidate_claims);
@@ -2336,7 +2350,7 @@ export async function closeProjectReconstruction(
 function reconstructionMetadataIssues(
   metadata: Record<string, unknown>,
   lifecycle: "active" | "archive",
-  allowPendingPromotionValidation: boolean,
+  duringPromotion: boolean,
 ): string[] {
   const issues: string[] = [];
   const mode = stringValue(metadata.mode);
@@ -2633,7 +2647,7 @@ function reconstructionMetadataIssues(
   if (
     promotion?.status === "applied"
     && promotion.validation !== "passed"
-    && !allowPendingPromotionValidation
+    && !duringPromotion
   ) {
     issues.push("promotion.validation must be passed");
   }
@@ -2829,6 +2843,7 @@ async function supplementalInputIssues(
   target: string,
   metadata: Record<string, unknown>,
   lifecycle: "active" | "archive",
+  duringPromotion = false,
 ): Promise<string[]> {
   const issues: string[] = [];
   const raw = recordValue(recordValue(metadata.supplemental_inputs)?.raw);
@@ -2872,15 +2887,19 @@ async function supplementalInputIssues(
         continue;
       }
       try {
+        // Closure is the last step, so during promotion the child is still
+        // active and its case.md still lives outside the archive. Everything
+        // below this point checks whether the case legitimately belongs to this
+        // reconstruction, which is true or false long before it closes.
         const intake = parseWorkSpec(
-          await readFile(
-            join(target, "intake/cases/archive", id, "case.md"),
-            "utf8",
-          ),
+          await readIntakeCase(target, id, duringPromotion),
         );
         if (
-          intake.metadata.status !== "completed"
-          || intake.metadata.outcome !== "completed"
+          !duringPromotion
+          && (
+            intake.metadata.status !== "completed"
+            || intake.metadata.outcome !== "completed"
+          )
         ) {
           issues.push(`raw-intake case is not completed: ${id}`);
         }
@@ -2929,8 +2948,14 @@ async function supplementalInputIssues(
           `frozen raw snapshot has uncommitted path changes: ${changedFrozenPaths.join(", ")}`,
         );
       }
+      // A source belonging to a still-open child reports `active`, which is the
+      // same deferral as the child's own lifecycle: it becomes a final review
+      // state at closure, and closure is what promotion is working toward.
+      const settled = duringPromotion
+        ? ["reviewed", "no-relevant-claims", "active"]
+        : ["reviewed", "no-relevant-claims"];
       for (const entry of inventory.entries) {
-        if (!["reviewed", "no-relevant-claims"].includes(entry.state)) {
+        if (!settled.includes(entry.state)) {
           issues.push(
             `${entry.path}: frozen raw input remains ${entry.state}`,
           );
@@ -2939,8 +2964,10 @@ async function supplementalInputIssues(
         if (
           !entry.cases.some((reference) =>
             caseIds.has(reference.id)
-            && reference.lifecycle === "archive"
-            && reference.outcome === "completed"
+            && (
+              duringPromotion
+              || (reference.lifecycle === "archive" && reference.outcome === "completed")
+            )
           )
         ) {
           issues.push(
@@ -2951,6 +2978,30 @@ async function supplementalInputIssues(
     }
   }
   return issues;
+}
+
+/**
+ * A closed child lives in the archive. Before closure it is still active, and
+ * only a mid-promotion read may look there — the closing gate must keep seeing
+ * a missing archive entry as the failure it is.
+ */
+async function readIntakeCase(
+  target: string,
+  id: string,
+  duringPromotion: boolean,
+): Promise<string> {
+  const archived = join(target, "intake/cases/archive", id, "case.md");
+  if (!duringPromotion) {
+    return await readFile(archived, "utf8");
+  }
+  try {
+    return await readFile(archived, "utf8");
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      throw error;
+    }
+    return await readFile(join(target, "intake/cases/active", id, "case.md"), "utf8");
+  }
 }
 
 async function reconstructionIntakeChildren(

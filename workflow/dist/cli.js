@@ -22534,14 +22534,14 @@ async function inspectProjectReconstruction(targetInput, id) {
     issues: [...new Set(issues)]
   };
 }
-async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = "active", allowPendingPromotionValidation = false) {
+async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = "active", duringPromotion = false) {
   const target = await requireKnowledgeRepository4(targetInput);
   const path = reconstructionCasePath(target, lifecycle, id);
   const document3 = parseWorkSpec(await readFile13(path, "utf8"));
   const issues = reconstructionMetadataIssues(
     document3.metadata,
     lifecycle,
-    allowPendingPromotionValidation
+    duringPromotion
   );
   if (document3.metadata.session_record_version !== void 0 && document3.metadata.session_record_version !== RECONSTRUCTION_SESSION_VERSION) {
     issues.push(`session_record_version must be ${RECONSTRUCTION_SESSION_VERSION}`);
@@ -22550,7 +22550,7 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
     issues.push(...discoveryLedgerIssues(document3.body, "case.md", true));
   }
   issues.push(
-    ...await supplementalInputIssues(target, document3.metadata, lifecycle)
+    ...await supplementalInputIssues(target, document3.metadata, lifecycle, duringPromotion)
   );
   const repositories = recordArray4(document3.metadata.repositories);
   const candidates = recordArray4(document3.metadata.candidate_claims);
@@ -22864,7 +22864,7 @@ async function closeProjectReconstruction(options) {
   }
   return { id: options.id, outcome: options.outcome, archivePath };
 }
-function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotionValidation) {
+function reconstructionMetadataIssues(metadata, lifecycle, duringPromotion) {
   const issues = [];
   const mode = stringValue7(metadata.mode);
   const repositories = recordArray4(metadata.repositories);
@@ -23091,7 +23091,7 @@ function reconstructionMetadataIssues(metadata, lifecycle, allowPendingPromotion
   if (promotion?.status === "applied" && stringArray6(promotion.concepts).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))) {
     issues.push("promotion.concepts must list concept files, not index.md or log.md");
   }
-  if (promotion?.status === "applied" && promotion.validation !== "passed" && !allowPendingPromotionValidation) {
+  if (promotion?.status === "applied" && promotion.validation !== "passed" && !duringPromotion) {
     issues.push("promotion.validation must be passed");
   }
   if (promotion?.status === "not-needed" && (!stringValue7(promotion.reason).trim() || promotion.validation !== "not-needed")) {
@@ -23236,7 +23236,7 @@ function dossierIssues(repository, metadata, body) {
   }
   return issues;
 }
-async function supplementalInputIssues(target, metadata, lifecycle) {
+async function supplementalInputIssues(target, metadata, lifecycle, duringPromotion = false) {
   const issues = [];
   const raw = recordValue7(recordValue7(metadata.supplemental_inputs)?.raw);
   const scope = recordValue7(raw?.scope);
@@ -23278,12 +23278,9 @@ async function supplementalInputIssues(target, metadata, lifecycle) {
       }
       try {
         const intake = parseWorkSpec(
-          await readFile13(
-            join10(target, "intake/cases/archive", id, "case.md"),
-            "utf8"
-          )
+          await readIntakeCase(target, id, duringPromotion)
         );
-        if (intake.metadata.status !== "completed" || intake.metadata.outcome !== "completed") {
+        if (!duringPromotion && (intake.metadata.status !== "completed" || intake.metadata.outcome !== "completed")) {
           issues.push(`raw-intake case is not completed: ${id}`);
         }
         const intakeBaseline = recordValue7(intake.metadata.baseline);
@@ -23323,15 +23320,16 @@ async function supplementalInputIssues(target, metadata, lifecycle) {
           `frozen raw snapshot has uncommitted path changes: ${changedFrozenPaths.join(", ")}`
         );
       }
+      const settled = duringPromotion ? ["reviewed", "no-relevant-claims", "active"] : ["reviewed", "no-relevant-claims"];
       for (const entry of inventory.entries) {
-        if (!["reviewed", "no-relevant-claims"].includes(entry.state)) {
+        if (!settled.includes(entry.state)) {
           issues.push(
             `${entry.path}: frozen raw input remains ${entry.state}`
           );
           continue;
         }
         if (!entry.cases.some(
-          (reference) => caseIds.has(reference.id) && reference.lifecycle === "archive" && reference.outcome === "completed"
+          (reference) => caseIds.has(reference.id) && (duringPromotion || reference.lifecycle === "archive" && reference.outcome === "completed")
         )) {
           issues.push(
             `${entry.path}: final raw review is not linked through supplemental_inputs.raw.case_ids`
@@ -23341,6 +23339,20 @@ async function supplementalInputIssues(target, metadata, lifecycle) {
     }
   }
   return issues;
+}
+async function readIntakeCase(target, id, duringPromotion) {
+  const archived = join10(target, "intake/cases/archive", id, "case.md");
+  if (!duringPromotion) {
+    return await readFile13(archived, "utf8");
+  }
+  try {
+    return await readFile13(archived, "utf8");
+  } catch (error2) {
+    if (!isMissingFileError(error2)) {
+      throw error2;
+    }
+    return await readFile13(join10(target, "intake/cases/active", id, "case.md"), "utf8");
+  }
 }
 async function reconstructionIntakeChildren(target, reconstructionId) {
   const children = [];

@@ -339,11 +339,21 @@ Then render the current reconstruction frontier before continuing analysis.
    ```
 
    The build also refreshes the disposable cross-case claim ledger and rejects
-   missing, non-reciprocal, or cyclic explicit claim relations. Knowledge
-   validation may use a completion-ready active reconstruction
-   receipt while `promotion.validation` is still pending. Set it to `passed`
-   only after validation actually succeeds, then rerun the reconstruction
-   check.
+   missing, non-reciprocal, or cyclic explicit claim relations.
+
+   Promotion runs before closure, so the order is fixed and its intermediate
+   failures are that order rather than a defect: write every page, then flip
+   states, then close the child intake cases, then validate. While validating a
+   page against this case, the requirements that only become true at closure are
+   deferred — this case's own `promotion.validation`, its child cases being
+   archived and completed, and the raw sources those children hold still
+   reporting `active`. `wfctl knowledge reconstruct check` enforces every one of
+   them, so set `promotion.validation` to `passed` only after validation
+   actually succeeds, then rerun the check.
+
+   Requirements about whether a child belongs to this reconstruction — baseline,
+   parent binding, approved scope, source identities — hold throughout. A page
+   that fails on one of those is failing for a real reason.
 7. Submit each finished packet with `wfctl knowledge reconstruct workstream
    submit` and have a different actor run `wfctl knowledge reconstruct
    workstream review`. Before acceptance, respond to contradictions,

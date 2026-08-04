@@ -480,3 +480,31 @@ Completion fails closed on:
 `partial` and `abandoned` are honest outcomes when the gate cannot be completed.
 No command may convert complete accounting into a claim of perfect
 understanding.
+
+### Promotion runs before closure, and the gate must let it
+
+Curated pages are written while the reconstruction is still open, because a
+product-bearing page cites the maintainer decision that only this reconstruction
+carries. So the order is fixed: write every page, then flip states, then close
+the children, then validate. Intermediate validation failures are that order,
+not a defect.
+
+Every completion requirement that becomes true only at the end of that sequence
+is therefore deferred while a page is being validated against the case, and
+enforced in full when the case closes. Today that covers the case's own
+promotion validation, its child intake cases being archived and completed, and
+the raw sources those children hold reporting a final review state instead of
+`active`.
+
+Requirements about whether a child legitimately belongs — same frozen baseline,
+bound to this reconstruction, inside the approved scope, sources inside the
+frozen inventory — are never deferred. They are decidable long before anything
+closes, and deferring them would let unrelated material enter a baseline.
+
+A completion requirement that a page must satisfy before the page can exist is
+not a strict gate; it is a state no order of operations can reach. One shipped:
+a product page needed a maintainer decision, the decision resolved only from a
+receipt-ready reconstruction, receipt-readiness required every child case closed,
+and a child closed only once its gate validated that page. Eleven cases could
+not close by any sequence. When adding a completion requirement, check whether
+promotion has to pass through it first.

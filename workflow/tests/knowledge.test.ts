@@ -44,6 +44,7 @@ import {
   createReconstructionWorkstream,
   escalateReconstructionWorkstream,
   inspectProjectReconstruction,
+  inspectProjectReconstructionReceipt,
   inspectReconstructionCoverage,
   markReconstructionCommunity,
   markReconstructionFiles,
@@ -1815,6 +1816,126 @@ test("reviewed reconstruction raw input must converge at its frozen baseline", a
       /frozen raw input remains|raw-intake case|final raw review/.test(issue)
     ),
     false,
+  );
+});
+
+test("a mid-promotion read does not require the children that close last", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-promotion-cycle-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  await writeFile(
+    join(target, "raw/idea.md"),
+    "# Idea\n\nA historical idea with no current product authority.\n",
+    "utf8",
+  );
+  commitAll(target, "add raw idea");
+  const leaf = await initializedLeafRepository("wfctl-promotion-cycle-leaf-", target);
+  const reconstruction = await beginProjectReconstruction({
+    target,
+    slug: "promotion-cycle",
+    title: "Promotion cycle baseline",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-28T12:30:00.000Z"),
+  });
+  await approveReconstructionRawScope({
+    target,
+    id: reconstruction.id,
+    mode: "all",
+    approvedBy: "human:test-maintainer",
+    note: "Include the complete frozen raw snapshot in this baseline.",
+    now: new Date("2026-07-28T12:35:00.000Z"),
+  });
+  const caseDocument = parseWorkSpec(await readFile(reconstruction.path, "utf8"));
+  const supplemental = caseDocument.metadata.supplemental_inputs as Record<
+    string,
+    Record<string, unknown>
+  >;
+  supplemental.raw!.status = "reviewed";
+  supplemental.raw!.notes = ["Review the frozen raw snapshot."];
+
+  const intake = await beginIntakeCase({
+    target,
+    slug: "promotion-cycle",
+    title: "Review frozen raw idea",
+    paths: ["raw/idea.md"],
+    baseline: String(supplemental.raw!.baseline),
+    reconstructionId: reconstruction.id,
+    distributionRoot,
+    now: new Date("2026-07-28T12:40:00.000Z"),
+  });
+  await readIntakeSource({
+    target,
+    id: intake.id,
+    path: "raw/idea.md",
+    now: new Date("2026-07-28T12:42:00.000Z"),
+  });
+  await markIntakeSource({
+    target,
+    id: intake.id,
+    path: "raw/idea.md",
+    status: "no-relevant-claims",
+    note: "Read completely; the unsupported historical idea is not current truth.",
+    now: new Date("2026-07-28T12:45:00.000Z"),
+  });
+  // The child is read, bound, and inside the approved scope, but still active:
+  // it closes only after the pages that cite this reconstruction validate.
+  supplemental.raw!.case_ids = [intake.id];
+  await writeFile(reconstruction.path, serializeWorkSpec(caseDocument), "utf8");
+
+  const closing = await inspectProjectReconstruction(target, reconstruction.id);
+  assert.ok(
+    // An unclosed child has no archived case.md at all, so the closing gate
+    // reports it as unverifiable rather than as incomplete. Either way it
+    // refuses, and that refusal is the behavior being preserved.
+    closing.issues.some((issue) =>
+      /raw-intake case is not completed|cannot verify completed raw-intake case/.test(issue)
+    ),
+    JSON.stringify(closing.issues),
+  );
+  assert.ok(
+    closing.issues.some((issue) => /raw\/idea\.md: frozen raw input remains active/.test(issue)),
+    JSON.stringify(closing.issues),
+  );
+
+  const promoting = await inspectProjectReconstructionReceipt(
+    target,
+    reconstruction.id,
+    "active",
+    true,
+  );
+  assert.equal(
+    promoting.issues.some((issue) =>
+      /raw-intake case is not completed|cannot verify completed raw-intake case/.test(issue)
+      || /final raw review is not linked|frozen raw input remains active/.test(issue)
+    ),
+    false,
+    JSON.stringify(promoting.issues),
+  );
+
+  // Belonging is still proved, so a foreign case cannot ride the exemption in.
+  const foreign = await beginIntakeCase({
+    target,
+    slug: "unrelated",
+    title: "Unrelated raw review",
+    paths: ["raw/idea.md"],
+    baseline: String(supplemental.raw!.baseline),
+    distributionRoot,
+    now: new Date("2026-07-28T12:47:00.000Z"),
+  });
+  supplemental.raw!.case_ids = [foreign.id];
+  await writeFile(reconstruction.path, serializeWorkSpec(caseDocument), "utf8");
+  const unrelated = await inspectProjectReconstructionReceipt(
+    target,
+    reconstruction.id,
+    "active",
+    true,
+  );
+  assert.ok(
+    unrelated.issues.some((issue) =>
+      /raw-intake case is not bound to this reconstruction/.test(issue)
+    ),
+    JSON.stringify(unrelated.issues),
   );
 });
 
