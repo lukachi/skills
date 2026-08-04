@@ -168,6 +168,36 @@ function corpusCollector(): StateCollector {
         summary: "Curated knowledge is populated",
         facts: { concepts, documents: nodes.length },
       }];
+      // A reconstruction's whole purpose is separating what the project meant
+      // from what it built, and it records the gap faithfully. Nothing then
+      // reads those rows, so the debt is complete, precise, and invisible from
+      // the moment it is written. Naming the pages is the point: a count of
+      // drifted capabilities is a number nobody can act on.
+      const drifted = nodes.filter((node) =>
+        stringValue(recordValue(recordValue(node)?.realization)?.alignment) === "drifted"
+      );
+      if (drifted.length > 0) {
+        signals.push({
+          id: "corpus.intent-delivery-drift",
+          domain: "corpus",
+          level: "attention",
+          summary:
+            "Curated knowledge records accepted intent the implementation does not deliver",
+          facts: {
+            capabilities: drifted.length,
+            named: nameThem(
+              drifted.map((node) =>
+                stringValue(recordValue(node)?.title) || stringValue(recordValue(node)?.path)
+              ),
+            ),
+          },
+          // Nobody owes an action this minute. The rows are an accurate record
+          // of a finished reconstruction, and whether to pay the debt down is a
+          // separate decision per capability. Claiming it awaits the maintainer
+          // would park an unclearable question in their queue forever, and
+          // claiming it awaits the agent would arm the stop guard on a fact.
+        });
+      }
       const compiledAt = stringValue(graph.generatedAt);
       const newest = await newestModification(join(context.knowledgeRoot, "knowledge"));
       if (compiledAt && newest && newest > Date.parse(compiledAt)) {
@@ -519,10 +549,15 @@ function workCollector(): StateCollector {
  * directory indefinitely whether or not anyone needed an answer. Naming them
  * costs a line and makes the queue impossible to read past.
  */
-function nameThem(captures: readonly { id: string }[]): string {
-  const shown = captures.slice(0, 20).map((capture) => capture.id);
-  return captures.length > shown.length
-    ? `${shown.join(", ")}, and ${captures.length - shown.length} more`
+/**
+ * A queue reported as a number reads as brevity and works as concealment: it
+ * says nothing about what the entries contain, and the longer it grows the more
+ * it hides. Name them, and say plainly how many were left off.
+ */
+function nameThem(items: readonly string[]): string {
+  const shown = items.slice(0, 20);
+  return items.length > shown.length
+    ? `${shown.join(", ")}, and ${items.length - shown.length} more`
     : shown.join(", ");
 }
 
@@ -553,7 +588,7 @@ function inboxCollector(): StateCollector {
           facts: {
             captures: decisions.length,
             command: "wfctl work capture list",
-            waiting: nameThem(decisions),
+            waiting: nameThem(decisions.map((capture) => capture.id)),
           },
           ...(oldest ? { since: oldest } : {}),
           awaits: "maintainer",
@@ -569,7 +604,7 @@ function inboxCollector(): StateCollector {
           facts: {
             captures: triage.length,
             command: "wfctl work capture list",
-            waiting: nameThem(triage),
+            waiting: nameThem(triage.map((capture) => capture.id)),
           },
           ...(oldest ? { since: oldest } : {}),
           awaits: "agent",

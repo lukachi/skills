@@ -217,6 +217,21 @@ When the maintainer cannot tell the two apart, intent stays `unknown`.
 Reconstruction never edits source. Neither answer changes the implementation,
 and the agent must say so rather than leave the maintainer expecting it.
 
+### Drift has to leave the baseline
+
+A baseline whose whole value is separating intent from delivery ends holding
+every gap it found, and a gap recorded with no way out is indistinguishable from
+one never found. So `realization.alignment: drifted` is a durable entry point,
+not a terminal state. `wfctl brief` reports the drifted pages by name, alignment
+reads them whenever work enters their Area, and they become work only through
+the normal shaping route.
+
+Closing a drift row honestly has three forms and no fourth: the intent is
+delivered, the intent is superseded and the page says so, or the gap is deferred
+with a reason. Editing the page to describe the code is not one of them — it
+retires an accepted intent to silence a check and destroys the only record that
+made the gap visible.
+
 ## File dispositions
 
 Every tracked file receives one semantic category and one state:

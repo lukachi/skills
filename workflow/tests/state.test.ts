@@ -291,6 +291,42 @@ test("tests the checkpoint against its record, not against the clock", async () 
   assert.equal(stale?.level, "attention");
 });
 
+test("names the capabilities whose delivery drifted from accepted intent", async () => {
+  const { knowledge } = await installKnowledge();
+  await mkdir(join(knowledge, ".workflow/current"), { recursive: true });
+  await writeFile(
+    join(knowledge, ".workflow/current/knowledge-graph.json"),
+    JSON.stringify({
+      generatedAt: "2026-08-04T00:00:00.000Z",
+      nodes: [
+        {
+          kind: "concept",
+          path: "knowledge/areas/world/capabilities/rest.md",
+          title: "Resting",
+          realization: { intent: "accepted", delivery: "partial", alignment: "drifted" },
+        },
+        {
+          kind: "concept",
+          path: "knowledge/areas/world/capabilities/party.md",
+          title: "Party",
+          realization: { intent: "accepted", delivery: "verified", alignment: "aligned" },
+        },
+      ],
+      edges: [],
+    }),
+    "utf8",
+  );
+
+  const report = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  const drift = report.signals.find((signal) => signal.id === "corpus.intent-delivery-drift");
+
+  assert.equal(drift?.facts?.capabilities, 1);
+  assert.equal(drift?.facts?.named, "Resting");
+  // A count is what made this debt invisible; a name is what makes it work.
+  // Nobody owes an action this minute, so the signal claims no audience.
+  assert.equal(drift?.awaits, undefined);
+});
+
 test("keeps every shipped capability reachable from a collector or a requirement", () => {
   const declared = new Set(CAPABILITIES.map((capability) => capability.id));
   const referenced = new Set<string>();

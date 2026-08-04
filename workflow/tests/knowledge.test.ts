@@ -3614,6 +3614,13 @@ test("enforces product and engineering view contracts with current quality recei
   assert.equal(node?.view, "product");
   assert.equal(node?.purpose, "current-behavior");
   assert.deepEqual(node?.audience, ["stakeholder", "maintainer", "domain-expert"]);
+  // Compiled so intent-against-delivery can be counted and named without
+  // rescanning the corpus. A drift row nobody can find is not a record.
+  assert.deepEqual(node?.realization, {
+    intent: "accepted",
+    delivery: "verified",
+    alignment: "aligned",
+  });
 
   const sealed = await readFile(join(target, conceptPath), "utf8");
   await writeFile(

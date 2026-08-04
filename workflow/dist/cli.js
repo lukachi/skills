@@ -15689,6 +15689,12 @@ function graphNode(path, metadata, body) {
   const view = stringValue(metadata?.view);
   const purpose = stringValue(metadata?.purpose);
   const audience = stringArray(metadata?.audience);
+  const declared = isRecord(metadata?.realization) ? metadata.realization : void 0;
+  const realization = declared ? {
+    ...stringValue(declared.intent) ? { intent: stringValue(declared.intent) } : {},
+    ...stringValue(declared.delivery) ? { delivery: stringValue(declared.delivery) } : {},
+    ...stringValue(declared.alignment) ? { alignment: stringValue(declared.alignment) } : {}
+  } : void 0;
   return {
     id: graphId(path),
     path,
@@ -15699,7 +15705,8 @@ function graphNode(path, metadata, body) {
     ...status ? { status } : {},
     ...view ? { view } : {},
     ...purpose ? { purpose } : {},
-    ...audience.length > 0 ? { audience } : {}
+    ...audience.length > 0 ? { audience } : {},
+    ...realization && Object.keys(realization).length > 0 ? { realization } : {}
   };
 }
 function markdownLinks(body, lineOffset) {
@@ -37006,6 +37013,30 @@ function corpusCollector() {
         summary: "Curated knowledge is populated",
         facts: { concepts, documents: nodes.length }
       }];
+      const drifted = nodes.filter(
+        (node2) => stringValue10(recordValue10(recordValue10(node2)?.realization)?.alignment) === "drifted"
+      );
+      if (drifted.length > 0) {
+        signals2.push({
+          id: "corpus.intent-delivery-drift",
+          domain: "corpus",
+          level: "attention",
+          summary: "Curated knowledge records accepted intent the implementation does not deliver",
+          facts: {
+            capabilities: drifted.length,
+            named: nameThem(
+              drifted.map(
+                (node2) => stringValue10(recordValue10(node2)?.title) || stringValue10(recordValue10(node2)?.path)
+              )
+            )
+          }
+          // Nobody owes an action this minute. The rows are an accurate record
+          // of a finished reconstruction, and whether to pay the debt down is a
+          // separate decision per capability. Claiming it awaits the maintainer
+          // would park an unclearable question in their queue forever, and
+          // claiming it awaits the agent would arm the stop guard on a fact.
+        });
+      }
       const compiledAt = stringValue10(graph.generatedAt);
       const newest = await newestModification(join18(context.knowledgeRoot, "knowledge"));
       if (compiledAt && newest && newest > Date.parse(compiledAt)) {
@@ -37293,9 +37324,9 @@ function workCollector() {
     }
   };
 }
-function nameThem(captures) {
-  const shown = captures.slice(0, 20).map((capture) => capture.id);
-  return captures.length > shown.length ? `${shown.join(", ")}, and ${captures.length - shown.length} more` : shown.join(", ");
+function nameThem(items) {
+  const shown = items.slice(0, 20);
+  return items.length > shown.length ? `${shown.join(", ")}, and ${items.length - shown.length} more` : shown.join(", ");
 }
 function inboxCollector() {
   return {
@@ -37320,7 +37351,7 @@ function inboxCollector() {
           facts: {
             captures: decisions.length,
             command: "wfctl work capture list",
-            waiting: nameThem(decisions)
+            waiting: nameThem(decisions.map((capture) => capture.id))
           },
           ...oldest ? { since: oldest } : {},
           awaits: "maintainer"
@@ -37336,7 +37367,7 @@ function inboxCollector() {
           facts: {
             captures: triage.length,
             command: "wfctl work capture list",
-            waiting: nameThem(triage)
+            waiting: nameThem(triage.map((capture) => capture.id))
           },
           ...oldest ? { since: oldest } : {},
           awaits: "agent"

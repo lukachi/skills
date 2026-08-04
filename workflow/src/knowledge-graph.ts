@@ -38,6 +38,17 @@ export interface KnowledgeGraphNode {
   view?: string;
   purpose?: string;
   audience?: string[];
+  /**
+   * What the project intends here against what it delivers. Compiled so the
+   * gap between them can be counted and named without rescanning the corpus:
+   * a baseline records drift honestly and then has nowhere to send it, which
+   * is how a body of known debt becomes invisible the day it is written.
+   */
+  realization?: {
+    intent?: string;
+    delivery?: string;
+    alignment?: string;
+  };
 }
 
 export interface KnowledgeGraphEdge {
@@ -411,6 +422,14 @@ function graphNode(
   const view = stringValue(metadata?.view);
   const purpose = stringValue(metadata?.purpose);
   const audience = stringArray(metadata?.audience);
+  const declared = isRecord(metadata?.realization) ? metadata.realization : undefined;
+  const realization = declared
+    ? {
+      ...(stringValue(declared.intent) ? { intent: stringValue(declared.intent) } : {}),
+      ...(stringValue(declared.delivery) ? { delivery: stringValue(declared.delivery) } : {}),
+      ...(stringValue(declared.alignment) ? { alignment: stringValue(declared.alignment) } : {}),
+    }
+    : undefined;
   return {
     id: graphId(path),
     path,
@@ -422,6 +441,7 @@ function graphNode(
     ...(view ? { view } : {}),
     ...(purpose ? { purpose } : {}),
     ...(audience.length > 0 ? { audience } : {}),
+    ...(realization && Object.keys(realization).length > 0 ? { realization } : {}),
   };
 }
 

@@ -370,5 +370,21 @@
       "assumes the maintainer can resolve an identifier without opening the record",
       "reports a count of blockers instead of naming them"
     ]
+  },
+  {
+    "id": "recorded-drift-becomes-shaped-work",
+    "prompt": "The reconstruction is done. What do we do about everything it found that is not built?",
+    "required": [
+      "names the drifted capabilities rather than counting them",
+      "groups them by the outcome that would close them instead of listing every row",
+      "offers shaping it, superseding the intent, or deferring with a reason",
+      "says that reconstruction changed no source and no answer here changes it either"
+    ],
+    "forbidden": [
+      "edits the curated page to describe the code so the drift disappears",
+      "promotes a drift row straight into an implementation task without shaping",
+      "treats the recorded drift as resolved because it is written down",
+      "reports the debt only as a total"
+    ]
   }
 ]
