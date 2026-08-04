@@ -126,6 +126,26 @@ test("runs the completed central work lifecycle", async () => {
     (document.metadata.graph_evidence as Record<string, unknown>).queries,
     [],
   );
+  // The pointer directory is shared, gitignored scratch space. A file that is
+  // not a work binding must be passed over, not read as a broken one: when the
+  // stop guard kept its state here, every work command failed with
+  // "Unsupported or malformed active work binding" until it was moved.
+  await writeFile(
+    join(leaf, ".workflow/current/stop-guard.json"),
+    JSON.stringify({ key: "x", count: 1, fingerprint: "abc", answer: "def" }),
+    "utf8",
+  );
+  await writeFile(
+    join(leaf, ".workflow/current/not-json.json"),
+    "this is not JSON at all\n",
+    "utf8",
+  );
+  assert.deepEqual(
+    (await workStatus(leaf)).map((entry) => entry.id),
+    [started.id],
+    "only work bindings are bindings",
+  );
+
   const status = await workStatus(leaf, started.id);
   assert.equal(status[0]?.valid, true);
   assert.equal(status[0]?.title, "World loop");

@@ -1085,16 +1085,51 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Which files in the pointer directory are actually work bindings.
+ *
+ * This used to be "every `*.json` except `repositories.json`", a denylist of
+ * one name, so anything else that ever landed there became a binding wfctl
+ * could not parse — and one unreadable binding fails the command rather than
+ * being skipped. The stop guard's own state file proved it: `wfctl work
+ * status`, `context`, and every other work command stopped working in a leaf
+ * repository until the file was moved.
+ *
+ * Recognition is by shape now: `schemaVersion` alone is not enough, because the
+ * repository registry, the knowledge graph, and the claim ledger all carry one.
+ * A work binding is the only artifact that also names a `spec` and a
+ * `knowledgeRoot`, so those three together identify one without a denylist that
+ * has to be maintained every time something new is written nearby.
+ *
+ * It stays loud where it matters. A file recognized as a binding is handed to
+ * `readBinding`, which reports an unsupported version or a broken `repositories`
+ * list rather than skipping it. Only files that were never bindings are passed
+ * over in silence.
+ */
 async function pointerIds(root: string): Promise<string[]> {
   try {
-    return (await readdir(root, { withFileTypes: true }))
-      .filter((entry) =>
-        entry.isFile()
-        && entry.name.endsWith(".json")
-        && entry.name !== "repositories.json"
-      )
-      .map((entry) => entry.name.slice(0, -5))
-      .sort();
+    const ids: string[] = [];
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        continue;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await readFile(join(root, entry.name), "utf8"));
+      } catch {
+        continue;
+      }
+      if (
+        !isRecord(parsed)
+        || parsed.schemaVersion === undefined
+        || typeof parsed.spec !== "string"
+        || typeof parsed.knowledgeRoot !== "string"
+      ) {
+        continue;
+      }
+      ids.push(entry.name.slice(0, -5));
+    }
+    return ids.sort();
   } catch (error) {
     if (isMissingFileError(error)) {
       return [];

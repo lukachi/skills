@@ -36794,9 +36794,23 @@ function isRecord6(value) {
 }
 async function pointerIds(root) {
   try {
-    return (await readdir11(root, { withFileTypes: true })).filter(
-      (entry) => entry.isFile() && entry.name.endsWith(".json") && entry.name !== "repositories.json"
-    ).map((entry) => entry.name.slice(0, -5)).sort();
+    const ids = [];
+    for (const entry of await readdir11(root, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        continue;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(await readFile19(join17(root, entry.name), "utf8"));
+      } catch {
+        continue;
+      }
+      if (!isRecord6(parsed) || parsed.schemaVersion === void 0 || typeof parsed.spec !== "string" || typeof parsed.knowledgeRoot !== "string") {
+        continue;
+      }
+      ids.push(entry.name.slice(0, -5));
+    }
+    return ids.sort();
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
