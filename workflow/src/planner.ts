@@ -188,12 +188,15 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
   });
 
   if (options.profile === "knowledge") {
+    // Curated knowledge pages, not workflow assets. The distribution supplies
+    // the empty shape once; everything after that is the project's own content.
     await planOwnedTree({
       sourceRoot: join(distributionRoot, "templates/knowledge"),
       destinationRoot: ".",
       target,
       state,
       operations,
+      seed: true,
     });
   }
 
@@ -549,21 +552,48 @@ async function planOwnedTree(input: {
   target: string;
   state: WorkflowState | undefined;
   operations: PlanOperation[];
+  /** See `planOwnedFile`: content the project is expected to grow past. */
+  seed?: boolean;
 }): Promise<void> {
   for (const sourceRelative of await collectFiles(input.sourceRoot)) {
     const destination = normalizeRelative(join(input.destinationRoot, sourceRelative));
     const content = await readFile(join(input.sourceRoot, sourceRelative), "utf8");
     input.operations.push(
-      await planOwnedFile(input.target, destination, content, input.state),
+      await planOwnedFile(
+        input.target,
+        destination,
+        content,
+        input.state,
+        input.seed === true,
+      ),
     );
   }
 }
 
+/**
+ * `seed` marks a file the distribution starts and the project finishes: the
+ * knowledge entry point, the Area map, the decision and vision indexes. Editing
+ * them is not drift, it is the workflow working — no Area is reachable from the
+ * entry point until someone links it there.
+ *
+ * Treating those as ordinary owned files made every necessary edit a conflict,
+ * and a conflict stops the whole installation, so one required step blocked
+ * rules, skills, and the agent block from ever updating. The incoming template
+ * was byte-identical to the installed one in the observed case: the upgrade had
+ * nothing to give the file and refused to run anyway.
+ *
+ * A seed stays tracked so it is never mistaken for an obsolete file and
+ * proposed for deletion, and its recorded hash stays the template's — the
+ * comparison it feeds is one this branch no longer reaches. The cost is that a
+ * later template revision does not reach existing projects, which is correct
+ * for content the project owns.
+ */
 async function planOwnedFile(
   target: string,
   relativePath: string,
   content: string,
   state: WorkflowState | undefined,
+  seed = false,
 ): Promise<PlanOperation> {
   const absolute = join(target, relativePath);
   const desiredHash = hashContent(content);
@@ -579,6 +609,17 @@ async function planOwnedFile(
     }
     const existing = await readFile(absolute);
     const currentHash = hashContent(existing);
+    if (seed && currentHash !== desiredHash) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "unchanged",
+        reason: "seeded file belongs to the project once it exists",
+        content,
+        expectedHash: currentHash,
+        track: true,
+      };
+    }
     if (currentHash === desiredHash) {
       return {
         kind: "file",

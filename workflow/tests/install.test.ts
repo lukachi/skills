@@ -141,6 +141,57 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
   ));
 });
 
+test("an authored knowledge page never blocks the upgrade that seeded it", async () => {
+  const target = await temporaryDirectory("wfctl-seeded-");
+  await applyInstallPlan(await buildInstallPlan({
+    target,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+
+  // Exactly what the workflow requires: no Area is reachable from the entry
+  // point until it is linked here, and the entry point is seeded too.
+  const areaMap = join(target, "knowledge/areas/index.md");
+  const authored = `${await readFile(areaMap, "utf8")}\n- [Combat](combat/)\n`;
+  await writeFile(areaMap, authored, "utf8");
+  const architecture = join(target, "knowledge/architecture/index.md");
+  await writeFile(
+    architecture,
+    `${await readFile(architecture, "utf8")}\n- [Service boundaries](service-boundaries.md)\n`,
+    "utf8",
+  );
+
+  const plan = await buildInstallPlan({ target, profile: "knowledge", distributionRoot });
+  assert.deepEqual(
+    plan.operations.filter((operation) => operation.status === "conflict"),
+    [],
+    "an edit the workflow demands is not drift",
+  );
+  const seeded = plan.operations.find((operation) =>
+    operation.path === "knowledge/areas/index.md"
+  );
+  assert.equal(seeded?.status, "unchanged");
+  assert.equal(seeded?.track, true, "a seed must stay tracked or it reads as obsolete");
+
+  await applyInstallPlan(plan);
+  assert.equal(await readFile(areaMap, "utf8"), authored, "the upgrade must not overwrite it");
+
+  // And it stays that way: the recorded hash is the template's, so the same
+  // comparison runs again on every later upgrade.
+  const second = await buildInstallPlan({ target, profile: "knowledge", distributionRoot });
+  assert.deepEqual(
+    second.operations.filter((operation) => operation.status === "conflict"),
+    [],
+  );
+  assert.equal(
+    second.operations.some((operation) =>
+      operation.kind === "delete" && operation.path.startsWith("knowledge/")
+    ),
+    false,
+    "a seed must never be proposed for deletion",
+  );
+});
+
 test("renders a profile-specific leaf guide with the configured knowledge path", async () => {
   const root = await temporaryDirectory("wfctl-leaf-guide-");
   const knowledge = join(root, "knowledge");

@@ -7201,7 +7201,8 @@ async function buildInstallPlan(options) {
       destinationRoot: ".",
       target,
       state,
-      operations
+      operations,
+      seed: true
     });
   }
   const desiredOwnedPaths = new Set(
@@ -7524,11 +7525,17 @@ async function planOwnedTree(input) {
     const destination = normalizeRelative(join2(input.destinationRoot, sourceRelative));
     const content3 = await readFile3(join2(input.sourceRoot, sourceRelative), "utf8");
     input.operations.push(
-      await planOwnedFile(input.target, destination, content3, input.state)
+      await planOwnedFile(
+        input.target,
+        destination,
+        content3,
+        input.state,
+        input.seed === true
+      )
     );
   }
 }
-async function planOwnedFile(target, relativePath2, content3, state) {
+async function planOwnedFile(target, relativePath2, content3, state, seed = false) {
   const absolute = join2(target, relativePath2);
   const desiredHash = hashContent(content3);
   try {
@@ -7543,6 +7550,17 @@ async function planOwnedFile(target, relativePath2, content3, state) {
     }
     const existing = await readFile3(absolute);
     const currentHash = hashContent(existing);
+    if (seed && currentHash !== desiredHash) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "unchanged",
+        reason: "seeded file belongs to the project once it exists",
+        content: content3,
+        expectedHash: currentHash,
+        track: true
+      };
+    }
     if (currentHash === desiredHash) {
       return {
         kind: "file",
