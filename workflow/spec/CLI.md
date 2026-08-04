@@ -247,6 +247,36 @@ wfctl knowledge reconstruct close <case-id> --outcome completed
 - `wfctl knowledge build` validates and compiles the deterministic knowledge
   graph and cross-case claim ledger.
 
+### Trajectories
+
+- `wfctl knowledge trajectory check` compiles every record under
+  `trajectories/`, reports structural errors, and lists the roots awaiting a
+  vision, largest total gap first. `--build` writes the compiled graph when no
+  error remains.
+- `wfctl knowledge trajectory declare <trajectory> --id <id> --by human:<id>
+  --statement "<what it should become>"` records a maintainer vision. Like
+  `wfctl work approve`, it requires an interactive terminal or `--token`
+  matching `WFCTL_APPROVAL_TOKEN`, and it writes both the vision document and an
+  ignored durable record the compiler reconciles against. `--supersedes`
+  replaces a previous vision for the same subject.
+
+A vision names its trajectory; a trajectory never names its vision. The current
+vision is derived, so the two cannot drift apart, and a trajectory that names one
+is an error. A hand-written vision document has no durable record and fails: what
+a project meant and what it should become are different acts, and only the second
+is the maintainer's alone.
+
+It runs before curation and does not require valid curated knowledge, because a
+trajectory exists before the pages written from it. Its pending list is the
+maintainer queue: everything else the command reports is the agent's own work.
+
+The compiler rejects a finding whose cause claims a reason and carries no
+evidence for it, a subject named for a file or symbol rather than in product
+language, a `part-of` cycle, more or fewer than one primary parent, a debt
+scheduled for closure that names no work, and any attempt to record a gap as
+accepted. See [TRAJECTORIES.md](../TRAJECTORIES.md) for why each of those is an
+error rather than a warning.
+
 QMD owns retrieval. Agents run `qmd update`, and—with explicit model-download
 approval—`qmd pull` and `qmd embed` when semantic retrieval is needed.
 

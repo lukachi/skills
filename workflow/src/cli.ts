@@ -46,6 +46,8 @@ import {
   updateIntakeCheckpoint,
 } from "./intake.js";
 import { writeClaimLedger } from "./claim-ledger.js";
+import { compileTrajectories, writeTrajectoryGraph } from "./trajectory.js";
+import { declareVision, type VisionMethod } from "./vision.js";
 import { hashKnowledgeConcept, validateKnowledge } from "./knowledge.js";
 import { writeKnowledgeGraph } from "./knowledge-graph.js";
 import {
@@ -1763,6 +1765,7 @@ function knowledgeCommand() {
     .command("case", knowledgeCaseCommand())
     .command("sources", knowledgeSourcesCommand())
     .command("reconstruct", knowledgeReconstructCommand())
+    .command("trajectory", knowledgeTrajectoryCommand())
     .command(
       "hash",
       new Command()
@@ -1872,6 +1875,165 @@ function knowledgeCommand() {
           }
         }),
     );
+}
+
+function knowledgeTrajectoryCommand() {
+  return new Command()
+    .description(
+      "Compile the trajectory graph and report the decisions it is waiting on.\n"
+        + "A trajectory is one product subject as a line: how it was conceived, what changed and why,\n"
+        + "and what the source shows now. It runs before curation, so it does not require valid knowledge.\n"
+        + "The pending list is the only queue meant for the maintainer, worst gap first.",
+    )
+    .command(
+      "check",
+      new Command()
+        .description("Validate every trajectory and list the roots awaiting a vision.")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--build", "Write the compiled graph when no error remains.")
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options) => {
+          const result = await compileTrajectories(options.target);
+          const built = options.build && result.errors.length === 0
+            ? await writeTrajectoryGraph(options.target)
+            : undefined;
+          if (options.json) {
+            printJson({
+              valid: result.errors.length === 0,
+              built: built?.path,
+              contentHash: result.graph.contentHash,
+              stats: result.graph.stats,
+              errors: result.errors,
+              pending: result.pending,
+            });
+          } else {
+            process.stdout.write(
+              `Trajectories: ${result.errors.length === 0 ? "valid" : "invalid"} `
+                + `(${result.graph.stats.trajectories} trajectory(s), `
+                + `${result.graph.stats.roots} root(s))\n`,
+            );
+            for (const issue of result.errors) {
+              process.stdout.write(`ERROR ${issue.path}: ${issue.message}\n`);
+            }
+            if (built) {
+              process.stdout.write(`Trajectory graph built: ${built.path}\n`);
+            }
+            if (result.pending.length === 0) {
+              process.stdout.write("No trajectory is waiting on a product decision.\n");
+            } else {
+              process.stdout.write(
+                `Awaiting your vision (${result.pending.length}), worst gap first:\n`,
+              );
+              for (const entry of result.pending) {
+                process.stdout.write(
+                  `  ${entry.subject} — ${entry.gapWeight} open gap(s) [${entry.id}]\n`,
+                );
+              }
+            }
+          }
+          if (result.errors.length > 0) {
+            process.exitCode = 2;
+          }
+        }),
+    )
+    .command(
+      "declare",
+      new Command()
+        .description(
+          "Record a maintainer vision for one trajectory: what the subject should become.\n"
+            + "This is the one record the agent may not author. It needs an interactive terminal,\n"
+            + "or --token matching WFCTL_APPROVAL_TOKEN.",
+        )
+        .arguments("<trajectory:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--id <id:string>", "Vision id.", { required: true })
+        .option("--by <actor:string>", "Declaring maintainer as human:<id>.", { required: true })
+        .option(
+          "--statement <statement:string>",
+          "What the subject should become, in product language.",
+          { required: true },
+        )
+        .option("--supersedes <id:string>", "The vision this one replaces.")
+        .option(
+          "--token <token:string>",
+          "Out-of-band token; required when no interactive terminal is available. "
+            + "Must equal WFCTL_APPROVAL_TOKEN.",
+        )
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, trajectory) => {
+          const method = await resolveVisionMethod({
+            trajectory,
+            by: options.by,
+            statement: options.statement,
+            ...(options.token ? { token: options.token } : {}),
+          });
+          const result = await declareVision({
+            knowledgeRoot: resolve(options.target),
+            id: options.id,
+            trajectory,
+            declaredBy: options.by,
+            statement: options.statement,
+            method,
+            ...(options.supersedes ? { supersedes: options.supersedes } : {}),
+          });
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Recorded a vision for ${result.trajectory}\n`
+                + `Vision:  ${result.id}\n`
+                + `By:      ${result.declaredBy}\n`
+                + `Method:  ${result.method}\n`
+                + `Receipt: ${result.receipt}\n`
+                + `Document: ${result.documentPath}\n`
+                + "The gap is recomputed from this; run trajectory check to see what it now costs.\n",
+            );
+          }
+        }),
+    );
+}
+
+/**
+ * The same separation `wfctl work approve` establishes, for the same reason:
+ * direction must not be producible by the unattended pass that assembled the
+ * trajectory it answers.
+ */
+async function resolveVisionMethod(input: {
+  trajectory: string;
+  by: string;
+  statement: string;
+  token?: string;
+}): Promise<VisionMethod> {
+  const expected = process.env.WFCTL_APPROVAL_TOKEN?.trim();
+  if (input.token) {
+    if (!expected) {
+      throw new Error(
+        "WFCTL_APPROVAL_TOKEN is not set; a supplied --token cannot be verified",
+      );
+    }
+    if (input.token !== expected) {
+      throw new Error("Supplied --token does not match WFCTL_APPROVAL_TOKEN");
+    }
+    return "token";
+  }
+  if (!interactive()) {
+    throw new Error(
+      "A vision requires an interactive terminal, or --token with a matching "
+        + "WFCTL_APPROVAL_TOKEN. wfctl does not record product direction from an unattended session.",
+    );
+  }
+  process.stdout.write(
+    `\nVision requested\n`
+      + `  Subject: ${input.trajectory}\n`
+      + `  Actor:   ${input.by}\n`
+      + `  Should become: ${input.statement}\n\n`
+      + "This declares where the product is going. Only you should answer.\n",
+  );
+  const answer = await ask(`Type "declare" to record it, anything else to abort: `);
+  if (answer.toLowerCase() !== "declare") {
+    throw new Error("The vision was not confirmed; nothing was recorded");
+  }
+  return "interactive";
 }
 
 function knowledgeReconstructCommand() {

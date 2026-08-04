@@ -7787,6 +7787,7 @@ var init_planner = __esm({
     PROFILE_SKILLS = {
       knowledge: [
         "align-project-knowledge",
+        "assemble-trajectories",
         "curate-engineering-knowledge",
         "curate-product-knowledge",
         "curate-project-knowledge",
@@ -10750,10 +10751,10 @@ function resolveAll(constructs2, events, context) {
   const called = [];
   let index2 = -1;
   while (++index2 < constructs2.length) {
-    const resolve21 = constructs2[index2].resolveAll;
-    if (resolve21 && !called.includes(resolve21)) {
-      events = resolve21(events, context);
-      called.push(resolve21);
+    const resolve22 = constructs2[index2].resolveAll;
+    if (resolve22 && !called.includes(resolve22)) {
+      events = resolve22(events, context);
+      called.push(resolve22);
     }
   }
   return events;
@@ -15937,9 +15938,9 @@ async function readPinnedGitTextRange(root, gitArguments, options = {}) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve21, reject) => {
+  const completion = new Promise((resolve22, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve21(code2 ?? 1));
+    child.once("close", (code2) => resolve22(code2 ?? 1));
   });
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const selected = [];
@@ -19592,9 +19593,9 @@ async function readGitTree2(root, commit) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve21, reject) => {
+  const completion = new Promise((resolve22, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve21(code2 ?? 1));
+    child.once("close", (code2) => resolve22(code2 ?? 1));
   });
   const entries = [];
   let pending = Buffer.alloc(0);
@@ -19784,9 +19785,9 @@ async function readPinnedBlob(root, objectId) {
   const child = spawn3("git", ["-C", root, "cat-file", "blob", objectId], {
     stdio: ["ignore", "pipe", "pipe"]
   });
-  const completion = new Promise((resolve21, reject) => {
+  const completion = new Promise((resolve22, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve21(code2 ?? 1));
+    child.once("close", (code2) => resolve22(code2 ?? 1));
   });
   let content3 = "";
   child.stdout.setEncoding("utf8");
@@ -34754,7 +34755,7 @@ function ora(options) {
 
 // src/cli.ts
 import { createInterface } from "node:readline/promises";
-import { resolve as resolve20 } from "node:path";
+import { resolve as resolve21 } from "node:path";
 
 // src/applier.ts
 init_planner();
@@ -35999,6 +36000,779 @@ function stripAnsi2(value) {
 init_planner();
 init_intake();
 init_claim_ledger();
+
+// src/trajectory.ts
+init_config();
+import { createHash as createHash11 } from "node:crypto";
+import { mkdir as mkdir11, readFile as readFile19, readdir as readdir11, rename as rename9, writeFile as writeFile11 } from "node:fs/promises";
+import { dirname as dirname12, join as join17, resolve as resolve18 } from "node:path";
+
+// src/vision.ts
+init_config();
+init_work_spec();
+import { createHash as createHash10 } from "node:crypto";
+import { mkdir as mkdir10, readFile as readFile18, writeFile as writeFile10 } from "node:fs/promises";
+import { dirname as dirname11, join as join16 } from "node:path";
+var VISION_METHODS = ["interactive", "token"];
+function visionReceiptDigest(input) {
+  return createHash10("sha256").update(
+    [input.id, input.trajectory, input.declaredBy, input.at, input.method].join(" "),
+    "utf8"
+  ).digest("hex");
+}
+function visionRecordPath(knowledgeRoot, id) {
+  return join16(knowledgeRoot, ".workflow/current/visions", `${id}.json`);
+}
+function visionDocumentPath(knowledgeRoot, id) {
+  return join16(knowledgeRoot, "trajectories", `${id}.md`);
+}
+async function declareVision(options) {
+  const declaredBy = options.declaredBy.trim();
+  if (!declaredBy.startsWith("human:") || declaredBy.length <= "human:".length) {
+    throw new Error("A vision requires --by human:<maintainer-id>");
+  }
+  if (!VISION_METHODS.includes(options.method)) {
+    throw new Error(`Unsupported vision method: ${options.method}`);
+  }
+  const statement = options.statement.trim();
+  if (!statement) {
+    throw new Error("A vision requires a statement of what the subject should become");
+  }
+  const at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+  const record2 = {
+    schemaVersion: 1,
+    id: options.id,
+    trajectory: options.trajectory,
+    declaredBy,
+    at,
+    method: options.method,
+    supersedes: (options.supersedes ?? "").trim(),
+    receipt: visionReceiptDigest({
+      id: options.id,
+      trajectory: options.trajectory,
+      declaredBy,
+      at,
+      method: options.method
+    })
+  };
+  const path = visionRecordPath(options.knowledgeRoot, options.id);
+  await mkdir10(dirname11(path), { recursive: true });
+  await writeFile10(path, `${JSON.stringify(record2, null, 2)}
+`, "utf8");
+  const documentPath = visionDocumentPath(options.knowledgeRoot, options.id);
+  await mkdir10(dirname11(documentPath), { recursive: true });
+  await writeFile10(
+    documentPath,
+    serializeWorkSpec({
+      metadata: {
+        kind: "vision",
+        id: record2.id,
+        trajectory: record2.trajectory,
+        declared_by: record2.declaredBy,
+        at: record2.at,
+        method: record2.method,
+        supersedes: record2.supersedes,
+        receipt: record2.receipt
+      },
+      body: `# ${record2.id}
+
+${statement}
+`
+    }),
+    "utf8"
+  );
+  return { ...record2, path, documentPath };
+}
+async function readVisionRecord(knowledgeRoot, id) {
+  try {
+    const raw = JSON.parse(
+      await readFile18(visionRecordPath(knowledgeRoot, id), "utf8")
+    );
+    return isVisionRecord(raw) ? raw : void 0;
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return void 0;
+    }
+    throw error2;
+  }
+}
+function isVisionRecord(value) {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record2 = value;
+  return record2.schemaVersion === 1 && typeof record2.id === "string" && typeof record2.trajectory === "string" && typeof record2.declaredBy === "string" && typeof record2.at === "string" && VISION_METHODS.includes(record2.method) && typeof record2.supersedes === "string" && typeof record2.receipt === "string";
+}
+
+// src/trajectory.ts
+init_work_spec();
+var TRAJECTORY_GRAPH_SCHEMA_VERSION = 1;
+var TRAJECTORY_GRAPH_PATH = ".workflow/current/trajectory-graph.json";
+var TRAJECTORY_ROOT = "trajectories";
+var CAUSE_KINDS = [
+  "decision",
+  "compromise",
+  "drift",
+  "defect",
+  "external",
+  "not-found",
+  "unknown"
+];
+var CAUSES_WITHOUT_EVIDENCE = /* @__PURE__ */ new Set(["not-found", "unknown"]);
+var EDGE_KINDS = ["part-of", "depends-on", "succeeds", "conflicts"];
+var GAP_KINDS = ["delivery-debt", "direction-debt", "hole"];
+var GAP_STATUSES = ["open", "to-close", "deferred"];
+var OBSERVATION_SOURCE_KINDS = [
+  "raw",
+  "source-code",
+  "version-control",
+  "external",
+  "maintainer"
+];
+async function compileTrajectories(targetInput) {
+  const target = resolve18(targetInput);
+  const config = await readConfig(target);
+  if (config.profile !== "knowledge") {
+    throw new Error(`Trajectories require a knowledge repository: ${target}`);
+  }
+  const errors = [];
+  const collected = [];
+  const known = /* @__PURE__ */ new Map();
+  const files = await collectTrajectoryFiles(target);
+  for (const item of files.filter((entry) => entry.kind === "trajectory")) {
+    if (!isValidId(item.id)) {
+      errors.push({
+        id: item.id,
+        path: item.relativePath,
+        message: `invalid trajectory id: ${item.id || "<empty>"}`
+      });
+      continue;
+    }
+    if (known.has(item.id)) {
+      errors.push({
+        id: item.id,
+        path: item.relativePath,
+        message: `trajectory is duplicated: ${item.id}`
+      });
+      continue;
+    }
+    const entry = normalizeTrajectory(item, errors);
+    known.set(item.id, entry);
+    collected.push(entry);
+  }
+  const edges = [];
+  for (const entry of collected) {
+    const partOf = entry.edges.filter((edge) => edge.kind === "part-of");
+    if (partOf.length > 0 && partOf.filter((edge) => edge.primary).length !== 1) {
+      errors.push({
+        id: entry.record.id,
+        path: entry.record.path,
+        message: "exactly one part-of edge must be primary; vision inherits from the primary parent only"
+      });
+    }
+    for (const edge of entry.edges) {
+      if (edge.target === entry.record.id) {
+        errors.push({
+          id: entry.record.id,
+          path: entry.record.path,
+          message: `edges.${edge.kind} cannot reference itself`
+        });
+        continue;
+      }
+      if (!known.has(edge.target)) {
+        errors.push({
+          id: entry.record.id,
+          path: entry.record.path,
+          message: `edges.${edge.kind} references an unknown trajectory: ${edge.target}`
+        });
+        continue;
+      }
+      edges.push({
+        source: entry.record.id,
+        target: edge.target,
+        kind: edge.kind,
+        primary: edge.primary
+      });
+    }
+  }
+  const deduplicated = deduplicateEdges3(edges);
+  validateCompositionCycles(known, deduplicated, errors);
+  applyGapWeights(known, deduplicated);
+  const visions = await collectVisions(
+    target,
+    files.filter((entry) => entry.kind === "vision"),
+    known,
+    errors
+  );
+  for (const vision of visions) {
+    if (vision.supersededBy) {
+      continue;
+    }
+    const entry = known.get(vision.trajectory);
+    if (!entry) {
+      continue;
+    }
+    if (entry.record.vision) {
+      errors.push({
+        id: vision.id,
+        path: vision.path,
+        message: `${vision.trajectory} has more than one current vision (${entry.record.vision}, ${vision.id}); supersede rather than add`
+      });
+      continue;
+    }
+    entry.record.vision = vision.id;
+  }
+  const trajectories = collected.map((entry) => entry.record).sort(compareTrajectories);
+  const sortedEdges = deduplicated.sort(compareEdges3);
+  const sortedVisions = visions.sort((left, right) => left.id.localeCompare(right.id));
+  const roots = trajectories.filter((record2) => !hasPrimaryParent(record2.id, sortedEdges));
+  const stablePayload = JSON.stringify({
+    trajectories,
+    edges: sortedEdges,
+    visions: sortedVisions
+  });
+  const graph = {
+    schemaVersion: TRAJECTORY_GRAPH_SCHEMA_VERSION,
+    contentHash: createHash11("sha256").update(stablePayload).digest("hex"),
+    trajectories,
+    edges: sortedEdges,
+    visions: sortedVisions,
+    stats: {
+      trajectories: trajectories.length,
+      edges: sortedEdges.length,
+      roots: roots.length,
+      findings: trajectories.reduce((total, record2) => total + record2.findings.length, 0),
+      observations: trajectories.reduce((total, record2) => total + record2.observations.length, 0),
+      gaps: trajectories.reduce((total, record2) => total + record2.gaps.length, 0),
+      visions: sortedVisions.length
+    }
+  };
+  const pending = roots.filter((record2) => !record2.vision).map((record2) => ({
+    id: record2.id,
+    path: record2.path,
+    subject: record2.subject,
+    gapWeight: record2.gapWeight,
+    reason: "root trajectory has no declared vision"
+  })).sort(
+    (left, right) => right.gapWeight - left.gapWeight || left.id.localeCompare(right.id)
+  );
+  return { target, graph, errors, pending };
+}
+async function writeTrajectoryGraph(targetInput) {
+  const result = await compileTrajectories(targetInput);
+  if (result.errors.length > 0) {
+    throw new Error(
+      `Cannot build trajectory graph: ${result.errors.length} error(s) remain: ${result.errors.slice(0, 8).map((issue3) => `${issue3.path}: ${issue3.message}`).join("; ")}`
+    );
+  }
+  const path = join17(result.target, TRAJECTORY_GRAPH_PATH);
+  await mkdir11(dirname12(path), { recursive: true });
+  const temporary = `${path}.tmp-${process.pid}`;
+  await writeFile11(temporary, `${JSON.stringify(result.graph, null, 2)}
+`, "utf8");
+  await rename9(temporary, path);
+  return { ...result, path };
+}
+async function collectVisions(target, files, known, errors) {
+  const visions = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of files) {
+    const push2 = (message) => errors.push({ id: item.id, path: item.relativePath, message });
+    if (!isValidId(item.id)) {
+      push2(`invalid vision id: ${item.id || "<empty>"}`);
+      continue;
+    }
+    if (seen.has(item.id)) {
+      push2(`vision is duplicated: ${item.id}`);
+      continue;
+    }
+    seen.add(item.id);
+    const trajectory = stringValue10(item.metadata.trajectory);
+    if (!known.has(trajectory)) {
+      push2(`vision names an unknown trajectory: ${trajectory || "<empty>"}`);
+    }
+    const declaredBy = stringValue10(item.metadata.declared_by).trim();
+    if (!declaredBy.startsWith("human:") || declaredBy.length <= "human:".length) {
+      push2(
+        `declared_by must be human:<maintainer-id>, not ${declaredBy || "<empty>"}; only the maintainer declares direction`
+      );
+    }
+    const statement = visionStatement(item.body);
+    if (!statement) {
+      push2("a vision must state what the subject should become");
+    }
+    const record2 = await readVisionRecord(target, item.id);
+    const receipt = stringValue10(item.metadata.receipt);
+    if (!record2) {
+      push2(
+        "has no durable record; re-run wfctl knowledge trajectory declare rather than writing the document by hand"
+      );
+    } else if (record2.receipt !== receipt) {
+      push2("receipt does not match the recorded declaration");
+    } else if (record2.receipt !== visionReceiptDigest({
+      id: record2.id,
+      trajectory: record2.trajectory,
+      declaredBy: record2.declaredBy,
+      at: record2.at,
+      method: record2.method
+    })) {
+      push2("the recorded declaration digest is inconsistent");
+    } else if (record2.trajectory !== trajectory || record2.declaredBy !== declaredBy) {
+      push2("does not match the recorded declaration's trajectory or actor");
+    }
+    visions.push({
+      id: item.id,
+      path: item.relativePath,
+      trajectory,
+      declaredBy,
+      at: stringValue10(item.metadata.at),
+      supersedes: stringValue10(item.metadata.supersedes).trim(),
+      supersededBy: null,
+      statement
+    });
+  }
+  const byId = new Map(visions.map((vision) => [vision.id, vision]));
+  for (const vision of visions) {
+    if (!vision.supersedes) {
+      continue;
+    }
+    const previous2 = byId.get(vision.supersedes);
+    if (!previous2) {
+      errors.push({
+        id: vision.id,
+        path: vision.path,
+        message: `supersedes an unknown vision: ${vision.supersedes}`
+      });
+      continue;
+    }
+    if (previous2.trajectory !== vision.trajectory) {
+      errors.push({
+        id: vision.id,
+        path: vision.path,
+        message: `supersedes ${previous2.id}, which belongs to ${previous2.trajectory}; a lineage stays on one subject`
+      });
+      continue;
+    }
+    if (previous2.supersededBy && previous2.supersededBy !== vision.id) {
+      errors.push({
+        id: vision.id,
+        path: vision.path,
+        message: `${previous2.id} is already superseded by ${previous2.supersededBy}; a lineage forks nowhere`
+      });
+      continue;
+    }
+    previous2.supersededBy = vision.id;
+  }
+  validateVisionCycles(visions, byId, errors);
+  return visions;
+}
+function validateVisionCycles(visions, byId, errors) {
+  const state = /* @__PURE__ */ new Map();
+  const stack = [];
+  const reported = /* @__PURE__ */ new Set();
+  const visit3 = (id) => {
+    const current = state.get(id);
+    if (current === "complete") {
+      return;
+    }
+    if (current === "active") {
+      const start = stack.indexOf(id);
+      const cycle = stack.slice(start === -1 ? 0 : start);
+      const signature = canonicalCycle2(cycle);
+      if (!reported.has(signature)) {
+        reported.add(signature);
+        errors.push({
+          id,
+          path: byId.get(id)?.path ?? id,
+          message: `supersession forms a cycle: ${[...cycle, id].join(" -> ")}`
+        });
+      }
+      return;
+    }
+    state.set(id, "active");
+    stack.push(id);
+    const next = byId.get(id)?.supersedes;
+    if (next && byId.has(next)) {
+      visit3(next);
+    }
+    stack.pop();
+    state.set(id, "complete");
+  };
+  for (const vision of visions) {
+    visit3(vision.id);
+  }
+}
+function visionStatement(body) {
+  return body.split(/\r?\n/).filter((line) => !line.startsWith("#")).join("\n").trim();
+}
+async function collectTrajectoryFiles(target) {
+  const root = join17(target, TRAJECTORY_ROOT);
+  let entries;
+  try {
+    entries = await readdir11(root, { withFileTypes: true });
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return [];
+    }
+    throw error2;
+  }
+  const files = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) {
+      continue;
+    }
+    const path = join17(root, entry.name);
+    try {
+      const document3 = parseWorkSpec(await readFile19(path, "utf8"));
+      files.push({
+        kind: stringValue10(document3.metadata.kind) === "vision" ? "vision" : "trajectory",
+        id: stringValue10(document3.metadata.id) || entry.name.replace(/\.md$/, ""),
+        path,
+        relativePath: `${TRAJECTORY_ROOT}/${entry.name}`,
+        metadata: document3.metadata,
+        body: document3.body
+      });
+    } catch (error2) {
+      throw new Error(`Cannot parse trajectory ${path}: ${errorMessage(error2)}`);
+    }
+  }
+  return files;
+}
+function normalizeTrajectory(item, errors) {
+  const push2 = (message) => errors.push({ id: item.id, path: item.relativePath, message });
+  const metadata = item.metadata;
+  const subject = stringValue10(metadata.subject).trim();
+  if (!subject) {
+    push2("subject is required");
+  } else if (looksLikeIdentifier(subject)) {
+    push2(
+      `subject "${subject}" is an implementation identifier, not product language; a graph built from paths cannot be decided about`
+    );
+  }
+  const observations = normalizeObservations(metadata.observations, push2);
+  const observationIds = new Set(observations.map((observation) => observation.id));
+  const findings = normalizeFindings(metadata.findings, observationIds, push2);
+  const gaps = normalizeGaps(metadata.gaps, push2);
+  const conceived = recordValue10(metadata.conceived);
+  const now = recordValue10(metadata.now);
+  if (!stringValue10(now?.pinned)) {
+    push2('now.pinned is required; "what the source shows now" is a statement about a named revision or it is not a statement');
+  }
+  if (!stringValue10(now?.state)) {
+    push2("now.state is required");
+  }
+  for (const reference of stringArray9(conceived?.from)) {
+    if (!observationIds.has(reference)) {
+      push2(`conceived.from references an unknown observation: ${reference}`);
+    }
+  }
+  const edges = normalizeEdges(metadata.edges, push2);
+  if (stringValue10(metadata.vision).trim()) {
+    push2(
+      "a trajectory does not name its vision; a vision names its trajectory, so the two cannot drift apart"
+    );
+  }
+  return {
+    record: {
+      id: item.id,
+      path: item.relativePath,
+      area: stringValue10(metadata.area),
+      subject,
+      conceived: {
+        at: stringValue10(conceived?.at),
+        from: stringArray9(conceived?.from),
+        statement: stringValue10(conceived?.statement)
+      },
+      now: {
+        pinned: stringValue10(now?.pinned),
+        readAt: stringValue10(now?.read_at),
+        state: stringValue10(now?.state)
+      },
+      observations,
+      findings,
+      gaps,
+      vision: null,
+      gapWeight: 0
+    },
+    edges
+  };
+}
+function normalizeObservations(value, push2) {
+  const observations = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const entry of recordArray6(value)) {
+    const id = stringValue10(entry.id);
+    if (!isValidId(id)) {
+      push2(`observation has invalid id: ${id || "<empty>"}`);
+      continue;
+    }
+    if (seen.has(id)) {
+      push2(`observation is duplicated: ${id}`);
+      continue;
+    }
+    seen.add(id);
+    const source = recordValue10(entry.source);
+    const kind = stringValue10(source?.kind);
+    if (!OBSERVATION_SOURCE_KINDS.includes(kind)) {
+      push2(`${id}.source.kind is not a source kind: ${kind || "<empty>"}`);
+    }
+    if (!stringValue10(source?.resource)) {
+      push2(`${id}.source.resource is required`);
+    }
+    if (!stringValue10(entry.says).trim()) {
+      push2(`${id}.says is required`);
+    }
+    if (!stringValue10(entry.at)) {
+      push2(`${id}.at is required; an observation without its own date reads as old as the reading`);
+    }
+    observations.push({
+      id,
+      at: stringValue10(entry.at),
+      readAt: stringValue10(entry.read_at),
+      source: {
+        kind,
+        resource: stringValue10(source?.resource)
+      },
+      says: stringValue10(entry.says)
+    });
+  }
+  return observations;
+}
+function normalizeFindings(value, observationIds, push2) {
+  const findings = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const entry of recordArray6(value)) {
+    const id = stringValue10(entry.id);
+    if (!isValidId(id)) {
+      push2(`finding has invalid id: ${id || "<empty>"}`);
+      continue;
+    }
+    if (seen.has(id)) {
+      push2(`finding is duplicated: ${id}`);
+      continue;
+    }
+    seen.add(id);
+    if (!stringValue10(entry.situation).trim()) {
+      push2(`${id}.situation is required`);
+    }
+    const observations = stringArray9(entry.observations);
+    if (observations.length === 0) {
+      push2(`${id}.observations is required; a finding is a reduction of observations, not a new assertion`);
+    }
+    for (const reference of observations) {
+      if (!observationIds.has(reference)) {
+        push2(`${id}.observations references an unknown observation: ${reference}`);
+      }
+    }
+    const period = recordValue10(entry.period);
+    if (!stringValue10(period?.from)) {
+      push2(`${id}.period.from is required`);
+    }
+    const cause = recordValue10(entry.cause);
+    const causeKind = stringValue10(cause?.kind);
+    const causeEvidence = stringArray9(cause?.evidence);
+    if (!CAUSE_KINDS.includes(causeKind)) {
+      push2(`${id}.cause.kind is not a cause: ${causeKind || "<empty>"}`);
+    } else if (!CAUSES_WITHOUT_EVIDENCE.has(causeKind) && causeEvidence.length === 0) {
+      push2(
+        `${id}.cause.kind is ${causeKind} and carries no evidence; use not-found when no decision record was located, which is not the same as drift`
+      );
+    }
+    findings.push({
+      id,
+      situation: stringValue10(entry.situation),
+      period: {
+        from: stringValue10(period?.from),
+        to: stringValue10(period?.to) || null
+      },
+      observations,
+      cause: {
+        kind: causeKind,
+        evidence: causeEvidence,
+        note: stringValue10(cause?.note)
+      },
+      scopeLimits: stringArray9(entry.scope_limits)
+    });
+  }
+  return findings;
+}
+function normalizeGaps(value, push2) {
+  const gaps = [];
+  for (const entry of recordArray6(value)) {
+    const kind = stringValue10(entry.kind);
+    const status = stringValue10(entry.status);
+    const statement = stringValue10(entry.statement).trim();
+    const work = stringValue10(entry.work).trim();
+    if (!GAP_KINDS.includes(kind)) {
+      push2(`gap kind is not a gap: ${kind || "<empty>"}`);
+    }
+    if (!statement) {
+      push2("gap statement is required");
+    }
+    if (status === "accept" || status === "accepted") {
+      push2(
+        "gap status accept does not exist: a gap that is right as it stands is a vision that was wrong, so edit the vision and the gap disappears"
+      );
+    } else if (!GAP_STATUSES.includes(status)) {
+      push2(`gap status is not a status: ${status || "<empty>"}`);
+    }
+    if (status === "to-close" && !work) {
+      push2(`gap "${statement}" is to-close and names no work; a debt nobody owns is an observation`);
+    }
+    if (status !== "to-close" && work) {
+      push2(`gap "${statement}" names work but is not to-close`);
+    }
+    gaps.push({
+      kind,
+      statement,
+      status,
+      work: work || null
+    });
+  }
+  return gaps;
+}
+function normalizeEdges(value, push2) {
+  const edges = [];
+  for (const entry of recordArray6(value)) {
+    const kind = stringValue10(entry.kind);
+    const target = stringValue10(entry.target);
+    if (!EDGE_KINDS.includes(kind)) {
+      push2(`edge kind is not an edge: ${kind || "<empty>"}`);
+      continue;
+    }
+    if (!isValidId(target)) {
+      push2(`edge target is not a trajectory id: ${target || "<empty>"}`);
+      continue;
+    }
+    const primary = entry.primary === true;
+    if (primary && kind !== "part-of") {
+      push2(`edge ${kind} to ${target} is marked primary; only part-of inherits vision`);
+      continue;
+    }
+    edges.push({ kind, target, primary });
+  }
+  return edges;
+}
+function validateCompositionCycles(known, edges, errors) {
+  const outgoing = /* @__PURE__ */ new Map();
+  for (const edge of edges) {
+    if (edge.kind !== "part-of") {
+      continue;
+    }
+    outgoing.set(edge.source, [...outgoing.get(edge.source) ?? [], edge.target]);
+  }
+  const state = /* @__PURE__ */ new Map();
+  const stack = [];
+  const reported = /* @__PURE__ */ new Set();
+  const visit3 = (id) => {
+    const current = state.get(id);
+    if (current === "complete") {
+      return;
+    }
+    if (current === "active") {
+      const start = stack.indexOf(id);
+      const cycle = stack.slice(start === -1 ? 0 : start);
+      const signature = canonicalCycle2(cycle);
+      if (!reported.has(signature)) {
+        reported.add(signature);
+        const entry = known.get(id);
+        errors.push({
+          id,
+          path: entry?.record.path ?? id,
+          message: `part-of forms a cycle: ${[...cycle, id].join(" -> ")}`
+        });
+      }
+      return;
+    }
+    state.set(id, "active");
+    stack.push(id);
+    for (const target of outgoing.get(id) ?? []) {
+      visit3(target);
+    }
+    stack.pop();
+    state.set(id, "complete");
+  };
+  for (const id of known.keys()) {
+    visit3(id);
+  }
+}
+function applyGapWeights(known, edges) {
+  const parents = /* @__PURE__ */ new Map();
+  for (const edge of edges) {
+    if (edge.kind !== "part-of") {
+      continue;
+    }
+    parents.set(edge.source, [...parents.get(edge.source) ?? [], edge.target]);
+  }
+  for (const entry of known.values()) {
+    entry.record.gapWeight = entry.record.gaps.length;
+  }
+  for (const entry of known.values()) {
+    const own3 = entry.record.gaps.length;
+    if (own3 === 0) {
+      continue;
+    }
+    const seen = /* @__PURE__ */ new Set([entry.record.id]);
+    let frontier = parents.get(entry.record.id) ?? [];
+    while (frontier.length > 0) {
+      const next = [];
+      for (const parent of frontier) {
+        if (seen.has(parent)) {
+          continue;
+        }
+        seen.add(parent);
+        const target = known.get(parent);
+        if (target) {
+          target.record.gapWeight += own3;
+        }
+        next.push(...parents.get(parent) ?? []);
+      }
+      frontier = next;
+    }
+  }
+}
+function hasPrimaryParent(id, edges) {
+  return edges.some((edge) => edge.source === id && edge.kind === "part-of" && edge.primary);
+}
+function looksLikeIdentifier(subject) {
+  return /[/\\]/.test(subject) || /::/.test(subject) || /\.(ts|js|rs|py|go|tsx|jsx|java|rb|md|json|toml|sql)\b/i.test(subject) || /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(subject) || /^[a-z][a-zA-Z0-9]*(?:[A-Z][a-zA-Z0-9]*)+$/.test(subject);
+}
+function isValidId(value) {
+  return /^[a-z0-9][a-z0-9-]{0,95}$/.test(value);
+}
+function canonicalCycle2(cycle) {
+  if (cycle.length === 0) {
+    return "";
+  }
+  return cycle.map((_, index2) => [...cycle.slice(index2), ...cycle.slice(0, index2)].join("\0")).sort()[0];
+}
+function deduplicateEdges3(edges) {
+  return [...new Map(
+    edges.map((edge) => [`${edge.source}\0${edge.target}\0${edge.kind}`, edge])
+  ).values()];
+}
+function compareTrajectories(left, right) {
+  return left.id.localeCompare(right.id);
+}
+function compareEdges3(left, right) {
+  return `${left.source}\0${left.kind}\0${left.target}`.localeCompare(
+    `${right.source}\0${right.kind}\0${right.target}`
+  );
+}
+function recordArray6(value) {
+  return Array.isArray(value) ? value.filter(isRecord2) : [];
+}
+function recordValue10(value) {
+  return isRecord2(value) ? value : void 0;
+}
+function stringValue10(value) {
+  return typeof value === "string" ? value : "";
+}
+function stringArray9(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+}
+
+// src/cli.ts
 init_knowledge();
 init_knowledge_graph();
 init_repository_registry();
@@ -36011,30 +36785,30 @@ init_types();
 import { constants as constants7 } from "node:fs";
 import {
   access as access7,
-  mkdir as mkdir11,
-  readFile as readFile19,
-  readdir as readdir11,
+  mkdir as mkdir13,
+  readFile as readFile21,
+  readdir as readdir12,
   realpath as realpath5,
-  rename as rename9,
+  rename as rename10,
   rm as rm4,
-  writeFile as writeFile11
+  writeFile as writeFile13
 } from "node:fs/promises";
-import { dirname as dirname12, join as join17, resolve as resolve18, sep as sep9 } from "node:path";
+import { dirname as dirname14, join as join19, resolve as resolve19, sep as sep9 } from "node:path";
 
 // src/approval.ts
 init_config();
 init_work_spec();
-import { createHash as createHash10 } from "node:crypto";
-import { mkdir as mkdir10, readFile as readFile18, writeFile as writeFile10 } from "node:fs/promises";
-import { dirname as dirname11, join as join16 } from "node:path";
+import { createHash as createHash12 } from "node:crypto";
+import { mkdir as mkdir12, readFile as readFile20, writeFile as writeFile12 } from "node:fs/promises";
+import { dirname as dirname13, join as join18 } from "node:path";
 function approvalReceiptDigest(input) {
-  return createHash10("sha256").update(
+  return createHash12("sha256").update(
     [input.id, input.stage, input.by, input.at, input.method].join("\0"),
     "utf8"
   ).digest("hex");
 }
 function approvalRecordPath(knowledgeRoot, id, stage) {
-  return join16(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
+  return join18(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
 }
 async function recordApproval(options) {
   if (!options.by.startsWith("human:") || options.by.trim().length <= "human:".length) {
@@ -36061,15 +36835,15 @@ async function recordApproval(options) {
     })
   };
   const path = approvalRecordPath(options.knowledgeRoot, options.id, options.stage);
-  await mkdir10(dirname11(path), { recursive: true });
-  await writeFile10(path, `${JSON.stringify(record2, null, 2)}
+  await mkdir12(dirname13(path), { recursive: true });
+  await writeFile12(path, `${JSON.stringify(record2, null, 2)}
 `, "utf8");
   return record2;
 }
 async function readApproval(knowledgeRoot, id, stage) {
   try {
     const raw = JSON.parse(
-      await readFile18(approvalRecordPath(knowledgeRoot, id, stage), "utf8")
+      await readFile20(approvalRecordPath(knowledgeRoot, id, stage), "utf8")
     );
     return isApprovalRecord(raw) ? raw : void 0;
   } catch (error2) {
@@ -36139,7 +36913,7 @@ init_repository_registry();
 init_work_spec();
 init_work_bundle();
 async function beginWork(options) {
-  const target = await realpath5(resolve18(options.target));
+  const target = await realpath5(resolve19(options.target));
   const config = await readConfig(target);
   let knowledgeRoot;
   let codeRoots;
@@ -36185,17 +36959,17 @@ async function beginWork(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const date = now.toISOString().slice(0, 10);
   const id = await uniqueWorkId(
-    join17(knowledgeRoot, "changes/active"),
+    join19(knowledgeRoot, "changes/active"),
     `${date}-${normalizeSlug5(options.slug)}`
   );
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile19(
-    join17(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
+  const template = parseWorkSpec(await readFile21(
+    join19(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
     "utf8"
   ));
   const createdAt = now.toISOString();
-  const activeDirectory = join17(knowledgeRoot, "changes/active", id);
-  const specPath = join17(activeDirectory, "change.md");
+  const activeDirectory = join19(knowledgeRoot, "changes/active", id);
+  const specPath = join19(activeDirectory, "change.md");
   const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
   const pointerPaths = boundRepositories.map(
     (entry) => leafPointerPath(entry.root, id)
@@ -36245,8 +37019,8 @@ async function beginWork(options) {
     repositories: boundRepositories
   };
   try {
-    await mkdir11(activeDirectory, { recursive: false });
-    await writeFile11(specPath, serializeWorkSpec(template), {
+    await mkdir13(activeDirectory, { recursive: false });
+    await writeFile13(specPath, serializeWorkSpec(template), {
       encoding: "utf8",
       flag: "wx"
     });
@@ -36277,9 +37051,9 @@ async function beginWork(options) {
 }
 async function verifyWork(targetInput, id) {
   const context = await requireWorkContext(targetInput, id);
-  const document3 = parseWorkSpec(await readFile19(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile21(context.specPath, "utf8"));
   const issues = completionIssues(document3, false);
-  issues.push(...await bundleCompletionIssues(dirname12(context.specPath), document3));
+  issues.push(...await bundleCompletionIssues(dirname14(context.specPath), document3));
   issues.push(...repositoryVerificationIssues(document3, context.currentSources));
   issues.push(...await approvalIssues(context.knowledgeRoot, context.id, document3));
   return {
@@ -36299,7 +37073,7 @@ async function approveWork(options) {
     ...options.note ? { note: options.note } : {},
     ...options.now ? { now: options.now } : {}
   });
-  const document3 = parseWorkSpec(await readFile19(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile21(context.specPath, "utf8"));
   const review = record_(document3.metadata.maintainer_review) ?? {};
   const previous2 = record_(review[options.stage]) ?? {};
   review[options.stage] = {
@@ -36313,7 +37087,7 @@ async function approveWork(options) {
   };
   document3.metadata.maintainer_review = review;
   document3.metadata.updated_at = record2.at;
-  await writeFile11(context.specPath, serializeWorkSpec(document3), "utf8");
+  await writeFile13(context.specPath, serializeWorkSpec(document3), "utf8");
   return {
     id: context.id,
     stage: options.stage,
@@ -36328,13 +37102,13 @@ function record_(value) {
   return record(value);
 }
 function uniqueNotes(existing, note) {
-  const notes = stringArray9(existing);
+  const notes = stringArray10(existing);
   return note && !notes.includes(note) ? [...notes, note] : notes;
 }
 async function closeWork(options) {
   const context = await requireWorkContext(options.target, options.id);
-  const activeDirectory = dirname12(context.specPath);
-  const document3 = parseWorkSpec(await readFile19(context.specPath, "utf8"));
+  const activeDirectory = dirname14(context.specPath);
+  const document3 = parseWorkSpec(await readFile21(context.specPath, "utf8"));
   if (options.outcome === "completed") {
     const issues = [
       ...completionIssues(document3, true),
@@ -36349,7 +37123,7 @@ async function closeWork(options) {
     if (promotion?.status === "applied") {
       const validation = await validateKnowledge(
         context.knowledgeRoot,
-        stringArray9(promotion.concepts)
+        stringArray10(promotion.concepts)
       );
       if (!validation.valid) {
         throw new Error(
@@ -36358,7 +37132,7 @@ async function closeWork(options) {
       }
     }
   }
-  const archivePath = join17(context.knowledgeRoot, "changes/archive", options.id);
+  const archivePath = join19(context.knowledgeRoot, "changes/archive", options.id);
   await assertAbsent2(archivePath, "archive");
   const now = options.now ?? /* @__PURE__ */ new Date();
   document3.metadata.status = options.outcome;
@@ -36376,11 +37150,11 @@ async function closeWork(options) {
     blockers: [],
     now
   });
-  await mkdir11(dirname12(archivePath), { recursive: true });
-  await rename9(activeDirectory, archivePath);
+  await mkdir13(dirname14(archivePath), { recursive: true });
+  await rename10(activeDirectory, archivePath);
   try {
-    await writeFile11(
-      join17(archivePath, "change.md"),
+    await writeFile13(
+      join19(archivePath, "change.md"),
       serializeWorkSpec(document3),
       "utf8"
     );
@@ -36388,7 +37162,7 @@ async function closeWork(options) {
       await carryForwardCloseReview(archivePath, now);
     }
   } catch (error2) {
-    await rename9(archivePath, activeDirectory);
+    await rename10(archivePath, activeDirectory);
     throw error2;
   }
   for (const pointerPath of context.pointerPaths) {
@@ -36400,13 +37174,13 @@ async function workBundleContext(target, id, stage, issueId) {
   const context = await requireWorkContext(target, id);
   return {
     id: context.id,
-    ...await inspectWorkBundle(dirname12(context.specPath), stage, issueId)
+    ...await inspectWorkBundle(dirname14(context.specPath), stage, issueId)
   };
 }
 async function updateWorkCheckpoint(options) {
   const context = await requireWorkContext(options.target, options.id);
   return await updateBundleCheckpoint({
-    bundleRoot: dirname12(context.specPath),
+    bundleRoot: dirname14(context.specPath),
     ...options.issueId ? { issueId: options.issueId } : {},
     actor: options.actor,
     status: options.status,
@@ -36422,7 +37196,7 @@ async function createWorkIssue2(input) {
   const context = await requireWorkContext(input.target, input.id);
   const distributionRoot = input.distributionRoot ?? await findDistributionRoot();
   return await createWorkIssue({
-    bundleRoot: dirname12(context.specPath),
+    bundleRoot: dirname14(context.specPath),
     slug: input.slug,
     title: input.title,
     phase: input.phase,
@@ -36436,12 +37210,12 @@ async function createWorkIssue2(input) {
   });
 }
 async function claimWorkIssue2(input) {
-  const target = await realpath5(resolve18(input.target));
+  const target = await realpath5(resolve19(input.target));
   const config = await readConfig(target);
   const context = await requireWorkContext(target, input.id);
   const source = config.profile === "leaf" ? context.currentSources.find((entry) => entry.root === target) : void 0;
   return await claimWorkIssue({
-    bundleRoot: dirname12(context.specPath),
+    bundleRoot: dirname14(context.specPath),
     issueId: input.issueId,
     actor: input.actor,
     ...source ? { source } : {},
@@ -36450,22 +37224,22 @@ async function claimWorkIssue2(input) {
   });
 }
 async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath5(resolve18(target));
+  const resolvedTarget = await realpath5(resolve19(target));
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await releaseWorkIssue(
-    dirname12(context.specPath),
+    dirname14(context.specPath),
     issueId,
     claimContext,
     now
   );
 }
 async function completeWorkIssue(input) {
-  const target = await realpath5(resolve18(input.target));
+  const target = await realpath5(resolve19(input.target));
   const context = await requireWorkContext(target, input.id);
   const claimContext = await claimContextForTarget(target, context);
   return await resolveWorkIssue({
-    bundleRoot: dirname12(context.specPath),
+    bundleRoot: dirname14(context.specPath),
     issueId: input.issueId,
     summary: input.summary,
     evidence: input.evidence,
@@ -36474,11 +37248,11 @@ async function completeWorkIssue(input) {
   });
 }
 async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath5(resolve18(target));
+  const resolvedTarget = await realpath5(resolve19(target));
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await dropWorkIssue(
-    dirname12(context.specPath),
+    dirname14(context.specPath),
     issueId,
     reason,
     claimContext,
@@ -36488,7 +37262,7 @@ async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */
 async function setWorkIssueBlocker2(target, id, issueId, blockerId, blocked, now = /* @__PURE__ */ new Date()) {
   const context = await requireWorkContext(target, id);
   return await setWorkIssueBlocker(
-    dirname12(context.specPath),
+    dirname14(context.specPath),
     issueId,
     blockerId,
     blocked,
@@ -36497,14 +37271,14 @@ async function setWorkIssueBlocker2(target, id, issueId, blockerId, blocked, now
 }
 async function reviewWorkBundleFile(target, id, path, status, reason, now = /* @__PURE__ */ new Date()) {
   const context = await requireWorkContext(target, id);
-  return await reviewBundleFile(dirname12(context.specPath), path, status, reason, now);
+  return await reviewBundleFile(dirname14(context.specPath), path, status, reason, now);
 }
 async function finishWayfinder2(target, id, mode, now = /* @__PURE__ */ new Date()) {
   const context = await requireWorkContext(target, id);
-  return await finishWayfinder(dirname12(context.specPath), mode, now);
+  return await finishWayfinder(dirname14(context.specPath), mode, now);
 }
 async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
-  const target = await realpath5(resolve18(targetInput));
+  const target = await realpath5(resolve19(targetInput));
   const config = await readConfig(target);
   if (config.profile !== "leaf") {
     throw new Error("Work rebind must target the replacement leaf checkout");
@@ -36523,9 +37297,9 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   }
   const previous2 = binding.repositories[index2];
   binding.repositories[index2] = { root: target, source: current };
-  const specPath = resolve18(knowledgeRoot, binding.spec);
-  const document3 = parseWorkSpec(await readFile19(specPath, "utf8"));
-  const repositories = recordArray6(document3.metadata.repositories);
+  const specPath = resolve19(knowledgeRoot, binding.spec);
+  const document3 = parseWorkSpec(await readFile21(specPath, "utf8"));
+  const repositories = recordArray7(document3.metadata.repositories);
   const durableIndex = repositories.findIndex(
     (entry) => entry.repository === current.repository
   );
@@ -36536,7 +37310,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   document3.metadata.repositories = repositories;
   document3.metadata.updated_at = now.toISOString();
   document3.metadata.rebindings = [
-    ...recordArray6(document3.metadata.rebindings),
+    ...recordArray7(document3.metadata.rebindings),
     {
       repository: current.repository,
       from_worktree_id: previous2.source.worktreeId,
@@ -36548,7 +37322,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   ];
   const previousPointer = leafPointerPath(previous2.root, id);
   const currentPointer = leafPointerPath(target, id);
-  await writeFile11(specPath, serializeWorkSpec(document3), "utf8");
+  await writeFile13(specPath, serializeWorkSpec(document3), "utf8");
   await writeBinding(bindingPath, binding, true);
   await writeBinding(currentPointer, binding, true);
   if (previousPointer !== currentPointer) {
@@ -36564,9 +37338,9 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   };
 }
 async function workStatus(targetInput, id) {
-  const target = await realpath5(resolve18(targetInput));
+  const target = await realpath5(resolve19(targetInput));
   const config = await readConfig(target);
-  const pointerRoot = config.profile === "knowledge" ? join17(target, ".workflow/current/work") : join17(target, ".workflow/current");
+  const pointerRoot = config.profile === "knowledge" ? join19(target, ".workflow/current/work") : join19(target, ".workflow/current");
   const ids = id ? [id] : await pointerIds(pointerRoot);
   const results = [];
   for (const workId of ids) {
@@ -36653,19 +37427,19 @@ async function inspectWorkContext(target, profile, id) {
       issues.push(`${entry.source.repository}: ${errorMessage(error2)}`);
     }
   }
-  const specPath = resolve18(knowledgeRoot, binding.spec);
-  const activeRoot = join17(knowledgeRoot, "changes/active");
+  const specPath = resolve19(knowledgeRoot, binding.spec);
+  const activeRoot = join19(knowledgeRoot, "changes/active");
   let title = id;
   if (!inside(activeRoot, specPath)) {
     issues.push(`spec path is outside the active work root: ${specPath}`);
   }
   try {
-    const document3 = parseWorkSpec(await readFile19(specPath, "utf8"));
+    const document3 = parseWorkSpec(await readFile21(specPath, "utf8"));
     title = typeof document3.metadata.title === "string" ? document3.metadata.title.trim() || id : id;
     if (document3.metadata.scope !== binding.scope) {
       issues.push("spec scope does not match the local binding");
     }
-    const durable = recordArray6(document3.metadata.repositories);
+    const durable = recordArray7(document3.metadata.repositories);
     if (durable.length !== binding.repositories.length) {
       issues.push("spec repository scope does not match the local binding");
     }
@@ -36677,7 +37451,7 @@ async function inspectWorkContext(target, profile, id) {
         issues.push(`${entry.source.repository}: durable repository binding is inconsistent`);
       }
     }
-    const serialized = await readFile19(specPath, "utf8");
+    const serialized = await readFile21(specPath, "utf8");
     for (const entry of binding.repositories) {
       if (serialized.includes(entry.root)) {
         issues.push("durable work record leaks a local checkout path");
@@ -36702,7 +37476,7 @@ async function inspectWorkContext(target, profile, id) {
     ...codeRoots[0] ? { codeRoot: codeRoots[0] } : {},
     knowledgeRoot,
     specPath,
-    bundleRoot: dirname12(specPath),
+    bundleRoot: dirname14(specPath),
     pointerPaths,
     pointerPath: profile === "leaf" ? preferred : knowledgeBindingPath(knowledgeRoot, id),
     sources,
@@ -36718,7 +37492,7 @@ function repositoryVerificationIssues(document3, sources) {
     return issues;
   }
   const verification = record(document3.metadata.verification);
-  const receipts = recordArray6(verification?.repositories);
+  const receipts = recordArray7(verification?.repositories);
   for (const source of sources) {
     if (source.dirty) {
       issues.push(`${source.repository}: bound source checkout must be clean for final verification`);
@@ -36762,15 +37536,15 @@ function durableRepository(source) {
 }
 async function assertKnowledgeRoot(root) {
   try {
-    await access7(join17(root, "knowledge/index.md"), constants7.R_OK);
+    await access7(join19(root, "knowledge/index.md"), constants7.R_OK);
   } catch {
     throw new Error(`Knowledge repository is not initialized: ${root}`);
   }
 }
 async function assertKnowledgeReference(root, reference) {
   const normalized = reference.replace(/^\/+/, "");
-  const absolute = resolve18(root, normalized);
-  const knowledgeRoot = join17(root, "knowledge");
+  const absolute = resolve19(root, normalized);
+  const knowledgeRoot = join19(root, "knowledge");
   if (!inside(knowledgeRoot, absolute) || !absolute.toLowerCase().endsWith(".md")) {
     throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
   }
@@ -36782,22 +37556,22 @@ async function assertKnowledgeReference(root, reference) {
 }
 function knowledgeBindingPath(knowledgeRoot, id) {
   assertId(id);
-  return join17(knowledgeRoot, ".workflow/current/work", `${id}.json`);
+  return join19(knowledgeRoot, ".workflow/current/work", `${id}.json`);
 }
 function leafPointerPath(root, id) {
   assertId(id);
-  return join17(root, ".workflow/current", `${id}.json`);
+  return join19(root, ".workflow/current", `${id}.json`);
 }
 async function writeBinding(path, binding, replace = false) {
-  await mkdir11(dirname12(path), { recursive: true });
-  await writeFile11(path, `${JSON.stringify(binding, null, 2)}
+  await mkdir13(dirname14(path), { recursive: true });
+  await writeFile13(path, `${JSON.stringify(binding, null, 2)}
 `, {
     encoding: "utf8",
     flag: replace ? "w" : "wx"
   });
 }
 async function readBinding2(path) {
-  const raw = JSON.parse(await readFile19(path, "utf8"));
+  const raw = JSON.parse(await readFile21(path, "utf8"));
   if (!isRecord6(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
     (entry) => isRecord6(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
   )) {
@@ -36814,13 +37588,13 @@ function isRecord6(value) {
 async function pointerIds(root) {
   try {
     const ids = [];
-    for (const entry of await readdir11(root, { withFileTypes: true })) {
+    for (const entry of await readdir12(root, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.endsWith(".json")) {
         continue;
       }
       let parsed;
       try {
-        parsed = JSON.parse(await readFile19(join17(root, entry.name), "utf8"));
+        parsed = JSON.parse(await readFile21(join19(root, entry.name), "utf8"));
       } catch {
         continue;
       }
@@ -36842,16 +37616,16 @@ function relativeSpec(knowledgeRoot, specPath) {
   return value.split(sep9).join("/");
 }
 function inside(parent, child) {
-  const boundary = `${resolve18(parent)}${sep9}`;
-  return resolve18(child).startsWith(boundary);
+  const boundary = `${resolve19(parent)}${sep9}`;
+  return resolve19(child).startsWith(boundary);
 }
 function record(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
 }
-function recordArray6(value) {
+function recordArray7(value) {
   return Array.isArray(value) ? value.filter((entry) => Boolean(record(entry))) : [];
 }
-function stringArray9(value) {
+function stringArray10(value) {
   return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
 }
 function nonEmptyArray2(value) {
@@ -36861,7 +37635,7 @@ async function uniqueWorkId(activeRoot, base) {
   for (let index2 = 1; index2 < 1e3; index2 += 1) {
     const candidate = index2 === 1 ? base : `${base}-${index2}`;
     try {
-      await access7(join17(activeRoot, candidate), constants7.F_OK);
+      await access7(join19(activeRoot, candidate), constants7.F_OK);
     } catch (error2) {
       if (isMissingFileError(error2)) {
         return candidate;
@@ -36909,11 +37683,11 @@ init_assets();
 
 // src/state.ts
 init_config();
-import { resolve as resolve19 } from "node:path";
+import { resolve as resolve20 } from "node:path";
 
 // src/state-collectors.ts
-import { readdir as readdir12, readFile as readFile20, stat as stat3 } from "node:fs/promises";
-import { join as join18 } from "node:path";
+import { readdir as readdir13, readFile as readFile22, stat as stat3 } from "node:fs/promises";
+import { join as join20 } from "node:path";
 init_config();
 init_dependencies();
 init_knowledge_session();
@@ -37036,7 +37810,7 @@ function corpusCollector() {
     id: "corpus",
     profiles: ["knowledge"],
     async collect(context) {
-      const graphPath = join18(context.knowledgeRoot, ".workflow/current/knowledge-graph.json");
+      const graphPath = join20(context.knowledgeRoot, ".workflow/current/knowledge-graph.json");
       const graph = await readJson(graphPath);
       if (!graph) {
         return [{
@@ -37049,7 +37823,7 @@ function corpusCollector() {
       }
       const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
       const concepts = nodes.filter(
-        (node2) => recordValue10(node2)?.kind === "concept"
+        (node2) => recordValue11(node2)?.kind === "concept"
       ).length;
       if (concepts === 0) {
         return [{
@@ -37068,7 +37842,7 @@ function corpusCollector() {
         facts: { concepts, documents: nodes.length }
       }];
       const drifted = nodes.filter(
-        (node2) => stringValue10(recordValue10(recordValue10(node2)?.realization)?.alignment) === "drifted"
+        (node2) => stringValue11(recordValue11(recordValue11(node2)?.realization)?.alignment) === "drifted"
       );
       if (drifted.length > 0) {
         signals2.push({
@@ -37080,7 +37854,7 @@ function corpusCollector() {
             capabilities: drifted.length,
             named: nameThem(
               drifted.map(
-                (node2) => stringValue10(recordValue10(node2)?.title) || stringValue10(recordValue10(node2)?.path)
+                (node2) => stringValue11(recordValue11(node2)?.title) || stringValue11(recordValue11(node2)?.path)
               )
             )
           }
@@ -37091,8 +37865,8 @@ function corpusCollector() {
           // claiming it awaits the agent would arm the stop guard on a fact.
         });
       }
-      const compiledAt = stringValue10(graph.generatedAt);
-      const newest = await newestModification(join18(context.knowledgeRoot, "knowledge"));
+      const compiledAt = stringValue11(graph.generatedAt);
+      const newest = await newestModification(join20(context.knowledgeRoot, "knowledge"));
       if (compiledAt && newest && newest > Date.parse(compiledAt)) {
         signals2.push({
           id: "corpus.stale-compilation",
@@ -37137,20 +37911,20 @@ function reconstructionCollector() {
     id: "reconstruction",
     profiles: ["knowledge"],
     async collect(context) {
-      const root = join18(context.knowledgeRoot, "reconstruction/active");
+      const root = join20(context.knowledgeRoot, "reconstruction/active");
       const signals2 = [];
       for (const entry of await activeRecords(root)) {
         const metadata = entry.document.metadata;
-        const repositories = recordArray7(metadata.repositories);
+        const repositories = recordArray8(metadata.repositories);
         const totals = { files: 0, pendingFiles: 0, communities: 0, pendingCommunities: 0 };
         for (const repository of repositories) {
-          const relative9 = stringValue10(repository.coverage);
+          const relative9 = stringValue11(repository.coverage);
           if (!relative9) {
             continue;
           }
-          const ledger = await readJson(join18(entry.root, relative9));
-          const manifest = recordValue10(ledger?.manifest);
-          const graphify = recordValue10(ledger?.graphify);
+          const ledger = await readJson(join20(entry.root, relative9));
+          const manifest = recordValue11(ledger?.manifest);
+          const graphify = recordValue11(ledger?.graphify);
           const files = Array.isArray(manifest?.files) ? manifest.files : [];
           const communities = Array.isArray(graphify?.communities) ? graphify.communities : [];
           totals.files += files.length;
@@ -37167,8 +37941,8 @@ function reconstructionCollector() {
           summary: frontierClear && decisions > 0 ? "A reconstruction has read its frontier and is waiting on a maintainer decision" : "A reconstruction is in progress",
           subject: entry.id,
           facts: {
-            title: stringValue10(metadata.title) || entry.id,
-            mode: stringValue10(metadata.mode),
+            title: stringValue11(metadata.title) || entry.id,
+            mode: stringValue11(metadata.mode),
             repositories: repositories.length,
             filesReviewed: totals.files - totals.pendingFiles,
             files: totals.files,
@@ -37176,7 +37950,7 @@ function reconstructionCollector() {
             communities: totals.communities,
             ...decisions > 0 ? { decisions } : {}
           },
-          ...stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {},
+          ...stringValue11(metadata.updated_at) ? { since: stringValue11(metadata.updated_at) } : {},
           awaits: frontierClear && decisions > 0 ? "maintainer" : "agent"
         });
         signals2.push(...checkpointSignals(
@@ -37186,10 +37960,10 @@ function reconstructionCollector() {
           await reconstructionBasis(context.knowledgeRoot, entry)
         ));
         signals2.push(...await workstreamSignals(entry));
-        const scope = recordValue10(
-          recordValue10(recordValue10(metadata.supplemental_inputs)?.raw)?.scope
+        const scope = recordValue11(
+          recordValue11(recordValue11(metadata.supplemental_inputs)?.raw)?.scope
         );
-        if (scope && !stringValue10(scope.mode)) {
+        if (scope && !stringValue11(scope.mode)) {
           signals2.push({
             id: "reconstruction.raw-scope-pending",
             domain: "reconstruction",
@@ -37206,9 +37980,9 @@ function reconstructionCollector() {
   };
 }
 function pendingDecisions(metadata) {
-  return recordArray7(metadata.candidate_claims).filter((candidate) => {
-    const decision = recordValue10(candidate.maintainer_decision);
-    return stringValue10(decision?.status) === "required" && !stringValue10(decision?.at);
+  return recordArray8(metadata.candidate_claims).filter((candidate) => {
+    const decision = recordValue11(candidate.maintainer_decision);
+    return stringValue11(decision?.status) === "required" && !stringValue11(decision?.at);
   }).length;
 }
 function intakeCollector() {
@@ -37216,11 +37990,11 @@ function intakeCollector() {
     id: "intake",
     profiles: ["knowledge"],
     async collect(context) {
-      const root = join18(context.knowledgeRoot, "intake/cases/active");
+      const root = join20(context.knowledgeRoot, "intake/cases/active");
       const signals2 = [];
       for (const entry of await activeRecords(root)) {
         const metadata = entry.document.metadata;
-        const sources = recordArray7(metadata.sources);
+        const sources = recordArray8(metadata.sources);
         const reviewed = sources.filter(
           (source) => source.status === "reviewed" || source.status === "no-relevant-claims"
         ).length;
@@ -37229,9 +38003,9 @@ function intakeCollector() {
         ).length;
         const decisions = pendingDecisions(metadata);
         const readingDone = reviewed === sources.length && sources.length > 0;
-        const checkpoint = recordValue10(metadata.checkpoint);
-        const heldForMaintainer = stringValue10(checkpoint?.status) === "blocked" || Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0;
-        const since = stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {};
+        const checkpoint = recordValue11(metadata.checkpoint);
+        const heldForMaintainer = stringValue11(checkpoint?.status) === "blocked" || Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0;
+        const since = stringValue11(metadata.updated_at) ? { since: stringValue11(metadata.updated_at) } : {};
         signals2.push(
           readingDone && (decisions > 0 || heldForMaintainer) ? {
             id: "intake.awaiting-decision",
@@ -37240,7 +38014,7 @@ function intakeCollector() {
             summary: "A raw-intake case is read and waiting on a maintainer decision",
             subject: entry.id,
             facts: {
-              title: stringValue10(metadata.title) || entry.id,
+              title: stringValue11(metadata.title) || entry.id,
               sources: sources.length,
               decisions,
               ...heldForMaintainer ? { blocked: true } : {}
@@ -37254,7 +38028,7 @@ function intakeCollector() {
             summary: "A raw-intake case is in progress",
             subject: entry.id,
             facts: {
-              title: stringValue10(metadata.title) || entry.id,
+              title: stringValue11(metadata.title) || entry.id,
               reviewed,
               sources: sources.length,
               ...decisions > 0 ? { decisions } : {}
@@ -37290,7 +38064,7 @@ function rawCollector() {
     id: "raw",
     profiles: ["knowledge"],
     async collect(context) {
-      const files = await countFiles(join18(context.knowledgeRoot, "raw"));
+      const files = await countFiles(join20(context.knowledgeRoot, "raw"));
       if (files === 0) {
         return [{
           id: "raw.empty",
@@ -37300,7 +38074,7 @@ function rawCollector() {
           blocks: ["process-raw-intake"]
         }];
       }
-      const cases = (await activeRecords(join18(context.knowledgeRoot, "intake/cases/active"))).length + await directoryCount(join18(context.knowledgeRoot, "intake/cases/archive"));
+      const cases = (await activeRecords(join20(context.knowledgeRoot, "intake/cases/active"))).length + await directoryCount(join20(context.knowledgeRoot, "intake/cases/archive"));
       return [{
         id: cases === 0 ? "raw.unprocessed" : "raw.present",
         domain: "raw",
@@ -37316,11 +38090,11 @@ function workCollector() {
     id: "work",
     profiles: ["knowledge", "leaf"],
     async collect(context) {
-      const root = join18(context.knowledgeRoot, "changes/active");
+      const root = join20(context.knowledgeRoot, "changes/active");
       const signals2 = [];
       for (const entry of await activeRecords(root, "change.md")) {
         const metadata = entry.document.metadata;
-        const issues = await issueCounts(join18(entry.root, "issues"));
+        const issues = await issueCounts(join20(entry.root, "issues"));
         signals2.push({
           id: "work.active",
           domain: "work",
@@ -37328,18 +38102,18 @@ function workCollector() {
           summary: "A change bundle is open",
           subject: entry.id,
           facts: {
-            title: stringValue10(metadata.title) || entry.id,
-            mode: stringValue10(metadata.mode),
-            status: stringValue10(metadata.status),
-            repositories: recordArray7(metadata.repositories).length,
+            title: stringValue11(metadata.title) || entry.id,
+            mode: stringValue11(metadata.mode),
+            status: stringValue11(metadata.status),
+            repositories: recordArray8(metadata.repositories).length,
             ...issues
           },
-          ...stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {},
+          ...stringValue11(metadata.updated_at) ? { since: stringValue11(metadata.updated_at) } : {},
           awaits: "agent"
         });
-        const review = recordValue10(metadata.maintainer_review);
+        const review = recordValue11(metadata.maintainer_review);
         const outstanding = ["framing", "completion"].filter(
-          (stage) => stringValue10(recordValue10(review?.[stage])?.status) !== "approved"
+          (stage) => stringValue11(recordValue11(review?.[stage])?.status) !== "approved"
         );
         if (outstanding.length > 0) {
           signals2.push({
@@ -37356,7 +38130,7 @@ function workCollector() {
             blocks: ["close-work"]
           });
         }
-        if (stringValue10(recordValue10(metadata.verification)?.result) !== "passed") {
+        if (stringValue11(recordValue11(metadata.verification)?.result) !== "passed") {
           signals2.push({
             id: "work.verification-pending",
             domain: "work",
@@ -37432,11 +38206,11 @@ function inboxCollector() {
   };
 }
 async function workstreamSignals(entry) {
-  const packets = await markdownRecords(join18(entry.root, "workstreams"));
+  const packets = await markdownRecords(join20(entry.root, "workstreams"));
   const counts = { packets: packets.length, claimed: 0, submitted: 0, accepted: 0 };
   const stranded = [];
   for (const packet of packets) {
-    const status = stringValue10(packet.document.metadata.status);
+    const status = stringValue11(packet.document.metadata.status);
     if (status === "claimed" || status === "active") {
       counts.claimed += 1;
       stranded.push(packet.id);
@@ -37480,13 +38254,13 @@ async function reconstructionBasis(knowledgeRoot, entry) {
   }
 }
 function checkpointSignals(domain, subject, metadata, currentBasis) {
-  const checkpoint = recordValue10(metadata.checkpoint);
-  const updatedAt = stringValue10(checkpoint?.updated_at);
+  const checkpoint = recordValue11(metadata.checkpoint);
+  const updatedAt = stringValue11(checkpoint?.updated_at);
   if (!checkpoint || !updatedAt) {
     return [];
   }
   const signals2 = [];
-  const recordedBasis = stringValue10(checkpoint.basis_sha256);
+  const recordedBasis = stringValue11(checkpoint.basis_sha256);
   if (currentBasis === void 0) {
     signals2.push({
       id: `${domain}.unverifiable-checkpoint`,
@@ -37522,7 +38296,7 @@ function checkpointSignals(domain, subject, metadata, currentBasis) {
       // counting the rest hid every blocker but one.
       facts: {
         blockers: blockers.length,
-        blocking: nameThem(blockers.map((entry) => stringValue10(entry)))
+        blocking: nameThem(blockers.map((entry) => stringValue11(entry)))
       },
       awaits: "maintainer"
     });
@@ -37532,9 +38306,9 @@ function checkpointSignals(domain, subject, metadata, currentBasis) {
 async function activeRecords(root, file = "case.md") {
   const records = [];
   for (const name of await directoryNames(root)) {
-    const directory = join18(root, name);
+    const directory = join20(root, name);
     try {
-      const content3 = await readFile20(join18(directory, file), "utf8");
+      const content3 = await readFile22(join20(directory, file), "utf8");
       records.push({ id: name, root: directory, document: parseWorkSpec(content3) });
     } catch {
       records.push({ id: name, root: directory, document: { metadata: {}, body: "" } });
@@ -37545,7 +38319,7 @@ async function activeRecords(root, file = "case.md") {
 async function markdownRecords(root) {
   let names;
   try {
-    names = (await readdir12(root)).filter((name) => name.endsWith(".md")).sort();
+    names = (await readdir13(root)).filter((name) => name.endsWith(".md")).sort();
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -37554,12 +38328,12 @@ async function markdownRecords(root) {
   }
   const records = [];
   for (const name of names) {
-    const path = join18(root, name);
+    const path = join20(root, name);
     try {
       records.push({
         id: name.slice(0, -3),
         root: path,
-        document: parseWorkSpec(await readFile20(path, "utf8"))
+        document: parseWorkSpec(await readFile22(path, "utf8"))
       });
     } catch {
       records.push({ id: name.slice(0, -3), root: path, document: { metadata: {}, body: "" } });
@@ -37571,7 +38345,7 @@ async function issueCounts(root) {
   const counts = { issues: 0, issuesOpen: 0, issuesClaimed: 0 };
   let names;
   try {
-    names = (await readdir12(root)).filter((name) => name.endsWith(".md"));
+    names = (await readdir13(root)).filter((name) => name.endsWith(".md"));
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return counts;
@@ -37581,8 +38355,8 @@ async function issueCounts(root) {
   for (const name of names) {
     counts.issues += 1;
     try {
-      const status = stringValue10(
-        parseWorkSpec(await readFile20(join18(root, name), "utf8")).metadata.status
+      const status = stringValue11(
+        parseWorkSpec(await readFile22(join20(root, name), "utf8")).metadata.status
       );
       if (status === "claimed") {
         counts.issuesClaimed += 1;
@@ -37598,7 +38372,7 @@ async function issueCounts(root) {
 }
 async function directoryNames(root) {
   try {
-    return (await readdir12(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    return (await readdir13(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -37614,7 +38388,7 @@ async function countFiles(root, budget = { left: FILE_SCAN_LIMIT }) {
   let total = 0;
   let entries;
   try {
-    entries = await readdir12(root, { withFileTypes: true });
+    entries = await readdir13(root, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return 0;
@@ -37629,7 +38403,7 @@ async function countFiles(root, budget = { left: FILE_SCAN_LIMIT }) {
       continue;
     }
     if (entry.isDirectory()) {
-      total += await countFiles(join18(root, entry.name), budget);
+      total += await countFiles(join20(root, entry.name), budget);
     } else if (entry.isFile()) {
       budget.left -= 1;
       total += 1;
@@ -37641,7 +38415,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
   let newest;
   let entries;
   try {
-    entries = await readdir12(root, { withFileTypes: true });
+    entries = await readdir13(root, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return void 0;
@@ -37652,7 +38426,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
     if (budget.left <= 0) {
       break;
     }
-    const path = join18(root, entry.name);
+    const path = join20(root, entry.name);
     if (entry.isDirectory()) {
       const nested = await newestModification(path, budget);
       if (nested !== void 0 && (newest === void 0 || nested > newest)) {
@@ -37670,25 +38444,25 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
 }
 async function readJson(path) {
   try {
-    const parsed = JSON.parse(await readFile20(path, "utf8"));
-    return recordValue10(parsed);
+    const parsed = JSON.parse(await readFile22(path, "utf8"));
+    return recordValue11(parsed);
   } catch {
     return void 0;
   }
 }
 function isPending(value) {
-  return recordValue10(value)?.status === "pending";
+  return recordValue11(value)?.status === "pending";
 }
-function recordArray7(value) {
+function recordArray8(value) {
   return Array.isArray(value) ? value.filter(isRecord7) : [];
 }
-function recordValue10(value) {
+function recordValue11(value) {
   return isRecord7(value) ? value : void 0;
 }
 function isRecord7(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function stringValue10(value) {
+function stringValue11(value) {
   return typeof value === "string" ? value : "";
 }
 
@@ -37742,7 +38516,7 @@ var CAPABILITIES = [
   }
 ];
 async function collectWorkflowState(targetInput, options = {}) {
-  const root = resolve19(targetInput);
+  const root = resolve20(targetInput);
   const now = options.now ?? /* @__PURE__ */ new Date();
   const capabilities = options.capabilities ?? CAPABILITIES;
   const base = {
@@ -37828,9 +38602,9 @@ function sortSignals(signals2) {
 
 // src/hooks.ts
 init_config();
-import { mkdir as mkdir12, readFile as readFile21, rename as rename10, writeFile as writeFile12 } from "node:fs/promises";
+import { mkdir as mkdir14, readFile as readFile23, rename as rename11, writeFile as writeFile14 } from "node:fs/promises";
 import { randomUUID as randomUUID4 } from "node:crypto";
-import { dirname as dirname13, join as join19 } from "node:path";
+import { dirname as dirname15, join as join21 } from "node:path";
 var SESSION_BRIEF_COMMAND = "wfctl brief --hook";
 var SESSION_START_EVENT = "SessionStart";
 var BACKGROUND_GUARD_COMMAND = '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true';
@@ -37928,12 +38702,12 @@ function sessionStartEnvelope(context) {
 `;
 }
 function settingsPath(target) {
-  return join19(target, ".claude/settings.json");
+  return join21(target, ".claude/settings.json");
 }
 async function readSettings(path) {
   let content3;
   try {
-    content3 = await readFile21(path, "utf8");
+    content3 = await readFile23(path, "utf8");
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return {};
@@ -37951,11 +38725,11 @@ async function readSettings(path) {
   return settings;
 }
 async function writeSettings(path, settings) {
-  await mkdir12(dirname13(path), { recursive: true });
-  const temporary = join19(dirname13(path), `.wfctl-${randomUUID4()}.tmp`);
-  await writeFile12(temporary, `${JSON.stringify(settings, null, 2)}
+  await mkdir14(dirname15(path), { recursive: true });
+  const temporary = join21(dirname15(path), `.wfctl-${randomUUID4()}.tmp`);
+  await writeFile14(temporary, `${JSON.stringify(settings, null, 2)}
 `, "utf8");
-  await rename10(temporary, path);
+  await rename11(temporary, path);
 }
 function countEntries(matchers) {
   return matchers.reduce((total, matcher) => total + (matcher.hooks ?? []).length, 0);
@@ -37995,17 +38769,17 @@ function initCommand() {
     "--init-git",
     "Initialize Git when creating a knowledge repository."
   ).option("-y, --yes", "Accept defaults and safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options, profileValue) => {
-    const target = resolve20(options.target);
+    const target = resolve21(options.target);
     const promptOptions = {
       yes: options.yes === true,
       json: options.json === true
     };
     const profile = await resolveProfile(profileValue, target, promptOptions);
-    let knowledge = options.knowledge ? resolve20(options.knowledge) : await installedKnowledgePath(target, profile);
+    let knowledge = options.knowledge ? resolve21(options.knowledge) : await installedKnowledgePath(target, profile);
     if (profile === "leaf" && !knowledge && !promptOptions.yes && !promptOptions.json && interactive()) {
       const answer = await ask("Knowledge repository path: ");
       if (answer) {
-        knowledge = resolve20(answer);
+        knowledge = resolve21(answer);
       }
     }
     if (options.printInstructions) {
@@ -38043,7 +38817,7 @@ function initCommand() {
 }
 function upgradeCommand() {
   return new Command().description("Preview dependencies and upgrade an existing workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-s, --skills <scope:string>", "Change skill scope: project, user, or none.").option("-a, --agents <agents:string>", "Change skill targets: codex, claude, or both.").option("--dry-run", "Preview files and dependency checks without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
-    const target = resolve20(options.target);
+    const target = resolve21(options.target);
     const config = await readConfig(target);
     const scope = options.skills ? parseSkillScope(options.skills) : config.skills?.scope ?? "project";
     const agents = options.agents ? parseAgentTargets(options.agents) : config.skills?.agents ?? ["codex", "claude"];
@@ -38230,7 +39004,7 @@ async function installWorkflow(input) {
 ${green("\u2713")} ${bold("Workflow installed")}
   ${dim("Target")}  ${resolved.target}
   ${dim("Changes")} ${applied.changed}
-  ${dim("Guide")}   ${resolve20(resolved.target, "PROJECT_WORKFLOW.md")}
+  ${dim("Guide")}   ${resolve21(resolved.target, "PROJECT_WORKFLOW.md")}
 `
     );
     printChangedPaths(applied.changedPaths);
@@ -38396,7 +39170,7 @@ function hooksCommand() {
   ).command(
     "install",
     new Command().description(`Add a SessionStart hook that runs \`${SESSION_BRIEF_COMMAND}\`.`).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const result = await installSessionBriefHook(resolve20(options.target));
+      const result = await installSessionBriefHook(resolve21(options.target));
       if (options.json) {
         printJson(result);
       } else {
@@ -38411,7 +39185,7 @@ ${dim("Restart the agent session for the hook to take effect.")}
   ).command(
     "remove",
     new Command().description("Remove the session-start brief hook and leave every other setting intact.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const result = await removeSessionBriefHook(resolve20(options.target));
+      const result = await removeSessionBriefHook(resolve21(options.target));
       if (options.json) {
         printJson(result);
       } else {
@@ -38423,7 +39197,7 @@ ${dim(result.path)}
   ).command(
     "status",
     new Command().description("Report whether the session-start brief hook is installed.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const target = resolve20(options.target);
+      const target = resolve21(options.target);
       const installed = await sessionBriefHookInstalled(target);
       if (options.json) {
         printJson({ target, installed, command: SESSION_BRIEF_COMMAND });
@@ -39195,7 +39969,7 @@ function workReviewCommand() {
 function knowledgeCommand() {
   return new Command().description(
     "Operate the knowledge trust boundary.\nraw/ is untrusted intake; reconstruction maps pinned leaves; knowledge/ is curated truth.\nProduct views explain current behavior to stakeholders; engineering views record verified realization.\nwfctl validates views, quality receipts, and explicit relations; QMD provides semantic retrieval."
-  ).command("raw", knowledgeRawCommand()).command("case", knowledgeCaseCommand()).command("sources", knowledgeSourcesCommand()).command("reconstruct", knowledgeReconstructCommand()).command(
+  ).command("raw", knowledgeRawCommand()).command("case", knowledgeCaseCommand()).command("sources", knowledgeSourcesCommand()).command("reconstruct", knowledgeReconstructCommand()).command("trajectory", knowledgeTrajectoryCommand()).command(
     "hash",
     new Command().description(
       "Compute the content hash used to bind a verification event to one concept revision."
@@ -39291,6 +40065,133 @@ Claims: ${claims.ledger.stats.claims}; relations: ${claims.ledger.stats.edges}
       }
     })
   );
+}
+function knowledgeTrajectoryCommand() {
+  return new Command().description(
+    "Compile the trajectory graph and report the decisions it is waiting on.\nA trajectory is one product subject as a line: how it was conceived, what changed and why,\nand what the source shows now. It runs before curation, so it does not require valid knowledge.\nThe pending list is the only queue meant for the maintainer, worst gap first."
+  ).command(
+    "check",
+    new Command().description("Validate every trajectory and list the roots awaiting a vision.").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--build", "Write the compiled graph when no error remains.").option("--json", "Print machine-readable JSON.").action(async (options) => {
+      const result = await compileTrajectories(options.target);
+      const built = options.build && result.errors.length === 0 ? await writeTrajectoryGraph(options.target) : void 0;
+      if (options.json) {
+        printJson({
+          valid: result.errors.length === 0,
+          built: built?.path,
+          contentHash: result.graph.contentHash,
+          stats: result.graph.stats,
+          errors: result.errors,
+          pending: result.pending
+        });
+      } else {
+        process.stdout.write(
+          `Trajectories: ${result.errors.length === 0 ? "valid" : "invalid"} (${result.graph.stats.trajectories} trajectory(s), ${result.graph.stats.roots} root(s))
+`
+        );
+        for (const issue3 of result.errors) {
+          process.stdout.write(`ERROR ${issue3.path}: ${issue3.message}
+`);
+        }
+        if (built) {
+          process.stdout.write(`Trajectory graph built: ${built.path}
+`);
+        }
+        if (result.pending.length === 0) {
+          process.stdout.write("No trajectory is waiting on a product decision.\n");
+        } else {
+          process.stdout.write(
+            `Awaiting your vision (${result.pending.length}), worst gap first:
+`
+          );
+          for (const entry of result.pending) {
+            process.stdout.write(
+              `  ${entry.subject} \u2014 ${entry.gapWeight} open gap(s) [${entry.id}]
+`
+            );
+          }
+        }
+      }
+      if (result.errors.length > 0) {
+        process.exitCode = 2;
+      }
+    })
+  ).command(
+    "declare",
+    new Command().description(
+      "Record a maintainer vision for one trajectory: what the subject should become.\nThis is the one record the agent may not author. It needs an interactive terminal,\nor --token matching WFCTL_APPROVAL_TOKEN."
+    ).arguments("<trajectory:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--id <id:string>", "Vision id.", { required: true }).option("--by <actor:string>", "Declaring maintainer as human:<id>.", { required: true }).option(
+      "--statement <statement:string>",
+      "What the subject should become, in product language.",
+      { required: true }
+    ).option("--supersedes <id:string>", "The vision this one replaces.").option(
+      "--token <token:string>",
+      "Out-of-band token; required when no interactive terminal is available. Must equal WFCTL_APPROVAL_TOKEN."
+    ).option("--json", "Print machine-readable JSON.").action(async (options, trajectory) => {
+      const method = await resolveVisionMethod({
+        trajectory,
+        by: options.by,
+        statement: options.statement,
+        ...options.token ? { token: options.token } : {}
+      });
+      const result = await declareVision({
+        knowledgeRoot: resolve21(options.target),
+        id: options.id,
+        trajectory,
+        declaredBy: options.by,
+        statement: options.statement,
+        method,
+        ...options.supersedes ? { supersedes: options.supersedes } : {}
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Recorded a vision for ${result.trajectory}
+Vision:  ${result.id}
+By:      ${result.declaredBy}
+Method:  ${result.method}
+Receipt: ${result.receipt}
+Document: ${result.documentPath}
+The gap is recomputed from this; run trajectory check to see what it now costs.
+`
+        );
+      }
+    })
+  );
+}
+async function resolveVisionMethod(input) {
+  const expected = process.env.WFCTL_APPROVAL_TOKEN?.trim();
+  if (input.token) {
+    if (!expected) {
+      throw new Error(
+        "WFCTL_APPROVAL_TOKEN is not set; a supplied --token cannot be verified"
+      );
+    }
+    if (input.token !== expected) {
+      throw new Error("Supplied --token does not match WFCTL_APPROVAL_TOKEN");
+    }
+    return "token";
+  }
+  if (!interactive()) {
+    throw new Error(
+      "A vision requires an interactive terminal, or --token with a matching WFCTL_APPROVAL_TOKEN. wfctl does not record product direction from an unattended session."
+    );
+  }
+  process.stdout.write(
+    `
+Vision requested
+  Subject: ${input.trajectory}
+  Actor:   ${input.by}
+  Should become: ${input.statement}
+
+This declares where the product is going. Only you should answer.
+`
+  );
+  const answer = await ask(`Type "declare" to record it, anything else to abort: `);
+  if (answer.toLowerCase() !== "declare") {
+    throw new Error("The vision was not confirmed; nothing was recorded");
+  }
+  return "interactive";
 }
 function knowledgeReconstructCommand() {
   return new Command().description(
@@ -40647,7 +41548,7 @@ ${cyan(bold(section.title))}
 }
 async function recordedAgents(target) {
   try {
-    const config = await readConfig(resolve20(target));
+    const config = await readConfig(resolve21(target));
     const agents = config.skills?.agents ?? [];
     return agents.length > 0 ? agents : ["codex", "claude"];
   } catch {

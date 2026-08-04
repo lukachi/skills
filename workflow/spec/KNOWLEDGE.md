@@ -12,6 +12,7 @@ curation, retrieval, lifecycle, and generated relationship artifacts.
 | `raw/` | Continuous append-oriented input | Untrusted; never evidence or current truth |
 | `intake/` | Bounded review of frozen raw inputs | Audit and candidate state only |
 | `reconstruction/` | Source-first baselines and audits | Audit and candidate state only |
+| `trajectories/` | Product subjects as lines, and declared visions | Declared direction is maintainer authority; the rest is working state |
 | `changes/inbox/` | Pending captures without an active or curated owner | Non-authoritative queue |
 | `changes/active/` | Canonical living work records with hash-bound checkpoints | Approved intent within recorded scope |
 | `changes/archive/` | Honest closed outcomes and resolved capture receipts | Durable project history, not current knowledge by itself |
@@ -169,6 +170,41 @@ decision and remains visible.
 Existing v3 cases migrate conservatively through a separate migration and
 semantic-review sequence. Legacy destinations remain migration context, never
 implicit current routing.
+
+## Trajectories and declared direction
+
+A trajectory is one product subject as a line: how it was conceived, what changed
+and why, and what the source shows now at a named revision. It is the unit the
+maintainer decides about and the only layer they are shown.
+
+Nothing below a trajectory asserts anything about the present. An observation
+says what one source said on a date; a finding says what happened over a period.
+Routing into `knowledge/` is not available before a trajectory exists, because a
+claim about current truth made while reading is made before the material that
+contradicts it has been read.
+
+A finding's cause carries evidence separate from the claim's. `not-found` records
+that no decision record was located and is not `drift`, which asserts that none
+was made; only `not-found` and `unknown` may carry no cause evidence.
+
+Three axes replace two. `intent` is what the project stated, recovered.
+`delivery` is what the source delivers now. **`vision` is what the subject should
+become, and only a maintainer declares it.** The gap between vision and delivery
+is direction debt, distinct from the delivery debt between intent and delivery. A
+gap is never stored: it is derived, and a gap accepted as correct is a vision that
+was wrong.
+
+A vision is a decision record with an author, a date, immutable successors, and
+one current record per subject. A vision names its trajectory; a trajectory never
+names its vision. It is produced only through a command requiring an interactive
+terminal or an out-of-band token, and reconciled against an ignored durable
+record, for the reason maintainer approval is: recovering what a project meant
+and declaring what it should become are different acts, and the agent may perform
+only the first.
+
+Composition is derived from product language. A hierarchy assembled from paths is
+correct about the repository and carries nothing anyone can decide about. Vision
+inherits along `part-of` from one primary parent and along no other relation.
 
 ## Reconstruction convergence
 
