@@ -3,9 +3,12 @@ import { join } from "node:path";
 import { listCaptures } from "./capture.js";
 import { isMissingFileError } from "./config.js";
 import { runTool } from "./dependencies.js";
+import { sessionBasis } from "./knowledge-session.js";
+import { reconstructionCheckpointBasis } from "./reconstruction.js";
 import { listRepositoryConnections } from "./repository-registry.js";
 import type { StateCollector, StateContext, StateSignal } from "./state.js";
 import { WORKFLOW_VERSION } from "./types.js";
+import { workCheckpointBasis } from "./work-bundle.js";
 import { parseWorkSpec } from "./work-spec.js";
 
 /**
@@ -275,7 +278,12 @@ function reconstructionCollector(): StateCollector {
             : {}),
           awaits: frontierClear && decisions > 0 ? "maintainer" : "agent",
         });
-        signals.push(...checkpointSignals("reconstruction", entry.id, metadata, context));
+        signals.push(...checkpointSignals(
+          "reconstruction",
+          entry.id,
+          metadata,
+          await reconstructionBasis(context.knowledgeRoot, entry),
+        ));
         signals.push(...await workstreamSignals(entry));
 
         const scope = recordValue(
@@ -387,7 +395,14 @@ function intakeCollector(): StateCollector {
             awaits: "maintainer",
           });
         }
-        signals.push(...checkpointSignals("intake", entry.id, metadata, context));
+        // An intake checkpoint's basis is the case record alone; it owns no
+        // dossier or coverage ledger the way a reconstruction does.
+        signals.push(...checkpointSignals(
+          "intake",
+          entry.id,
+          metadata,
+          sessionBasis(entry.document),
+        ));
       }
       return signals;
     },
@@ -486,7 +501,12 @@ function workCollector(): StateCollector {
             blocks: ["close-work"],
           });
         }
-        signals.push(...checkpointSignals("work", entry.id, metadata, context));
+        signals.push(...checkpointSignals(
+          "work",
+          entry.id,
+          metadata,
+          workCheckpointBasis(entry.document),
+        ));
       }
       return signals;
     },
@@ -614,17 +634,43 @@ async function workstreamSignals(entry: ActiveRecord): Promise<StateSignal[]> {
   return signals;
 }
 
-const STALE_CHECKPOINT_DAYS = 3;
+/**
+ * A reconstruction basis spans dossiers, workstreams, and coverage ledgers, so
+ * a missing or malformed one is a real possibility. The brief keeps reporting
+ * every other signal when it cannot be computed and says so explicitly.
+ */
+async function reconstructionBasis(
+  knowledgeRoot: string,
+  entry: ActiveRecord,
+): Promise<string | undefined> {
+  try {
+    return await reconstructionCheckpointBasis(knowledgeRoot, entry.id, entry.document);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
- * A checkpoint that predates the record it summarizes is a resume hazard, and
- * every session-owning record carries one, so the test lives in one place.
+ * A checkpoint that no longer describes the record it summarizes is a resume
+ * hazard, and every session-owning record carries one, so the test lives in one
+ * place.
+ *
+ * The test is the basis digest the checkpoint stamped itself with, never the
+ * checkpoint's age. Age answers a different question: a checkpoint written a
+ * minute ago can already be forty edits behind, and one untouched for a week is
+ * perfectly resumable if nothing moved. Reporting age as freshness is why the
+ * one question the maintainer asks every session — "is this safe to close?" —
+ * could not be answered from the brief.
+ *
+ * `currentBasis` is `undefined` when it could not be computed. That is reported
+ * as unverified rather than passed over, because silence here reads as a clean
+ * bill of health.
  */
 function checkpointSignals(
   domain: "reconstruction" | "intake" | "work",
   subject: string,
   metadata: Record<string, unknown>,
-  context: StateContext,
+  currentBasis: string | undefined,
 ): StateSignal[] {
   const checkpoint = recordValue(metadata.checkpoint);
   const updatedAt = stringValue(checkpoint?.updated_at);
@@ -632,16 +678,25 @@ function checkpointSignals(
     return [];
   }
   const signals: StateSignal[] = [];
-  const age = context.now.getTime() - Date.parse(updatedAt);
-  if (Number.isFinite(age) && age > STALE_CHECKPOINT_DAYS * 86_400_000) {
+  const recordedBasis = stringValue(checkpoint.basis_sha256);
+  if (currentBasis === undefined) {
+    signals.push({
+      id: `${domain}.unverifiable-checkpoint`,
+      domain,
+      level: "attention",
+      summary: "The resume checkpoint could not be checked against the record it summarizes",
+      subject,
+      since: updatedAt,
+      awaits: "agent",
+    });
+  } else if (recordedBasis !== currentBasis) {
     signals.push({
       id: `${domain}.stale-checkpoint`,
       domain,
-      level: "info",
-      summary: "The resume checkpoint is older than the record it summarizes",
+      level: "attention",
+      summary: "The resume checkpoint no longer matches the record it summarizes",
       subject,
       since: updatedAt,
-      facts: { days: Math.floor(age / 86_400_000) },
       awaits: "agent",
     });
   }

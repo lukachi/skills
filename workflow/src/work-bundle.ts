@@ -1708,6 +1708,15 @@ function checkpointRecord(document: WorkSpecDocument): Record<string, unknown> |
   return recordValue(document.metadata.checkpoint);
 }
 
+/**
+ * The basis a change or issue checkpoint must still match. Exported for the
+ * same reason as the reconstruction one: the session brief has to answer "can
+ * this be resumed" from the record, not from how recently someone wrote it.
+ */
+export function workCheckpointBasis(document: WorkSpecDocument): string {
+  return checkpointBasis(document);
+}
+
 function checkpointBasis(document: WorkSpecDocument): string {
   const metadata = { ...document.metadata };
   delete metadata.checkpoint;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -242,6 +242,53 @@ test("holds bundle closure until approvals and verification are recorded", async
     "work.verification-pending",
   ]);
   assert.deepEqual(close?.missing, []);
+});
+
+test("tests the checkpoint against its record, not against the clock", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "account-recovery",
+    title: "Account recovery",
+    mode: "full",
+  });
+  const record = join(knowledge, "changes/active", started.id, "change.md");
+
+  const fresh = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    fresh.signals.some((signal) => signal.id.endsWith("stale-checkpoint")),
+    false,
+    JSON.stringify(fresh.signals.map((signal) => signal.id)),
+  );
+
+  // Backdate the checkpoint far past any age threshold while leaving it an
+  // accurate description of the record. Age is not the question. The basis
+  // digest deliberately excludes updated_at, so this must not read as drift.
+  const backdated = (await readFile(record, "utf8")).replace(
+    /\n(\s+)updated_at: [^\n]*\n(\s+)basis_sha256:/,
+    "\n$1updated_at: 2020-01-01T00:00:00.000Z\n$2basis_sha256:",
+  );
+  assert.match(backdated, /updated_at: 2020-01-01T00:00:00\.000Z/, "backdating must apply");
+  await writeFile(record, backdated, "utf8");
+
+  const old = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    old.signals.some((signal) => signal.id === "work.stale-checkpoint"),
+    false,
+    "an old checkpoint that still matches its record is resumable",
+  );
+
+  // Move the record without touching the checkpoint. Same minute, now stale.
+  await writeFile(
+    record,
+    `${backdated}\n\n## Later\n\nA paragraph the checkpoint never saw.\n`,
+    "utf8",
+  );
+  const drifted = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  const stale = drifted.signals.find((signal) => signal.id === "work.stale-checkpoint");
+  assert.equal(stale?.subject, started.id);
+  assert.equal(stale?.awaits, "agent");
+  assert.equal(stale?.level, "attention");
 });
 
 test("keeps every shipped capability reachable from a collector or a requirement", () => {

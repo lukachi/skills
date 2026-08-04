@@ -3062,6 +3062,20 @@ async function readBinding(
   }
 }
 
+/**
+ * The basis an active reconstruction checkpoint must still match. Exported so
+ * the session brief tests resume safety the same way `reconstruct checkpoint`
+ * writes it. A reconstruction's basis covers its dossiers, workstreams, and
+ * coverage ledgers, so nothing but this function can compute it honestly.
+ */
+export async function reconstructionCheckpointBasis(
+  target: string,
+  id: string,
+  document: ReturnType<typeof parseWorkSpec>,
+): Promise<string> {
+  return (await reconstructionSessionState(target, id, document)).basis;
+}
+
 async function reconstructionSessionState(
   target: string,
   id: string,

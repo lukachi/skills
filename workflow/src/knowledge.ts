@@ -180,7 +180,10 @@ export async function validateKnowledge(
         }
       }
       if (/^knowledge\/areas\/[^/]+\/index\.md$/.test(displayPath)) {
-        validateAreaIndex(displayPath, content, errors, warnings);
+        // The prose is what a stakeholder reads; the frontmatter is bookkeeping
+        // the author cannot remove. Checking it for technical identifiers warns
+        // on required OKF keys like okf_version and no edit can ever clear it.
+        validateAreaIndex(displayPath, parseFrontmatter(content, false).body, errors, warnings);
       }
       continue;
     }

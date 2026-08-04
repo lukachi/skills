@@ -3628,6 +3628,46 @@ test("rejects incomplete stakeholder Area indexes", async () => {
   ));
 });
 
+test("reads Area index prose without its own required frontmatter", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-area-frontmatter-");
+  await mkdir(join(target, "knowledge/areas/combat"), { recursive: true });
+  await writeFile(
+    join(target, "knowledge/areas/index.md"),
+    "# Areas\n\n- [Combat](combat/)\n",
+    "utf8",
+  );
+  await writeFile(
+    join(target, "knowledge/areas/combat/index.md"),
+    `---
+okf_version: "0.2"
+type: Area
+title: Combat
+generated:
+  at: 2026-08-04T00:00:00Z
+---
+${areaIndex("Combat", "Not applicable.\n")}`,
+    "utf8",
+  );
+
+  const result = await validateKnowledge(target);
+  // okf_version and generated.at are mandatory OKF bookkeeping. Reading them as
+  // stakeholder prose warned on every Area index ever written, and no edit to
+  // the page could clear it.
+  assert.equal(
+    result.warnings.some((issue) =>
+      issue.path === "knowledge/areas/combat/index.md"
+      && /technical-looking identifiers/.test(issue.message)
+    ),
+    false,
+    JSON.stringify(result.warnings),
+  );
+  assert.equal(
+    result.errors.some((issue) => issue.path === "knowledge/areas/combat/index.md"),
+    false,
+    JSON.stringify(result.errors),
+  );
+});
+
 async function initializedKnowledgeRepository(prefix: string): Promise<string> {
   const target = await mkdtemp(join(tmpdir(), prefix));
   execFileSync("git", ["-C", target, "init", "-q"]);

@@ -23432,6 +23432,9 @@ async function readBinding(target, id, issues) {
     return void 0;
   }
 }
+async function reconstructionCheckpointBasis(target, id, document3) {
+  return (await reconstructionSessionState(target, id, document3)).basis;
+}
 async function reconstructionSessionState(target, id, document3) {
   const caseDirectory = dirname8(reconstructionCasePath(target, "active", id));
   const caseContent = serializeWorkSpec(document3);
@@ -25269,6 +25272,9 @@ function checkpointSummary(document3, path, owner, issue3, required) {
 function checkpointRecord(document3) {
   return recordValue8(document3.metadata.checkpoint);
 }
+function workCheckpointBasis(document3) {
+  return checkpointBasis(document3);
+}
 function checkpointBasis(document3) {
   const metadata = { ...document3.metadata };
   delete metadata.checkpoint;
@@ -25432,7 +25438,7 @@ async function validateKnowledge(targetInput, conceptPaths) {
         }
       }
       if (/^knowledge\/areas\/[^/]+\/index\.md$/.test(displayPath)) {
-        validateAreaIndex(displayPath, content3, errors, warnings);
+        validateAreaIndex(displayPath, parseFrontmatter2(content3, false).body, errors, warnings);
       }
       continue;
     }
@@ -36823,8 +36829,11 @@ import { readdir as readdir12, readFile as readFile20, stat as stat3 } from "nod
 import { join as join18 } from "node:path";
 init_config();
 init_dependencies();
+init_knowledge_session();
+init_reconstruction();
 init_repository_registry();
 init_types();
+init_work_bundle();
 init_work_spec();
 var STATE_COLLECTORS = [
   installCollector(),
@@ -37059,7 +37068,12 @@ function reconstructionCollector() {
           ...stringValue10(metadata.updated_at) ? { since: stringValue10(metadata.updated_at) } : {},
           awaits: frontierClear && decisions > 0 ? "maintainer" : "agent"
         });
-        signals2.push(...checkpointSignals("reconstruction", entry.id, metadata, context));
+        signals2.push(...checkpointSignals(
+          "reconstruction",
+          entry.id,
+          metadata,
+          await reconstructionBasis(context.knowledgeRoot, entry)
+        ));
         signals2.push(...await workstreamSignals(entry));
         const scope = recordValue10(
           recordValue10(recordValue10(metadata.supplemental_inputs)?.raw)?.scope
@@ -37149,7 +37163,12 @@ function intakeCollector() {
             awaits: "maintainer"
           });
         }
-        signals2.push(...checkpointSignals("intake", entry.id, metadata, context));
+        signals2.push(...checkpointSignals(
+          "intake",
+          entry.id,
+          metadata,
+          sessionBasis(entry.document)
+        ));
       }
       return signals2;
     }
@@ -37237,7 +37256,12 @@ function workCollector() {
             blocks: ["close-work"]
           });
         }
-        signals2.push(...checkpointSignals("work", entry.id, metadata, context));
+        signals2.push(...checkpointSignals(
+          "work",
+          entry.id,
+          metadata,
+          workCheckpointBasis(entry.document)
+        ));
       }
       return signals2;
     }
@@ -37337,24 +37361,39 @@ async function workstreamSignals(entry) {
   }
   return signals2;
 }
-var STALE_CHECKPOINT_DAYS = 3;
-function checkpointSignals(domain, subject, metadata, context) {
+async function reconstructionBasis(knowledgeRoot, entry) {
+  try {
+    return await reconstructionCheckpointBasis(knowledgeRoot, entry.id, entry.document);
+  } catch {
+    return void 0;
+  }
+}
+function checkpointSignals(domain, subject, metadata, currentBasis) {
   const checkpoint = recordValue10(metadata.checkpoint);
   const updatedAt = stringValue10(checkpoint?.updated_at);
   if (!checkpoint || !updatedAt) {
     return [];
   }
   const signals2 = [];
-  const age = context.now.getTime() - Date.parse(updatedAt);
-  if (Number.isFinite(age) && age > STALE_CHECKPOINT_DAYS * 864e5) {
+  const recordedBasis = stringValue10(checkpoint.basis_sha256);
+  if (currentBasis === void 0) {
+    signals2.push({
+      id: `${domain}.unverifiable-checkpoint`,
+      domain,
+      level: "attention",
+      summary: "The resume checkpoint could not be checked against the record it summarizes",
+      subject,
+      since: updatedAt,
+      awaits: "agent"
+    });
+  } else if (recordedBasis !== currentBasis) {
     signals2.push({
       id: `${domain}.stale-checkpoint`,
       domain,
-      level: "info",
-      summary: "The resume checkpoint is older than the record it summarizes",
+      level: "attention",
+      summary: "The resume checkpoint no longer matches the record it summarizes",
       subject,
       since: updatedAt,
-      facts: { days: Math.floor(age / 864e5) },
       awaits: "agent"
     });
   }
