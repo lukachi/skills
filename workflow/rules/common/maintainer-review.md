@@ -129,6 +129,15 @@ changes materially.
 Approving edits the change record, so re-read it, refresh its review receipt,
 and refresh the checkpoint afterwards.
 
+A checkpoint blocker is the one sentence written for the maintainer rather than
+for the next agent, and the only one that reaches them across a session
+boundary. That makes a stale blocker worse than a missing one: a missing blocker
+makes the next session look, and a stale blocker makes it act — reopening a
+decision already made, or recommending an option since proved impossible. When
+an answer, a discovery, or a change removes what a record was waiting for,
+rewrite its blocker in the same turn. Nothing validates blocker text against the
+record it hangs on; only the person changing the record can keep it true.
+
 After every material maintainer turn, update the spec's mutable current state
 and append the decision/discussion ledger before continuing. Preserve proposed,
 approved, rejected, deferred, and superseded outcomes without copying the

@@ -743,7 +743,14 @@ function checkpointSignals(
       level: "blocked",
       summary: "The record records explicit blockers",
       subject,
-      facts: { blockers: blockers.length, first: stringValue(blockers[0]) },
+      // A blocker is the only sentence in a checkpoint addressed to the
+      // maintainer rather than to the next agent, so it is the one thing that
+      // has to survive the session boundary intact. Showing the first and
+      // counting the rest hid every blocker but one.
+      facts: {
+        blockers: blockers.length,
+        blocking: nameThem(blockers.map((entry) => stringValue(entry))),
+      },
       awaits: "maintainer",
     });
   }
