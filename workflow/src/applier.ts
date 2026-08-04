@@ -21,6 +21,15 @@ import { STATE_SCHEMA_VERSION, WORKFLOW_VERSION } from "./types.js";
 
 export interface ApplyResult {
   changed: number;
+  /**
+   * Every path this run wrote, deleted, or created, in plan order.
+   *
+   * A count cannot be committed. Reporting only "48 changes" left the agent
+   * with nothing to stage, so an upgrade's files were swept into whatever
+   * unrelated commit came next — eight workflow assets inside a sixty-nine file
+   * feature commit, in one observed case.
+   */
+  changedPaths: string[];
   statePath: string;
   backups: string[];
 }
@@ -33,7 +42,7 @@ export async function applyInstallPlan(plan: InstallPlan): Promise<ApplyResult> 
     );
   }
 
-  let changed = 0;
+  const changedPaths: string[] = [];
   const backups: string[] = [];
   const backupRoot = join(
     plan.target,
@@ -63,7 +72,7 @@ export async function applyInstallPlan(plan: InstallPlan): Promise<ApplyResult> 
       }
       applied.push(snapshot);
       await applyOperation(plan.target, operation);
-      changed += 1;
+      changedPaths.push(operation.path);
     }
 
     const files: WorkflowState["files"] = {};
@@ -79,7 +88,7 @@ export async function applyInstallPlan(plan: InstallPlan): Promise<ApplyResult> 
       files,
     };
     await writeAtomic(statePath, `${JSON.stringify(state, null, 2)}\n`);
-    return { changed, statePath, backups };
+    return { changed: changedPaths.length, changedPaths, statePath, backups };
   } catch (error) {
     let rollbackError: unknown;
     try {

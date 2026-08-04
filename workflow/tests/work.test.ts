@@ -894,6 +894,39 @@ test("enforces full bundle reads, exact claims, dependency frontier, and stale r
   for (const path of context.requiredFiles.map((entry) => entry.path)) {
     await reviewWorkBundleFile(leaf, started.id, path, "reviewed", "");
   }
+  // Implementation may not start on a framing nobody accepted. Asking at the
+  // first delivery claim is the whole point: the same decision, at a moment
+  // when no work is parked waiting for it.
+  await assert.rejects(
+    claimWorkIssue({
+      target: leaf,
+      id: started.id,
+      issueId: first.id,
+      actor: "agent:test-session",
+    }),
+    /framing is not approved/,
+  );
+  await approveWork({
+    target: leaf,
+    id: started.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "interactive",
+    note: "Framing accepted in a terminal.",
+  });
+  // Approving edits change.md, so its checkpoint and its read receipt both go
+  // stale — the documented consequence, now exercised on the path that meets it.
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test-session",
+    status: "active",
+    stage: "implement",
+    currentState: "Framing is approved and the first slice is ready to claim.",
+    lastCompleted: "Recorded the maintainer's framing approval.",
+    nextAction: "Claim the first delivery issue.",
+  });
+  await reviewWorkBundleFile(leaf, started.id, "change.md", "reviewed", "");
   const claimed = await claimWorkIssue({
     target: leaf,
     id: started.id,

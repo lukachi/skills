@@ -69,6 +69,11 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   without anyone opening it is the same as no queue. A capture only the
   maintainer can settle is created with `--awaits maintainer` and presented to
   them as one decision at a time, not listed as a backlog.
+- After `wfctl upgrade`, commit the files it names in a commit of their own
+  before continuing. They are tracked project files, and folding them into the
+  next unrelated commit hides what the upgrade changed. The new agent block and
+  rules reach a session only at its start, so say plainly that a restart is
+  needed rather than acting as if the new instructions are already loaded.
 - Do not create a competing leaf-local spec or issue tracker. Claim one central
   frontier issue from the exact bound checkout before implementation. Before
   completion, account for every bundle file at its current hash; a receipt

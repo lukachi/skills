@@ -492,6 +492,12 @@ export async function claimWorkIssue(
       }`,
     );
   }
+  // Last, deliberately: the agent must have read the bundle before it can put
+  // the framing decision to the maintainer, and asking earlier would send them
+  // a question nobody has done the reading for.
+  if (current.phase === "delivery") {
+    await requireApprovedFraming(options.bundleRoot, id);
+  }
   const lockPath = claimLockPath(options.bundleRoot, id);
   await mkdir(join(options.bundleRoot, "..", "..", "..", ".workflow", "current", "work-claims", basename(options.bundleRoot)), {
     recursive: true,
@@ -1706,6 +1712,40 @@ function checkpointSummary(
 
 function checkpointRecord(document: WorkSpecDocument): Record<string, unknown> | undefined {
   return recordValue(document.metadata.checkpoint);
+}
+
+/**
+ * Framing approval gates implementation, and the corpus has always said so:
+ * "require an explicit maintainer decision before implementing a significant
+ * spec whose outcome, scope, exclusions, acceptance criteria, or material
+ * decisions have not already been explicitly accepted."
+ *
+ * Nothing enforced it until closure, so it was discovered after the work rather
+ * than before it, and then read as a hard stop mid-flight. One bundle ran
+ * fifteen hours and three slices on a pending framing, then parked waiting for
+ * the approval it could have had on day one. Asking at the first delivery claim
+ * costs the maintainer the same decision at a moment when nothing is blocked by
+ * their absence.
+ *
+ * Wayfinding claims are exempt by phase: shaping is where the framing gets
+ * decided, so requiring its approval to start would be its own deadlock.
+ */
+async function requireApprovedFraming(bundleRoot: string, issueId: string): Promise<void> {
+  const change = parseWorkSpec(await readFile(join(bundleRoot, "change.md"), "utf8"));
+  const framing = recordValue(recordValue(change.metadata.maintainer_review)?.framing);
+  if (
+    framing?.status === "approved"
+    && stringValue(framing.by).startsWith("human:")
+    && stringValue(framing.at).trim() !== ""
+  ) {
+    return;
+  }
+  const id = stringValue(change.metadata.id) || basename(bundleRoot);
+  throw new Error(
+    `Work issue ${issueId} implements this change, and its framing is not approved. `
+      + "Present the framing decision, then have the maintainer record it in their own "
+      + `terminal: wfctl work approve ${id} --stage framing --by human:<maintainer-id>`,
+  );
 }
 
 /**

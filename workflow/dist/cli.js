@@ -24237,6 +24237,9 @@ async function claimWorkIssue(options) {
       `Claim is blocked until required context is reviewed at its current hash: ${unread.map((entry) => `${entry.path} (${entry.accounting})`).join(", ")}`
     );
   }
+  if (current.phase === "delivery") {
+    await requireApprovedFraming(options.bundleRoot, id);
+  }
   const lockPath = claimLockPath(options.bundleRoot, id);
   await mkdir8(join11(options.bundleRoot, "..", "..", "..", ".workflow", "current", "work-claims", basename3(options.bundleRoot)), {
     recursive: true
@@ -25283,6 +25286,17 @@ function checkpointSummary(document3, path, owner, issue3, required) {
 }
 function checkpointRecord(document3) {
   return recordValue8(document3.metadata.checkpoint);
+}
+async function requireApprovedFraming(bundleRoot, issueId) {
+  const change = parseWorkSpec(await readFile14(join11(bundleRoot, "change.md"), "utf8"));
+  const framing = recordValue8(recordValue8(change.metadata.maintainer_review)?.framing);
+  if (framing?.status === "approved" && stringValue8(framing.by).startsWith("human:") && stringValue8(framing.at).trim() !== "") {
+    return;
+  }
+  const id = stringValue8(change.metadata.id) || basename3(bundleRoot);
+  throw new Error(
+    `Work issue ${issueId} implements this change, and its framing is not approved. Present the framing decision, then have the maintainer record it in their own terminal: wfctl work approve ${id} --stage framing --by human:<maintainer-id>`
+  );
 }
 function workCheckpointBasis(document3) {
   return checkpointBasis(document3);
@@ -34722,7 +34736,7 @@ async function applyInstallPlan(plan) {
       `Refusing to apply ${conflicts.length} conflict(s): ${conflicts.map((item) => item.path).join(", ")}`
     );
   }
-  let changed = 0;
+  const changedPaths = [];
   const backups = [];
   const backupRoot = join3(
     plan.target,
@@ -34752,7 +34766,7 @@ async function applyInstallPlan(plan) {
       }
       applied.push(snapshot);
       await applyOperation(plan.target, operation);
-      changed += 1;
+      changedPaths.push(operation.path);
     }
     const files = {};
     for (const operation of plan.operations) {
@@ -34768,7 +34782,7 @@ async function applyInstallPlan(plan) {
     };
     await writeAtomic(statePath, `${JSON.stringify(state, null, 2)}
 `);
-    return { changed, statePath, backups };
+    return { changed: changedPaths.length, changedPaths, statePath, backups };
   } catch (error2) {
     let rollbackError;
     try {
@@ -38127,6 +38141,7 @@ ${green("\u2713")} ${bold("Workflow installed")}
   ${dim("Guide")}   ${resolve20(resolved.target, "PROJECT_WORKFLOW.md")}
 `
     );
+    printChangedPaths(applied.changedPaths);
     if (repositoryCheckout) {
       process.stdout.write(
         `
@@ -38150,6 +38165,36 @@ ${bold("Reconstruction source")}
   if (!doctorPassed(report)) {
     process.exitCode = 2;
   }
+}
+function printChangedPaths(paths) {
+  if (paths.length === 0) {
+    return;
+  }
+  process.stdout.write(`
+${bold("Files written")}
+`);
+  if (paths.length <= 40) {
+    for (const path of paths) {
+      process.stdout.write(`  ${path}
+`);
+    }
+  } else {
+    const byDirectory = /* @__PURE__ */ new Map();
+    for (const path of paths) {
+      const directory = path.includes("/") ? `${path.slice(0, path.lastIndexOf("/"))}/` : ".";
+      byDirectory.set(directory, (byDirectory.get(directory) ?? 0) + 1);
+    }
+    for (const [directory, count2] of [...byDirectory].sort()) {
+      process.stdout.write(`  ${directory} ${dim(`(${count2})`)}
+`);
+    }
+  }
+  process.stdout.write(
+    `
+  ${dim("These are tracked project files. Commit them on their own before")}
+  ${dim("continuing, and restart the session so the agent block is reloaded.")}
+`
+  );
 }
 async function refreshGraphifyGraph(target, quiet) {
   if (quiet) {

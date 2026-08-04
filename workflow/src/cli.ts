@@ -542,6 +542,7 @@ async function installWorkflow(input: {
         + `  ${dim("Changes")} ${applied.changed}\n`
         + `  ${dim("Guide")}   ${resolve(resolved.target, "PROJECT_WORKFLOW.md")}\n`,
     );
+    printChangedPaths(applied.changedPaths);
     if (repositoryCheckout) {
       process.stdout.write(
         `\n${bold("Repository connection")}\n`
@@ -562,6 +563,38 @@ async function installWorkflow(input: {
   if (!doctorPassed(report)) {
     process.exitCode = 2;
   }
+}
+
+/**
+ * Names what the run wrote. A count is not actionable: these files are tracked
+ * project files that belong in a commit of their own, and an agent handed only
+ * a number has nothing to stage, so they ride along in whatever commit lands
+ * next. Long lists stay honest by naming the directories rather than stopping
+ * at an arbitrary cutoff.
+ */
+function printChangedPaths(paths: readonly string[]): void {
+  if (paths.length === 0) {
+    return;
+  }
+  process.stdout.write(`\n${bold("Files written")}\n`);
+  if (paths.length <= 40) {
+    for (const path of paths) {
+      process.stdout.write(`  ${path}\n`);
+    }
+  } else {
+    const byDirectory = new Map<string, number>();
+    for (const path of paths) {
+      const directory = path.includes("/") ? `${path.slice(0, path.lastIndexOf("/"))}/` : ".";
+      byDirectory.set(directory, (byDirectory.get(directory) ?? 0) + 1);
+    }
+    for (const [directory, count] of [...byDirectory].sort()) {
+      process.stdout.write(`  ${directory} ${dim(`(${count})`)}\n`);
+    }
+  }
+  process.stdout.write(
+    `\n  ${dim("These are tracked project files. Commit them on their own before")}\n`
+      + `  ${dim("continuing, and restart the session so the agent block is reloaded.")}\n`,
+  );
 }
 
 async function refreshGraphifyGraph(

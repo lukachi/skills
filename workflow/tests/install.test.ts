@@ -42,7 +42,17 @@ test("installs a knowledge profile and converges to an unchanged plan", async ()
     distributionRoot,
   });
   assert.equal(first.operations.some((operation) => operation.status === "conflict"), false);
-  await applyInstallPlan(first);
+  const applied = await applyInstallPlan(first);
+
+  // A count cannot be staged. Whoever runs this has to know which tracked files
+  // to commit, or they end up inside the next unrelated commit.
+  assert.equal(applied.changedPaths.length, applied.changed);
+  assert.equal(applied.changedPaths.includes("AGENTS.md"), true);
+  assert.equal(
+    applied.changedPaths.some((path) => path.startsWith(".workflow/rules/")),
+    true,
+    JSON.stringify(applied.changedPaths),
+  );
 
   const agents = await readFile(join(target, "AGENTS.md"), "utf8");
   assert.match(agents, /wfctl:begin/);

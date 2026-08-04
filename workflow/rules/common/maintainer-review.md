@@ -75,6 +75,14 @@ and confirming intent that was are different questions, and asking the harder
 one when the easier one applies is how a body of accepted work becomes an
 unanswered queue.
 
+Put the framing decision before implementation, not before closure. `wfctl work
+issue claim` refuses a delivery issue whose framing is unapproved, which is the
+moment to present it: the bundle has been read, nothing is in flight, and the
+maintainer's absence blocks nothing yet. Discovering the same gate at completion
+parks finished work behind a decision that could have been made on day one.
+Approving edits the change record, so refresh its checkpoint and re-read it
+before claiming.
+
 For significant work, record framing and completion decisions with `wfctl work
 approve <id> --stage framing|completion --by human:<maintainer-id>`. That
 command needs an interactive terminal, or an out-of-band `--token` matching
