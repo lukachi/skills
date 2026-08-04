@@ -248,6 +248,94 @@ test("the graph refuses to build while a structural error remains", async () => 
   );
 });
 
+test("a pointer at a path that does not exist is an error, not a citation", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-trajectory-pointer-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  await writeFile(join(target, "raw", "notes.md"), "# notes\n", "utf8");
+  await writeTrajectory(target, "equipment", {
+    subject: "Equipment",
+    observations: [observation({ source: { kind: "raw", resource: "raw/missing.md" } })],
+  });
+
+  const result = await compileTrajectories(target);
+  assert.equal(
+    result.errors.some((issue) =>
+      /points at a path that does not exist: raw\/missing\.md/.test(issue.message)
+    ),
+    true,
+    JSON.stringify(result.errors),
+  );
+});
+
+test("a resolvable pointer passes and a line suffix does not break it", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-trajectory-pointer-ok-");
+  await mkdir(join(target, "raw"), { recursive: true });
+  await writeFile(join(target, "raw", "notes.md"), "# notes\n", "utf8");
+  await writeTrajectory(target, "equipment", {
+    subject: "Equipment",
+    observations: [observation({ source: { kind: "raw", resource: "raw/notes.md:1037" } })],
+    findings: [finding({ cause: { kind: "decision", evidence: ["raw/notes.md"], note: "x" } })],
+  });
+
+  const result = await compileTrajectories(target);
+  assert.deepEqual(result.errors, []);
+});
+
+test("a malformed pinned pointer is rejected outright", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-trajectory-pinned-bad-");
+  await writeTrajectory(target, "equipment", {
+    subject: "Equipment",
+    observations: [observation({
+      source: { kind: "source-code", resource: "git:lukachi/dnd-api@34cf66c#src/lib.rs" },
+    })],
+  });
+
+  const result = await compileTrajectories(target);
+  assert.equal(
+    result.errors.some((issue) => /malformed pinned pointer/.test(issue.message)),
+    true,
+    JSON.stringify(result.errors),
+  );
+});
+
+test("a pinned pointer with no connected checkout is reported unverified, not passed", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-trajectory-pinned-warn-");
+  await writeTrajectory(target, "equipment", {
+    subject: "Equipment",
+    observations: [observation({
+      source: {
+        kind: "source-code",
+        resource: `git:lukachi/absent@${"a".repeat(40)}#src/lib.rs`,
+      },
+    })],
+  });
+
+  const result = await compileTrajectories(target);
+  assert.deepEqual(result.errors, []);
+  assert.equal(
+    result.warnings.some((issue) => /no checkout of it is connected/.test(issue.message)),
+    true,
+    JSON.stringify(result.warnings),
+  );
+});
+
+test("a case reference must name a case that exists", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-trajectory-case-ref-");
+  await writeTrajectory(target, "equipment", {
+    subject: "Equipment",
+    observations: [observation({
+      source: { kind: "maintainer", resource: "intake-case:never-existed" },
+    })],
+  });
+
+  const result = await compileTrajectories(target);
+  assert.equal(
+    result.errors.some((issue) => /names a case that does not exist/.test(issue.message)),
+    true,
+    JSON.stringify(result.errors),
+  );
+});
+
 test("a declared vision satisfies the root and leaves the queue empty", async () => {
   const target = await initializedKnowledgeRepository("wfctl-vision-ok-");
   await writeTrajectory(target, "equipment", { subject: "Equipment" });
@@ -557,5 +645,10 @@ async function initializedKnowledgeRepository(prefix: string): Promise<string> {
     profile: "knowledge",
     distributionRoot,
   }));
+  // Pointers are resolved, so the fixtures must cite material that exists.
+  await mkdir(join(target, "raw/api/world-loop-review"), { recursive: true });
+  for (const name of ["05-equipment-and-inventory.md", "PROGRESS.md"]) {
+    await writeFile(join(target, "raw/api/world-loop-review", name), `# ${name}\n`, "utf8");
+  }
   return target;
 }

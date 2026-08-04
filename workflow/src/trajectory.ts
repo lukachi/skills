@@ -1,9 +1,14 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { errorMessage, isMissingFileError, readConfig } from "./config.js";
+import { listRepositoryConnections } from "./repository-registry.js";
 import { readVisionRecord, visionReceiptDigest, type VisionMethod } from "./vision.js";
 import { isRecord, parseWorkSpec } from "./work-spec.js";
+
+const run = promisify(execFile);
 
 /**
  * Trajectories.
@@ -170,6 +175,12 @@ export interface TrajectoryCompilation {
   graph: TrajectoryGraph;
   errors: TrajectoryIssue[];
   /**
+   * Pointers that are well formed but could not be resolved here — a pinned
+   * source path with no checkout of that repository connected. Reported so the
+   * count is visible rather than mistaken for a clean pass.
+   */
+  warnings: TrajectoryIssue[];
+  /**
    * Roots awaiting a vision, worst gap first. This is the phase-five queue: the
    * only list the maintainer is meant to work through.
    */
@@ -191,8 +202,10 @@ export async function compileTrajectories(
   }
 
   const errors: TrajectoryIssue[] = [];
+  const warnings: TrajectoryIssue[] = [];
   const collected: CollectedTrajectory[] = [];
   const known = new Map<string, CollectedTrajectory>();
+  const pointers: PointerUse[] = [];
 
   const files = await collectTrajectoryFiles(target);
   for (const item of files.filter((entry) => entry.kind === "trajectory")) {
@@ -212,7 +225,7 @@ export async function compileTrajectories(
       });
       continue;
     }
-    const entry = normalizeTrajectory(item, errors);
+    const entry = normalizeTrajectory(item, errors, pointers);
     known.set(item.id, entry);
     collected.push(entry);
   }
@@ -257,6 +270,7 @@ export async function compileTrajectories(
   const deduplicated = deduplicateEdges(edges);
   validateCompositionCycles(known, deduplicated, errors);
   applyGapWeights(known, deduplicated);
+  await resolvePointers(target, pointers, errors, warnings);
 
   const visions = await collectVisions(
     target,
@@ -323,7 +337,150 @@ export async function compileTrajectories(
       right.gapWeight - left.gapWeight || left.id.localeCompare(right.id)
     );
 
-  return { target, graph, errors, pending };
+  return { target, graph, errors, warnings, pending };
+}
+
+interface PointerUse {
+  id: string;
+  path: string;
+  field: string;
+  value: string;
+}
+
+/**
+ * A pointer nobody resolves is a citation nobody checked. The first real run of
+ * this pipeline produced a typo in a source path and the compiler accepted it,
+ * which made every other guarantee here worth less than it looked.
+ *
+ * Local paths and case references are resolved outright. A pinned source path is
+ * resolved when a checkout of that repository is connected, and reported as an
+ * unverified count when none is — never silently passed.
+ */
+async function resolvePointers(
+  target: string,
+  pointers: PointerUse[],
+  errors: TrajectoryIssue[],
+  warnings: TrajectoryIssue[],
+): Promise<void> {
+  const pinned = new Map<string, PointerUse[]>();
+  for (const pointer of pointers) {
+    const git = /^git:([^@\s]+)@([0-9a-f]{40})#(.+)$/i.exec(pointer.value);
+    if (git) {
+      const key = `${git[1]}\0${git[2]}`;
+      pinned.set(key, [...(pinned.get(key) ?? []), pointer]);
+      continue;
+    }
+    if (/^git:/i.test(pointer.value)) {
+      errors.push({
+        id: pointer.id,
+        path: pointer.path,
+        message:
+          `${pointer.field} is a malformed pinned pointer: ${pointer.value}; use git:<owner>/<repo>@<40-hex-commit>#<path>`,
+      });
+      continue;
+    }
+    const caseReference = /^(intake-case|project-reconstruction|intake|reconstruction):([a-z0-9][a-z0-9-]*)(?:#.+)?$/
+      .exec(pointer.value);
+    if (caseReference) {
+      if (!await anyExists(target, caseDirectories(caseReference[1]!, caseReference[2]!))) {
+        errors.push({
+          id: pointer.id,
+          path: pointer.path,
+          message: `${pointer.field} names a case that does not exist: ${pointer.value}`,
+        });
+      }
+      continue;
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(pointer.value)) {
+      warnings.push({
+        id: pointer.id,
+        path: pointer.path,
+        message: `${pointer.field} uses a pointer form this build cannot resolve: ${pointer.value}`,
+      });
+      continue;
+    }
+    const local = pointer.value.replace(/[#:][^/\\]*$/, "");
+    if (!await exists(join(target, local))) {
+      errors.push({
+        id: pointer.id,
+        path: pointer.path,
+        message: `${pointer.field} points at a path that does not exist: ${pointer.value}`,
+      });
+    }
+  }
+
+  if (pinned.size === 0) {
+    return;
+  }
+  const roots = await checkoutRoots(target);
+  for (const [key, uses] of pinned) {
+    const [repository, commit] = key.split("\0") as [string, string];
+    const root = roots.get(repository) ?? roots.get(repository.split("/").pop() ?? "");
+    if (!root) {
+      for (const use of uses) {
+        warnings.push({
+          id: use.id,
+          path: use.path,
+          message:
+            `${use.field} cites ${repository} at ${commit.slice(0, 8)} and no checkout of it is connected; the path is unverified`,
+        });
+      }
+      continue;
+    }
+    for (const use of uses) {
+      const path = /#(.+)$/.exec(use.value)?.[1] ?? "";
+      const bare = path.replace(/:\d+(?:-\d+)?$/, "");
+      try {
+        await run("git", ["-C", root, "cat-file", "-e", `${commit}:${bare}`]);
+      } catch {
+        errors.push({
+          id: use.id,
+          path: use.path,
+          message: `${use.field} points at a path absent from ${repository} at ${commit.slice(0, 8)}: ${bare}`,
+        });
+      }
+    }
+  }
+}
+
+async function checkoutRoots(target: string): Promise<Map<string, string>> {
+  const roots = new Map<string, string>();
+  try {
+    for (const connection of await listRepositoryConnections(target)) {
+      const checkout = connection.checkouts.find((entry) => entry.available);
+      if (checkout) {
+        roots.set(connection.repository, checkout.root);
+      }
+    }
+  } catch {
+    // No registry, or an unreadable one: every pinned pointer stays unverified,
+    // which the caller reports rather than hides.
+  }
+  return roots;
+}
+
+function caseDirectories(kind: string, id: string): string[] {
+  const intake = [`intake/cases/active/${id}`, `intake/cases/archive/${id}`];
+  const reconstruction = [`reconstruction/active/${id}`, `reconstruction/archive/${id}`];
+  return kind.startsWith("intake") ? intake : reconstruction;
+}
+
+async function anyExists(target: string, candidates: string[]): Promise<boolean> {
+  for (const candidate of candidates) {
+    if (await exists(join(target, candidate))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function writeTrajectoryGraph(
@@ -571,9 +728,15 @@ async function collectTrajectoryFiles(
 function normalizeTrajectory(
   item: { id: string; path: string; relativePath: string; metadata: Record<string, unknown> },
   errors: TrajectoryIssue[],
+  pointers: PointerUse[],
 ): CollectedTrajectory {
   const push = (message: string) =>
     errors.push({ id: item.id, path: item.relativePath, message });
+  const cite = (field: string, value: string) => {
+    if (value.trim()) {
+      pointers.push({ id: item.id, path: item.relativePath, field, value: value.trim() });
+    }
+  };
   const metadata = item.metadata;
 
   const subject = stringValue(metadata.subject).trim();
@@ -585,9 +748,9 @@ function normalizeTrajectory(
     );
   }
 
-  const observations = normalizeObservations(metadata.observations, push);
+  const observations = normalizeObservations(metadata.observations, push, cite);
   const observationIds = new Set(observations.map((observation) => observation.id));
-  const findings = normalizeFindings(metadata.findings, observationIds, push);
+  const findings = normalizeFindings(metadata.findings, observationIds, push, cite);
   const gaps = normalizeGaps(metadata.gaps, push);
 
   const conceived = recordValue(metadata.conceived);
@@ -640,6 +803,7 @@ function normalizeTrajectory(
 function normalizeObservations(
   value: unknown,
   push: (message: string) => void,
+  cite: (field: string, value: string) => void,
 ): TrajectoryObservation[] {
   const observations: TrajectoryObservation[] = [];
   const seen = new Set<string>();
@@ -661,6 +825,8 @@ function normalizeObservations(
     }
     if (!stringValue(source?.resource)) {
       push(`${id}.source.resource is required`);
+    } else {
+      cite(`${id}.source.resource`, stringValue(source?.resource));
     }
     if (!stringValue(entry.says).trim()) {
       push(`${id}.says is required`);
@@ -686,6 +852,7 @@ function normalizeFindings(
   value: unknown,
   observationIds: Set<string>,
   push: (message: string) => void,
+  cite: (field: string, value: string) => void,
 ): TrajectoryFinding[] {
   const findings: TrajectoryFinding[] = [];
   const seen = new Set<string>();
@@ -725,6 +892,9 @@ function normalizeFindings(
       push(
         `${id}.cause.kind is ${causeKind} and carries no evidence; use not-found when no decision record was located, which is not the same as drift`,
       );
+    }
+    for (const pointer of causeEvidence) {
+      cite(`${id}.cause.evidence`, pointer);
     }
     findings.push({
       id,

@@ -19,10 +19,29 @@ been read.
 Read [the trajectory contract](../../TRAJECTORIES.md) before the first
 assembly in a session.
 
+## Where observations come from
+
+The material is not lying in the shape this needs, and pretending otherwise wastes
+the first hour of a run. In a corpus assembled under the previous model:
+
+- Case bodies are templates. The substance lives in the frontmatter.
+- A candidate's `reason` is prose containing several observations at once. Split
+  it, and attribute each statement to the source it came from rather than to the
+  candidate.
+- `sources[].candidate_ids` maps candidates back to the raw paths they were drawn
+  from. That mapping is how a candidate becomes citable observations.
+- No entry carries its own date. Derive `at` from what the material asserts, else
+  the commit date of the pinned revision, else the page's `generated.at` — and
+  treat the last as a last resort, because it dates the reading and not the
+  material.
+
+Re-read a cited source when the prose is ambiguous about what it actually said.
+That is not new reading; it is checking a quotation.
+
 ## What you never do here
 
-- Do not read new material. Reading belongs to `process-raw-intake` and
-  `reconstruct-project-knowledge`; this skill starts from what they produced.
+- Do not widen the scope by reading material outside it. Reading a source your
+  own findings cite is fine; opening a new area is not.
 - Do not write anything under `knowledge/`. Curation is phase six.
 - Do not declare a vision. `wfctl knowledge trajectory declare` refuses an
   unattended session on purpose, and working around that is the one betrayal
@@ -30,6 +49,19 @@ assembly in a session.
 - Do not ask the maintainer anything during phases two through four. Every
   question that occurs to you there is a question whose answer is probably in
   material you have already read.
+
+## Say where you are
+
+Phases two through four run without contact, and a long silence reads as a hung
+agent. At each phase boundary emit one line of counts and nothing else:
+
+```
+findings: 17 from 41 observations · causes 9 decision, 5 not-found, 1 drift, 1 defect, 1 unknown
+compared: 11 implementation findings against dnd-admin@2743a3ef, dnd-api@34cf66cb
+assembled: 5 trajectories, 1 root, 8 gaps
+```
+
+Counts only. A phase boundary is not an opportunity to ask something.
 
 ## Phase two — findings
 
@@ -80,6 +112,17 @@ a statement, and `now.pinned` is where that name goes.
 
 Record what changed between the finding's period and now, not just the current
 state. A closed gap is as much a part of the line as an open one.
+
+Every pointer you write is resolved by `wfctl knowledge trajectory check`: a
+repo-relative path must exist, and a `git:<owner>/<repo>@<40-hex>#<path>` pointer
+is checked against a connected checkout. A pinned pointer whose repository is not
+connected comes back as a warning rather than a pass — those are the ones still
+worth your own eyes.
+
+Phase-three evidence carries no read receipt. `wfctl knowledge reconstruct read`
+writes into `reconstruction/`, which does not belong to this pipeline, so what a
+pointer proves here is that the path exists at that revision and no more. Say so
+rather than implying the source was verified line by line.
 
 ## Phase four — assemble
 

@@ -1904,6 +1904,7 @@ function knowledgeTrajectoryCommand() {
               contentHash: result.graph.contentHash,
               stats: result.graph.stats,
               errors: result.errors,
+              warnings: result.warnings,
               pending: result.pending,
             });
           } else {
@@ -1914,6 +1915,9 @@ function knowledgeTrajectoryCommand() {
             );
             for (const issue of result.errors) {
               process.stdout.write(`ERROR ${issue.path}: ${issue.message}\n`);
+            }
+            for (const issue of result.warnings) {
+              process.stdout.write(`WARN  ${issue.path}: ${issue.message}\n`);
             }
             if (built) {
               process.stdout.write(`Trajectory graph built: ${built.path}\n`);

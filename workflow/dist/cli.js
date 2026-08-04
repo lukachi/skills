@@ -35211,7 +35211,7 @@ async function uniqueFileId(roots, base) {
         throw error2;
       }
     }));
-    if (states.every((exists2) => !exists2)) {
+    if (states.every((exists3) => !exists3)) {
       return candidate;
     }
   }
@@ -36003,9 +36003,12 @@ init_claim_ledger();
 
 // src/trajectory.ts
 init_config();
+init_repository_registry();
+import { execFile } from "node:child_process";
 import { createHash as createHash11 } from "node:crypto";
-import { mkdir as mkdir11, readFile as readFile19, readdir as readdir11, rename as rename9, writeFile as writeFile11 } from "node:fs/promises";
+import { access as access7, mkdir as mkdir11, readFile as readFile19, readdir as readdir11, rename as rename9, writeFile as writeFile11 } from "node:fs/promises";
 import { dirname as dirname12, join as join17, resolve as resolve18 } from "node:path";
+import { promisify } from "node:util";
 
 // src/vision.ts
 init_config();
@@ -36106,6 +36109,7 @@ function isVisionRecord(value) {
 
 // src/trajectory.ts
 init_work_spec();
+var run2 = promisify(execFile);
 var TRAJECTORY_GRAPH_SCHEMA_VERSION = 1;
 var TRAJECTORY_GRAPH_PATH = ".workflow/current/trajectory-graph.json";
 var TRAJECTORY_ROOT = "trajectories";
@@ -36136,8 +36140,10 @@ async function compileTrajectories(targetInput) {
     throw new Error(`Trajectories require a knowledge repository: ${target}`);
   }
   const errors = [];
+  const warnings = [];
   const collected = [];
   const known = /* @__PURE__ */ new Map();
+  const pointers = [];
   const files = await collectTrajectoryFiles(target);
   for (const item of files.filter((entry) => entry.kind === "trajectory")) {
     if (!isValidId(item.id)) {
@@ -36156,7 +36162,7 @@ async function compileTrajectories(targetInput) {
       });
       continue;
     }
-    const entry = normalizeTrajectory(item, errors);
+    const entry = normalizeTrajectory(item, errors, pointers);
     known.set(item.id, entry);
     collected.push(entry);
   }
@@ -36198,6 +36204,7 @@ async function compileTrajectories(targetInput) {
   const deduplicated = deduplicateEdges3(edges);
   validateCompositionCycles(known, deduplicated, errors);
   applyGapWeights(known, deduplicated);
+  await resolvePointers(target, pointers, errors, warnings);
   const visions = await collectVisions(
     target,
     files.filter((entry) => entry.kind === "vision"),
@@ -36256,7 +36263,118 @@ async function compileTrajectories(targetInput) {
   })).sort(
     (left, right) => right.gapWeight - left.gapWeight || left.id.localeCompare(right.id)
   );
-  return { target, graph, errors, pending };
+  return { target, graph, errors, warnings, pending };
+}
+async function resolvePointers(target, pointers, errors, warnings) {
+  const pinned = /* @__PURE__ */ new Map();
+  for (const pointer of pointers) {
+    const git3 = /^git:([^@\s]+)@([0-9a-f]{40})#(.+)$/i.exec(pointer.value);
+    if (git3) {
+      const key = `${git3[1]}\0${git3[2]}`;
+      pinned.set(key, [...pinned.get(key) ?? [], pointer]);
+      continue;
+    }
+    if (/^git:/i.test(pointer.value)) {
+      errors.push({
+        id: pointer.id,
+        path: pointer.path,
+        message: `${pointer.field} is a malformed pinned pointer: ${pointer.value}; use git:<owner>/<repo>@<40-hex-commit>#<path>`
+      });
+      continue;
+    }
+    const caseReference = /^(intake-case|project-reconstruction|intake|reconstruction):([a-z0-9][a-z0-9-]*)(?:#.+)?$/.exec(pointer.value);
+    if (caseReference) {
+      if (!await anyExists(target, caseDirectories(caseReference[1], caseReference[2]))) {
+        errors.push({
+          id: pointer.id,
+          path: pointer.path,
+          message: `${pointer.field} names a case that does not exist: ${pointer.value}`
+        });
+      }
+      continue;
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(pointer.value)) {
+      warnings.push({
+        id: pointer.id,
+        path: pointer.path,
+        message: `${pointer.field} uses a pointer form this build cannot resolve: ${pointer.value}`
+      });
+      continue;
+    }
+    const local = pointer.value.replace(/[#:][^/\\]*$/, "");
+    if (!await exists2(join17(target, local))) {
+      errors.push({
+        id: pointer.id,
+        path: pointer.path,
+        message: `${pointer.field} points at a path that does not exist: ${pointer.value}`
+      });
+    }
+  }
+  if (pinned.size === 0) {
+    return;
+  }
+  const roots = await checkoutRoots(target);
+  for (const [key, uses] of pinned) {
+    const [repository, commit] = key.split("\0");
+    const root = roots.get(repository) ?? roots.get(repository.split("/").pop() ?? "");
+    if (!root) {
+      for (const use of uses) {
+        warnings.push({
+          id: use.id,
+          path: use.path,
+          message: `${use.field} cites ${repository} at ${commit.slice(0, 8)} and no checkout of it is connected; the path is unverified`
+        });
+      }
+      continue;
+    }
+    for (const use of uses) {
+      const path = /#(.+)$/.exec(use.value)?.[1] ?? "";
+      const bare = path.replace(/:\d+(?:-\d+)?$/, "");
+      try {
+        await run2("git", ["-C", root, "cat-file", "-e", `${commit}:${bare}`]);
+      } catch {
+        errors.push({
+          id: use.id,
+          path: use.path,
+          message: `${use.field} points at a path absent from ${repository} at ${commit.slice(0, 8)}: ${bare}`
+        });
+      }
+    }
+  }
+}
+async function checkoutRoots(target) {
+  const roots = /* @__PURE__ */ new Map();
+  try {
+    for (const connection of await listRepositoryConnections(target)) {
+      const checkout = connection.checkouts.find((entry) => entry.available);
+      if (checkout) {
+        roots.set(connection.repository, checkout.root);
+      }
+    }
+  } catch {
+  }
+  return roots;
+}
+function caseDirectories(kind, id) {
+  const intake = [`intake/cases/active/${id}`, `intake/cases/archive/${id}`];
+  const reconstruction = [`reconstruction/active/${id}`, `reconstruction/archive/${id}`];
+  return kind.startsWith("intake") ? intake : reconstruction;
+}
+async function anyExists(target, candidates) {
+  for (const candidate of candidates) {
+    if (await exists2(join17(target, candidate))) {
+      return true;
+    }
+  }
+  return false;
+}
+async function exists2(path) {
+  try {
+    await access7(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 async function writeTrajectoryGraph(targetInput) {
   const result = await compileTrajectories(targetInput);
@@ -36438,8 +36556,13 @@ async function collectTrajectoryFiles(target) {
   }
   return files;
 }
-function normalizeTrajectory(item, errors) {
+function normalizeTrajectory(item, errors, pointers) {
   const push2 = (message) => errors.push({ id: item.id, path: item.relativePath, message });
+  const cite = (field, value) => {
+    if (value.trim()) {
+      pointers.push({ id: item.id, path: item.relativePath, field, value: value.trim() });
+    }
+  };
   const metadata = item.metadata;
   const subject = stringValue10(metadata.subject).trim();
   if (!subject) {
@@ -36449,9 +36572,9 @@ function normalizeTrajectory(item, errors) {
       `subject "${subject}" is an implementation identifier, not product language; a graph built from paths cannot be decided about`
     );
   }
-  const observations = normalizeObservations(metadata.observations, push2);
+  const observations = normalizeObservations(metadata.observations, push2, cite);
   const observationIds = new Set(observations.map((observation) => observation.id));
-  const findings = normalizeFindings(metadata.findings, observationIds, push2);
+  const findings = normalizeFindings(metadata.findings, observationIds, push2, cite);
   const gaps = normalizeGaps(metadata.gaps, push2);
   const conceived = recordValue10(metadata.conceived);
   const now = recordValue10(metadata.now);
@@ -36497,7 +36620,7 @@ function normalizeTrajectory(item, errors) {
     edges
   };
 }
-function normalizeObservations(value, push2) {
+function normalizeObservations(value, push2, cite) {
   const observations = [];
   const seen = /* @__PURE__ */ new Set();
   for (const entry of recordArray6(value)) {
@@ -36518,6 +36641,8 @@ function normalizeObservations(value, push2) {
     }
     if (!stringValue10(source?.resource)) {
       push2(`${id}.source.resource is required`);
+    } else {
+      cite(`${id}.source.resource`, stringValue10(source?.resource));
     }
     if (!stringValue10(entry.says).trim()) {
       push2(`${id}.says is required`);
@@ -36538,7 +36663,7 @@ function normalizeObservations(value, push2) {
   }
   return observations;
 }
-function normalizeFindings(value, observationIds, push2) {
+function normalizeFindings(value, observationIds, push2, cite) {
   const findings = [];
   const seen = /* @__PURE__ */ new Set();
   for (const entry of recordArray6(value)) {
@@ -36577,6 +36702,9 @@ function normalizeFindings(value, observationIds, push2) {
       push2(
         `${id}.cause.kind is ${causeKind} and carries no evidence; use not-found when no decision record was located, which is not the same as drift`
       );
+    }
+    for (const pointer of causeEvidence) {
+      cite(`${id}.cause.evidence`, pointer);
     }
     findings.push({
       id,
@@ -36784,7 +36912,7 @@ init_types();
 // src/work.ts
 import { constants as constants7 } from "node:fs";
 import {
-  access as access7,
+  access as access8,
   mkdir as mkdir13,
   readFile as readFile21,
   readdir as readdir12,
@@ -37536,7 +37664,7 @@ function durableRepository(source) {
 }
 async function assertKnowledgeRoot(root) {
   try {
-    await access7(join19(root, "knowledge/index.md"), constants7.R_OK);
+    await access8(join19(root, "knowledge/index.md"), constants7.R_OK);
   } catch {
     throw new Error(`Knowledge repository is not initialized: ${root}`);
   }
@@ -37549,7 +37677,7 @@ async function assertKnowledgeReference(root, reference) {
     throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
   }
   try {
-    await access7(absolute, constants7.R_OK);
+    await access8(absolute, constants7.R_OK);
   } catch (error2) {
     throw new Error(`Knowledge reference is not readable: ${reference} (${errorMessage(error2)})`);
   }
@@ -37635,7 +37763,7 @@ async function uniqueWorkId(activeRoot, base) {
   for (let index2 = 1; index2 < 1e3; index2 += 1) {
     const candidate = index2 === 1 ? base : `${base}-${index2}`;
     try {
-      await access7(join19(activeRoot, candidate), constants7.F_OK);
+      await access8(join19(activeRoot, candidate), constants7.F_OK);
     } catch (error2) {
       if (isMissingFileError(error2)) {
         return candidate;
@@ -37647,7 +37775,7 @@ async function uniqueWorkId(activeRoot, base) {
 }
 async function assertAbsent2(path, label) {
   try {
-    await access7(path, constants7.F_OK);
+    await access8(path, constants7.F_OK);
     throw new Error(`${label} already exists: ${path}`);
   } catch (error2) {
     if (isMissingFileError(error2)) {
@@ -40081,6 +40209,7 @@ function knowledgeTrajectoryCommand() {
           contentHash: result.graph.contentHash,
           stats: result.graph.stats,
           errors: result.errors,
+          warnings: result.warnings,
           pending: result.pending
         });
       } else {
@@ -40090,6 +40219,10 @@ function knowledgeTrajectoryCommand() {
         );
         for (const issue3 of result.errors) {
           process.stdout.write(`ERROR ${issue3.path}: ${issue3.message}
+`);
+        }
+        for (const issue3 of result.warnings) {
+          process.stdout.write(`WARN  ${issue3.path}: ${issue3.message}
 `);
         }
         if (built) {

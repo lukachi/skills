@@ -219,7 +219,6 @@ makes every observation look as old as the reading.
 ```yaml
 finding:
   id: fin-<slug>
-  subject: traj-<slug>
   situation: <one sentence, past tense>
   period:
     from: <ISO-8601>
@@ -236,6 +235,25 @@ finding:
 The equipment candidate carried three; the page written from it dropped all three
 and had to be repaired the next day. A field can be checked for survival; a
 paragraph cannot.
+
+Observations and findings live inside the file of the trajectory that owns them.
+There is no standalone finding: attaching material to a subject means nesting it
+under that subject, which is also what "attach it under a subject that does carry
+product intent" means for material that carries none.
+
+Every `resource` and every `cause.evidence` entry is resolved:
+
+| Form | Resolution |
+| --- | --- |
+| `raw/…`, `changes/…`, any repo-relative path | Must exist. A trailing `#anchor` or `:line` is stripped first |
+| `git:<owner>/<repo>@<40-hex>#<path>` | Resolved against a connected checkout of that repository; a shorter commit or a missing `#path` is malformed |
+| `intake-case:<id>`, `project-reconstruction:<id>` | The case directory must exist, active or archived |
+| Anything else with a scheme | Warned as unresolvable by this build |
+
+A pinned pointer whose repository has no connected checkout is reported as
+unverified rather than passed. The first real run of this pipeline produced a typo
+in a source path and an earlier build accepted it, which made every other
+guarantee here worth less than it looked.
 
 ### Trajectory
 
@@ -439,9 +457,23 @@ Candidates carry routing and time already, so they convert partially.
 Curated pages convert through their `sources[]`, not their prose. A page is an
 interpretation, and the interpretations are what this design exists to redo;
 placing page text in the observation layer would turn the agent's earlier
-mistakes into evidence. Each `sources[]` entry is already an observation in the
-required shape — pinned revision, exact resource, one claim — and the validator
-has already checked it.
+mistakes into evidence.
+
+A `sources[]` entry is **not** an observation as it stands, and an earlier version
+of this document said it was. It carries a resource and a claim; it carries no
+date of its own, and an observation without its own date reads as old as the
+reading. Derive `at` explicitly, in this order, and never leave it to be inferred:
+
+1. the date the cited material itself asserts, when the source states one;
+2. the commit date of the pinned revision, for a `git:` resource;
+3. the page's `generated.at`, which dates the reading rather than the material,
+   and is therefore the last resort rather than the default.
+
+Intake and reconstruction cases are worse: the case body is a template and the
+observations exist only as prose inside a candidate's `reason`. Recovering them
+means reading that prose and attributing each statement to the source it came
+from, using `sources[].candidate_ids` to map candidates back to paths. It works,
+and it is a manual seam rather than a conversion.
 
 ## Evidence that the model is missing, from a live repository
 
