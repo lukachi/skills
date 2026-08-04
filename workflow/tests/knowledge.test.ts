@@ -2142,6 +2142,87 @@ test("raw scope decision upgrades a legacy reconstruction case", async () => {
   );
 });
 
+test("a blob the pinned reader refuses can still reach a terminal disposition", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-nul-");
+  const leaf = await initializedLeafRepository("wfctl-nul-leaf-", target);
+  // A single NUL inside otherwise valid UTF-8. Real, and the reason one admin
+  // file in a live baseline had no terminal state for two days.
+  await writeFile(
+    join(leaf, "src/portal-index.ts"),
+    `export const portal = "index";\n export const size = 2;\n`,
+    "utf8",
+  );
+  commitAll(leaf, "add a source file carrying a NUL byte");
+  const started = await beginProjectReconstruction({
+    target,
+    slug: "nul-blob",
+    title: "NUL blob baseline",
+    leaves: [leaf],
+    distributionRoot,
+    runner: graphifyFixtureRunner,
+    now: new Date("2026-07-28T13:00:00.000Z"),
+  });
+
+  await assert.rejects(
+    readReconstructionSource({
+      target,
+      id: started.id,
+      path: "src/portal-index.ts",
+      actor: "workflow-agent/test",
+      now: new Date("2026-07-28T13:05:00.000Z"),
+    }),
+    /appears binary; classify it explicitly/,
+  );
+
+  // Receipts can never accumulate for it, so demanding them would leave the
+  // entry permanently outside every terminal state. The escape is verified
+  // against the pinned blob, not asserted by the caller.
+  await assert.rejects(
+    markReconstructionFiles({
+      target,
+      id: started.id,
+      paths: ["src/portal-index.ts"],
+      status: "inspected",
+    }),
+    /reason/,
+  );
+  await markReconstructionFiles({
+    target,
+    id: started.id,
+    paths: ["src/portal-index.ts"],
+    category: "source",
+    status: "inspected",
+    reason: "Single NUL inside valid UTF-8; the pinned reader refuses it and every line was read directly.",
+  });
+
+  const summary = (await inspectReconstructionCoverage(target, started.id)).repositories[0]!;
+  assert.equal(summary.fileStates.blocked, 0);
+  assert.equal(
+    summary.outstandingFiles.some((file) => file.path === "src/portal-index.ts"),
+    false,
+    "the disposition must clear this file from the frontier",
+  );
+  assert.equal(
+    (await inspectProjectReconstruction(target, started.id)).issues.some((issue) =>
+      /portal-index\.ts/.test(issue)
+    ),
+    false,
+    "and from the gate",
+  );
+
+  // A receiptable file cannot borrow the escape by supplying a reason.
+  await assert.rejects(
+    markReconstructionFiles({
+      target,
+      id: started.id,
+      paths: ["src/main.ts"],
+      status: "inspected",
+      reason: "Claiming the same exemption for a file the reader handles fine.",
+    }),
+    /read receipts/,
+  );
+});
+
 test("reconstructs a source-first baseline without raw input or durable checkout paths", async () => {
   const target = await initializedKnowledgeRepository("wfctl-reconstruction-");
   const leaf = await initializedLeafRepository(
