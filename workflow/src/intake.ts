@@ -2188,7 +2188,10 @@ function parseCase(content: string): CaseDocument {
     if (!isRecord(metadata)) {
       throw new Error("Intake case frontmatter must be a mapping");
     }
-    return { metadata, body: lines.slice(end + 1).join("\n") };
+    // Byte-for-byte the same body `parseWorkSpec` yields. These two parsers read
+    // the same files, and a body that depends on which one ran makes every
+    // cross-parser comparison — content digests above all — silently wrong.
+    return { metadata, body: lines.slice(end + 1).join("\n").replace(/^\n/, "") };
   } catch (error) {
     throw new Error(`Invalid intake case frontmatter: ${errorMessage(error)}`);
   }

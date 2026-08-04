@@ -16874,12 +16874,15 @@ Inspect the titles and ask the maintainer when ownership is still ambiguous.`
   }
   return cases[0];
 }
+function basisBody(body) {
+  return body.replace(/^\n+/, "");
+}
 function sessionBasis(document3, related = []) {
   const metadata = { ...document3.metadata };
   delete metadata.checkpoint;
   delete metadata.updated_at;
   const hash = createHash4("sha256");
-  hash.update(JSON.stringify(stableValue({ metadata, body: document3.body })));
+  hash.update(JSON.stringify(stableValue({ metadata, body: basisBody(document3.body) })));
   for (const entry of [...related].sort((left, right) => left.path.localeCompare(right.path))) {
     const content3 = Buffer.isBuffer(entry.content) ? entry.content : Buffer.from(entry.content, "utf8");
     hash.update("\0");
@@ -18552,7 +18555,7 @@ function parseCase(content3) {
     if (!isRecord3(metadata)) {
       throw new Error("Intake case frontmatter must be a mapping");
     }
-    return { metadata, body: lines.slice(end + 1).join("\n") };
+    return { metadata, body: lines.slice(end + 1).join("\n").replace(/^\n/, "") };
   } catch (error2) {
     throw new Error(`Invalid intake case frontmatter: ${errorMessage(error2)}`);
   }

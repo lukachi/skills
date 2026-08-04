@@ -17,6 +17,7 @@ import {
   type StateSignal,
 } from "../src/state.js";
 import { STATE_COLLECTORS } from "../src/state-collectors.js";
+import { beginIntakeCase, intakeContext, updateIntakeCheckpoint } from "../src/intake.js";
 import { beginWork } from "../src/work.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -289,6 +290,43 @@ test("tests the checkpoint against its record, not against the clock", async () 
   assert.equal(stale?.subject, started.id);
   assert.equal(stale?.awaits, "agent");
   assert.equal(stale?.level, "attention");
+});
+
+test("the brief and the record's own command agree about one checkpoint", async () => {
+  const { knowledge } = await installKnowledge();
+  await mkdir(join(knowledge, "raw"), { recursive: true });
+  await writeFile(join(knowledge, "raw/notes.md"), "# Notes\n\nA candidate.\n", "utf8");
+  commitAll(knowledge, "add intake fixture");
+  const started = await beginIntakeCase({
+    target: knowledge,
+    slug: "brief-agreement",
+    title: "Brief agreement",
+    paths: ["raw/notes.md"],
+    distributionRoot,
+  });
+  await updateIntakeCheckpoint({
+    target: knowledge,
+    id: started.id,
+    status: "active",
+    stage: "source-review",
+    actor: "workflow-agent/test",
+    currentState: "The first source is awaiting complete review.",
+    lastCompleted: "Froze the case at its baseline.",
+    nextAction: "Read raw/notes.md completely from the frozen blob.",
+  });
+
+  // Intake parses case.md with its own parser and the brief uses the shared
+  // one. They disagreed about whether the blank line after the closing `---`
+  // belongs to the body, so the same bytes hashed to two values and a
+  // just-stamped checkpoint read as stale from the brief and current from the
+  // case — permanently, and with awaits: agent on a signal no refresh clears.
+  assert.equal((await intakeContext(knowledge, started.id)).checkpoint?.valid, true);
+  const report = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    report.signals.some((signal) => signal.id.endsWith("checkpoint")),
+    false,
+    JSON.stringify(report.signals.filter((signal) => signal.id.endsWith("checkpoint"))),
+  );
 });
 
 test("names the capabilities whose delivery drifted from accepted intent", async () => {

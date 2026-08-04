@@ -41,6 +41,13 @@ export interface StateSignal {
    * signal that describes a finished state names nobody, because everything
    * downstream — the maintainer's queue, the stop guard — reads this as work
    * outstanding and acts on it.
+   *
+   * `agent` additionally asserts that the action exists and would clear the
+   * signal. The stop guard re-enters a turn while any of these are present and
+   * the repository keeps moving, so one that cannot be satisfied pushes every
+   * session to keep acting in a repository that is actually waiting on the
+   * maintainer — the runaway this guard was built to avoid, reached from the
+   * other side. Before emitting one, name the command that clears it.
    */
   awaits?: StateAudience;
   blocks?: string[];

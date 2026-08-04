@@ -93,6 +93,21 @@ export async function selectActiveCase(
   return cases[0]!;
 }
 
+/**
+ * Both serializers write a blank line after the closing `---`, and the parsers
+ * disagree about whether that line belongs to the body: `parseWorkSpec` strips
+ * it, the intake-local `parseCase` keeps it. Two callers reading the same bytes
+ * through different parsers therefore produced different digests for identical
+ * content, forever.
+ *
+ * A basis has to identify the record, not the route taken to read it, so the
+ * body is normalized here. The leading blank line is never content: writing
+ * always applies `trimStart()`, so nothing can put one there deliberately.
+ */
+function basisBody(body: string): string {
+  return body.replace(/^\n+/, "");
+}
+
 export function sessionBasis(
   document: WorkSpecDocument,
   related: RelatedSessionContent[] = [],
@@ -101,7 +116,7 @@ export function sessionBasis(
   delete metadata.checkpoint;
   delete metadata.updated_at;
   const hash = createHash("sha256");
-  hash.update(JSON.stringify(stableValue({ metadata, body: document.body })));
+  hash.update(JSON.stringify(stableValue({ metadata, body: basisBody(document.body) })));
   for (const entry of [...related].sort((left, right) => left.path.localeCompare(right.path))) {
     const content = Buffer.isBuffer(entry.content)
       ? entry.content
