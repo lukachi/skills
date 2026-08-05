@@ -419,6 +419,106 @@ test("an edited vision document no longer matches its receipt", async () => {
   );
 });
 
+test("an attested vision records the maintainer's own answer", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-vision-attested-");
+  await writeTrajectory(target, "equipment", { subject: "Equipment" });
+  const declared = await declareVision({
+    knowledgeRoot: target,
+    trajectory: "equipment",
+    declaredBy: "human:nzafat",
+    statement: "Equipment should be composable and authorable.",
+    method: "attested",
+    attested: "да, но третье утверждение вычёркиваем",
+    session: "3423ace9",
+  });
+
+  assert.equal(declared.id, "vision-equipment", "the id is derived, never asked for");
+  const result = await compileTrajectories(target);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.pending, []);
+  assert.equal(result.graph.visions[0]?.method, "attested");
+
+  const document = await readFile(join(target, "trajectories", "vision-equipment.md"), "utf8");
+  assert.match(document, /третье утверждение вычёркиваем/);
+});
+
+test("an attestation with no answer behind it is refused", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-vision-empty-attest-");
+  await assert.rejects(
+    () =>
+      declareVision({
+        knowledgeRoot: target,
+        trajectory: "equipment",
+        declaredBy: "human:nzafat",
+        statement: "Something.",
+        method: "attested",
+        attested: "   ",
+      }),
+    /requires the maintainer's own answer/,
+  );
+});
+
+test("a typed or token declaration does not also carry an attestation", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-vision-both-");
+  await assert.rejects(
+    () =>
+      declareVision({
+        knowledgeRoot: target,
+        trajectory: "equipment",
+        declaredBy: "human:nzafat",
+        statement: "Something.",
+        method: "token",
+        attested: "they said yes",
+      }),
+    /carries its own proof/,
+  );
+});
+
+test("an emptied attestation breaks the record it rested on", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-vision-stripped-");
+  await writeTrajectory(target, "equipment", { subject: "Equipment" });
+  await declareVision({
+    knowledgeRoot: target,
+    trajectory: "equipment",
+    declaredBy: "human:nzafat",
+    statement: "Composable and authorable.",
+    method: "attested",
+    attested: "yes, that one",
+  });
+  const path = visionRecordPath(target, "vision-equipment");
+  const record = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  record.attested = "";
+  await writeFile(path, JSON.stringify(record, null, 2), "utf8");
+
+  const result = await compileTrajectories(target);
+  assert.equal(
+    result.errors.some((issue) => /is attested and records no answer/.test(issue.message))
+      || result.errors.some((issue) => /digest is inconsistent/.test(issue.message)),
+    true,
+    JSON.stringify(result.errors),
+  );
+});
+
+test("a derived id steps aside when one is already taken", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-vision-derive-");
+  await writeTrajectory(target, "equipment", { subject: "Equipment" });
+  const first = await declareTestVision(target, {
+    trajectory: "equipment",
+    statement: "First.",
+  });
+  const second = await declareVision({
+    knowledgeRoot: target,
+    trajectory: "equipment",
+    declaredBy: "human:nzafat",
+    statement: "Second.",
+    method: "attested",
+    attested: "changed my mind",
+    supersedes: first,
+  });
+  assert.equal(first, "vision-equipment");
+  assert.equal(second.id, "vision-equipment-2");
+});
+
 test("only a maintainer declares direction", async () => {
   const target = await initializedKnowledgeRepository("wfctl-vision-actor-");
   await assert.rejects(
@@ -621,17 +721,18 @@ async function writeTrajectory(
 
 async function declareTestVision(
   target: string,
-  input: { id: string; trajectory: string; statement: string; supersedes?: string },
-): Promise<void> {
-  await declareVision({
+  input: { id?: string; trajectory: string; statement: string; supersedes?: string },
+): Promise<string> {
+  const result = await declareVision({
     knowledgeRoot: target,
-    id: input.id,
     trajectory: input.trajectory,
     declaredBy: "human:nzafat",
     statement: input.statement,
     method: "token",
+    ...(input.id ? { id: input.id } : {}),
     ...(input.supersedes ? { supersedes: input.supersedes } : {}),
   });
+  return result.id;
 }
 
 async function initializedKnowledgeRepository(prefix: string): Promise<string> {

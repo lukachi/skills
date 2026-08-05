@@ -19,6 +19,7 @@ export function createConfig(
   target: string,
   knowledge?: string,
   skills: SkillInstallConfig = { scope: "project", agents: ["codex", "claude"] },
+  maintainer?: string,
 ): WorkflowConfig {
   const config: WorkflowConfig = {
     schemaVersion: CONFIG_SCHEMA_VERSION,
@@ -26,6 +27,14 @@ export function createConfig(
     installedVersion: WORKFLOW_VERSION,
     skills,
   };
+
+  if (maintainer) {
+    const identity = maintainer.trim();
+    if (!identity.startsWith("human:") || identity.length <= "human:".length) {
+      throw new Error("Maintainer identity must be human:<id>");
+    }
+    config.maintainer = identity;
+  }
 
   if (profile === "leaf") {
     if (!knowledge) {
@@ -74,6 +83,15 @@ export async function readConfig(target: string): Promise<WorkflowConfig> {
     }
   } else {
     raw.skills = { scope: "project", agents: ["codex", "claude"] };
+  }
+  if (raw.maintainer !== undefined) {
+    if (
+      typeof raw.maintainer !== "string"
+      || !raw.maintainer.startsWith("human:")
+      || raw.maintainer.trim().length <= "human:".length
+    ) {
+      throw new Error(`Invalid maintainer identity in ${path}: expected human:<id>`);
+    }
   }
   return raw as WorkflowConfig;
 }

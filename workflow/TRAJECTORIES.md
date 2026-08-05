@@ -290,11 +290,13 @@ current record per subject.
 
 ```yaml
 kind: vision
-id: vision-<slug>
+id: vision-<slug>                # derived from the trajectory, never asked for
 trajectory: traj-<slug>
-declared_by: human:<id>          # only a maintainer declares direction
+declared_by: human:<id>          # from configuration; nobody retypes their own name
 at: <ISO-8601>
-method: interactive | token
+method: attested | interactive | token
+attested: <the maintainer's own answer, verbatim — attested only>
+session: <where they said it>
 supersedes: vision-<slug> | ""
 receipt: <sha256>
 ---
@@ -305,13 +307,31 @@ receipt: <sha256>
 direction means the two cannot drift apart — the same reason a gap is derived
 rather than stored. A trajectory that names a vision is an error.
 
-The receipt exists for the reason `wfctl work approve` exists. A vision written as
-ordinary YAML could be authored by the same unattended pass that assembled the
-trajectory it answers, so it is produced on a separate code path requiring an
-interactive terminal or an out-of-band token, and bound to an ignored runtime
-record ordinary editing does not touch. This authenticates nobody. It makes a
-forged vision require a deliberate second file rather than one more line in a
-document the agent was already writing.
+### Three methods, deliberately unequal
+
+| Method | How it is produced | What it establishes |
+| --- | --- | --- |
+| `attested` | The agent records it after the maintainer answered in the session, storing their own words | An answer exists and is about this statement |
+| `interactive` | A typed confirmation at a terminal | A separate channel, not the agent's writing |
+| `token` | An out-of-band token for unattended runs | The same, for automation |
+
+`attested` is the ordinary path because the ordinary case is a maintainer who has
+already answered. The first real run of this pipeline ended with the agent handing
+the maintainer a command carrying a generated slug, a generated id and their own
+name to retype — clerical work given to the person whose only job here is to
+decide about the product. That is the failure this workflow exists to remove, and
+it had reappeared inside the machinery meant to remove it.
+
+An agent can fabricate an attestation. What the field buys is that fabricating
+becomes a lie in a named place rather than an absence, and a lie in a field that
+reads "here is what you said" is found by the person who said it. That is weaker
+than a receipt from another channel, which is exactly why the methods stay
+distinguishable in the record instead of collapsing into "approved".
+
+What is refused in every mode is a declaration with no answer behind it at all.
+`docs/04-your-part.md` already says a receipt proves the command ran and not who
+typed it; an attestation proves less about the channel and more about the content,
+and neither is strong enough to make the other unnecessary.
 
 ### Gap
 

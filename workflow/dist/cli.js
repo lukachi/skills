@@ -6954,13 +6954,20 @@ var init_types = __esm({
 // src/config.ts
 import { readFile as readFile2 } from "node:fs/promises";
 import { isAbsolute, relative, resolve as resolve2, sep } from "node:path";
-function createConfig(profile, target, knowledge, skills = { scope: "project", agents: ["codex", "claude"] }) {
+function createConfig(profile, target, knowledge, skills = { scope: "project", agents: ["codex", "claude"] }, maintainer) {
   const config = {
     schemaVersion: CONFIG_SCHEMA_VERSION,
     profile,
     installedVersion: WORKFLOW_VERSION,
     skills
   };
+  if (maintainer) {
+    const identity = maintainer.trim();
+    if (!identity.startsWith("human:") || identity.length <= "human:".length) {
+      throw new Error("Maintainer identity must be human:<id>");
+    }
+    config.maintainer = identity;
+  }
   if (profile === "leaf") {
     if (!knowledge) {
       throw new Error("Leaf profile requires --knowledge <path>");
@@ -6998,6 +7005,11 @@ async function readConfig(target) {
     }
   } else {
     raw.skills = { scope: "project", agents: ["codex", "claude"] };
+  }
+  if (raw.maintainer !== void 0) {
+    if (typeof raw.maintainer !== "string" || !raw.maintainer.startsWith("human:") || raw.maintainer.trim().length <= "human:".length) {
+      throw new Error(`Invalid maintainer identity in ${path}: expected human:<id>`);
+    }
   }
   return raw;
 }
@@ -7107,7 +7119,8 @@ async function buildInstallPlan(options) {
     options.profile,
     target,
     options.knowledge,
-    options.skills
+    options.skills,
+    options.maintainer
   );
   const operations = [];
   for (const directory of REQUIRED_DIRECTORIES) {
@@ -7243,16 +7256,20 @@ function hashContent(content3) {
 async function planConfig(target, desired) {
   const relativePath2 = ".workflow/config.json";
   const absolute = join2(target, relativePath2);
-  const content3 = `${JSON.stringify(desired, null, 2)}
-`;
   try {
     const existing = await readFile3(absolute, "utf8");
     const parsed = JSON.parse(existing);
     const sameKnowledge = desired.profile !== "leaf" || parsed.knowledge?.path === desired.knowledge?.path;
     const sameIdentity = parsed.schemaVersion === desired.schemaVersion && parsed.profile === desired.profile && sameKnowledge;
     const sameSkills = parsed.skills?.scope === desired.skills?.scope && JSON.stringify(parsed.skills?.agents) === JSON.stringify(desired.skills?.agents);
+    if (!desired.maintainer && parsed.maintainer) {
+      desired = { ...desired, maintainer: parsed.maintainer };
+    }
+    const sameMaintainer = parsed.maintainer === desired.maintainer;
     const sameVersion = parsed.installedVersion === desired.installedVersion;
-    if (sameIdentity && sameSkills && sameVersion) {
+    const content3 = `${JSON.stringify(desired, null, 2)}
+`;
+    if (sameIdentity && sameSkills && sameVersion && sameMaintainer) {
       return {
         kind: "file",
         path: relativePath2,
@@ -7281,6 +7298,16 @@ async function planConfig(target, desired) {
         expectedHash: hashContent(existing)
       };
     }
+    if (sameIdentity && sameSkills && sameVersion && !sameMaintainer) {
+      return {
+        kind: "file",
+        path: relativePath2,
+        status: "update",
+        reason: desired.maintainer ? `record maintainer ${desired.maintainer}` : "clear the recorded maintainer",
+        content: content3,
+        expectedHash: hashContent(existing)
+      };
+    }
     return {
       kind: "file",
       path: relativePath2,
@@ -7304,7 +7331,8 @@ async function planConfig(target, desired) {
       path: relativePath2,
       status: "create",
       reason: "workflow configuration is absent",
-      content: content3
+      content: `${JSON.stringify(desired, null, 2)}
+`
     };
   }
 }
@@ -36006,7 +36034,7 @@ init_config();
 init_repository_registry();
 import { execFile } from "node:child_process";
 import { createHash as createHash11 } from "node:crypto";
-import { access as access7, mkdir as mkdir11, readFile as readFile19, readdir as readdir11, rename as rename9, writeFile as writeFile11 } from "node:fs/promises";
+import { access as access7, mkdir as mkdir11, readFile as readFile19, readdir as readdir12, rename as rename9, writeFile as writeFile11 } from "node:fs/promises";
 import { dirname as dirname12, join as join17, resolve as resolve18 } from "node:path";
 import { promisify } from "node:util";
 
@@ -36014,12 +36042,32 @@ import { promisify } from "node:util";
 init_config();
 init_work_spec();
 import { createHash as createHash10 } from "node:crypto";
-import { mkdir as mkdir10, readFile as readFile18, writeFile as writeFile10 } from "node:fs/promises";
+import { mkdir as mkdir10, readFile as readFile18, readdir as readdir11, writeFile as writeFile10 } from "node:fs/promises";
 import { dirname as dirname11, join as join16 } from "node:path";
-var VISION_METHODS = ["interactive", "token"];
+var VISION_METHODS = ["attested", "interactive", "token"];
+var ATTESTED_METHODS = /* @__PURE__ */ new Set(["attested"]);
+function visionIdFor(trajectory, existing) {
+  const base = `vision-${trajectory.replace(/^traj-/, "")}`;
+  if (!existing.includes(base)) {
+    return base;
+  }
+  for (let index2 = 2; ; index2 += 1) {
+    const candidate = `${base}-${index2}`;
+    if (!existing.includes(candidate)) {
+      return candidate;
+    }
+  }
+}
 function visionReceiptDigest(input) {
   return createHash10("sha256").update(
-    [input.id, input.trajectory, input.declaredBy, input.at, input.method].join(" "),
+    [
+      input.id,
+      input.trajectory,
+      input.declaredBy,
+      input.at,
+      input.method,
+      input.attested ?? ""
+    ].join(" "),
     "utf8"
   ).digest("hex");
 }
@@ -36041,28 +36089,43 @@ async function declareVision(options) {
   if (!statement) {
     throw new Error("A vision requires a statement of what the subject should become");
   }
+  const attested = (options.attested ?? "").trim();
+  if (ATTESTED_METHODS.has(options.method) && !attested) {
+    throw new Error(
+      "An attested vision requires the maintainer's own answer; without it there is nothing distinguishing a recorded decision from an invented one"
+    );
+  }
+  if (!ATTESTED_METHODS.has(options.method) && attested) {
+    throw new Error(
+      `A ${options.method} vision carries its own proof; do not also record an attestation`
+    );
+  }
+  const id = options.id ?? visionIdFor(options.trajectory, await existingVisionIds(options.knowledgeRoot));
   const at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
   const record2 = {
     schemaVersion: 1,
-    id: options.id,
+    id,
     trajectory: options.trajectory,
     declaredBy,
     at,
     method: options.method,
     supersedes: (options.supersedes ?? "").trim(),
+    attested,
+    session: (options.session ?? "").trim(),
     receipt: visionReceiptDigest({
-      id: options.id,
+      id,
       trajectory: options.trajectory,
       declaredBy,
       at,
-      method: options.method
+      method: options.method,
+      attested
     })
   };
-  const path = visionRecordPath(options.knowledgeRoot, options.id);
+  const path = visionRecordPath(options.knowledgeRoot, record2.id);
   await mkdir10(dirname11(path), { recursive: true });
   await writeFile10(path, `${JSON.stringify(record2, null, 2)}
 `, "utf8");
-  const documentPath = visionDocumentPath(options.knowledgeRoot, options.id);
+  const documentPath = visionDocumentPath(options.knowledgeRoot, record2.id);
   await mkdir10(dirname11(documentPath), { recursive: true });
   await writeFile10(
     documentPath,
@@ -36075,9 +36138,18 @@ async function declareVision(options) {
         at: record2.at,
         method: record2.method,
         supersedes: record2.supersedes,
+        attested: record2.attested,
+        session: record2.session,
         receipt: record2.receipt
       },
-      body: `# ${record2.id}
+      body: attested ? `# ${record2.id}
+
+${statement}
+
+## What the maintainer said
+
+> ${attested.split(/\r?\n/).join("\n> ")}
+` : `# ${record2.id}
 
 ${statement}
 `
@@ -36085,6 +36157,16 @@ ${statement}
     "utf8"
   );
   return { ...record2, path, documentPath };
+}
+async function existingVisionIds(knowledgeRoot) {
+  try {
+    return (await readdir11(join16(knowledgeRoot, ".workflow/current/visions"))).filter((entry) => entry.endsWith(".json")).map((entry) => entry.replace(/\.json$/, ""));
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return [];
+    }
+    throw error2;
+  }
 }
 async function readVisionRecord(knowledgeRoot, id) {
   try {
@@ -36104,7 +36186,7 @@ function isVisionRecord(value) {
     return false;
   }
   const record2 = value;
-  return record2.schemaVersion === 1 && typeof record2.id === "string" && typeof record2.trajectory === "string" && typeof record2.declaredBy === "string" && typeof record2.at === "string" && VISION_METHODS.includes(record2.method) && typeof record2.supersedes === "string" && typeof record2.receipt === "string";
+  return record2.schemaVersion === 1 && typeof record2.id === "string" && typeof record2.trajectory === "string" && typeof record2.declaredBy === "string" && typeof record2.at === "string" && VISION_METHODS.includes(record2.method) && typeof record2.supersedes === "string" && typeof record2.attested === "string" && typeof record2.session === "string" && typeof record2.receipt === "string";
 }
 
 // src/trajectory.ts
@@ -36432,11 +36514,16 @@ async function collectVisions(target, files, known, errors) {
       trajectory: record2.trajectory,
       declaredBy: record2.declaredBy,
       at: record2.at,
-      method: record2.method
+      method: record2.method,
+      attested: record2.attested
     })) {
       push2("the recorded declaration digest is inconsistent");
     } else if (record2.trajectory !== trajectory || record2.declaredBy !== declaredBy) {
       push2("does not match the recorded declaration's trajectory or actor");
+    } else if (ATTESTED_METHODS.has(record2.method) && !record2.attested.trim()) {
+      push2(
+        "is attested and records no answer; an attested vision rests on the maintainer's own words and has nothing else"
+      );
     }
     visions.push({
       id: item.id,
@@ -36444,6 +36531,7 @@ async function collectVisions(target, files, known, errors) {
       trajectory,
       declaredBy,
       at: stringValue10(item.metadata.at),
+      method: stringValue10(item.metadata.method),
       supersedes: stringValue10(item.metadata.supersedes).trim(),
       supersededBy: null,
       statement
@@ -36527,7 +36615,7 @@ async function collectTrajectoryFiles(target) {
   const root = join17(target, TRAJECTORY_ROOT);
   let entries;
   try {
-    entries = await readdir11(root, { withFileTypes: true });
+    entries = await readdir12(root, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -36915,7 +37003,7 @@ import {
   access as access8,
   mkdir as mkdir13,
   readFile as readFile21,
-  readdir as readdir12,
+  readdir as readdir13,
   realpath as realpath5,
   rename as rename10,
   rm as rm4,
@@ -37716,7 +37804,7 @@ function isRecord6(value) {
 async function pointerIds(root) {
   try {
     const ids = [];
-    for (const entry of await readdir12(root, { withFileTypes: true })) {
+    for (const entry of await readdir13(root, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.endsWith(".json")) {
         continue;
       }
@@ -37814,7 +37902,7 @@ init_config();
 import { resolve as resolve20 } from "node:path";
 
 // src/state-collectors.ts
-import { readdir as readdir13, readFile as readFile22, stat as stat3 } from "node:fs/promises";
+import { readdir as readdir14, readFile as readFile22, stat as stat3 } from "node:fs/promises";
 import { join as join20 } from "node:path";
 init_config();
 init_dependencies();
@@ -38447,7 +38535,7 @@ async function activeRecords(root, file = "case.md") {
 async function markdownRecords(root) {
   let names;
   try {
-    names = (await readdir13(root)).filter((name) => name.endsWith(".md")).sort();
+    names = (await readdir14(root)).filter((name) => name.endsWith(".md")).sort();
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -38473,7 +38561,7 @@ async function issueCounts(root) {
   const counts = { issues: 0, issuesOpen: 0, issuesClaimed: 0 };
   let names;
   try {
-    names = (await readdir13(root)).filter((name) => name.endsWith(".md"));
+    names = (await readdir14(root)).filter((name) => name.endsWith(".md"));
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return counts;
@@ -38500,7 +38588,7 @@ async function issueCounts(root) {
 }
 async function directoryNames(root) {
   try {
-    return (await readdir13(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    return (await readdir14(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -38516,7 +38604,7 @@ async function countFiles(root, budget = { left: FILE_SCAN_LIMIT }) {
   let total = 0;
   let entries;
   try {
-    entries = await readdir13(root, { withFileTypes: true });
+    entries = await readdir14(root, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return 0;
@@ -38543,7 +38631,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
   let newest;
   let entries;
   try {
-    entries = await readdir13(root, { withFileTypes: true });
+    entries = await readdir14(root, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return void 0;
@@ -38890,7 +38978,10 @@ try {
 function initCommand() {
   return new Command().description(
     "Install or repair a workflow environment.\nRepository kind: knowledge (central knowledge base) or leaf (source checkout).\nPreviews files and dependencies; failed preflight writes nothing."
-  ).arguments("[knowledge|leaf:string]").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-k, --knowledge <path:string>", "Knowledge repository for a leaf.").option("-s, --skills <scope:string>", "Skill scope: project, user, or none.").option("-a, --agents <agents:string>", "Skill targets: codex, claude, or both.").option(
+  ).arguments("[knowledge|leaf:string]").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-k, --knowledge <path:string>", "Knowledge repository for a leaf.").option("-s, --skills <scope:string>", "Skill scope: project, user, or none.").option(
+    "--maintainer <actor:string>",
+    "Who the maintainer is, as human:<id>. Recorded so nobody retypes their own name."
+  ).option("-a, --agents <agents:string>", "Skill targets: codex, claude, or both.").option(
     "--print-instructions <artifact:string>",
     "Print agents or guide content for manual integration, then exit."
   ).option("--dry-run", "Preview files and dependency checks without applying them.").option(
@@ -38936,6 +39027,7 @@ function initCommand() {
       profile,
       ...knowledge ? { knowledge } : {},
       ...preferences,
+      ...options.maintainer ? { maintainer: options.maintainer } : {},
       initializeGit,
       dryRun: options.dryRun === true,
       yes: options.yes === true,
@@ -38944,13 +39036,17 @@ function initCommand() {
   });
 }
 function upgradeCommand() {
-  return new Command().description("Preview dependencies and upgrade an existing workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-s, --skills <scope:string>", "Change skill scope: project, user, or none.").option("-a, --agents <agents:string>", "Change skill targets: codex, claude, or both.").option("--dry-run", "Preview files and dependency checks without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
+  return new Command().description("Preview dependencies and upgrade an existing workflow installation.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("-s, --skills <scope:string>", "Change skill scope: project, user, or none.").option("-a, --agents <agents:string>", "Change skill targets: codex, claude, or both.").option(
+    "--maintainer <actor:string>",
+    "Record who the maintainer is, as human:<id>, so nobody retypes their own name."
+  ).option("--dry-run", "Preview files and dependency checks without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
     const target = resolve21(options.target);
     const config = await readConfig(target);
     const scope = options.skills ? parseSkillScope(options.skills) : config.skills?.scope ?? "project";
     const agents = options.agents ? parseAgentTargets(options.agents) : config.skills?.agents ?? ["codex", "claude"];
     const knowledge = config.profile === "leaf" ? resolveKnowledgeRoot(target, config) : void 0;
     await installWorkflow({
+      ...options.maintainer ? { maintainer: options.maintainer } : {},
       target,
       profile: config.profile,
       ...knowledge ? { knowledge } : {},
@@ -39008,7 +39104,8 @@ async function installWorkflow(input) {
     profile: input.profile,
     ...input.knowledge ? { knowledge: input.knowledge } : {},
     distributionRoot,
-    skills: { scope: input.scope, agents: input.agents }
+    skills: { scope: input.scope, agents: input.agents },
+    ...input.maintainer ? { maintainer: input.maintainer } : {}
   });
   const preflight = [
     ...runInstallPreflight({
@@ -40251,28 +40348,44 @@ function knowledgeTrajectoryCommand() {
   ).command(
     "declare",
     new Command().description(
-      "Record a maintainer vision for one trajectory: what the subject should become.\nThis is the one record the agent may not author. It needs an interactive terminal,\nor --token matching WFCTL_APPROVAL_TOKEN."
-    ).arguments("<trajectory:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--id <id:string>", "Vision id.", { required: true }).option("--by <actor:string>", "Declaring maintainer as human:<id>.", { required: true }).option(
+      "Record the maintainer's vision for one trajectory: what the subject should become.\nThe answer is theirs; recording it is not. Pass --attested with their own words\nwhen they answered in the session, or run it in a terminal for a typed confirmation."
+    ).arguments("<trajectory:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option(
       "--statement <statement:string>",
       "What the subject should become, in product language.",
       { required: true }
-    ).option("--supersedes <id:string>", "The vision this one replaces.").option(
+    ).option(
+      "--attested <answer:string>",
+      "The maintainer's own answer, verbatim. Records the ordinary case, where they already decided in the session rather than at a terminal."
+    ).option("--session <id:string>", "Where the answer was given, so it can be read back.").option(
+      "--by <actor:string>",
+      "Declaring maintainer as human:<id>. Defaults to the configured maintainer."
+    ).option("--id <id:string>", "Vision id. Derived from the trajectory when omitted.").option("--supersedes <id:string>", "The vision this one replaces.").option(
       "--token <token:string>",
-      "Out-of-band token; required when no interactive terminal is available. Must equal WFCTL_APPROVAL_TOKEN."
+      "Out-of-band token for an unattended run. Must equal WFCTL_APPROVAL_TOKEN."
     ).option("--json", "Print machine-readable JSON.").action(async (options, trajectory) => {
+      const target = resolve21(options.target);
+      const by = options.by ?? (await readConfig(target)).maintainer;
+      if (!by) {
+        throw new Error(
+          "No maintainer is configured; pass --by human:<id>, or set maintainer in .workflow/config.json so nobody has to retype their own name."
+        );
+      }
       const method = await resolveVisionMethod({
         trajectory,
-        by: options.by,
+        by,
         statement: options.statement,
+        ...options.attested ? { attested: options.attested } : {},
         ...options.token ? { token: options.token } : {}
       });
       const result = await declareVision({
-        knowledgeRoot: resolve21(options.target),
-        id: options.id,
+        knowledgeRoot: target,
         trajectory,
-        declaredBy: options.by,
+        declaredBy: by,
         statement: options.statement,
         method,
+        ...options.id ? { id: options.id } : {},
+        ...options.attested ? { attested: options.attested } : {},
+        ...options.session ? { session: options.session } : {},
         ...options.supersedes ? { supersedes: options.supersedes } : {}
       });
       if (options.json) {
@@ -40282,7 +40395,7 @@ function knowledgeTrajectoryCommand() {
           `Recorded a vision for ${result.trajectory}
 Vision:  ${result.id}
 By:      ${result.declaredBy}
-Method:  ${result.method}
+Method:  ${result.method}${result.method === "attested" ? " (rests on the recorded answer, not on a separate channel)" : ""}
 Receipt: ${result.receipt}
 Document: ${result.documentPath}
 The gap is recomputed from this; run trajectory check to see what it now costs.
@@ -40305,9 +40418,12 @@ async function resolveVisionMethod(input) {
     }
     return "token";
   }
+  if (input.attested?.trim()) {
+    return "attested";
+  }
   if (!interactive()) {
     throw new Error(
-      "A vision requires an interactive terminal, or --token with a matching WFCTL_APPROVAL_TOKEN. wfctl does not record product direction from an unattended session."
+      "A vision needs the maintainer's answer. Pass --attested with what they said, run this in a terminal, or supply --token with a matching WFCTL_APPROVAL_TOKEN. wfctl does not record product direction nobody gave."
     );
   }
   process.stdout.write(

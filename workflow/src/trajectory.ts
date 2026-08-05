@@ -5,7 +5,12 @@ import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { errorMessage, isMissingFileError, readConfig } from "./config.js";
 import { listRepositoryConnections } from "./repository-registry.js";
-import { readVisionRecord, visionReceiptDigest, type VisionMethod } from "./vision.js";
+import {
+  ATTESTED_METHODS,
+  readVisionRecord,
+  visionReceiptDigest,
+  type VisionMethod,
+} from "./vision.js";
 import { isRecord, parseWorkSpec } from "./work-spec.js";
 
 const run = promisify(execFile);
@@ -107,6 +112,8 @@ export interface TrajectoryVision {
   trajectory: string;
   declaredBy: string;
   at: string;
+  /** Kept in the graph so a later reader sees how strong the record is. */
+  method: string;
   supersedes: string;
   supersededBy: string | null;
   statement: string;
@@ -570,11 +577,19 @@ async function collectVisions(
         declaredBy: record.declaredBy,
         at: record.at,
         method: record.method as VisionMethod,
+        attested: record.attested,
       })
     ) {
       push("the recorded declaration digest is inconsistent");
     } else if (record.trajectory !== trajectory || record.declaredBy !== declaredBy) {
       push("does not match the recorded declaration's trajectory or actor");
+    } else if (
+      ATTESTED_METHODS.has(record.method as VisionMethod)
+      && !record.attested.trim()
+    ) {
+      push(
+        "is attested and records no answer; an attested vision rests on the maintainer's own words and has nothing else",
+      );
     }
 
     visions.push({
@@ -583,6 +598,7 @@ async function collectVisions(
       trajectory,
       declaredBy,
       at: stringValue(item.metadata.at),
+      method: stringValue(item.metadata.method),
       supersedes: stringValue(item.metadata.supersedes).trim(),
       supersededBy: null,
       statement,

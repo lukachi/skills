@@ -253,12 +253,22 @@ wfctl knowledge reconstruct close <case-id> --outcome completed
   `trajectories/`, reports structural errors, and lists the roots awaiting a
   vision, largest total gap first. `--build` writes the compiled graph when no
   error remains.
-- `wfctl knowledge trajectory declare <trajectory> --id <id> --by human:<id>
-  --statement "<what it should become>"` records a maintainer vision. Like
-  `wfctl work approve`, it requires an interactive terminal or `--token`
-  matching `WFCTL_APPROVAL_TOKEN`, and it writes both the vision document and an
-  ignored durable record the compiler reconciles against. `--supersedes`
+- `wfctl knowledge trajectory declare <trajectory> --statement "<what it should
+  become>"` records the maintainer's vision. The id is derived from the
+  trajectory and the actor comes from the configured `maintainer`, so nobody is
+  handed generated identifiers or their own name to retype. `--supersedes`
   replaces a previous vision for the same subject.
+
+  Three methods, and the record keeps them apart. `--attested "<their answer>"`
+  records the ordinary case, where the maintainer already decided in the session;
+  it stores their words verbatim and is what the agent uses. A terminal run
+  records `interactive` after a typed confirmation, and `--token` matching
+  `WFCTL_APPROVAL_TOKEN` records `token` for automation. A declaration with no
+  answer behind it in any form is refused.
+
+  An attestation proves less about the channel and more about the content than a
+  typed receipt, and neither is strong enough to make the other unnecessary. The
+  method is stored so a later reader sees which they are looking at.
 
 A vision names its trajectory; a trajectory never names its vision. The current
 vision is derived, so the two cannot drift apart, and a trajectory that names one

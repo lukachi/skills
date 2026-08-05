@@ -196,11 +196,18 @@ was wrong.
 
 A vision is a decision record with an author, a date, immutable successors, and
 one current record per subject. A vision names its trajectory; a trajectory never
-names its vision. It is produced only through a command requiring an interactive
-terminal or an out-of-band token, and reconciled against an ignored durable
-record, for the reason maintainer approval is: recovering what a project meant
-and declaring what it should become are different acts, and the agent may perform
-only the first.
+names its vision.
+
+Deciding a vision is the maintainer's; recording one is not. A declaration is
+`attested` when the agent records an answer the maintainer already gave, storing
+their words verbatim; `interactive` or `token` when it came through a separate
+channel. Every method is reconciled against an ignored durable record, and the
+method is kept in the record because the three are not equally strong. A
+declaration with no answer behind it is refused in every mode.
+
+Handing the maintainer a command carrying generated identifiers and their own
+name is clerical work given to the person whose part is deciding about the
+product, and is itself a defect.
 
 Composition is derived from product language. A hierarchy assembled from paths is
 correct about the repository and carries nothing anyone can decide about. Vision

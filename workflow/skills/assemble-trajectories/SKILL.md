@@ -43,9 +43,9 @@ That is not new reading; it is checking a quotation.
 - Do not widen the scope by reading material outside it. Reading a source your
   own findings cite is fine; opening a new area is not.
 - Do not write anything under `knowledge/`. Curation is phase six.
-- Do not declare a vision. `wfctl knowledge trajectory declare` refuses an
-  unattended session on purpose, and working around that is the one betrayal
-  this workflow cannot detect afterwards.
+- Do not decide a vision. Recording one the maintainer gave you is your work;
+  supplying the answer yourself is the one betrayal this workflow cannot detect
+  afterwards, and `--attested` is where it would hide.
 - Do not ask the maintainer anything during phases two through four. Every
   question that occurs to you there is a question whose answer is probably in
   material you have already read.
@@ -185,20 +185,35 @@ authoring:
 6. **What closing the gap would cost**, coarsely. A vision declared without its
    price is a wishlist.
 
-Then record their answer, which only they can produce:
+Then record the answer yourself. Do not hand the maintainer a command. An id, a
+trajectory slug and their own name are your bookkeeping, and passing that to the
+person who is here to decide about the product is the exact failure this pipeline
+exists to remove:
 
 ```sh
 wfctl knowledge trajectory declare <trajectory> \
-  --id <vision-id> --by human:<maintainer-id> \
-  --statement "<what it should become>"
+  --statement "<the agreed text>" \
+  --attested "<their answer, word for word>" \
+  --session "<where they said it>"
 ```
+
+`--attested` carries what they actually said, not your paraphrase and not a
+restatement of the proposal. If their answer was "yes but drop the third one",
+that is the string, and the final statement is the proposal with the third one
+dropped. A reader months later must be able to see the answer and the statement
+side by side and judge whether one follows from the other.
 
 Use `--supersedes` when a vision replaces an earlier one for the same subject.
 Never edit a vision document by hand; the receipt will not match, and the
 compiler will say so.
 
-"Leave it as it is" is a declared vision, not the absence of one. Record it.
-Otherwise half the corpus sits in a state nobody can distinguish from neglect.
+"Leave it as it is" is a declared vision, not the absence of one. Record it with
+their words. Otherwise half the corpus sits in a state nobody can distinguish
+from neglect.
+
+Where the maintainer wants a stronger record than an attestation, they run the
+command themselves in a terminal and it records `interactive`. That is their
+choice to make, not a default to impose on them.
 
 ## What follows
 

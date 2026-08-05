@@ -19,6 +19,11 @@ export interface WorkflowConfig {
   knowledge?: {
     path: string;
   };
+  /**
+   * Who the maintainer is, as `human:<id>`. Stored so the agent never asks a
+   * person to retype their own identity into a command.
+   */
+  maintainer?: string;
 }
 
 export interface WorkflowState {
@@ -60,6 +65,7 @@ export interface PlanOptions {
     scope: SkillScope;
     agents: AgentTarget[];
   };
+  maintainer?: string;
 }
 
 export interface DoctorCheck {

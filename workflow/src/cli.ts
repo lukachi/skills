@@ -208,6 +208,10 @@ function initCommand() {
     .option("-t, --target <path:string>", "Target repository.", { default: "." })
     .option("-k, --knowledge <path:string>", "Knowledge repository for a leaf.")
     .option("-s, --skills <scope:string>", "Skill scope: project, user, or none.")
+    .option(
+      "--maintainer <actor:string>",
+      "Who the maintainer is, as human:<id>. Recorded so nobody retypes their own name.",
+    )
     .option("-a, --agents <agents:string>", "Skill targets: codex, claude, or both.")
     .option(
       "--print-instructions <artifact:string>",
@@ -268,6 +272,7 @@ function initCommand() {
         profile,
         ...(knowledge ? { knowledge } : {}),
         ...preferences,
+        ...(options.maintainer ? { maintainer: options.maintainer } : {}),
         initializeGit,
         dryRun: options.dryRun === true,
         yes: options.yes === true,
@@ -282,6 +287,10 @@ function upgradeCommand() {
     .option("-t, --target <path:string>", "Target repository.", { default: "." })
     .option("-s, --skills <scope:string>", "Change skill scope: project, user, or none.")
     .option("-a, --agents <agents:string>", "Change skill targets: codex, claude, or both.")
+    .option(
+      "--maintainer <actor:string>",
+      "Record who the maintainer is, as human:<id>, so nobody retypes their own name.",
+    )
     .option("--dry-run", "Preview files and dependency checks without applying them.")
     .option("-y, --yes", "Accept safe changes without prompting.")
     .option("--json", "Print machine-readable output; use with --dry-run or --yes.")
@@ -298,6 +307,7 @@ function upgradeCommand() {
         ? resolveKnowledgeRoot(target, config)
         : undefined;
       await installWorkflow({
+        ...(options.maintainer ? { maintainer: options.maintainer } : {}),
         target,
         profile: config.profile,
         ...(knowledge ? { knowledge } : {}),
@@ -379,6 +389,7 @@ async function installWorkflow(input: {
   knowledge?: string;
   scope: SkillScope;
   agents: AgentTarget[];
+  maintainer?: string;
   initializeGit?: boolean;
   dryRun: boolean;
   yes: boolean;
@@ -394,6 +405,7 @@ async function installWorkflow(input: {
     ...(input.knowledge ? { knowledge: input.knowledge } : {}),
     distributionRoot,
     skills: { scope: input.scope, agents: input.agents },
+    ...(input.maintainer ? { maintainer: input.maintainer } : {}),
   });
   const preflight = [
     ...runInstallPreflight({
@@ -1944,40 +1956,59 @@ function knowledgeTrajectoryCommand() {
       "declare",
       new Command()
         .description(
-          "Record a maintainer vision for one trajectory: what the subject should become.\n"
-            + "This is the one record the agent may not author. It needs an interactive terminal,\n"
-            + "or --token matching WFCTL_APPROVAL_TOKEN.",
+          "Record the maintainer's vision for one trajectory: what the subject should become.\n"
+            + "The answer is theirs; recording it is not. Pass --attested with their own words\n"
+            + "when they answered in the session, or run it in a terminal for a typed confirmation.",
         )
         .arguments("<trajectory:string>")
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
-        .option("--id <id:string>", "Vision id.", { required: true })
-        .option("--by <actor:string>", "Declaring maintainer as human:<id>.", { required: true })
         .option(
           "--statement <statement:string>",
           "What the subject should become, in product language.",
           { required: true },
         )
+        .option(
+          "--attested <answer:string>",
+          "The maintainer's own answer, verbatim. Records the ordinary case, where they "
+            + "already decided in the session rather than at a terminal.",
+        )
+        .option("--session <id:string>", "Where the answer was given, so it can be read back.")
+        .option(
+          "--by <actor:string>",
+          "Declaring maintainer as human:<id>. Defaults to the configured maintainer.",
+        )
+        .option("--id <id:string>", "Vision id. Derived from the trajectory when omitted.")
         .option("--supersedes <id:string>", "The vision this one replaces.")
         .option(
           "--token <token:string>",
-          "Out-of-band token; required when no interactive terminal is available. "
-            + "Must equal WFCTL_APPROVAL_TOKEN.",
+          "Out-of-band token for an unattended run. Must equal WFCTL_APPROVAL_TOKEN.",
         )
         .option("--json", "Print machine-readable JSON.")
         .action(async (options, trajectory) => {
+          const target = resolve(options.target);
+          const by = options.by ?? (await readConfig(target)).maintainer;
+          if (!by) {
+            throw new Error(
+              "No maintainer is configured; pass --by human:<id>, or set maintainer in "
+                + ".workflow/config.json so nobody has to retype their own name.",
+            );
+          }
           const method = await resolveVisionMethod({
             trajectory,
-            by: options.by,
+            by,
             statement: options.statement,
+            ...(options.attested ? { attested: options.attested } : {}),
             ...(options.token ? { token: options.token } : {}),
           });
           const result = await declareVision({
-            knowledgeRoot: resolve(options.target),
-            id: options.id,
+            knowledgeRoot: target,
             trajectory,
-            declaredBy: options.by,
+            declaredBy: by,
             statement: options.statement,
             method,
+            ...(options.id ? { id: options.id } : {}),
+            ...(options.attested ? { attested: options.attested } : {}),
+            ...(options.session ? { session: options.session } : {}),
             ...(options.supersedes ? { supersedes: options.supersedes } : {}),
           });
           if (options.json) {
@@ -1987,7 +2018,11 @@ function knowledgeTrajectoryCommand() {
               `Recorded a vision for ${result.trajectory}\n`
                 + `Vision:  ${result.id}\n`
                 + `By:      ${result.declaredBy}\n`
-                + `Method:  ${result.method}\n`
+                + `Method:  ${result.method}${
+                  result.method === "attested"
+                    ? " (rests on the recorded answer, not on a separate channel)"
+                    : ""
+                }\n`
                 + `Receipt: ${result.receipt}\n`
                 + `Document: ${result.documentPath}\n`
                 + "The gap is recomputed from this; run trajectory check to see what it now costs.\n",
@@ -1998,14 +2033,21 @@ function knowledgeTrajectoryCommand() {
 }
 
 /**
- * The same separation `wfctl work approve` establishes, for the same reason:
- * direction must not be producible by the unattended pass that assembled the
- * trajectory it answers.
+ * Three methods, and the record keeps them apart.
+ *
+ * A typed confirmation or a token proves a separate channel and nothing else —
+ * not who typed it, and not that they read the statement. An attestation proves
+ * less about the channel and more about the content: it carries what the
+ * maintainer actually answered. Neither is strong enough to pretend the other is
+ * unnecessary, so both stay, and which one was used is written down.
+ *
+ * What is refused in every mode is a declaration with no answer behind it at all.
  */
 async function resolveVisionMethod(input: {
   trajectory: string;
   by: string;
   statement: string;
+  attested?: string;
   token?: string;
 }): Promise<VisionMethod> {
   const expected = process.env.WFCTL_APPROVAL_TOKEN?.trim();
@@ -2020,10 +2062,14 @@ async function resolveVisionMethod(input: {
     }
     return "token";
   }
+  if (input.attested?.trim()) {
+    return "attested";
+  }
   if (!interactive()) {
     throw new Error(
-      "A vision requires an interactive terminal, or --token with a matching "
-        + "WFCTL_APPROVAL_TOKEN. wfctl does not record product direction from an unattended session.",
+      "A vision needs the maintainer's answer. Pass --attested with what they said, "
+        + "run this in a terminal, or supply --token with a matching WFCTL_APPROVAL_TOKEN. "
+        + "wfctl does not record product direction nobody gave.",
     );
   }
   process.stdout.write(

@@ -94,6 +94,7 @@ export async function buildInstallPlan(options: PlanOptions): Promise<InstallPla
     target,
     options.knowledge,
     options.skills,
+    options.maintainer,
   );
   const operations: PlanOperation[] = [];
 
@@ -245,7 +246,6 @@ export function hashContent(content: string | Buffer): string {
 async function planConfig(target: string, desired: WorkflowConfig): Promise<PlanOperation> {
   const relativePath = ".workflow/config.json";
   const absolute = join(target, relativePath);
-  const content = `${JSON.stringify(desired, null, 2)}\n`;
   try {
     const existing = await readFile(absolute, "utf8");
     const parsed = JSON.parse(existing) as Partial<WorkflowConfig>;
@@ -256,8 +256,15 @@ async function planConfig(target: string, desired: WorkflowConfig): Promise<Plan
       && sameKnowledge;
     const sameSkills = parsed.skills?.scope === desired.skills?.scope
       && JSON.stringify(parsed.skills?.agents) === JSON.stringify(desired.skills?.agents);
+    // The maintainer identity is set once and never re-asked, so an upgrade that
+    // rewrites the file must carry it forward rather than silently drop it.
+    if (!desired.maintainer && parsed.maintainer) {
+      desired = { ...desired, maintainer: parsed.maintainer };
+    }
+    const sameMaintainer = parsed.maintainer === desired.maintainer;
     const sameVersion = parsed.installedVersion === desired.installedVersion;
-    if (sameIdentity && sameSkills && sameVersion) {
+    const content = `${JSON.stringify(desired, null, 2)}\n`;
+    if (sameIdentity && sameSkills && sameVersion && sameMaintainer) {
       return {
         kind: "file",
         path: relativePath,
@@ -286,6 +293,20 @@ async function planConfig(target: string, desired: WorkflowConfig): Promise<Plan
         expectedHash: hashContent(existing),
       };
     }
+    // Naming the maintainer is a normal setting change, not a conflicting
+    // installation: everything identifying the install is unchanged.
+    if (sameIdentity && sameSkills && sameVersion && !sameMaintainer) {
+      return {
+        kind: "file",
+        path: relativePath,
+        status: "update",
+        reason: desired.maintainer
+          ? `record maintainer ${desired.maintainer}`
+          : "clear the recorded maintainer",
+        content,
+        expectedHash: hashContent(existing),
+      };
+    }
     return {
       kind: "file",
       path: relativePath,
@@ -309,7 +330,7 @@ async function planConfig(target: string, desired: WorkflowConfig): Promise<Plan
       path: relativePath,
       status: "create",
       reason: "workflow configuration is absent",
-      content,
+      content: `${JSON.stringify(desired, null, 2)}\n`,
     };
   }
 }
