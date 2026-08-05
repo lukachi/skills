@@ -27,7 +27,9 @@ authority, review, or a source choice that cannot be resolved safely.
 ## Show the reconstruction frontier
 
 At start, resume, after each repository pass, and before maintainer review,
-present one compact frontier derived from the case and CLI coverage ledgers:
+present one compact frontier derived from the case and CLI coverage ledgers.
+This is read by the maintainer, so name subjects rather than case identifiers,
+and counts rather than record slugs:
 
 - exact case mode and frozen repository revisions;
 - each repository's remaining files, Graphify communities, and runtime
@@ -403,7 +405,8 @@ observation layer turns an earlier mistake into evidence.
    `separate-session`, or `maintainer`, plus the actual host run ID when
    applicable. `wfctl knowledge reconstruct check` rejects missing,
    unfinished, unreviewed, unreferenced, or path-leaking workstreams.
-8. Present the maintainer a baseline review packet: current intended product,
+8. Present the maintainer a baseline review packet — **maintainer-facing, so the
+   reader test in `maintainer-review` governs every sentence in it**: current intended product,
    observed implementation, alignment and drift, reconstructed evolution with
    confidence limits, unknowns, and the human reading path.
    Include the final frontier and require every requested completion blocker

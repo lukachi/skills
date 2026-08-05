@@ -55,7 +55,8 @@ binds the current `change.md` rather than an earlier draft.
 
 ## Review and continue
 
-Present a compact framing packet: outcome, scope, exclusions, decisions,
+Present a compact framing packet — maintainer-facing, so the reader test in
+`maintainer-review` governs every sentence: outcome, scope, exclusions, decisions,
 acceptance IDs, test seams, risks, and unresolved work. Record only explicit
 maintainer approval, and record it through the approval command rather than by
 editing the receipt:

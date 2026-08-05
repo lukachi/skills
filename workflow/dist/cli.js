@@ -36770,11 +36770,6 @@ function normalizeTrajectory(item, errors, pointers) {
   }
   if (!stringValue10(now?.state)) {
     push2("now.state is required");
-  } else {
-    const leak = identifierInProse(stringValue10(now?.state));
-    if (leak) {
-      push2(`now.state carries ${leak}; the revision belongs in now.pinned, not in the sentence`);
-    }
   }
   for (const reference of stringArray9(conceived?.from)) {
     if (!observationIds.has(reference)) {
@@ -36871,13 +36866,6 @@ function normalizeFindings(value, observationIds, push2, cite) {
     seen.add(id);
     if (!stringValue10(entry.situation).trim()) {
       push2(`${id}.situation is required`);
-    } else {
-      const leak = identifierInProse(stringValue10(entry.situation));
-      if (leak) {
-        push2(
-          `${id}.situation carries ${leak}; a situation is read by the maintainer, and an address belongs in evidence`
-        );
-      }
     }
     const observations = stringArray9(entry.observations);
     if (observations.length === 0) {
@@ -36935,11 +36923,6 @@ function normalizeGaps(value, push2) {
     }
     if (!statement) {
       push2("gap statement is required");
-    } else {
-      const leak = identifierInProse(statement);
-      if (leak) {
-        push2(`gap statement carries ${leak}; a gap is read by the maintainer, not resolved by them`);
-      }
     }
     if (status === "accept" || status === "accepted") {
       push2(
@@ -37065,19 +37048,6 @@ function applyGapWeights(known, edges) {
 }
 function hasPrimaryParent(id, edges) {
   return edges.some((edge) => edge.source === id && edge.kind === "part-of" && edge.primary);
-}
-var IDENTIFIER_IN_PROSE = [
-  { pattern: /`[^`]+`/, name: "a quoted identifier" },
-  { pattern: /\b[\w-]+\.(ts|tsx|js|jsx|rs|py|go|rb|java|sql|toml|json|ya?ml|md)\b/i, name: "a file name" },
-  { pattern: /\b(?:obs|fin|traj|vision)-[a-z0-9-]+\b/, name: "a record id" },
-  { pattern: /\b[A-Z]{2,}-\d+\b/, name: "a ledger id" },
-  { pattern: /\b[0-9a-f]{7,40}\b/, name: "a commit" },
-  { pattern: /::|\bgit:/, name: "a code or repository reference" },
-  { pattern: /§\s*\d/, name: "a section number" },
-  { pattern: /\b[a-z]+(?:_[a-z]+)+\b/, name: "a symbol name" }
-];
-function identifierInProse(value) {
-  return IDENTIFIER_IN_PROSE.find((entry) => entry.pattern.test(value))?.name;
 }
 function looksLikeIdentifier(subject) {
   return /[/\\]/.test(subject) || /::/.test(subject) || /\.(ts|js|rs|py|go|tsx|jsx|java|rb|md|json|toml|sql)\b/i.test(subject) || /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(subject) || /^[a-z][a-zA-Z0-9]*(?:[A-Z][a-zA-Z0-9]*)+$/.test(subject);

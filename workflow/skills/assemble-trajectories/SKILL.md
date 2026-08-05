@@ -188,23 +188,25 @@ Then add the two parts no record holds:
 - **What closing the gap would cost**, coarsely. A vision declared without its
   price is a wishlist.
 
-### Nothing addressed reaches the maintainer
+### The two parts you write obey the same line
 
-Not a file name. Not a record id, a ledger id, a case id or a commit. Not a
-section number, a milestone code, a layer number or a tier. Not a raw field value
-— `not-found` is a schema token, and what it means is "no record of a decision was
-found, which is not the same as none being made".
+Apply the reader test from `maintainer-review` to every sentence you add:
 
-Addresses are not banned; they are load bearing, and they belong in `evidence`,
-`resource` and `edges` where the record keeps them. What they are not is
-something a product owner should have to decode to answer a question about their
-own product.
+> Would the maintainer have to look something up to understand this?
 
-This is the failure that turns readable knowledge into paperwork, and it happens
-in the message rather than in the records — which is exactly why the packet is
-rendered and the two parts you write are held to the same rule. If a sentence you
-add cannot be written without naming a file, that is a finding about the product
-having no name for the thing, and worth recording as one.
+The rendered part cannot fail it, because the renderer never reads an address. The
+proposal and the cost are yours, composed freely, and that is exactly where the
+failure lands: a message written from your working context carries file names as
+evidence, record ids as subjects, and schema values as categories, while the
+records behind it were written in product language and are clean.
+
+Do not over-correct into emptiness. Dropping the substance along with the address
+produces a sentence nobody can decide on either. Say what the thing does for the
+product, with enough in it to be judged, and leave the pointer in the record where
+it is load bearing.
+
+If a sentence genuinely cannot be written without naming a file, that is a finding
+about the product having no name for the thing — record it as one.
 
 Then record the answer yourself. Do not hand the maintainer a command. An id, a
 trajectory slug and their own name are your bookkeeping, and passing that to the

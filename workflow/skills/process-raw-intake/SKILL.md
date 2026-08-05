@@ -254,7 +254,9 @@ source and checks. Do not build or query a Graphify graph for raw Markdown.
 
 When chronology, intent, or authority remains ambiguous, show the maintainer a
 compact packet containing the candidate, supporting and conflicting
-observations, the missing fact, and a recommendation. Record their explicit
+observations, the missing fact, and a recommendation. The packet is
+maintainer-facing: the reader test in `maintainer-review` applies to every
+sentence, and the candidate is named by what it says rather than by its id. Record their explicit
 answer or keep the candidate unresolved outside `knowledge/`.
 
 Re-establish the subject first, as `maintainer-review` requires, and rebuild it
@@ -338,7 +340,9 @@ turns out to answer, and record that it was answered.
     path has a different blob ID and returns as `changed`; never mutate the
     earlier case or mark a path permanently processed.
 11. Refresh the human-readable intake frontier and state the next recommended
-    batch, blocker, or honest completion condition.
+    batch, blocker, or honest completion condition. Human-readable means the
+    reader test in `maintainer-review`: a batch is named by what it covers, not
+    by its case id, and a blocker by what is missing, not by which gate failed.
 
 For a reconstruction snapshot, repeat bounded cases until the frozen-baseline
 inventory reports only `reviewed` or `no-relevant-claims` entries. Do not widen

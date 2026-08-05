@@ -88,17 +88,49 @@ most once. If a decision genuinely cannot be stated without engineering
 vocabulary, that is a finding rather than a licence: the capability has no
 product-level description yet, and recording that gap is part of the answer.
 
-This rule is broken most often not in the records but in the message. Records
-written carefully in product language get summarized into a reply carrying file
-names as evidence, internal record ids as subjects, ledger codes as citations,
-commit hashes as dates, and raw field values as categories — because the reply is
-composed freely from the working context while the records were written against a
-contract. The addresses belong in the records, where they are load bearing. What
-reaches the person deciding about the product is sentences.
+## The line, and how to tell which side you are on
 
-Where a packet can be generated from the records rather than composed, generate
-it. A renderer that never reads an identifier cannot print one, and that is worth
-more than any amount of care taken one message at a time.
+Everything this workflow produces is written for one of two readers, and the two
+are not styles of the same text. They are different texts.
+
+| | Written for the record | Written for the maintainer |
+| --- | --- | --- |
+| Reader | The next agent, the compiler, an auditor | A person deciding about their product |
+| Addresses | **Required.** A claim without its pointer is unverifiable | **None.** An address is something to look up, not something to read |
+| Vocabulary | Whatever is exact | Whatever the product itself uses |
+| Failure | A missing pointer | A sentence that cannot be answered without opening something |
+
+Apply one test to every sentence before it reaches the maintainer:
+
+> Would they have to look something up to understand this?
+
+If yes, it is an address, whatever form it takes — a file, a symbol, a record id,
+a ledger code, a commit, a section number, a milestone or tier code, a schema
+value printed as a category, or a term that exists only inside the
+implementation. The test does not depend on the shape of the string or on the
+language anything is written in, which is why it is the test and not a list.
+
+Two failure modes, and the second is the one that follows from over-correcting
+the first:
+
+- **Addressed prose.** "The check in the catalog store was narrowed because the
+  gate validates on publish." Every noun is something to look up.
+- **Emptied prose.** "A check was narrowed for a reason that turned out to be
+  wrong." Nothing to look up and nothing to decide on either.
+
+What is wanted is neither: say what the thing does for the product, and say it
+with enough substance to be judged. "The client stopped checking anything but the
+shape of a record, on the belief that publishing would catch the rest — and
+publishing does not." The pointer to the file stays in the record, and is brought
+out when the maintainer asks to audit rather than to decide.
+
+An address is never deleted to satisfy this. It moves. A finding whose evidence
+was dropped to keep a sentence clean has been made worse, not better.
+
+Where a packet can be generated from records rather than composed, generate it.
+A renderer that never reads an address cannot print one, which is worth more than
+care taken one message at a time. Where it must be composed — most places — the
+test above is the whole rule, and it is the agent's to apply.
 
 One decision per packet. Several stacked in one message read as a status report
 and get answered as none of them.

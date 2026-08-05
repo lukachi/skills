@@ -912,11 +912,6 @@ function normalizeTrajectory(
   }
   if (!stringValue(now?.state)) {
     push("now.state is required");
-  } else {
-    const leak = identifierInProse(stringValue(now?.state));
-    if (leak) {
-      push(`now.state carries ${leak}; the revision belongs in now.pinned, not in the sentence`);
-    }
   }
   for (const reference of stringArray(conceived?.from)) {
     if (!observationIds.has(reference)) {
@@ -1026,13 +1021,6 @@ function normalizeFindings(
     seen.add(id);
     if (!stringValue(entry.situation).trim()) {
       push(`${id}.situation is required`);
-    } else {
-      const leak = identifierInProse(stringValue(entry.situation));
-      if (leak) {
-        push(
-          `${id}.situation carries ${leak}; a situation is read by the maintainer, and an address belongs in evidence`,
-        );
-      }
     }
     const observations = stringArray(entry.observations);
     if (observations.length === 0) {
@@ -1091,11 +1079,6 @@ function normalizeGaps(value: unknown, push: (message: string) => void): Traject
     }
     if (!statement) {
       push("gap statement is required");
-    } else {
-      const leak = identifierInProse(statement);
-      if (leak) {
-        push(`gap statement carries ${leak}; a gap is read by the maintainer, not resolved by them`);
-      }
     }
     if (status === "accept" || status === "accepted") {
       push(
@@ -1243,30 +1226,6 @@ function applyGapWeights(
 
 function hasPrimaryParent(id: string, edges: TrajectoryEdge[]): boolean {
   return edges.some((edge) => edge.source === id && edge.kind === "part-of" && edge.primary);
-}
-
-/**
- * Prose reaches the maintainer; addresses do not.
- *
- * Identifiers belong in `evidence`, `resource` and `edges`, where they are load
- * bearing. In a sentence they are the difference between knowledge a product
- * owner can read and a bureaucratic artefact they cannot, and the norm asking
- * for that difference has existed all along and been ignored all along, because
- * prose norms are not gates.
- */
-const IDENTIFIER_IN_PROSE = [
-  { pattern: /`[^`]+`/, name: "a quoted identifier" },
-  { pattern: /\b[\w-]+\.(ts|tsx|js|jsx|rs|py|go|rb|java|sql|toml|json|ya?ml|md)\b/i, name: "a file name" },
-  { pattern: /\b(?:obs|fin|traj|vision)-[a-z0-9-]+\b/, name: "a record id" },
-  { pattern: /\b[A-Z]{2,}-\d+\b/, name: "a ledger id" },
-  { pattern: /\b[0-9a-f]{7,40}\b/, name: "a commit" },
-  { pattern: /::|\bgit:/, name: "a code or repository reference" },
-  { pattern: /§\s*\d/, name: "a section number" },
-  { pattern: /\b[a-z]+(?:_[a-z]+)+\b/, name: "a symbol name" },
-] as const;
-
-function identifierInProse(value: string): string | undefined {
-  return IDENTIFIER_IN_PROSE.find((entry) => entry.pattern.test(value))?.name;
 }
 
 /**

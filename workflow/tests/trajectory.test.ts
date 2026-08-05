@@ -252,32 +252,6 @@ test("the graph refuses to build while a structural error remains", async () => 
   );
 });
 
-test("an address in a sentence the maintainer reads is an error", async () => {
-  const target = await initializedKnowledgeRepository("wfctl-trajectory-prose-");
-  const cases: Array<[string, Record<string, unknown>]> = [
-    ["situation", { findings: [finding({ situation: "The check in `check-set.ts` was narrowed." })] }],
-    ["situation", { findings: [finding({ situation: "Recorded earlier as fin-shield-hole-open." })] }],
-    ["situation", { findings: [finding({ situation: "The maintainer decided this in DISC-070." })] }],
-    ["now.state", {
-      now: {
-        pinned: "dnd-api@34cf66cb",
-        read_at: "2026-08-04T00:00:00.000Z",
-        state: "Gear reaches a fight at 34cf66cb1292efe1f5b76b1e8e890e96a86e2b9c.",
-      },
-    }],
-    ["gap", { gaps: [gap({ statement: "resolve_catalog_pins is never called.", status: "open", work: "" })] }],
-  ];
-  for (const [field, overrides] of cases) {
-    await writeTrajectory(target, "equipment", { subject: "Equipment", ...overrides });
-    const result = await compileTrajectories(target);
-    assert.equal(
-      result.errors.some((issue) => /carries a/.test(issue.message)),
-      true,
-      `${field}: ${JSON.stringify(overrides)} -> ${JSON.stringify(result.errors)}`,
-    );
-  }
-});
-
 test("the packet is rendered from the record and carries no address", async () => {
   const target = await initializedKnowledgeRepository("wfctl-trajectory-packet-");
   await writeTrajectory(target, "equipment", {

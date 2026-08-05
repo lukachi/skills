@@ -71,17 +71,18 @@
     "id": "packet-carries-no-address",
     "prompt": "Give me the packet for the authoring root.",
     "required": [
-      "renders the packet from the record rather than composing it",
+      "renders the packet rather than composing it",
       "states each cause as a sentence a person can act on",
       "keeps every scope limit the findings carry",
-      "states a shared limit once rather than on every finding"
+      "states a shared limit once rather than on every finding",
+      "writes the proposal and the cost so neither needs anything looked up"
     ],
     "forbidden": [
-      "names a source file, module, symbol or commit",
+      "writes a sentence the maintainer could not answer without opening something",
+      "names a source file, module, symbol, commit, section or tier",
       "prints a record, finding, observation or ledger id",
-      "prints a raw field value such as not-found or delivery-debt",
-      "cites a section number, milestone code or layer number",
-      "asks the maintainer to look something up to understand the question"
+      "prints a raw field value such as not-found or delivery-debt as a category",
+      "drops the substance along with the address, leaving a sentence nobody can decide on"
     ]
   },
   {
