@@ -410,7 +410,7 @@ nobody decided something the project scheduled deliberately.
 | 3 | Compare **implementation** findings against source at a pinned revision → was/now. Intent findings are not compared | — |
 | 4 | Assemble trajectories and the graph; classify causes; size gaps | — |
 | 5 | **The only gate.** Per trajectory root: edit the proposed vision, or accept it | **Yes** |
-| 6 | Write `knowledge/` from trajectories. Debt and plans fall out of the gap | — |
+| 6 | `trajectory promote` writes the curated page: three axes, pinned evidence, the gap. Sections no record carries come out marked and the draft fails validation until authored | — |
 
 The maintainer is absent in 0–4 and 6.
 
@@ -693,6 +693,28 @@ Note also that the evals are corpus-only until someone runs them: `evals/results
 is empty, so the routing and behaviour claimed above are specified rather than
 demonstrated. That is the repository's existing condition, not a new gap, but it
 applies to every claim in this section.
+
+### Phase six
+
+A curated page needs more than a trajectory holds. What the subject does, how it
+got there, where it is going and the gap all come from the records; who it serves,
+the words the domain uses for it and a recognisable example come from nowhere,
+because nobody ever wrote them down. So promotion fills the first and marks the
+second, and a marked draft is rejected by validation until an author writes it.
+Emitting plausible placeholder prose would produce a page that validates and says
+nothing, which is worse than one that refuses to.
+
+Two reports matter more than the page. Raw observations cannot become sources —
+curated knowledge may never cite untrusted input — so a subject established mostly
+from raw yields a page resting on less than the trajectory did, and the count says
+by how much. And every page in the area that no trajectory claims is named, because
+the difference between "no trajectory yet" and "the trajectory forgot to claim it"
+is the difference between work outstanding and knowledge about to be orphaned.
+
+Promotion deletes nothing. `replaces` is declared on the trajectory rather than
+derived: a trajectory assembled from source and raw does not know which page a
+previous model wrote about the same subject, and guessing would retire knowledge
+on a resemblance.
 
 ## Next step
 

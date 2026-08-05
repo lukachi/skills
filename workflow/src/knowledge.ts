@@ -137,6 +137,7 @@ export async function validateKnowledge(
   const warnings: KnowledgeValidationIssue[] = [];
   const changeIndex = await readProjectChangeIndex(target);
   const reconstructionIndex = await readProjectReconstructionIndex(target);
+  const declaredVisions = await readDeclaredVisions(target);
   for (const path of inventory.symlinks) {
     errors.push({
       path: portable(join("knowledge", path)),
@@ -162,6 +163,15 @@ export async function validateKnowledge(
     } catch (error) {
       errors.push({ path: displayPath, message: `cannot read UTF-8 Markdown: ${errorMessage(error)}` });
       continue;
+    }
+
+    if (content.includes("<!-- AUTHOR:")) {
+      errors.push({
+        path: displayPath,
+        message:
+          "the draft still carries author markers; a promoted page is unfinished until every "
+            + "section a trajectory cannot supply has been written",
+      });
     }
 
     if (containsUntrustedIntakeReference(content)) {
@@ -199,6 +209,7 @@ export async function validateKnowledge(
       parsed.body,
       changeIndex,
       reconstructionIndex,
+      declaredVisions,
       errors,
       warnings,
     );
@@ -232,6 +243,7 @@ function validateConcept(
   body: string,
   changeIndex: ProjectChangeIndex,
   reconstructionIndex: ProjectReconstructionIndex,
+  declaredVisions: Set<string>,
   errors: KnowledgeValidationIssue[],
   warnings: KnowledgeValidationIssue[],
 ): void {
@@ -320,7 +332,7 @@ function validateConcept(
     if (!resource) {
       errors.push({ path, message: `${prefix}.resource is required by OKF v0.2` });
     }
-    if (!["maintainer-decision", "source-code", "runtime-check", "archived-change", "reconstruction-review", "version-control", "external-primary"].includes(kind)) {
+    if (!["maintainer-decision", "trajectory-vision", "source-code", "runtime-check", "archived-change", "reconstruction-review", "version-control", "external-primary"].includes(kind)) {
       errors.push({
         path,
         message: `${prefix}.kind must identify the workflow authority class`,
@@ -379,6 +391,26 @@ function validateConcept(
         errors.push({
           path,
           message: `${prefix}.resource must point to a project-change or project-reconstruction decision`,
+        });
+      }
+    }
+    if (kind === "trajectory-vision") {
+      // Declared direction is human authority of a different shape: it answers
+      // what the subject should become rather than what it does, and it is the
+      // only source a page's third axis can rest on.
+      hasHumanAuthority = true;
+      if (!stringValue(source?.author).startsWith("human:")) {
+        errors.push({ path, message: `${prefix}.author must identify the declaring maintainer` });
+      }
+      if (!/^trajectory-vision:[a-z0-9][a-z0-9-]{0,95}$/.test(resource)) {
+        errors.push({
+          path,
+          message: `${prefix}.resource must name a declared vision as trajectory-vision:<id>`,
+        });
+      } else if (!declaredVisions.has(resource.slice("trajectory-vision:".length))) {
+        errors.push({
+          path,
+          message: `${prefix}.resource names a vision with no durable declaration`,
         });
       }
     }
@@ -815,6 +847,21 @@ async function readProjectChangeIndex(target: string): Promise<ProjectChangeInde
   };
 }
 
+/** Ids of visions with a durable declaration, so a page cannot cite an invented one. */
+async function readDeclaredVisions(target: string): Promise<Set<string>> {
+  try {
+    const entries = await readdir(join(target, ".workflow/current/visions"));
+    return new Set(
+      entries.filter((entry) => entry.endsWith(".json")).map((entry) => entry.replace(/\.json$/, "")),
+    );
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return new Set();
+    }
+    throw error;
+  }
+}
+
 async function readProjectReconstructionIndex(
   target: string,
 ): Promise<ProjectReconstructionIndex> {
@@ -1185,6 +1232,12 @@ function validateRealization(
   }
   if (!isIsoDateTime(stringValue(realization.assessed_at))) {
     errors.push({ path, message: "realization.assessed_at must be an ISO 8601 datetime" });
+  }
+  // The third axis. Optional, because most pages predate it; when present it
+  // names where the subject is going, and only the maintainer can put it there.
+  const visionAxis = stringValue(realization.vision);
+  if (visionAxis && !/^[a-z0-9][a-z0-9-]{0,95}$/.test(visionAxis)) {
+    errors.push({ path, message: "realization.vision must name a declared vision" });
   }
   if (productBearing && intent === "not-applicable") {
     errors.push({

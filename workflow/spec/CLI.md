@@ -265,6 +265,14 @@ wfctl knowledge reconstruct close <case-id> --outcome completed
   and the compiler rejects one that appears in a `situation`, a gap statement or
   `now.state`.
 
+- `wfctl knowledge trajectory promote <trajectory>` writes the curated page for a
+  subject whose vision is declared, and refuses when it is not: without the second
+  axis the page would be the old one again. It fills what the records hold and
+  marks what they cannot — audience, domain language, examples — so the draft
+  fails validation until an author writes them. It reports raw observations that
+  could not become evidence, and every page in the area that no trajectory claims.
+  It deletes nothing.
+
 - `wfctl knowledge trajectory declare <trajectory> --statement "<what it should
   become>"` records the maintainer's vision. The id is derived from the
   trajectory and the actor comes from the configured `maintainer`, so nobody is

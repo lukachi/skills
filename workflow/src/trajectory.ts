@@ -138,6 +138,13 @@ export interface TrajectoryRecord {
   findings: TrajectoryFinding[];
   gaps: TrajectoryGap[];
   /**
+   * Curated pages this subject replaces once promoted. Declared rather than
+   * derived: a trajectory assembled from source and raw does not know which
+   * page a previous model wrote about the same thing, and guessing would
+   * retire knowledge on a resemblance.
+   */
+  replaces: string[];
+  /**
    * The current declared vision, derived. A trajectory never names its vision;
    * a vision names its trajectory, so the two cannot drift apart.
    */
@@ -823,13 +830,22 @@ function validateVisionCycles(
 /**
  * The statement lives in the body rather than the frontmatter because it is
  * prose a person wrote, and prose belongs where a person can read it.
+ *
+ * It ends at the first subsection. What follows is the maintainer's quoted
+ * answer, which is evidence for the statement and not part of it — folding the
+ * two together puts their words inside the declaration they were answering.
  */
 function visionStatement(body: string): string {
-  return body
-    .split(/\r?\n/)
-    .filter((line) => !line.startsWith("#"))
-    .join("\n")
-    .trim();
+  const lines = [];
+  for (const line of body.split(/\r?\n/)) {
+    if (line.startsWith("##")) {
+      break;
+    }
+    if (!line.startsWith("#")) {
+      lines.push(line);
+    }
+  }
+  return lines.join("\n").trim();
 }
 
 async function collectTrajectoryFiles(
@@ -945,6 +961,7 @@ function normalizeTrajectory(
       observations,
       findings,
       gaps,
+      replaces: stringArray(metadata.replaces),
       vision: null,
       gapWeight: 0,
     },

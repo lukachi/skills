@@ -51,6 +51,7 @@ import {
   renderTrajectoryPacket,
   writeTrajectoryGraph,
 } from "./trajectory.js";
+import { promoteTrajectory } from "./promotion.js";
 import { declareVision, type VisionMethod } from "./vision.js";
 import { hashKnowledgeConcept, validateKnowledge } from "./knowledge.js";
 import { writeKnowledgeGraph } from "./knowledge-graph.js";
@@ -1977,6 +1978,64 @@ function knowledgeTrajectoryCommand() {
           if (result.errors.length > 0) {
             process.stdout.write(
               `\n(${result.errors.length} unresolved error(s) in the records behind this; run check.)\n`,
+            );
+          }
+        }),
+    )
+    .command(
+      "promote",
+      new Command()
+        .description(
+          "Write a curated page from a trajectory that has a declared vision.\n"
+            + "Produces a draft: everything the trajectory holds is filled in, and the sections\n"
+            + "no record in this pipeline carries are marked for an author. Deletes nothing.",
+        )
+        .arguments("<trajectory:string>")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .option("--force", "Rewrite the page if it already exists.")
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, trajectory) => {
+          const result = await promoteTrajectory({
+            target: options.target,
+            trajectory,
+            ...(options.force ? { force: true } : {}),
+          });
+          if (options.json) {
+            printJson(result);
+            return;
+          }
+          process.stdout.write(
+            `${result.created ? "Wrote" : "Rewrote"} ${result.path}\n`,
+          );
+          if (result.awaitingAuthor.length > 0) {
+            process.stdout.write(
+              `\nThe draft does not validate yet. ${result.awaitingAuthor.length} section(s) need an author:\n`,
+            );
+            for (const instruction of result.awaitingAuthor) {
+              process.stdout.write(`  - ${instruction}\n`);
+            }
+          }
+          if (result.droppedRawSources > 0) {
+            process.stdout.write(
+              `\n${result.droppedRawSources} observation(s) could not become evidence: curated knowledge `
+                + "may not cite untrusted input. Whatever they established rests on nothing here.\n",
+            );
+          }
+          const missing = result.replaces.filter((entry) => !entry.present);
+          if (missing.length > 0) {
+            process.stdout.write(
+              `\nClaimed as replaced but not on disk: ${missing.map((e) => e.path).join(", ")}\n`,
+            );
+          }
+          if (result.unclaimed.length > 0) {
+            process.stdout.write(
+              `\n${result.unclaimed.length} page(s) in this area are claimed by no trajectory:\n`,
+            );
+            for (const path of result.unclaimed) {
+              process.stdout.write(`  ${path}\n`);
+            }
+            process.stdout.write(
+              "Each is either a subject with no trajectory yet, or one whose trajectory has not named it.\n",
             );
           }
         }),

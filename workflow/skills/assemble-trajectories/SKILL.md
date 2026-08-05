@@ -240,6 +240,36 @@ Where the maintainer wants a stronger record than an attestation, they run the
 command themselves in a terminal and it records `interactive`. That is their
 choice to make, not a default to impose on them.
 
+## Phase six — the page
+
+Once a subject has a declared vision, write its curated page from the trajectory:
+
+```sh
+wfctl knowledge trajectory promote <trajectory>
+```
+
+It fills everything the records hold — what the subject does, where it is going,
+the gap, the pinned evidence, the three axes — and marks the sections no record in
+this pipeline carries: who it serves, the words the domain uses, an example. Those
+are yours to write, and the page does not validate until you have.
+
+Two things it will tell you that matter more than the page.
+
+**Raw observations could not become evidence.** Curated knowledge may never cite
+untrusted input, so whatever a raw observation established rests on nothing once
+promoted. If most of a subject came from raw, the page is thinner than the
+trajectory was, and that is worth saying rather than hiding.
+
+**Pages nothing claims.** A trajectory names the pages it replaces in `replaces`,
+and promotion reports every page in the area that no trajectory named. Each is
+either a subject with no trajectory yet or one whose trajectory forgot to claim
+it — and the difference matters, because the first is work and the second is a
+record that will be orphaned when the old page goes.
+
+Promotion never deletes. Retiring a replaced page is a separate act after the new
+one validates, and it is yours: a tool that quietly retires knowledge cannot be
+run twice with confidence.
+
 ## What follows
 
 The gap recomputes from the declared vision. Nothing else about it is stored: a
