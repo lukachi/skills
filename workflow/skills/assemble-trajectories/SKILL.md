@@ -170,20 +170,41 @@ Every error it reports is yours to fix. None of them is a maintainer question.
 The output lists the roots awaiting a vision, largest total gap first. That
 order is the product's, not the corpus's; work it in that order.
 
-Per root, hand over a packet the maintainer answers by editing rather than
-authoring:
+Do not compose the packet. Render it:
 
-1. **What this is**, named as the product names it, and where a person meets it.
-2. **How it was conceived**, in one or two sentences.
-3. **What changed and why**, with the causes stated — a maintainer treats "we
-   decided" and "it drifted" completely differently, and the difference is the
-   most useful thing you can give them.
-4. **What the source shows now**, at the named revision.
-5. **A proposed vision**, written out, for them to correct. Never a blank
-   question. Fifty subjects with "what should this be?" is the same overload in
-   new clothes.
-6. **What closing the gap would cost**, coarsely. A vision declared without its
-   price is a wishlist.
+```sh
+wfctl knowledge trajectory ask [<trajectory>]
+```
+
+It emits what this is, how it was conceived, what changed and why with the causes
+in words, what it does today, and what is open — all from the record, so it cannot
+contain an identifier because it never reads one.
+
+Then add the two parts no record holds:
+
+- **A proposed vision**, written out, for the maintainer to correct. Never a blank
+  question. Fifty subjects with "what should this be?" is the same overload in new
+  clothes.
+- **What closing the gap would cost**, coarsely. A vision declared without its
+  price is a wishlist.
+
+### Nothing addressed reaches the maintainer
+
+Not a file name. Not a record id, a ledger id, a case id or a commit. Not a
+section number, a milestone code, a layer number or a tier. Not a raw field value
+— `not-found` is a schema token, and what it means is "no record of a decision was
+found, which is not the same as none being made".
+
+Addresses are not banned; they are load bearing, and they belong in `evidence`,
+`resource` and `edges` where the record keeps them. What they are not is
+something a product owner should have to decode to answer a question about their
+own product.
+
+This is the failure that turns readable knowledge into paperwork, and it happens
+in the message rather than in the records — which is exactly why the packet is
+rendered and the two parts you write are held to the same rule. If a sentence you
+add cannot be written without naming a file, that is a finding about the product
+having no name for the thing, and worth recording as one.
 
 Then record the answer yourself. Do not hand the maintainer a command. An id, a
 trajectory slug and their own name are your bookkeeping, and passing that to the

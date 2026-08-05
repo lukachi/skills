@@ -36347,6 +36347,105 @@ async function compileTrajectories(targetInput) {
   );
   return { target, graph, errors, warnings, pending };
 }
+var CAUSE_IN_WORDS = {
+  decision: "someone chose this, and the record says who and when",
+  compromise: "chosen deliberately, under a constraint that may since have gone",
+  drift: "nobody chose it, so it can be reversed without discussion",
+  defect: "it matches nothing anyone ever stated",
+  external: "something outside the project moved and this followed",
+  "not-found": "no record of a decision was found, which is not the same as none being made",
+  unknown: "not established"
+};
+var GAP_IN_WORDS = {
+  "delivery-debt": "stated and not built",
+  "direction-debt": "built, but not what it should be",
+  hole: "present in neither, and visible only reading the whole line"
+};
+var GAP_STATUS_IN_WORDS = {
+  open: "no decision yet",
+  "to-close": "being closed",
+  deferred: "acknowledged, no date"
+};
+function renderTrajectoryPacket(graph, trajectoryId) {
+  const record2 = graph.trajectories.find((entry) => entry.id === trajectoryId);
+  if (!record2) {
+    throw new Error(`No trajectory named ${trajectoryId}`);
+  }
+  const children = graph.edges.filter((edge) => edge.kind === "part-of" && edge.target === record2.id).map((edge) => graph.trajectories.find((entry) => entry.id === edge.source)).filter((entry) => Boolean(entry));
+  const lines = [];
+  lines.push(`# ${record2.subject}`);
+  lines.push("");
+  lines.push("## How it was conceived");
+  lines.push("");
+  lines.push(record2.conceived.statement || "Not established.");
+  lines.push("");
+  lines.push("## What changed, and why");
+  lines.push("");
+  const findings = [record2, ...children].flatMap(
+    (entry) => entry.findings.map((finding) => ({ finding, owner: entry }))
+  );
+  if (findings.length === 0) {
+    lines.push("Nothing recorded.");
+  }
+  const limitCounts = /* @__PURE__ */ new Map();
+  for (const { finding } of findings) {
+    for (const limit of new Set(finding.scopeLimits)) {
+      limitCounts.set(limit, (limitCounts.get(limit) ?? 0) + 1);
+    }
+  }
+  const shared = new Set(
+    [...limitCounts].filter(([, count2]) => count2 > 1).map(([limit]) => limit)
+  );
+  for (const { finding, owner } of findings) {
+    const where = owner.id === record2.id ? "" : ` \u2014 ${owner.subject}`;
+    lines.push(`- **${finding.situation}**${where}`);
+    lines.push(`  Why: ${CAUSE_IN_WORDS[finding.cause.kind] ?? "not established"}.${finding.cause.note ? ` ${finding.cause.note}` : ""}`);
+    for (const limit of new Set(finding.scopeLimits)) {
+      if (!shared.has(limit)) {
+        lines.push(`  Not established: ${limit}`);
+      }
+    }
+  }
+  if (shared.size > 0) {
+    lines.push("");
+    lines.push("Holding across the above:");
+    for (const limit of shared) {
+      lines.push(`- ${limit}`);
+    }
+  }
+  lines.push("");
+  lines.push("## What it does today");
+  lines.push("");
+  lines.push(record2.now.state || "Not established.");
+  for (const child of children) {
+    lines.push("");
+    lines.push(`**${child.subject}.** ${child.now.state}`);
+  }
+  lines.push("");
+  lines.push("## What is open");
+  lines.push("");
+  const gaps = [record2, ...children].flatMap(
+    (entry) => entry.gaps.map((gap) => ({ gap, owner: entry }))
+  );
+  if (gaps.length === 0) {
+    lines.push("Nothing.");
+  }
+  for (const { gap, owner } of gaps) {
+    const where = owner.id === record2.id ? "" : ` \u2014 ${owner.subject}`;
+    lines.push(
+      `- ${gap.statement}${where}
+  ${GAP_IN_WORDS[gap.kind] ?? gap.kind}; ${GAP_STATUS_IN_WORDS[gap.status] ?? gap.status}`
+    );
+  }
+  lines.push("");
+  lines.push("## What is being asked");
+  lines.push("");
+  lines.push(
+    record2.vision ? "A direction is already recorded for this. Nothing is being asked." : "Where this should be going. Everything above is what it is; nothing above says what it should become."
+  );
+  lines.push("");
+  return lines.join("\n");
+}
 async function resolvePointers(target, pointers, errors, warnings) {
   const pinned = /* @__PURE__ */ new Map();
   for (const pointer of pointers) {
@@ -36671,6 +36770,11 @@ function normalizeTrajectory(item, errors, pointers) {
   }
   if (!stringValue10(now?.state)) {
     push2("now.state is required");
+  } else {
+    const leak = identifierInProse(stringValue10(now?.state));
+    if (leak) {
+      push2(`now.state carries ${leak}; the revision belongs in now.pinned, not in the sentence`);
+    }
   }
   for (const reference of stringArray9(conceived?.from)) {
     if (!observationIds.has(reference)) {
@@ -36767,6 +36871,13 @@ function normalizeFindings(value, observationIds, push2, cite) {
     seen.add(id);
     if (!stringValue10(entry.situation).trim()) {
       push2(`${id}.situation is required`);
+    } else {
+      const leak = identifierInProse(stringValue10(entry.situation));
+      if (leak) {
+        push2(
+          `${id}.situation carries ${leak}; a situation is read by the maintainer, and an address belongs in evidence`
+        );
+      }
     }
     const observations = stringArray9(entry.observations);
     if (observations.length === 0) {
@@ -36824,6 +36935,11 @@ function normalizeGaps(value, push2) {
     }
     if (!statement) {
       push2("gap statement is required");
+    } else {
+      const leak = identifierInProse(statement);
+      if (leak) {
+        push2(`gap statement carries ${leak}; a gap is read by the maintainer, not resolved by them`);
+      }
     }
     if (status === "accept" || status === "accepted") {
       push2(
@@ -36949,6 +37065,19 @@ function applyGapWeights(known, edges) {
 }
 function hasPrimaryParent(id, edges) {
   return edges.some((edge) => edge.source === id && edge.kind === "part-of" && edge.primary);
+}
+var IDENTIFIER_IN_PROSE = [
+  { pattern: /`[^`]+`/, name: "a quoted identifier" },
+  { pattern: /\b[\w-]+\.(ts|tsx|js|jsx|rs|py|go|rb|java|sql|toml|json|ya?ml|md)\b/i, name: "a file name" },
+  { pattern: /\b(?:obs|fin|traj|vision)-[a-z0-9-]+\b/, name: "a record id" },
+  { pattern: /\b[A-Z]{2,}-\d+\b/, name: "a ledger id" },
+  { pattern: /\b[0-9a-f]{7,40}\b/, name: "a commit" },
+  { pattern: /::|\bgit:/, name: "a code or repository reference" },
+  { pattern: /§\s*\d/, name: "a section number" },
+  { pattern: /\b[a-z]+(?:_[a-z]+)+\b/, name: "a symbol name" }
+];
+function identifierInProse(value) {
+  return IDENTIFIER_IN_PROSE.find((entry) => entry.pattern.test(value))?.name;
 }
 function looksLikeIdentifier(subject) {
   return /[/\\]/.test(subject) || /::/.test(subject) || /\.(ts|js|rs|py|go|tsx|jsx|java|rb|md|json|toml|sql)\b/i.test(subject) || /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(subject) || /^[a-z][a-zA-Z0-9]*(?:[A-Z][a-zA-Z0-9]*)+$/.test(subject);
@@ -40343,6 +40472,26 @@ function knowledgeTrajectoryCommand() {
       }
       if (result.errors.length > 0) {
         process.exitCode = 2;
+      }
+    })
+  ).command(
+    "ask",
+    new Command().description(
+      "Render the packet the maintainer reads for one trajectory, or for the top of the queue.\nGenerated from the record, so it carries no identifier, path, code or schema token:\nthose live in the record, where they are load bearing, and not in a product decision."
+    ).arguments("[trajectory:string]").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).action(async (options, trajectory) => {
+      const result = await compileTrajectories(options.target);
+      const id = trajectory ?? result.pending[0]?.id;
+      if (!id) {
+        process.stdout.write("No trajectory is waiting on a product decision.\n");
+        return;
+      }
+      process.stdout.write(renderTrajectoryPacket(result.graph, id));
+      if (result.errors.length > 0) {
+        process.stdout.write(
+          `
+(${result.errors.length} unresolved error(s) in the records behind this; run check.)
+`
+        );
       }
     })
   ).command(

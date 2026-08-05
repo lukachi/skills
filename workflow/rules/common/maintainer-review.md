@@ -88,6 +88,18 @@ most once. If a decision genuinely cannot be stated without engineering
 vocabulary, that is a finding rather than a licence: the capability has no
 product-level description yet, and recording that gap is part of the answer.
 
+This rule is broken most often not in the records but in the message. Records
+written carefully in product language get summarized into a reply carrying file
+names as evidence, internal record ids as subjects, ledger codes as citations,
+commit hashes as dates, and raw field values as categories — because the reply is
+composed freely from the working context while the records were written against a
+contract. The addresses belong in the records, where they are load bearing. What
+reaches the person deciding about the product is sentences.
+
+Where a packet can be generated from the records rather than composed, generate
+it. A renderer that never reads an identifier cannot print one, and that is worth
+more than any amount of care taken one message at a time.
+
 One decision per packet. Several stacked in one message read as a status report
 and get answered as none of them.
 

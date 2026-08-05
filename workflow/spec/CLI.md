@@ -253,6 +253,18 @@ wfctl knowledge reconstruct close <case-id> --outcome completed
   `trajectories/`, reports structural errors, and lists the roots awaiting a
   vision, largest total gap first. `--build` writes the compiled graph when no
   error remains.
+- `wfctl knowledge trajectory ask [<trajectory>]` renders the packet the
+  maintainer reads, for the named subject or the top of the queue. It is
+  generated from the record's prose fields, so it cannot carry a path, an
+  identifier, a commit, a section number or a raw field value: a cause is
+  rendered as what it means rather than as its schema token, and a limit shared
+  by every finding is stated once instead of on each.
+
+  Addresses are not banned from the corpus — they are load bearing in `evidence`,
+  `resource` and `edges`. They are banned from the text a product owner reads,
+  and the compiler rejects one that appears in a `situation`, a gap statement or
+  `now.state`.
+
 - `wfctl knowledge trajectory declare <trajectory> --statement "<what it should
   become>"` records the maintainer's vision. The id is derived from the
   trajectory and the actor comes from the configured `maintainer`, so nobody is

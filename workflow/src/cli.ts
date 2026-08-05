@@ -46,7 +46,11 @@ import {
   updateIntakeCheckpoint,
 } from "./intake.js";
 import { writeClaimLedger } from "./claim-ledger.js";
-import { compileTrajectories, writeTrajectoryGraph } from "./trajectory.js";
+import {
+  compileTrajectories,
+  renderTrajectoryPacket,
+  writeTrajectoryGraph,
+} from "./trajectory.js";
 import { declareVision, type VisionMethod } from "./vision.js";
 import { hashKnowledgeConcept, validateKnowledge } from "./knowledge.js";
 import { writeKnowledgeGraph } from "./knowledge-graph.js";
@@ -1949,6 +1953,31 @@ function knowledgeTrajectoryCommand() {
           }
           if (result.errors.length > 0) {
             process.exitCode = 2;
+          }
+        }),
+    )
+    .command(
+      "ask",
+      new Command()
+        .description(
+          "Render the packet the maintainer reads for one trajectory, or for the top of the queue.\n"
+            + "Generated from the record, so it carries no identifier, path, code or schema token:\n"
+            + "those live in the record, where they are load bearing, and not in a product decision.",
+        )
+        .arguments("[trajectory:string]")
+        .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+        .action(async (options, trajectory) => {
+          const result = await compileTrajectories(options.target);
+          const id = trajectory ?? result.pending[0]?.id;
+          if (!id) {
+            process.stdout.write("No trajectory is waiting on a product decision.\n");
+            return;
+          }
+          process.stdout.write(renderTrajectoryPacket(result.graph, id));
+          if (result.errors.length > 0) {
+            process.stdout.write(
+              `\n(${result.errors.length} unresolved error(s) in the records behind this; run check.)\n`,
+            );
           }
         }),
     )

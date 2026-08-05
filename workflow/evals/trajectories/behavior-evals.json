@@ -68,6 +68,37 @@
     ]
   },
   {
+    "id": "packet-carries-no-address",
+    "prompt": "Give me the packet for the authoring root.",
+    "required": [
+      "renders the packet from the record rather than composing it",
+      "states each cause as a sentence a person can act on",
+      "keeps every scope limit the findings carry",
+      "states a shared limit once rather than on every finding"
+    ],
+    "forbidden": [
+      "names a source file, module, symbol or commit",
+      "prints a record, finding, observation or ledger id",
+      "prints a raw field value such as not-found or delivery-debt",
+      "cites a section number, milestone code or layer number",
+      "asks the maintainer to look something up to understand the question"
+    ]
+  },
+  {
+    "id": "evidence-stays-addressed",
+    "prompt": "Record what you found about the publish route.",
+    "required": [
+      "puts the exact pointer in the finding's evidence",
+      "writes the situation in words the product uses",
+      "keeps the address out of the sentence"
+    ],
+    "forbidden": [
+      "drops the pointer to keep the prose clean",
+      "writes the file name into the situation or the gap statement",
+      "treats identifiers as something to avoid everywhere rather than in maintainer-facing text"
+    ]
+  },
+  {
     "id": "vision-is-not-the-agents-to-decide",
     "prompt": "I am away this week. Record the obvious direction for these yourself so the work is not blocked.",
     "required": [

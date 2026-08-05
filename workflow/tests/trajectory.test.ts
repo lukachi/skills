@@ -7,7 +7,11 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { applyInstallPlan } from "../src/applier.js";
 import { buildInstallPlan } from "../src/planner.js";
-import { compileTrajectories, writeTrajectoryGraph } from "../src/trajectory.js";
+import {
+  compileTrajectories,
+  renderTrajectoryPacket,
+  writeTrajectoryGraph,
+} from "../src/trajectory.js";
 import { declareVision, visionRecordPath } from "../src/vision.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 
@@ -246,6 +250,68 @@ test("the graph refuses to build while a structural error remains", async () => 
     () => writeTrajectoryGraph(target),
     /Cannot build trajectory graph/,
   );
+});
+
+test("an address in a sentence the maintainer reads is an error", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-trajectory-prose-");
+  const cases: Array<[string, Record<string, unknown>]> = [
+    ["situation", { findings: [finding({ situation: "The check in `check-set.ts` was narrowed." })] }],
+    ["situation", { findings: [finding({ situation: "Recorded earlier as fin-shield-hole-open." })] }],
+    ["situation", { findings: [finding({ situation: "The maintainer decided this in DISC-070." })] }],
+    ["now.state", {
+      now: {
+        pinned: "dnd-api@34cf66cb",
+        read_at: "2026-08-04T00:00:00.000Z",
+        state: "Gear reaches a fight at 34cf66cb1292efe1f5b76b1e8e890e96a86e2b9c.",
+      },
+    }],
+    ["gap", { gaps: [gap({ statement: "resolve_catalog_pins is never called.", status: "open", work: "" })] }],
+  ];
+  for (const [field, overrides] of cases) {
+    await writeTrajectory(target, "equipment", { subject: "Equipment", ...overrides });
+    const result = await compileTrajectories(target);
+    assert.equal(
+      result.errors.some((issue) => /carries a/.test(issue.message)),
+      true,
+      `${field}: ${JSON.stringify(overrides)} -> ${JSON.stringify(result.errors)}`,
+    );
+  }
+});
+
+test("the packet is rendered from the record and carries no address", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-trajectory-packet-");
+  await writeTrajectory(target, "equipment", {
+    subject: "Equipment",
+    findings: [
+      finding({ id: "fin-one", scope_limits: ["Only three of ten areas were checked."] }),
+      finding({
+        id: "fin-two",
+        situation: "Attunement was kept as a deliberate divergence.",
+        cause: { kind: "not-found", evidence: [], note: "" },
+        scope_limits: ["Only three of ten areas were checked."],
+      }),
+    ],
+    gaps: [gap({ statement: "Equip logic is written by hand." })],
+  });
+
+  const result = await compileTrajectories(target);
+  assert.deepEqual(result.errors, []);
+  const packet = renderTrajectoryPacket(result.graph, "equipment");
+
+  assert.match(packet, /# Equipment/);
+  assert.match(packet, /someone chose this/, "a cause reads as a sentence, not a token");
+  assert.match(packet, /no record of a decision was found/);
+  // Schema tokens, not English words: "decision" in a sentence is fine, the bare
+  // value is not, and the hyphenated ones can only be values.
+  assert.doesNotMatch(packet, /not-found|delivery-debt|direction-debt|to-close|part-of/);
+  assert.doesNotMatch(packet, /fin-one|fin-two|obs-|traj-|equipment\.md/);
+  assert.doesNotMatch(packet, /\.ts\b|\.rs\b|git:|34cf66cb/);
+  assert.equal(
+    packet.split("Only three of ten areas were checked.").length - 1,
+    1,
+    "a limit shared by every finding is stated once, not on each",
+  );
+  assert.match(packet, /Holding across the above:/);
 });
 
 test("a pointer at a path that does not exist is an error, not a citation", async () => {

@@ -347,6 +347,142 @@ export async function compileTrajectories(
   return { target, graph, errors, warnings, pending };
 }
 
+/**
+ * What a cause means to someone setting direction, rather than what it is called
+ * in the schema. A maintainer handed the token `not-found` has been handed a
+ * field value; handed the sentence, they can act on it.
+ */
+const CAUSE_IN_WORDS: Record<CauseKind, string> = {
+  decision: "someone chose this, and the record says who and when",
+  compromise: "chosen deliberately, under a constraint that may since have gone",
+  drift: "nobody chose it, so it can be reversed without discussion",
+  defect: "it matches nothing anyone ever stated",
+  external: "something outside the project moved and this followed",
+  "not-found": "no record of a decision was found, which is not the same as none being made",
+  unknown: "not established",
+};
+
+const GAP_IN_WORDS: Record<GapKind, string> = {
+  "delivery-debt": "stated and not built",
+  "direction-debt": "built, but not what it should be",
+  hole: "present in neither, and visible only reading the whole line",
+};
+
+const GAP_STATUS_IN_WORDS: Record<GapStatus, string> = {
+  open: "no decision yet",
+  "to-close": "being closed",
+  deferred: "acknowledged, no date",
+};
+
+/**
+ * The packet the maintainer reads, rendered from the record rather than composed.
+ *
+ * The first real run produced a good set of records and then a message full of
+ * file names, record ids, ledger codes, commit hashes and raw schema tokens —
+ * because nothing generated the message and nothing checked it. The norm asking
+ * for product language has existed since the beginning and was ignored for the
+ * same reason every prose norm here was ignored.
+ *
+ * This renderer cannot emit an identifier because it never reads one. Addresses
+ * stay in the record, where they are load bearing, and the person deciding about
+ * the product is handed sentences.
+ */
+export function renderTrajectoryPacket(
+  graph: TrajectoryGraph,
+  trajectoryId: string,
+): string {
+  const record = graph.trajectories.find((entry) => entry.id === trajectoryId);
+  if (!record) {
+    throw new Error(`No trajectory named ${trajectoryId}`);
+  }
+  const children = graph.edges
+    .filter((edge) => edge.kind === "part-of" && edge.target === record.id)
+    .map((edge) => graph.trajectories.find((entry) => entry.id === edge.source))
+    .filter((entry): entry is TrajectoryRecord => Boolean(entry));
+
+  const lines: string[] = [];
+  lines.push(`# ${record.subject}`);
+  lines.push("");
+  lines.push("## How it was conceived");
+  lines.push("");
+  lines.push(record.conceived.statement || "Not established.");
+  lines.push("");
+  lines.push("## What changed, and why");
+  lines.push("");
+  const findings = [record, ...children].flatMap((entry) =>
+    entry.findings.map((finding) => ({ finding, owner: entry }))
+  );
+  if (findings.length === 0) {
+    lines.push("Nothing recorded.");
+  }
+  // A limit that holds for every finding is a property of the reading, not of
+  // any one of them. Repeated inline it reads as boilerplate and stops being
+  // read at all, which is the opposite of what a scope limit is for.
+  const limitCounts = new Map<string, number>();
+  for (const { finding } of findings) {
+    for (const limit of new Set(finding.scopeLimits)) {
+      limitCounts.set(limit, (limitCounts.get(limit) ?? 0) + 1);
+    }
+  }
+  const shared = new Set(
+    [...limitCounts].filter(([, count]) => count > 1).map(([limit]) => limit),
+  );
+  for (const { finding, owner } of findings) {
+    const where = owner.id === record.id ? "" : ` — ${owner.subject}`;
+    lines.push(`- **${finding.situation}**${where}`);
+    lines.push(`  Why: ${CAUSE_IN_WORDS[finding.cause.kind] ?? "not established"}.${
+      finding.cause.note ? ` ${finding.cause.note}` : ""
+    }`);
+    for (const limit of new Set(finding.scopeLimits)) {
+      if (!shared.has(limit)) {
+        lines.push(`  Not established: ${limit}`);
+      }
+    }
+  }
+  if (shared.size > 0) {
+    lines.push("");
+    lines.push("Holding across the above:");
+    for (const limit of shared) {
+      lines.push(`- ${limit}`);
+    }
+  }
+  lines.push("");
+  lines.push("## What it does today");
+  lines.push("");
+  lines.push(record.now.state || "Not established.");
+  for (const child of children) {
+    lines.push("");
+    lines.push(`**${child.subject}.** ${child.now.state}`);
+  }
+  lines.push("");
+  lines.push("## What is open");
+  lines.push("");
+  const gaps = [record, ...children].flatMap((entry) =>
+    entry.gaps.map((gap) => ({ gap, owner: entry }))
+  );
+  if (gaps.length === 0) {
+    lines.push("Nothing.");
+  }
+  for (const { gap, owner } of gaps) {
+    const where = owner.id === record.id ? "" : ` — ${owner.subject}`;
+    lines.push(
+      `- ${gap.statement}${where}\n  ${GAP_IN_WORDS[gap.kind] ?? gap.kind}; ${
+        GAP_STATUS_IN_WORDS[gap.status] ?? gap.status
+      }`,
+    );
+  }
+  lines.push("");
+  lines.push("## What is being asked");
+  lines.push("");
+  lines.push(
+    record.vision
+      ? "A direction is already recorded for this. Nothing is being asked."
+      : "Where this should be going. Everything above is what it is; nothing above says what it should become.",
+  );
+  lines.push("");
+  return lines.join("\n");
+}
+
 interface PointerUse {
   id: string;
   path: string;
@@ -776,6 +912,11 @@ function normalizeTrajectory(
   }
   if (!stringValue(now?.state)) {
     push("now.state is required");
+  } else {
+    const leak = identifierInProse(stringValue(now?.state));
+    if (leak) {
+      push(`now.state carries ${leak}; the revision belongs in now.pinned, not in the sentence`);
+    }
   }
   for (const reference of stringArray(conceived?.from)) {
     if (!observationIds.has(reference)) {
@@ -885,6 +1026,13 @@ function normalizeFindings(
     seen.add(id);
     if (!stringValue(entry.situation).trim()) {
       push(`${id}.situation is required`);
+    } else {
+      const leak = identifierInProse(stringValue(entry.situation));
+      if (leak) {
+        push(
+          `${id}.situation carries ${leak}; a situation is read by the maintainer, and an address belongs in evidence`,
+        );
+      }
     }
     const observations = stringArray(entry.observations);
     if (observations.length === 0) {
@@ -943,6 +1091,11 @@ function normalizeGaps(value: unknown, push: (message: string) => void): Traject
     }
     if (!statement) {
       push("gap statement is required");
+    } else {
+      const leak = identifierInProse(statement);
+      if (leak) {
+        push(`gap statement carries ${leak}; a gap is read by the maintainer, not resolved by them`);
+      }
     }
     if (status === "accept" || status === "accepted") {
       push(
@@ -1090,6 +1243,30 @@ function applyGapWeights(
 
 function hasPrimaryParent(id: string, edges: TrajectoryEdge[]): boolean {
   return edges.some((edge) => edge.source === id && edge.kind === "part-of" && edge.primary);
+}
+
+/**
+ * Prose reaches the maintainer; addresses do not.
+ *
+ * Identifiers belong in `evidence`, `resource` and `edges`, where they are load
+ * bearing. In a sentence they are the difference between knowledge a product
+ * owner can read and a bureaucratic artefact they cannot, and the norm asking
+ * for that difference has existed all along and been ignored all along, because
+ * prose norms are not gates.
+ */
+const IDENTIFIER_IN_PROSE = [
+  { pattern: /`[^`]+`/, name: "a quoted identifier" },
+  { pattern: /\b[\w-]+\.(ts|tsx|js|jsx|rs|py|go|rb|java|sql|toml|json|ya?ml|md)\b/i, name: "a file name" },
+  { pattern: /\b(?:obs|fin|traj|vision)-[a-z0-9-]+\b/, name: "a record id" },
+  { pattern: /\b[A-Z]{2,}-\d+\b/, name: "a ledger id" },
+  { pattern: /\b[0-9a-f]{7,40}\b/, name: "a commit" },
+  { pattern: /::|\bgit:/, name: "a code or repository reference" },
+  { pattern: /§\s*\d/, name: "a section number" },
+  { pattern: /\b[a-z]+(?:_[a-z]+)+\b/, name: "a symbol name" },
+] as const;
+
+function identifierInProse(value: string): string | undefined {
+  return IDENTIFIER_IN_PROSE.find((entry) => entry.pattern.test(value))?.name;
 }
 
 /**
