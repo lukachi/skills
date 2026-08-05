@@ -1229,16 +1229,23 @@ function hasPrimaryParent(id: string, edges: TrajectoryEdge[]): boolean {
 }
 
 /**
- * A subject named for a file, a symbol, or a module is the failure this guard
- * exists for: the hierarchy it produces is correct about the repository and
- * carries nothing anyone can set a direction against.
+ * Three forms that are never a product subject in any language: a path
+ * separator, a namespace operator, a source-file extension.
+ *
+ * Deliberately no heuristic beyond them. An earlier version also flagged
+ * kebab-case and camelCase, which blocked real product names — `check-in`,
+ * `sign-up`, `opt-in` — while `Engine Isolation` passed untouched, as did the
+ * same engineering concept named in Russian or Japanese. It failed in both
+ * directions at once, which is what a shape test does to a rule about meaning.
+ *
+ * So this catches the copy-paste and nothing else. Whether a subject is a
+ * product concept or an engineering one wearing a product name is a judgement,
+ * and it belongs to `assemble-trajectories`, where it is stated as one.
  */
 function looksLikeIdentifier(subject: string): boolean {
   return /[/\\]/.test(subject)
     || /::/.test(subject)
-    || /\.(ts|js|rs|py|go|tsx|jsx|java|rb|md|json|toml|sql)\b/i.test(subject)
-    || /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(subject)
-    || /^[a-z][a-zA-Z0-9]*(?:[A-Z][a-zA-Z0-9]*)+$/.test(subject);
+    || /\.(ts|js|rs|py|go|tsx|jsx|java|rb|md|json|toml|sql)\b/i.test(subject);
 }
 
 function isValidId(value: string): boolean {

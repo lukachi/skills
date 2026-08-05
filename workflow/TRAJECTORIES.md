@@ -637,7 +637,7 @@ Every rule in this document that could be made mechanical is:
 | Rule | Enforced as |
 | --- | --- |
 | A cause that claims a reason carries evidence for it | Error, unless the kind is `not-found` or `unknown` |
-| A subject is product language, never a path or symbol | Error on `/`, `::`, a source extension, kebab-case, or camelCase |
+| A subject is not pasted from the source tree | Error on `/`, `::` or a source extension — a paste, not a judgement |
 | Vision inherits along `part-of` only | Error when any other edge is marked primary |
 | Exactly one parent inherits | Error on zero or several primary `part-of` edges |
 | `part-of` is acyclic | Error naming the cycle |

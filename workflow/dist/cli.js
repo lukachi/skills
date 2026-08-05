@@ -37050,7 +37050,7 @@ function hasPrimaryParent(id, edges) {
   return edges.some((edge) => edge.source === id && edge.kind === "part-of" && edge.primary);
 }
 function looksLikeIdentifier(subject) {
-  return /[/\\]/.test(subject) || /::/.test(subject) || /\.(ts|js|rs|py|go|tsx|jsx|java|rb|md|json|toml|sql)\b/i.test(subject) || /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(subject) || /^[a-z][a-zA-Z0-9]*(?:[A-Z][a-zA-Z0-9]*)+$/.test(subject);
+  return /[/\\]/.test(subject) || /::/.test(subject) || /\.(ts|js|rs|py|go|tsx|jsx|java|rb|md|json|toml|sql)\b/i.test(subject);
 }
 function isValidId(value) {
   return /^[a-z0-9][a-z0-9-]{0,95}$/.test(value);

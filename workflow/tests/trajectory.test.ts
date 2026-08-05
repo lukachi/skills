@@ -75,10 +75,9 @@ test("not-found is the honest escape and needs no cause evidence", async () => {
   assert.deepEqual(result.errors, []);
 });
 
-test("a subject named for an implementation identifier is rejected", async () => {
+test("a subject pasted from the source tree is rejected", async () => {
   const target = await initializedKnowledgeRepository("wfctl-trajectory-subject-");
   for (const subject of [
-    "engine-isolation",
     "services/combat/src/domain/encounter.rs",
     "rules_core::Loadout",
     "characters_client.rs",
@@ -89,6 +88,21 @@ test("a subject named for an implementation identifier is rejected", async () =>
       result.errors.some((issue) => /is an implementation identifier/.test(issue.message)),
       true,
       `${subject} should be rejected: ${JSON.stringify(result.errors)}`,
+    );
+  }
+});
+
+test("a real product name is not rejected for its punctuation", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-trajectory-subject-ok-");
+  // The guard catches a paste, not a judgement. These are product subjects an
+  // earlier shape test flagged, while "Engine Isolation" passed it untouched.
+  for (const subject of ["Check-in", "check-in", "sign-up", "opt-in", "Изоляция движка"]) {
+    await writeTrajectory(target, "engine", { subject });
+    const result = await compileTrajectories(target);
+    assert.deepEqual(
+      result.errors.filter((issue) => /is an implementation identifier/.test(issue.message)),
+      [],
+      `${subject} should pass: ${JSON.stringify(result.errors)}`,
     );
   }
 });

@@ -127,8 +127,10 @@ rather than implying the source was verified line by line.
 ## Phase four — assemble
 
 **A subject is named in product language.** Not a file, not a symbol, not a
-module, not a service. The compiler rejects the obvious forms, but it cannot
-catch a subject that is an engineering concept wearing a product-shaped name.
+module, not a service. The compiler rejects a path, a namespace operator and a
+source-file extension — a paste, not a judgement. Everything else is yours:
+`Engine Isolation` is exactly the failure this rule exists for and looks like
+ordinary prose, so a clean compile establishes nothing about it.
 
 The test is whether a maintainer could state where the subject should go. Nobody
 sets a direction for "engine isolation" — that is a structural fact, evidence
