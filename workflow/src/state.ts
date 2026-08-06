@@ -16,6 +16,7 @@ export const STATE_DOMAINS = [
   "reconstruction",
   "intake",
   "raw",
+  "trajectory",
   "work",
   "inbox",
 ] as const;

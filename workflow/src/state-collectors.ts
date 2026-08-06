@@ -2,6 +2,8 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { listCaptures } from "./capture.js";
 import { readPark } from "./park.js";
+import { collectDebts } from "./debts.js";
+import { compileTrajectories } from "./trajectory.js";
 import { isMissingFileError } from "./config.js";
 import { runTool } from "./dependencies.js";
 import { sessionBasis } from "./knowledge-session.js";
@@ -24,6 +26,7 @@ export const STATE_COLLECTORS: readonly StateCollector[] = [
   reconstructionCollector(),
   intakeCollector(),
   rawCollector(),
+  trajectoryCollector(),
   workCollector(),
   inboxCollector(),
 ];
@@ -467,6 +470,117 @@ function rawCollector(): StateCollector {
           : "Raw material is present",
         facts: { files, cases },
       }];
+    },
+  };
+}
+
+/**
+ * The trajectory pipeline reaching the brief at all.
+ *
+ * Six commands existed — check, ask, declare, promote, debts, schedule — and not
+ * one signal, so nothing ever announced that any of them was due. An agent
+ * opening a session saw an open change bundle and no mention of five subjects
+ * without a direction or forty-eight debts nobody had taken, and went where the
+ * brief pointed. A capability nobody is told about is a capability nobody uses;
+ * this is the wire that was missing, not another command.
+ *
+ * The order of the two gates is the product's, not the corpus's. A debt is owed
+ * against a declared direction, so debts cannot be ordered while subjects still
+ * lack one — reviewing them earlier asks the maintainer to rank work against a
+ * standard nobody has set. Direction first, then what it costs.
+ */
+function trajectoryCollector(): StateCollector {
+  return {
+    id: "trajectory",
+    profiles: ["knowledge"],
+    async collect(context) {
+      let ledger;
+      let compilation;
+      try {
+        compilation = await compileTrajectories(context.knowledgeRoot);
+        if (compilation.graph.trajectories.length === 0) {
+          return [];
+        }
+        ledger = await collectDebts(context.knowledgeRoot);
+      } catch {
+        // No trajectories assembled yet, or a repository this does not apply to.
+        return [];
+      }
+
+      const signals: StateSignal[] = [];
+      if (compilation.errors.length > 0) {
+        signals.push({
+          id: "trajectory.invalid",
+          domain: "trajectory",
+          level: "attention",
+          summary: "Trajectories do not compile, so nothing downstream can be trusted",
+          facts: {
+            errors: compilation.errors.length,
+            command: "wfctl knowledge trajectory check",
+          },
+          awaits: "agent",
+        });
+        return signals;
+      }
+
+      if (compilation.pending.length > 0) {
+        signals.push({
+          id: "trajectory.awaiting-vision",
+          domain: "trajectory",
+          level: "attention",
+          summary: "Subjects are waiting on you to say where they should go",
+          facts: {
+            subjects: compilation.pending.length,
+            worstFirst: nameThem(compilation.pending.map((entry) => entry.subject)),
+            command: "wfctl knowledge trajectory ask",
+          },
+          awaits: "maintainer",
+        });
+      }
+
+      const open = ledger.debts.filter((debt) => debt.status === "open");
+      const scheduled = ledger.debts.filter((debt) => debt.status === "to-close");
+      if (open.length > 0 && compilation.pending.length === 0) {
+        // Every subject that owes something has a direction to owe it against,
+        // so what the project owes can now be ordered. Until one debt is taken
+        // this is the decision the whole reconstruction was for, and it is the
+        // maintainer's: which of these matter, and in what order.
+        signals.push({
+          id: "trajectory.debts-unscheduled",
+          domain: "trajectory",
+          level: "attention",
+          summary: scheduled.length === 0
+            ? "Everything the project owes is recorded and none of it is anyone's yet"
+            : "Debts are recorded that nobody has taken",
+          facts: {
+            open: open.length,
+            scheduled: scheduled.length,
+            command: "wfctl knowledge trajectory debts",
+          },
+          awaits: "maintainer",
+        });
+      }
+      if (ledger.dangling.length > 0) {
+        signals.push({
+          id: "trajectory.debt-dangling",
+          domain: "trajectory",
+          level: "attention",
+          summary: "A debt names work that exists nowhere, so it reads as handled",
+          facts: { debts: ledger.dangling.length },
+          awaits: "agent",
+        });
+      }
+      if (ledger.settled.length > 0) {
+        signals.push({
+          id: "trajectory.debt-settled",
+          domain: "trajectory",
+          level: "info",
+          summary: "Work naming a debt has landed; the subject needs reading again at a new revision",
+          facts: { debts: ledger.settled.length },
+          awaits: "agent",
+        });
+      }
+      return signals;
     },
   };
 }

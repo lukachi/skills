@@ -9,6 +9,8 @@ import { applyInstallPlan } from "../src/applier.js";
 import { collectDebts, scheduleDebt } from "../src/debts.js";
 import { buildInstallPlan } from "../src/planner.js";
 import { declareVision } from "../src/vision.js";
+import { collectWorkflowState } from "../src/state.js";
+import { STATE_COLLECTORS } from "../src/state-collectors.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -248,3 +250,65 @@ async function knowledgeRepository(prefix: string): Promise<string> {
   );
   return target;
 }
+
+test("the brief holds the debt gate shut until every subject has a direction", async () => {
+  const target = await knowledgeRepository("wfctl-debts-gate-");
+  await writeTrajectory(target, "traj-equipment");
+  await writeTrajectory(target, "traj-money", { subject: "Money" });
+
+  const before = await collectWorkflowState(target, { collectors: STATE_COLLECTORS });
+  const ids = (report: typeof before) => report.signals.map((signal) => signal.id);
+  // Debts are owed against a declared direction. Ordering them while subjects
+  // still lack one asks the maintainer to rank work against no standard, so the
+  // vision gate is the only one open.
+  assert.equal(ids(before).includes("trajectory.awaiting-vision"), true, JSON.stringify(ids(before)));
+  assert.equal(ids(before).includes("trajectory.debts-unscheduled"), false);
+
+  for (const trajectory of ["traj-equipment", "traj-money"]) {
+    await declareVision({
+      knowledgeRoot: target,
+      trajectory,
+      declaredBy: "human:nzafat",
+      statement: "Composable and authorable.",
+      method: "attested",
+      attested: "yes",
+    });
+  }
+
+  const after = await collectWorkflowState(target, { collectors: STATE_COLLECTORS });
+  assert.equal(ids(after).includes("trajectory.awaiting-vision"), false);
+  const debts = after.signals.find((signal) => signal.id === "trajectory.debts-unscheduled");
+  // Now it is due, and it is the maintainer's: which of these matter, in what
+  // order. Nothing announced it before this collector existed, so an agent read
+  // the brief, saw an open bundle and no debts at all, and went there instead.
+  assert.equal(debts?.awaits, "maintainer");
+  assert.equal(debts?.facts?.open, 2);
+  assert.equal(debts?.facts?.scheduled, 0);
+});
+
+test("a scheduled debt stops being unscheduled, and the gate says so", async () => {
+  const target = await knowledgeRepository("wfctl-debts-gate-scheduled-");
+  await writeTrajectory(target, "traj-equipment");
+  await declareVision({
+    knowledgeRoot: target,
+    trajectory: "traj-equipment",
+    declaredBy: "human:nzafat",
+    statement: "Composable and authorable.",
+    method: "attested",
+    attested: "yes",
+  });
+  await openBundle(target, "2026-08-06-equip-authoring");
+  await scheduleDebt({
+    target,
+    trajectory: "traj-equipment",
+    gap: "1",
+    work: "2026-08-06-equip-authoring",
+  });
+
+  const report = await collectWorkflowState(target, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    report.signals.some((signal) => signal.id === "trajectory.debts-unscheduled"),
+    false,
+    "nothing is owed and unclaimed, so the maintainer is asked nothing",
+  );
+});

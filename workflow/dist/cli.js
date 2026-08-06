@@ -37827,6 +37827,7 @@ var STATE_COLLECTORS = [
   reconstructionCollector(),
   intakeCollector(),
   rawCollector(),
+  trajectoryCollector(),
   workCollector(),
   inboxCollector()
 ];
@@ -38205,6 +38206,91 @@ function rawCollector() {
         summary: cases === 0 ? "Raw material exists and no intake case has ever covered it" : "Raw material is present",
         facts: { files, cases }
       }];
+    }
+  };
+}
+function trajectoryCollector() {
+  return {
+    id: "trajectory",
+    profiles: ["knowledge"],
+    async collect(context) {
+      let ledger;
+      let compilation;
+      try {
+        compilation = await compileTrajectories(context.knowledgeRoot);
+        if (compilation.graph.trajectories.length === 0) {
+          return [];
+        }
+        ledger = await collectDebts(context.knowledgeRoot);
+      } catch {
+        return [];
+      }
+      const signals2 = [];
+      if (compilation.errors.length > 0) {
+        signals2.push({
+          id: "trajectory.invalid",
+          domain: "trajectory",
+          level: "attention",
+          summary: "Trajectories do not compile, so nothing downstream can be trusted",
+          facts: {
+            errors: compilation.errors.length,
+            command: "wfctl knowledge trajectory check"
+          },
+          awaits: "agent"
+        });
+        return signals2;
+      }
+      if (compilation.pending.length > 0) {
+        signals2.push({
+          id: "trajectory.awaiting-vision",
+          domain: "trajectory",
+          level: "attention",
+          summary: "Subjects are waiting on you to say where they should go",
+          facts: {
+            subjects: compilation.pending.length,
+            worstFirst: nameThem(compilation.pending.map((entry) => entry.subject)),
+            command: "wfctl knowledge trajectory ask"
+          },
+          awaits: "maintainer"
+        });
+      }
+      const open2 = ledger.debts.filter((debt) => debt.status === "open");
+      const scheduled = ledger.debts.filter((debt) => debt.status === "to-close");
+      if (open2.length > 0 && compilation.pending.length === 0) {
+        signals2.push({
+          id: "trajectory.debts-unscheduled",
+          domain: "trajectory",
+          level: "attention",
+          summary: scheduled.length === 0 ? "Everything the project owes is recorded and none of it is anyone's yet" : "Debts are recorded that nobody has taken",
+          facts: {
+            open: open2.length,
+            scheduled: scheduled.length,
+            command: "wfctl knowledge trajectory debts"
+          },
+          awaits: "maintainer"
+        });
+      }
+      if (ledger.dangling.length > 0) {
+        signals2.push({
+          id: "trajectory.debt-dangling",
+          domain: "trajectory",
+          level: "attention",
+          summary: "A debt names work that exists nowhere, so it reads as handled",
+          facts: { debts: ledger.dangling.length },
+          awaits: "agent"
+        });
+      }
+      if (ledger.settled.length > 0) {
+        signals2.push({
+          id: "trajectory.debt-settled",
+          domain: "trajectory",
+          level: "info",
+          summary: "Work naming a debt has landed; the subject needs reading again at a new revision",
+          facts: { debts: ledger.settled.length },
+          awaits: "agent"
+        });
+      }
+      return signals2;
     }
   };
 }
@@ -38656,6 +38742,7 @@ var STATE_DOMAINS = [
   "reconstruction",
   "intake",
   "raw",
+  "trajectory",
   "work",
   "inbox"
 ];
