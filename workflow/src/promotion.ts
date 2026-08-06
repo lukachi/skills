@@ -7,7 +7,7 @@ import {
   type TrajectoryRecord,
   type TrajectoryVision,
 } from "./trajectory.js";
-import { serializeWorkSpec } from "./work-spec.js";
+import { parseWorkSpec, serializeWorkSpec } from "./work-spec.js";
 
 /**
  * Phase six: curated knowledge written from a trajectory.
@@ -43,6 +43,33 @@ import { serializeWorkSpec } from "./work-spec.js";
 
 const AUTHOR_MARK = "<!-- AUTHOR: ";
 
+/**
+ * The sections this pipeline cannot fill, and therefore must never overwrite.
+ *
+ * A page is written twice by design: once when the subject is read, and again
+ * when the maintainer declares where it should go. Between those two runs a
+ * person writes the parts no record holds. Rewriting the file wholesale on the
+ * second run destroys exactly that work, every time, on the path the design
+ * calls normal — so the second run replaces what it generated and keeps what it
+ * did not.
+ *
+ * `Engineering details` belongs here even though it carries no marker: it is
+ * generated as a bare "Not applicable." because the section is validated as
+ * links-only, and a comment inside it would be a second error saying nothing
+ * new. Once an engineering page exists and someone links it, that link is
+ * authored content under a generated default.
+ */
+const AUTHOR_SECTIONS = [
+  "Who it serves",
+  "Domain language",
+  "Rules and outcomes",
+  "Boundaries and exceptions",
+  "Examples",
+  "Engineering details",
+] as const;
+
+const ENGINEERING_DEFAULT = "Not applicable.";
+
 export interface PromotionResult {
   trajectory: string;
   path: string;
@@ -55,6 +82,21 @@ export interface PromotionResult {
   direction: "declared" | "undeclared";
   /** Sections the trajectory cannot supply, left marked for an author. */
   awaitingAuthor: string[];
+  /**
+   * Sections carried over from the page that was already there because a person
+   * had written them. Reported rather than silent: what they say was not
+   * re-derived from the records this run read, so a reader deciding whether the
+   * page is current needs to know which parts this run did not touch.
+   */
+  preserved: string[];
+  /**
+   * True when a preserved section cites a footnote and the source list changed
+   * under it. Declaring a direction prepends the vision as source 1 and shifts
+   * every pinned source down, so a citation written against the old numbering
+   * now points at a different claim. Nothing renumbers it, because guessing
+   * which claim an author meant is worse than saying the citation moved.
+   */
+  citationsMayHaveShifted: boolean;
   /** Observations dropped because curated knowledge may not cite untrusted input. */
   droppedRawSources: number;
   /** Pages this subject claims to replace, and whether each is on disk. */
@@ -103,7 +145,10 @@ export async function promoteTrajectory(options: PromoteOptions): Promise<Promot
         + "cite. Read the subject at a pinned revision, or declare where it should go.",
     );
   }
-  const body = renderBody(record, compilation.graph, vision, sources);
+  const generated = renderBody(record, compilation.graph, vision, sources);
+  const { body, preserved, citationsMayHaveShifted } = existed
+    ? keepAuthoredSections(await readFile(absolute, "utf8"), generated)
+    : { body: generated, preserved: [], citationsMayHaveShifted: false };
   const document = {
     metadata: {
       okf_version: "0.2",
@@ -172,11 +217,121 @@ export async function promoteTrajectory(options: PromoteOptions): Promise<Promot
       ...body.split("\n")
         .filter((line) => line.startsWith(AUTHOR_MARK))
         .map((line) => line.slice(AUTHOR_MARK.length).replace(/ -->$/, "")),
-      "Engineering details says not-applicable; link the engineering concepts if any exist",
+      // Only while it still says the generated default. Once someone links an
+      // engineering concept there, asking again would be asking for work done.
+      ...(preserved.includes("Engineering details")
+        ? []
+        : ["Engineering details says not-applicable; link the engineering concepts if any exist"]),
     ],
+    preserved,
+    citationsMayHaveShifted,
     droppedRawSources: dropped,
     replaces: await replacementState(target, record),
     unclaimed: await unclaimedPages(target, record.area, compilation.graph, new Set([path])),
+  };
+}
+
+/**
+ * Replace what this pipeline generated and keep what a person wrote.
+ *
+ * Section order, and everything outside the author sections, comes from the
+ * fresh render — that is the point of running again. Only a section this
+ * pipeline cannot fill, and that no longer holds its own placeholder, survives
+ * from the previous page.
+ */
+function keepAuthoredSections(
+  previous: string,
+  generated: string,
+): { body: string; preserved: string[]; citationsMayHaveShifted: boolean } {
+  const before = splitPage(parseWorkSpec(previous).body);
+  const after = splitPage(generated);
+  const preserved: string[] = [];
+
+  for (const heading of AUTHOR_SECTIONS) {
+    const old = before.sections.get(heading);
+    if (old === undefined || !after.sections.has(heading) || isPlaceholder(heading, old)) {
+      continue;
+    }
+    after.sections.set(heading, old);
+    preserved.push(heading);
+  }
+
+  const shifted = preserved.some((heading) => /\[\^\d+\]/.test(after.sections.get(heading) ?? ""))
+    && before.footnotes !== after.footnotes;
+
+  const lines = [after.head];
+  for (const heading of after.order) {
+    lines.push(`## ${heading}`, "", after.sections.get(heading) ?? "");
+  }
+  if (after.footnotes) {
+    lines.push(after.footnotes);
+  }
+  return {
+    body: `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`,
+    preserved,
+    citationsMayHaveShifted: shifted,
+  };
+}
+
+/** A section still saying what the generator put there, rather than an answer. */
+function isPlaceholder(heading: string, content: string): boolean {
+  if (content.includes(AUTHOR_MARK)) {
+    return true;
+  }
+  return heading === "Engineering details" && content.trim() === ENGINEERING_DEFAULT;
+}
+
+interface PageParts {
+  /** The title and anything above the first section. */
+  head: string;
+  sections: Map<string, string>;
+  order: string[];
+  /** The `[^n]:` block, which trails the last section rather than belonging to it. */
+  footnotes: string;
+}
+
+function splitPage(body: string): PageParts {
+  const sections = new Map<string, string>();
+  const order: string[] = [];
+  const head: string[] = [];
+  const footnotes: string[] = [];
+  let current: string | undefined;
+  let buffer: string[] = [];
+
+  const flush = (): void => {
+    if (current !== undefined) {
+      sections.set(current, buffer.join("\n").trim());
+    }
+    buffer = [];
+  };
+
+  for (const line of body.split("\n")) {
+    const heading = /^## (.+)$/.exec(line);
+    if (heading) {
+      flush();
+      current = heading[1]!.trim();
+      order.push(current);
+      continue;
+    }
+    // Footnote definitions sit after the final section and belong to the page,
+    // not to whichever section happens to precede them.
+    if (/^\[\^[^\]]+\]:/.test(line)) {
+      footnotes.push(line);
+      continue;
+    }
+    if (current === undefined) {
+      head.push(line);
+    } else {
+      buffer.push(line);
+    }
+  }
+  flush();
+
+  return {
+    head: head.join("\n").trim(),
+    sections,
+    order,
+    footnotes: footnotes.join("\n").trim(),
   };
 }
 

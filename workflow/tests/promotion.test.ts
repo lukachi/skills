@@ -330,3 +330,177 @@ async function knowledgeRepository(prefix: string): Promise<string> {
   );
   return target;
 }
+
+test("promoting again keeps what a person wrote and refreshes what it generated", async () => {
+  const target = await knowledgeRepository("wfctl-promote-preserve-");
+  await writeTrajectory(target, "traj-equipment");
+  const first = await promoteTrajectory({ target, trajectory: "traj-equipment" });
+
+  // What an author does between the two runs: fill the sections no record in
+  // this pipeline holds. Rewriting the file wholesale destroyed exactly this.
+  const authored = (await readFile(join(target, first.path), "utf8"))
+    .replace(
+      "<!-- AUTHOR: name the audiences; no record in this pipeline carries them -->",
+      "- **Players**, who carry whatever the fight lets them carry.",
+    )
+    .replace(
+      "<!-- AUTHOR: define the terms this subject owns, as the product uses them -->",
+      "- **A loadout** — what a character has on them when a fight starts.",
+    )
+    .replace(
+      "<!-- AUTHOR: one concrete example a person would recognise -->",
+      "A character walks in with a shield and a two-handed sword, and nothing objects.",
+    );
+  await writeFile(join(target, first.path), authored, "utf8");
+
+  await declareVision({
+    knowledgeRoot: target,
+    trajectory: "traj-equipment",
+    declaredBy: "human:nzafat",
+    statement: "Equipment should be composable and authorable.",
+    method: "attested",
+    attested: "yes",
+  });
+  const second = await promoteTrajectory({
+    target,
+    trajectory: "traj-equipment",
+    force: true,
+  });
+
+  const page = await readFile(join(target, second.path), "utf8");
+  assert.match(page, /- \*\*Players\*\*, who carry whatever the fight lets them carry\./);
+  assert.match(page, /- \*\*A loadout\*\* — what a character has on them when a fight starts\./);
+  assert.match(page, /A character walks in with a shield and a two-handed sword/);
+  assert.deepEqual(second.preserved, ["Who it serves", "Domain language", "Examples"]);
+
+  // And the generated half did refresh, which is the reason to run again at all.
+  assert.match(page, /Equipment should be composable and authorable\.\[\^1\]/);
+  assert.match(page, /intent: accepted/);
+  // A section the author never filled still comes back marked and still asks.
+  assert.match(page, /AUTHOR: state the rules a reader can rely on/);
+  assert.equal(
+    second.awaitingAuthor.some((entry) => /name the audiences/.test(entry)),
+    false,
+    "a filled section must not be asked for again",
+  );
+});
+
+test("a citation in a kept section is reported when the sources move under it", async () => {
+  const target = await knowledgeRepository("wfctl-promote-footnote-");
+  await writeTrajectory(target, "traj-equipment");
+  const first = await promoteTrajectory({ target, trajectory: "traj-equipment" });
+  await writeFile(
+    join(target, first.path),
+    (await readFile(join(target, first.path), "utf8")).replace(
+      "<!-- AUTHOR: name the audiences; no record in this pipeline carries them -->",
+      "- **Players**, and the shield rule they meet[^1].",
+    ),
+    "utf8",
+  );
+
+  // Declaring a direction prepends the vision as source 1, so every pinned
+  // source shifts down and the author's [^1] now names something else.
+  await declareVision({
+    knowledgeRoot: target,
+    trajectory: "traj-equipment",
+    declaredBy: "human:nzafat",
+    statement: "Composable and authorable.",
+    method: "attested",
+    attested: "yes",
+  });
+  const second = await promoteTrajectory({
+    target,
+    trajectory: "traj-equipment",
+    force: true,
+  });
+
+  assert.equal(second.citationsMayHaveShifted, true);
+  assert.match(
+    await readFile(join(target, second.path), "utf8"),
+    /- \*\*Players\*\*, and the shield rule they meet\[\^1\]\./,
+    "the text is kept as written; only the caller is told the numbering moved",
+  );
+});
+
+test("an engineering link survives, and its default does not count as authored", async () => {
+  const target = await knowledgeRepository("wfctl-promote-engineering-");
+  await writeTrajectory(target, "traj-equipment");
+  const first = await promoteTrajectory({ target, trajectory: "traj-equipment" });
+  assert.equal(first.preserved.length, 0, "nothing existed to keep");
+
+  const rerun = await promoteTrajectory({ target, trajectory: "traj-equipment", force: true });
+  assert.equal(
+    rerun.preserved.includes("Engineering details"),
+    false,
+    "the generated default is not somebody's work",
+  );
+  assert.equal(
+    rerun.awaitingAuthor.some((entry) => /Engineering details/.test(entry)),
+    true,
+  );
+
+  await writeFile(
+    join(target, first.path),
+    (await readFile(join(target, first.path), "utf8")).replace(
+      "## Engineering details\n\nNot applicable.",
+      "## Engineering details\n\n- [How equipment is stored](../../architecture/loadout.md)",
+    ),
+    "utf8",
+  );
+  const third = await promoteTrajectory({ target, trajectory: "traj-equipment", force: true });
+  assert.equal(third.preserved.includes("Engineering details"), true);
+  assert.match(
+    await readFile(join(target, third.path), "utf8"),
+    /\[How equipment is stored\]\(\.\.\/\.\.\/architecture\/loadout\.md\)/,
+  );
+  assert.equal(
+    third.awaitingAuthor.some((entry) => /Engineering details/.test(entry)),
+    false,
+    "asking for work already done is asking twice",
+  );
+});
+
+test("a page an author finished still validates after the direction arrives", async () => {
+  const target = await knowledgeRepository("wfctl-promote-roundtrip-");
+  await writeTrajectory(target, "traj-equipment");
+  const first = await promoteTrajectory({ target, trajectory: "traj-equipment" });
+
+  let page = await readFile(join(target, first.path), "utf8");
+  for (const [marker, answer] of [
+    ["name the audiences; no record in this pipeline carries them", "- **Players**, who carry what a fight lets them."],
+    ["define the terms this subject owns, as the product uses them", "- **A loadout** — what a character wears into a fight."],
+    ["state the rules a reader can rely on, or link them", "- What an item does is written by hand today."],
+    ["state what this subject does not cover", "It does not cover what an item is worth, which belongs to World."],
+    ["one concrete example a person would recognise", "A shield and a two-handed sword, worn together, and nothing objects."],
+  ] as const) {
+    page = page.replace(`<!-- AUTHOR: ${marker} -->`, answer);
+  }
+  await writeFile(join(target, first.path), page, "utf8");
+  assert.equal((await validateKnowledge(target, [first.path])).valid, true, "the author finished it");
+
+  await declareVision({
+    knowledgeRoot: target,
+    trajectory: "traj-equipment",
+    declaredBy: "human:nzafat",
+    statement: "Equipment should be composable and authorable.",
+    method: "attested",
+    attested: "yes",
+  });
+  const second = await promoteTrajectory({ target, trajectory: "traj-equipment", force: true });
+
+  // The whole point: a finished page stays finished. Before this, the second run
+  // emptied five sections and the page went back to failing validation.
+  const validation = await validateKnowledge(target, [second.path]);
+  assert.deepEqual(validation.errors.map((issue) => issue.message), []);
+  assert.equal(validation.valid, true);
+  assert.deepEqual(
+    second.preserved,
+    ["Who it serves", "Domain language", "Rules and outcomes", "Boundaries and exceptions", "Examples"],
+  );
+  // The one thing still asked for is the engineering link, which no engineering
+  // page exists to receive. It is a suggestion, not a validation failure.
+  assert.deepEqual(
+    second.awaitingAuthor,
+    ["Engineering details says not-applicable; link the engineering concepts if any exist"],
+  );
+});

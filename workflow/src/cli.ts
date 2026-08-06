@@ -2327,6 +2327,25 @@ function knowledgeTrajectoryCommand() {
                 + "task; once it is recorded, promote again with --force to add the second half.\n",
             );
           }
+          if (result.preserved.length > 0) {
+            process.stdout.write(
+              `\n${result.preserved.length} section(s) were written by a person and kept as they were:\n`,
+            );
+            for (const heading of result.preserved) {
+              process.stdout.write(`  ${heading}\n`);
+            }
+            process.stdout.write(
+              "Nothing this run read was applied to them. If the records now say something\n"
+                + "they contradict, that is yours to reconcile.\n",
+            );
+          }
+          if (result.citationsMayHaveShifted) {
+            process.stdout.write(
+              "\nA kept section cites a footnote and the source list changed under it, so its\n"
+                + "numbers may now point at different claims. Nothing was renumbered: guessing\n"
+                + "which claim the author meant is worse than saying the citation moved.\n",
+            );
+          }
           if (result.awaitingAuthor.length > 0) {
             process.stdout.write(
               `\nThe draft does not validate yet. ${result.awaitingAuthor.length} section(s) need an author:\n`,

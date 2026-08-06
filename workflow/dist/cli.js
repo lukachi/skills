@@ -37336,6 +37336,15 @@ import { mkdir as mkdir12, readdir as readdir13, readFile as readFile21, writeFi
 import { dirname as dirname13, join as join19, resolve as resolve20 } from "node:path";
 init_work_spec();
 var AUTHOR_MARK = "<!-- AUTHOR: ";
+var AUTHOR_SECTIONS = [
+  "Who it serves",
+  "Domain language",
+  "Rules and outcomes",
+  "Boundaries and exceptions",
+  "Examples",
+  "Engineering details"
+];
+var ENGINEERING_DEFAULT = "Not applicable.";
 async function promoteTrajectory(options) {
   const target = resolve20(options.target);
   const compilation = await compileTrajectories(target);
@@ -37362,7 +37371,8 @@ async function promoteTrajectory(options) {
       `${record2.subject} has no direction declared and nothing citable to rest on: all ${dropped} observation(s) come from untrusted input, which curated knowledge may not cite. Read the subject at a pinned revision, or declare where it should go.`
     );
   }
-  const body = renderBody(record2, compilation.graph, vision, sources);
+  const generated = renderBody(record2, compilation.graph, vision, sources);
+  const { body, preserved, citationsMayHaveShifted } = existed ? keepAuthoredSections(await readFile21(absolute, "utf8"), generated) : { body: generated, preserved: [], citationsMayHaveShifted: false };
   const document3 = {
     metadata: {
       okf_version: "0.2",
@@ -37421,11 +37431,87 @@ async function promoteTrajectory(options) {
     direction: vision ? "declared" : "undeclared",
     awaitingAuthor: [
       ...body.split("\n").filter((line) => line.startsWith(AUTHOR_MARK)).map((line) => line.slice(AUTHOR_MARK.length).replace(/ -->$/, "")),
-      "Engineering details says not-applicable; link the engineering concepts if any exist"
+      // Only while it still says the generated default. Once someone links an
+      // engineering concept there, asking again would be asking for work done.
+      ...preserved.includes("Engineering details") ? [] : ["Engineering details says not-applicable; link the engineering concepts if any exist"]
     ],
+    preserved,
+    citationsMayHaveShifted,
     droppedRawSources: dropped,
     replaces: await replacementState(target, record2),
     unclaimed: await unclaimedPages(target, record2.area, compilation.graph, /* @__PURE__ */ new Set([path]))
+  };
+}
+function keepAuthoredSections(previous2, generated) {
+  const before = splitPage(parseWorkSpec(previous2).body);
+  const after = splitPage(generated);
+  const preserved = [];
+  for (const heading of AUTHOR_SECTIONS) {
+    const old = before.sections.get(heading);
+    if (old === void 0 || !after.sections.has(heading) || isPlaceholder(heading, old)) {
+      continue;
+    }
+    after.sections.set(heading, old);
+    preserved.push(heading);
+  }
+  const shifted = preserved.some((heading) => /\[\^\d+\]/.test(after.sections.get(heading) ?? "")) && before.footnotes !== after.footnotes;
+  const lines = [after.head];
+  for (const heading of after.order) {
+    lines.push(`## ${heading}`, "", after.sections.get(heading) ?? "");
+  }
+  if (after.footnotes) {
+    lines.push(after.footnotes);
+  }
+  return {
+    body: `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}
+`,
+    preserved,
+    citationsMayHaveShifted: shifted
+  };
+}
+function isPlaceholder(heading, content3) {
+  if (content3.includes(AUTHOR_MARK)) {
+    return true;
+  }
+  return heading === "Engineering details" && content3.trim() === ENGINEERING_DEFAULT;
+}
+function splitPage(body) {
+  const sections = /* @__PURE__ */ new Map();
+  const order = [];
+  const head = [];
+  const footnotes = [];
+  let current;
+  let buffer = [];
+  const flush = () => {
+    if (current !== void 0) {
+      sections.set(current, buffer.join("\n").trim());
+    }
+    buffer = [];
+  };
+  for (const line of body.split("\n")) {
+    const heading = /^## (.+)$/.exec(line);
+    if (heading) {
+      flush();
+      current = heading[1].trim();
+      order.push(current);
+      continue;
+    }
+    if (/^\[\^[^\]]+\]:/.test(line)) {
+      footnotes.push(line);
+      continue;
+    }
+    if (current === void 0) {
+      head.push(line);
+    } else {
+      buffer.push(line);
+    }
+  }
+  flush();
+  return {
+    head: head.join("\n").trim(),
+    sections,
+    order,
+    footnotes: footnotes.join("\n").trim()
   };
 }
 function deriveSources(record2, vision) {
@@ -41974,6 +42060,25 @@ function knowledgeTrajectoryCommand() {
       if (result.direction === "undeclared") {
         process.stdout.write(
           "\nThe page carries what the source shows and no accepted intent, because nobody has\nsaid where this subject should go. That is the maintainer's answer, not an author's\ntask; once it is recorded, promote again with --force to add the second half.\n"
+        );
+      }
+      if (result.preserved.length > 0) {
+        process.stdout.write(
+          `
+${result.preserved.length} section(s) were written by a person and kept as they were:
+`
+        );
+        for (const heading of result.preserved) {
+          process.stdout.write(`  ${heading}
+`);
+        }
+        process.stdout.write(
+          "Nothing this run read was applied to them. If the records now say something\nthey contradict, that is yours to reconcile.\n"
+        );
+      }
+      if (result.citationsMayHaveShifted) {
+        process.stdout.write(
+          "\nA kept section cites a footnote and the source list changed under it, so its\nnumbers may now point at different claims. Nothing was renumbered: guessing\nwhich claim the author meant is worse than saying the citation moved.\n"
         );
       }
       if (result.awaitingAuthor.length > 0) {

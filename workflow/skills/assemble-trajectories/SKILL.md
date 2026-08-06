@@ -264,6 +264,18 @@ Current behavior is an observation and direction is a decision; publish the
 observation when you have it. When the direction arrives, promote again with
 `--force` and the same page gains its second half.
 
+Promoting again replaces what it generated and keeps what a person wrote. The
+sections no record in this pipeline holds — who it serves, the domain's words,
+the rules, the boundaries, the example, and any engineering page linked from it —
+survive untouched, and the command names each one it kept. Two things follow from
+that. What it kept was not re-derived from the records this run read, so if those
+records now say something the kept text contradicts, reconciling them is yours.
+And a kept section that cites a footnote may be citing a different claim
+afterwards, because declaring a direction adds the vision as the first source and
+shifts every pinned one down; the command says so when it happens and renumbers
+nothing, since guessing which claim an author meant is worse than reporting that
+the citation moved.
+
 The one subject that cannot be published is one whose every observation came from
 raw, because curated knowledge may not cite untrusted input and the page would
 rest on nothing. Read it at a pin first.
