@@ -11,6 +11,7 @@ import {
 import { basename, join, relative, resolve, sep } from "node:path";
 import type { RepositoryMetadata, WorkMode, WorkSpecDocument } from "./types.js";
 import { discoveryLedgerIssues } from "./discovery-ledger.js";
+import { readPark } from "./park.js";
 import {
   GATED_CHANGE_VERSIONS,
   includesVersion,
@@ -471,6 +472,16 @@ export async function claimWorkIssue(
   if (!current || !parsed) {
     throw new Error(`Work issue not found: ${id}`);
   }
+  // First of every gate, deliberately. A parked bundle is not startable however
+  // well approved, how ready the issue, or how completely the context was read,
+  // so checking it after that work makes the agent do the reading before being
+  // told it may not proceed — and reads as an obstacle rather than a decision.
+  //
+  // Approval settles what the work is; the park settles that it does not begin.
+  // They were one signal until a bundle approved to clear the maintainer's queue
+  // read as a bundle cleared to run, and six commits landed in three source
+  // repositories the knowledge base still cites as current.
+  await requireNotParked(options.bundleRoot);
   if (current.status !== "ready") {
     throw new Error(`Work issue ${id} is ${current.status}, not ready`);
   }
@@ -1753,6 +1764,20 @@ function checkpointRecord(document: WorkSpecDocument): Record<string, unknown> |
  * Wayfinding claims are exempt by phase: shaping is where the framing gets
  * decided, so requiring its approval to start would be its own deadlock.
  */
+async function requireNotParked(bundleRoot: string): Promise<void> {
+  const change = parseWorkSpec(await readFile(join(bundleRoot, "change.md"), "utf8"));
+  const park = readPark(change.metadata);
+  if (!park) {
+    return;
+  }
+  throw new Error(
+    `${stringValue(change.metadata.id) || basename(bundleRoot)} is parked and cannot be `
+      + `worked: ${park.reason}\n`
+      + "Releasing it is the maintainer's, in their own words: "
+      + "wfctl work release <id> --by human:<id> --attested \"<what they said>\"",
+  );
+}
+
 async function requireApprovedFraming(bundleRoot: string, issueId: string): Promise<void> {
   const change = parseWorkSpec(await readFile(join(bundleRoot, "change.md"), "utf8"));
   const framing = recordValue(recordValue(change.metadata.maintainer_review)?.framing);

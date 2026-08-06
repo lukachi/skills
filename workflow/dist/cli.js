@@ -934,14 +934,14 @@ var init_stringifyComment = __esm({
 });
 
 // node_modules/yaml/browser/dist/stringify/foldFlowLines.js
-function foldFlowLines(text4, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
+function foldFlowLines(text5, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
   if (!lineWidth || lineWidth < 0)
-    return text4;
+    return text5;
   if (lineWidth < minContentWidth)
     minContentWidth = 0;
   const endStep = Math.max(1 + minContentWidth, 1 + lineWidth - indent.length);
-  if (text4.length <= endStep)
-    return text4;
+  if (text5.length <= endStep)
+    return text5;
   const folds = [];
   const escapedFolds = {};
   let end = lineWidth - indent.length;
@@ -958,14 +958,14 @@ function foldFlowLines(text4, indent, mode = "flow", { indentAtStart, lineWidth 
   let escStart = -1;
   let escEnd = -1;
   if (mode === FOLD_BLOCK) {
-    i = consumeMoreIndentedLines(text4, i, indent.length);
+    i = consumeMoreIndentedLines(text5, i, indent.length);
     if (i !== -1)
       end = i + endStep;
   }
-  for (let ch; ch = text4[i += 1]; ) {
+  for (let ch; ch = text5[i += 1]; ) {
     if (mode === FOLD_QUOTED && ch === "\\") {
       escStart = i;
-      switch (text4[i + 1]) {
+      switch (text5[i + 1]) {
         case "x":
           i += 3;
           break;
@@ -982,12 +982,12 @@ function foldFlowLines(text4, indent, mode = "flow", { indentAtStart, lineWidth 
     }
     if (ch === "\n") {
       if (mode === FOLD_BLOCK)
-        i = consumeMoreIndentedLines(text4, i, indent.length);
+        i = consumeMoreIndentedLines(text5, i, indent.length);
       end = i + indent.length + endStep;
       split = void 0;
     } else {
       if (ch === " " && prev && prev !== " " && prev !== "\n" && prev !== "	") {
-        const next = text4[i + 1];
+        const next = text5[i + 1];
         if (next && next !== " " && next !== "\n" && next !== "	")
           split = i;
       }
@@ -999,12 +999,12 @@ function foldFlowLines(text4, indent, mode = "flow", { indentAtStart, lineWidth 
         } else if (mode === FOLD_QUOTED) {
           while (prev === " " || prev === "	") {
             prev = ch;
-            ch = text4[i += 1];
+            ch = text5[i += 1];
             overflow = true;
           }
           const j = i > escEnd + 1 ? i - 2 : escStart - 1;
           if (escapedFolds[j])
-            return text4;
+            return text5;
           folds.push(j);
           escapedFolds[j] = true;
           end = j + endStep;
@@ -1019,39 +1019,39 @@ function foldFlowLines(text4, indent, mode = "flow", { indentAtStart, lineWidth 
   if (overflow && onOverflow)
     onOverflow();
   if (folds.length === 0)
-    return text4;
+    return text5;
   if (onFold)
     onFold();
-  let res = text4.slice(0, folds[0]);
+  let res = text5.slice(0, folds[0]);
   for (let i2 = 0; i2 < folds.length; ++i2) {
     const fold = folds[i2];
-    const end2 = folds[i2 + 1] || text4.length;
+    const end2 = folds[i2 + 1] || text5.length;
     if (fold === 0)
       res = `
-${indent}${text4.slice(0, end2)}`;
+${indent}${text5.slice(0, end2)}`;
     else {
       if (mode === FOLD_QUOTED && escapedFolds[fold])
-        res += `${text4[fold]}\\`;
+        res += `${text5[fold]}\\`;
       res += `
-${indent}${text4.slice(fold + 1, end2)}`;
+${indent}${text5.slice(fold + 1, end2)}`;
     }
   }
   return res;
 }
-function consumeMoreIndentedLines(text4, i, indent) {
+function consumeMoreIndentedLines(text5, i, indent) {
   let end = i;
   let start = i + 1;
-  let ch = text4[start];
+  let ch = text5[start];
   while (ch === " " || ch === "	") {
     if (i < start + indent) {
-      ch = text4[++i];
+      ch = text5[++i];
     } else {
       do {
-        ch = text4[++i];
+        ch = text5[++i];
       } while (ch && ch !== "\n");
       end = i;
       start = i + 1;
-      ch = text4[start];
+      ch = text5[start];
     }
   }
   return end;
@@ -10779,10 +10779,10 @@ function resolveAll(constructs2, events, context) {
   const called = [];
   let index2 = -1;
   while (++index2 < constructs2.length) {
-    const resolve26 = constructs2[index2].resolveAll;
-    if (resolve26 && !called.includes(resolve26)) {
-      events = resolve26(events, context);
-      called.push(resolve26);
+    const resolve27 = constructs2[index2].resolveAll;
+    if (resolve27 && !called.includes(resolve27)) {
+      events = resolve27(events, context);
+      called.push(resolve27);
     }
   }
   return events;
@@ -10797,7 +10797,7 @@ function resolveAllAttention(events, context) {
   let index2 = -1;
   let open2;
   let group;
-  let text4;
+  let text5;
   let openingSequence;
   let closingSequence;
   let use;
@@ -10835,7 +10835,7 @@ function resolveAllAttention(events, context) {
             },
             end
           };
-          text4 = {
+          text5 = {
             type: use > 1 ? "strongText" : "emphasisText",
             start: {
               ...events[open2][1].end
@@ -10863,9 +10863,9 @@ function resolveAllAttention(events, context) {
           if (events[open2][1].end.offset - events[open2][1].start.offset) {
             nextEvents = push(nextEvents, [["enter", events[open2][1], context], ["exit", events[open2][1], context]]);
           }
-          nextEvents = push(nextEvents, [["enter", group, context], ["enter", openingSequence, context], ["exit", openingSequence, context], ["enter", text4, context]]);
+          nextEvents = push(nextEvents, [["enter", group, context], ["enter", openingSequence, context], ["exit", openingSequence, context], ["enter", text5, context]]);
           nextEvents = push(nextEvents, resolveAll(context.parser.constructs.insideSpan.null, events.slice(open2 + 1, index2), context));
-          nextEvents = push(nextEvents, [["exit", text4, context], ["enter", closingSequence, context], ["exit", closingSequence, context], ["exit", group, context]]);
+          nextEvents = push(nextEvents, [["exit", text5, context], ["enter", closingSequence, context], ["exit", closingSequence, context], ["exit", group, context]]);
           if (events[index2][1].end.offset - events[index2][1].start.offset) {
             offset = 2;
             nextEvents = push(nextEvents, [["enter", events[index2][1], context], ["exit", events[index2][1], context]]);
@@ -12433,7 +12433,7 @@ function resolveHeadingAtx(events, context) {
   let contentEnd = events.length - 2;
   let contentStart = 3;
   let content3;
-  let text4;
+  let text5;
   if (events[contentStart][1].type === "whitespace") {
     contentStart += 2;
   }
@@ -12449,13 +12449,13 @@ function resolveHeadingAtx(events, context) {
       start: events[contentStart][1].start,
       end: events[contentEnd][1].end
     };
-    text4 = {
+    text5 = {
       type: "chunkText",
       start: events[contentStart][1].start,
       end: events[contentEnd][1].end,
       contentType: "text"
     };
-    splice(events, contentStart, contentEnd - contentStart + 1, [["enter", content3, context], ["enter", text4, context], ["exit", text4, context], ["exit", content3, context]]);
+    splice(events, contentStart, contentEnd - contentStart + 1, [["enter", content3, context], ["enter", text5, context], ["exit", text5, context], ["exit", content3, context]]);
   }
   return events;
 }
@@ -13363,7 +13363,7 @@ function resolveToLabelEnd(events, context) {
       ...events[close][1].end
     }
   };
-  const text4 = {
+  const text5 = {
     type: "labelText",
     start: {
       ...events[open2 + offset + 2][1].end
@@ -13374,9 +13374,9 @@ function resolveToLabelEnd(events, context) {
   };
   media = [["enter", group, context], ["enter", label, context]];
   media = push(media, events.slice(open2 + 1, open2 + offset + 3));
-  media = push(media, [["enter", text4, context]]);
+  media = push(media, [["enter", text5, context]]);
   media = push(media, resolveAll(context.parser.constructs.insideSpan.null, events.slice(open2 + offset + 4, close - 3), context));
-  media = push(media, [["exit", text4, context], events[close - 2], events[close - 1], ["exit", label, context]]);
+  media = push(media, [["exit", text5, context], events[close - 2], events[close - 1], ["exit", label, context]]);
   media = push(media, events.slice(close + 1));
   media = push(media, [["exit", group, context]]);
   splice(events, open2, events.length, media);
@@ -13813,7 +13813,7 @@ var init_list = __esm({
 function resolveToSetextUnderline(events, context) {
   let index2 = events.length;
   let content3;
-  let text4;
+  let text5;
   let definition2;
   while (index2--) {
     if (events[index2][0] === "enter") {
@@ -13822,7 +13822,7 @@ function resolveToSetextUnderline(events, context) {
         break;
       }
       if (events[index2][1].type === "paragraph") {
-        text4 = index2;
+        text5 = index2;
       }
     } else {
       if (events[index2][1].type === "content") {
@@ -13842,9 +13842,9 @@ function resolveToSetextUnderline(events, context) {
       ...events[events.length - 1][1].end
     }
   };
-  events[text4][1].type = "setextHeadingText";
+  events[text5][1].type = "setextHeadingText";
   if (definition2) {
-    events.splice(text4, 0, ["enter", heading, context]);
+    events.splice(text5, 0, ["enter", heading, context]);
     events.splice(definition2 + 1, 0, ["exit", events[content3][1], context]);
     events[content3][1].end = {
       ...events[definition2][1].end
@@ -13990,10 +13990,10 @@ function initializeFactory(field) {
   function initializeText(effects) {
     const self = this;
     const constructs2 = this.parser.constructs[field];
-    const text4 = effects.attempt(constructs2, start, notText);
+    const text5 = effects.attempt(constructs2, start, notText);
     return start;
     function start(code2) {
-      return atBreak(code2) ? text4(code2) : notText(code2);
+      return atBreak(code2) ? text5(code2) : notText(code2);
     }
     function notText(code2) {
       if (code2 === null) {
@@ -14007,7 +14007,7 @@ function initializeFactory(field) {
     function data2(code2) {
       if (atBreak(code2)) {
         effects.exit("data");
-        return text4(code2);
+        return text5(code2);
       }
       effects.consume(code2);
       return data2;
@@ -15126,7 +15126,7 @@ function compiler(options) {
     const siblings = node2.children;
     let tail = siblings[siblings.length - 1];
     if (!tail || tail.type !== "text") {
-      tail = text4();
+      tail = text5();
       tail.position = {
         start: point2(token.start),
         // @ts-expect-error: we’ll add `end` later.
@@ -15371,7 +15371,7 @@ function compiler(options) {
       children: []
     };
   }
-  function text4() {
+  function text5() {
     return {
       type: "text",
       value: ""
@@ -15966,9 +15966,9 @@ async function readPinnedGitTextRange(root, gitArguments, options = {}) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve26, reject) => {
+  const completion = new Promise((resolve27, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve26(code2 ?? 1));
+    child.once("close", (code2) => resolve27(code2 ?? 1));
   });
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const selected = [];
@@ -15985,12 +15985,12 @@ async function readPinnedGitTextRange(root, gitArguments, options = {}) {
       selected.push(line);
     }
   };
-  const consumeText = (text4, final = false) => {
+  const consumeText = (text5, final = false) => {
     let cursor = 0;
-    while (cursor < text4.length) {
-      const newline = text4.indexOf("\n", cursor);
-      const end = newline === -1 ? text4.length : newline;
-      const segment = text4.slice(cursor, end);
+    while (cursor < text5.length) {
+      const newline = text5.indexOf("\n", cursor);
+      const end = newline === -1 ? text5.length : newline;
+      const segment = text5.slice(cursor, end);
       if (segment.length > 0) {
         pendingHasData = true;
         const currentLine = totalLines + 1;
@@ -19646,9 +19646,9 @@ async function readGitTree2(root, commit) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve26, reject) => {
+  const completion = new Promise((resolve27, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve26(code2 ?? 1));
+    child.once("close", (code2) => resolve27(code2 ?? 1));
   });
   const entries = [];
   let pending = Buffer.alloc(0);
@@ -19838,9 +19838,9 @@ async function readPinnedBlob(root, objectId) {
   const child = spawn3("git", ["-C", root, "cat-file", "blob", objectId], {
     stdio: ["ignore", "pipe", "pipe"]
   });
-  const completion = new Promise((resolve26, reject) => {
+  const completion = new Promise((resolve27, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve26(code2 ?? 1));
+    child.once("close", (code2) => resolve27(code2 ?? 1));
   });
   let content3 = "";
   child.stdout.setEncoding("utf8");
@@ -22869,12 +22869,12 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
       }
     }
   }
-  for (const text4 of inspectedTexts) {
-    if (containsLocalAbsolutePath(text4)) {
+  for (const text5 of inspectedTexts) {
+    if (containsLocalAbsolutePath(text5)) {
       issues.push("durable reconstruction records must not contain local absolute paths");
       break;
     }
-    if (binding?.repositories.some((entry) => text4.includes(entry.root))) {
+    if (binding?.repositories.some((entry) => text5.includes(entry.root))) {
       issues.push("durable reconstruction records leak a bound checkout path");
       break;
     }
@@ -24055,32 +24055,108 @@ var init_reconstruction = __esm({
   }
 });
 
+// src/park.ts
+import { readFile as readFile14, writeFile as writeFile8 } from "node:fs/promises";
+import { join as join11, resolve as resolve13 } from "node:path";
+async function parkWork(options) {
+  const { path, document: document3 } = await readBundle(options.target, options.id);
+  const by = requireMaintainer(options.by);
+  const reason = options.reason.trim();
+  if (!reason) {
+    throw new Error(
+      "Parking requires a reason. A bundle held for no stated reason is indistinguishable from one nobody got to, and the next session starts it."
+    );
+  }
+  document3.metadata.parked = {
+    at: (options.now ?? /* @__PURE__ */ new Date()).toISOString(),
+    by,
+    reason,
+    attested: (options.attested ?? "").trim()
+  };
+  await writeFile8(path, serializeWorkSpec(document3), "utf8");
+  return { id: options.id, path, parked: true, reason };
+}
+async function releaseWork(options) {
+  const { path, document: document3 } = await readBundle(options.target, options.id);
+  const by = requireMaintainer(options.by);
+  const park = readPark(document3.metadata);
+  if (!park) {
+    throw new Error(`${options.id} is not parked; there is nothing to release`);
+  }
+  const attested = options.attested.trim();
+  if (!attested) {
+    throw new Error(
+      "Releasing a parked bundle requires the maintainer's own words saying to start it. An answer to some other question is not a release: the last time one was inferred, a truthful 'nothing is in production' was read as permission and six commits followed."
+    );
+  }
+  document3.metadata.released = {
+    at: (options.now ?? /* @__PURE__ */ new Date()).toISOString(),
+    by,
+    attested,
+    was_parked_at: park.at,
+    was_parked_because: park.reason
+  };
+  delete document3.metadata.parked;
+  await writeFile8(path, serializeWorkSpec(document3), "utf8");
+  return { id: options.id, path, parked: false, reason: park.reason };
+}
+function readPark(metadata) {
+  const value = metadata.parked;
+  if (!isRecord2(value)) {
+    return void 0;
+  }
+  const at = text3(value.at);
+  const by = text3(value.by);
+  const reason = text3(value.reason);
+  return at && by && reason ? { at, by, reason, attested: text3(value.attested) } : void 0;
+}
+async function readBundle(target, id) {
+  const path = join11(resolve13(target), "changes/active", id, "change.md");
+  return { path, document: parseWorkSpec(await readFile14(path, "utf8")) };
+}
+function requireMaintainer(by) {
+  const trimmed = by.trim();
+  if (!trimmed.startsWith("human:") || trimmed.length <= "human:".length) {
+    throw new Error("Parking and releasing are the maintainer's; pass --by human:<id>");
+  }
+  return trimmed;
+}
+function text3(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+var init_park = __esm({
+  "src/park.ts"() {
+    "use strict";
+    init_work_spec();
+  }
+});
+
 // src/work-bundle.ts
 import { createHash as createHash8 } from "node:crypto";
 import { constants as constants4 } from "node:fs";
 import {
   access as access4,
   mkdir as mkdir8,
-  readFile as readFile14,
+  readFile as readFile15,
   readdir as readdir8,
   unlink as unlink4,
-  writeFile as writeFile8
+  writeFile as writeFile9
 } from "node:fs/promises";
-import { basename as basename3, join as join11, relative as relative6, resolve as resolve13, sep as sep6 } from "node:path";
+import { basename as basename3, join as join12, relative as relative6, resolve as resolve14, sep as sep6 } from "node:path";
 async function initializeWorkBundle(bundleRoot, distributionRoot, mode, now = /* @__PURE__ */ new Date()) {
-  await mkdir8(join11(bundleRoot, "issues"), { recursive: false });
-  await mkdir8(join11(bundleRoot, "artifacts"), { recursive: false });
+  await mkdir8(join12(bundleRoot, "issues"), { recursive: false });
+  await mkdir8(join12(bundleRoot, "artifacts"), { recursive: false });
   await writeTemplate(
-    join11(distributionRoot, "skills/manage-project-work/assets/bundle-review.md"),
-    join11(bundleRoot, "review.md"),
+    join12(distributionRoot, "skills/manage-project-work/assets/bundle-review.md"),
+    join12(bundleRoot, "review.md"),
     (document3) => {
       document3.metadata.updated_at = now.toISOString();
     }
   );
   if (mode === "wayfinder") {
     await writeTemplate(
-      join11(distributionRoot, "skills/manage-project-work/assets/wayfinder-map.md"),
-      join11(bundleRoot, "map.md"),
+      join12(distributionRoot, "skills/manage-project-work/assets/wayfinder-map.md"),
+      join12(bundleRoot, "map.md"),
       (document3) => {
         document3.metadata.created_at = now.toISOString();
         document3.metadata.updated_at = now.toISOString();
@@ -24129,8 +24205,8 @@ async function updateBundleCheckpoint(options) {
       }
     }
   } else {
-    path = join11(options.bundleRoot, "change.md");
-    document3 = parseWorkSpec(await readFile14(path, "utf8"));
+    path = join12(options.bundleRoot, "change.md");
+    document3 = parseWorkSpec(await readFile15(path, "utf8"));
     owner = "change";
     if (status === "complete") {
       throw new Error("The change checkpoint becomes complete only when wfctl closes the bundle");
@@ -24153,7 +24229,7 @@ async function updateBundleCheckpoint(options) {
     todo: resolveTodo(stringArray7(previous2?.todo), options.todo),
     now
   });
-  await writeFile8(path, serializeWorkSpec(document3), "utf8");
+  await writeFile9(path, serializeWorkSpec(document3), "utf8");
   return checkpointSummary(
     document3,
     relativePath(options.bundleRoot, path),
@@ -24163,7 +24239,7 @@ async function updateBundleCheckpoint(options) {
   );
 }
 async function inspectWorkBundle(bundleRoot, stage, selectedIssue) {
-  const change = parseWorkSpec(await readFile14(join11(bundleRoot, "change.md"), "utf8"));
+  const change = parseWorkSpec(await readFile15(join12(bundleRoot, "change.md"), "utf8"));
   const issueRead = await readIssuesForInspection(bundleRoot);
   const parsedIssues = issueRead.parsed;
   const validationIssues = [
@@ -24182,7 +24258,7 @@ async function inspectWorkBundle(bundleRoot, stage, selectedIssue) {
     parsedIssues,
     inventory
   );
-  const map2 = await optionalDocument(join11(bundleRoot, "map.md"));
+  const map2 = await optionalDocument(join12(bundleRoot, "map.md"));
   const checkpoints = [
     checkpointSummary(
       change,
@@ -24224,11 +24300,11 @@ async function inspectWorkBundle(bundleRoot, stage, selectedIssue) {
   };
 }
 async function createWorkIssue(options) {
-  const change = parseWorkSpec(await readFile14(join11(options.bundleRoot, "change.md"), "utf8"));
+  const change = parseWorkSpec(await readFile15(join12(options.bundleRoot, "change.md"), "utf8"));
   const existing = await readIssues(options.bundleRoot);
   const id = nextIssueId(existing.map((entry) => entry.summary.id));
   const slug = normalizeSlug3(options.slug);
-  const path = join11(options.bundleRoot, "issues", `${id}-${slug}.md`);
+  const path = join12(options.bundleRoot, "issues", `${id}-${slug}.md`);
   const blockedBy = uniqueStrings5(options.blockedBy ?? []).map(normalizeIssueId);
   const satisfies = uniqueStrings5(options.satisfies ?? []).map(normalizeAcceptanceId);
   const repositories = uniqueStrings5(options.repositories ?? []);
@@ -24282,7 +24358,7 @@ async function createWorkIssue(options) {
   }
   const now = options.now ?? /* @__PURE__ */ new Date();
   await writeTemplate(
-    join11(options.distributionRoot, "skills/manage-project-work/assets/work-issue.md"),
+    join12(options.distributionRoot, "skills/manage-project-work/assets/work-issue.md"),
     path,
     (document3) => {
       document3.metadata.id = id;
@@ -24320,6 +24396,7 @@ async function claimWorkIssue(options) {
   if (!current || !parsed) {
     throw new Error(`Work issue not found: ${id}`);
   }
+  await requireNotParked(options.bundleRoot);
   if (current.status !== "ready") {
     throw new Error(`Work issue ${id} is ${current.status}, not ready`);
   }
@@ -24352,7 +24429,7 @@ async function claimWorkIssue(options) {
     await requireApprovedFraming(options.bundleRoot, id);
   }
   const lockPath = claimLockPath(options.bundleRoot, id);
-  await mkdir8(join11(options.bundleRoot, "..", "..", "..", ".workflow", "current", "work-claims", basename3(options.bundleRoot)), {
+  await mkdir8(join12(options.bundleRoot, "..", "..", "..", ".workflow", "current", "work-claims", basename3(options.bundleRoot)), {
     recursive: true
   });
   const now = options.now ?? /* @__PURE__ */ new Date();
@@ -24373,7 +24450,7 @@ async function claimWorkIssue(options) {
     worktree_id: "knowledge",
     claimed_at: now.toISOString()
   };
-  await writeFile8(lockPath, `${JSON.stringify(claim, null, 2)}
+  await writeFile9(lockPath, `${JSON.stringify(claim, null, 2)}
 `, {
     encoding: "utf8",
     flag: "wx"
@@ -24391,7 +24468,7 @@ async function claimWorkIssue(options) {
       blockers: [],
       now
     });
-    await writeFile8(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+    await writeFile9(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   } catch (error2) {
     await removeFile(lockPath);
     throw error2;
@@ -24416,7 +24493,7 @@ async function releaseWorkIssue(bundleRoot, issueId, claimContext, now = /* @__P
     blockers: [],
     now
   });
-  await writeFile8(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+  await writeFile9(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   await removeFile(claimLockPath(bundleRoot, parsed.summary.id));
   return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
 }
@@ -24453,7 +24530,7 @@ async function resolveWorkIssue(options) {
     blockers: [],
     now
   });
-  await writeFile8(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+  await writeFile9(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   await removeFile(claimLockPath(options.bundleRoot, parsed.summary.id));
   if (parsed.summary.phase === "wayfinding") {
     await appendMapResolution(
@@ -24496,7 +24573,7 @@ async function dropWorkIssue(bundleRoot, issueId, reason, claimContext, now = /*
     blockers: [],
     now
   });
-  await writeFile8(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+  await writeFile9(parsed.path, serializeWorkSpec(parsed.document), "utf8");
   await removeFile(claimLockPath(bundleRoot, parsed.summary.id));
   return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
 }
@@ -24532,7 +24609,7 @@ async function setWorkIssueBlocker(bundleRoot, issueId, blockerId, blocked, now 
     blockers: claimed ? next : [],
     now
   });
-  await writeFile8(issue3.path, serializeWorkSpec(issue3.document), "utf8");
+  await writeFile9(issue3.path, serializeWorkSpec(issue3.document), "utf8");
   return (await readIssueById(bundleRoot, issue3.summary.id)).summary;
 }
 async function reviewBundleFile(bundleRoot, inputPath, status, reason, now = /* @__PURE__ */ new Date()) {
@@ -24551,9 +24628,9 @@ async function reviewBundleFile(bundleRoot, inputPath, status, reason, now = /* 
     throw new Error("An irrelevant artifact requires a reason");
   }
   const absolute = resolveBundleFile(bundleRoot, normalized);
-  const content3 = await readFile14(absolute);
-  const reviewPath = join11(bundleRoot, "review.md");
-  const review = parseWorkSpec(await readFile14(reviewPath, "utf8"));
+  const content3 = await readFile15(absolute);
+  const reviewPath = join12(bundleRoot, "review.md");
+  const review = parseWorkSpec(await readFile15(reviewPath, "utf8"));
   const receipts = reviewReceipts(review);
   const receipt = {
     path: normalized,
@@ -24567,7 +24644,7 @@ async function reviewBundleFile(bundleRoot, inputPath, status, reason, now = /* 
     receipt
   ].sort((left, right) => left.path.localeCompare(right.path));
   review.metadata.updated_at = now.toISOString();
-  await writeFile8(reviewPath, serializeWorkSpec(review), "utf8");
+  await writeFile9(reviewPath, serializeWorkSpec(review), "utf8");
   const inspection = await inspectWorkBundle(bundleRoot, "review");
   return inspection.inventory.find((entry) => entry.path === normalized);
 }
@@ -24581,10 +24658,10 @@ async function carryForwardCloseReview(bundleRoot, now = /* @__PURE__ */ new Dat
   );
 }
 async function finishWayfinder(bundleRoot, deliveryMode, now = /* @__PURE__ */ new Date()) {
-  const mapPath = join11(bundleRoot, "map.md");
-  const map2 = parseWorkSpec(await readFile14(mapPath, "utf8"));
-  const changePath = join11(bundleRoot, "change.md");
-  const change = parseWorkSpec(await readFile14(changePath, "utf8"));
+  const mapPath = join12(bundleRoot, "map.md");
+  const map2 = parseWorkSpec(await readFile15(mapPath, "utf8"));
+  const changePath = join12(bundleRoot, "change.md");
+  const change = parseWorkSpec(await readFile15(changePath, "utf8"));
   if (change.metadata.mode !== "wayfinder") {
     throw new Error("The active change is not in Wayfinder mode");
   }
@@ -24650,8 +24727,8 @@ async function finishWayfinder(bundleRoot, deliveryMode, now = /* @__PURE__ */ n
     blockers: [],
     now
   });
-  await writeFile8(mapPath, serializeWorkSpec(map2), "utf8");
-  await writeFile8(changePath, serializeWorkSpec(change), "utf8");
+  await writeFile9(mapPath, serializeWorkSpec(map2), "utf8");
+  await writeFile9(changePath, serializeWorkSpec(change), "utf8");
   return { mapPath, changePath, mode: deliveryMode };
 }
 async function bundleCompletionIssues(bundleRoot, change) {
@@ -24666,7 +24743,7 @@ async function bundleCompletionIssues(bundleRoot, change) {
   if (change.metadata.mode === "wayfinder") {
     issues.push("Wayfinder must be synthesized into full or slice delivery mode");
   }
-  const map2 = await optionalDocument(join11(bundleRoot, "map.md"));
+  const map2 = await optionalDocument(join12(bundleRoot, "map.md"));
   if (map2 && map2.metadata.status !== "resolved") {
     issues.push("map.md status must be resolved before completed closure");
   }
@@ -24838,7 +24915,7 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
   for (const cycle of dependencyCycles(parsedIssues.map((entry) => entry.summary))) {
     issues.push(`issue dependency cycle: ${cycle.join(" -> ")}`);
   }
-  const map2 = await optionalDocument(join11(bundleRoot, "map.md"));
+  const map2 = await optionalDocument(join12(bundleRoot, "map.md"));
   if (change.metadata.mode === "wayfinder" && !map2) {
     issues.push("map.md is required in Wayfinder mode");
   }
@@ -24877,7 +24954,7 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
       }
     }
   }
-  const review = await optionalDocument(join11(bundleRoot, "review.md"));
+  const review = await optionalDocument(join12(bundleRoot, "review.md"));
   if (review) {
     if (review.metadata.workflow_version !== SUPPORTED_REVIEW_VERSION) {
       issues.push(`review.md: workflow_version must be ${SUPPORTED_REVIEW_VERSION}`);
@@ -24907,14 +24984,14 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
   return issues;
 }
 async function bundleInventory(bundleRoot, validationIssues) {
-  const review = await optionalDocument(join11(bundleRoot, "review.md"));
+  const review = await optionalDocument(join12(bundleRoot, "review.md"));
   const receipts = review ? reviewReceipts(review) : [];
   const invalidPaths = new Set(
     validationIssues.map((issue3) => issue3.split(":", 1)[0]).filter((path) => path.includes(".") || path.includes("/"))
   );
   const inventory = [];
   for (const file of await walkFiles(bundleRoot)) {
-    const content3 = await readFile14(file.absolute);
+    const content3 = await readFile15(file.absolute);
     const digest = sha256(content3);
     const role = roleForPath(file.path);
     const receipt = receipts.find((entry) => entry.path === file.path);
@@ -24973,18 +25050,18 @@ function requiredPathsForStage(stage, selectedIssue, parsedIssues, inventory) {
   return [...required].sort();
 }
 async function appendMapResolution(bundleRoot, id, title, summary, now) {
-  const path = join11(bundleRoot, "map.md");
-  const map2 = parseWorkSpec(await readFile14(path, "utf8"));
+  const path = join12(bundleRoot, "map.md");
+  const map2 = parseWorkSpec(await readFile15(path, "utf8"));
   const resolved = recordArray5(map2.metadata.resolved).filter((entry) => entry.issue !== id);
   map2.metadata.resolved = [
     ...resolved,
     { issue: id, title, summary }
   ];
   map2.metadata.updated_at = now.toISOString();
-  await writeFile8(path, serializeWorkSpec(map2), "utf8");
+  await writeFile9(path, serializeWorkSpec(map2), "utf8");
 }
 async function readIssues(bundleRoot) {
-  const files = (await walkFiles(join11(bundleRoot, "issues"))).filter((entry) => entry.path.endsWith(".md"));
+  const files = (await walkFiles(join12(bundleRoot, "issues"))).filter((entry) => entry.path.endsWith(".md"));
   const parsed = [];
   for (const file of files) {
     parsed.push(await parseIssueFile(bundleRoot, `issues/${file.path}`));
@@ -24992,7 +25069,7 @@ async function readIssues(bundleRoot) {
   return parsed.sort((left, right) => left.summary.id.localeCompare(right.summary.id));
 }
 async function readIssuesForInspection(bundleRoot) {
-  const files = (await walkFiles(join11(bundleRoot, "issues"))).filter((entry) => entry.path.endsWith(".md"));
+  const files = (await walkFiles(join12(bundleRoot, "issues"))).filter((entry) => entry.path.endsWith(".md"));
   const parsed = [];
   const errors = [];
   for (const file of files) {
@@ -25021,7 +25098,7 @@ async function parseIssueFile(bundleRoot, relativeFile) {
   if (!match) {
     throw new Error(`Invalid issue path: ${relativeName}`);
   }
-  const document3 = parseWorkSpec(await readFile14(path, "utf8"));
+  const document3 = parseWorkSpec(await readFile15(path, "utf8"));
   const id = stringValue8(document3.metadata.id);
   if (id !== match[1]) {
     throw new Error(`${relativeName}: metadata id must match ${match[1]}`);
@@ -25164,16 +25241,16 @@ function reviewReceipts(document3) {
   }));
 }
 async function writeTemplate(source, destination, mutate) {
-  const document3 = parseWorkSpec(await readFile14(source, "utf8"));
+  const document3 = parseWorkSpec(await readFile15(source, "utf8"));
   mutate(document3);
-  await writeFile8(destination, serializeWorkSpec(document3), {
+  await writeFile9(destination, serializeWorkSpec(document3), {
     encoding: "utf8",
     flag: "wx"
   });
 }
 async function optionalDocument(path) {
   try {
-    return parseWorkSpec(await readFile14(path, "utf8"));
+    return parseWorkSpec(await readFile15(path, "utf8"));
   } catch (error2) {
     if (isMissing2(error2)) {
       return void 0;
@@ -25194,7 +25271,7 @@ async function walkFiles(root) {
       throw error2;
     }
     for (const entry of entries) {
-      const absolute = join11(current, entry.name);
+      const absolute = join12(current, entry.name);
       const path = relativePath(root, absolute);
       if (entry.isSymbolicLink()) {
         output.push({ path, absolute, symlink: true });
@@ -25256,8 +25333,8 @@ function normalizeBundlePath(value) {
 }
 function resolveBundleFile(bundleRoot, path) {
   const normalized = normalizeBundlePath(path);
-  const absolute = resolve13(bundleRoot, normalized);
-  const boundary = `${resolve13(bundleRoot)}${sep6}`;
+  const absolute = resolve14(bundleRoot, normalized);
+  const boundary = `${resolve14(bundleRoot)}${sep6}`;
   if (!absolute.startsWith(boundary)) {
     throw new Error(`Path escapes the work bundle: ${path}`);
   }
@@ -25408,8 +25485,19 @@ function checkpointSummary(document3, path, owner, issue3, required) {
 function checkpointRecord(document3) {
   return recordValue8(document3.metadata.checkpoint);
 }
+async function requireNotParked(bundleRoot) {
+  const change = parseWorkSpec(await readFile15(join12(bundleRoot, "change.md"), "utf8"));
+  const park = readPark(change.metadata);
+  if (!park) {
+    return;
+  }
+  throw new Error(
+    `${stringValue8(change.metadata.id) || basename3(bundleRoot)} is parked and cannot be worked: ${park.reason}
+Releasing it is the maintainer's, in their own words: wfctl work release <id> --by human:<id> --attested "<what they said>"`
+  );
+}
 async function requireApprovedFraming(bundleRoot, issueId) {
-  const change = parseWorkSpec(await readFile14(join11(bundleRoot, "change.md"), "utf8"));
+  const change = parseWorkSpec(await readFile15(join12(bundleRoot, "change.md"), "utf8"));
   const framing = recordValue8(recordValue8(change.metadata.maintainer_review)?.framing);
   if (framing?.status === "approved" && stringValue8(framing.by).startsWith("human:") && stringValue8(framing.at).trim() !== "") {
     return;
@@ -25447,8 +25535,8 @@ function requireCheckpointText(value, label) {
   return normalized;
 }
 function claimLockPath(bundleRoot, issueId) {
-  const knowledgeRoot = resolve13(bundleRoot, "../../..");
-  return join11(
+  const knowledgeRoot = resolve14(bundleRoot, "../../..");
+  return join12(
     knowledgeRoot,
     ".workflow/current/work-claims",
     basename3(bundleRoot),
@@ -25517,6 +25605,7 @@ var init_work_bundle = __esm({
   "src/work-bundle.ts"() {
     "use strict";
     init_discovery_ledger();
+    init_park();
     init_work_spec();
     ISSUE_PATH = /^issues\/(ISSUE-\d{3})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
     ACCEPTANCE_ID = /^AC-\d{2,}$/;
@@ -25533,15 +25622,15 @@ __export(knowledge_exports, {
 import { createHash as createHash9 } from "node:crypto";
 import {
   lstat as lstat4,
-  readFile as readFile15,
+  readFile as readFile16,
   readdir as readdir9
 } from "node:fs/promises";
-import { basename as basename4, dirname as dirname9, join as join12, relative as relative7, resolve as resolve14, sep as sep7 } from "node:path";
+import { basename as basename4, dirname as dirname9, join as join13, relative as relative7, resolve as resolve15, sep as sep7 } from "node:path";
 async function validateKnowledge(targetInput, conceptPaths) {
   const target = await requireKnowledgeRepository5(targetInput);
-  const knowledgeRoot = join12(target, "knowledge");
+  const knowledgeRoot = join13(target, "knowledge");
   const inventory = await collectKnowledgeTree(knowledgeRoot);
-  const selected = conceptPaths ? conceptPaths.map((path) => resolveConceptPath(target, knowledgeRoot, path)) : inventory.markdown.map((path) => join12(knowledgeRoot, path));
+  const selected = conceptPaths ? conceptPaths.map((path) => resolveConceptPath(target, knowledgeRoot, path)) : inventory.markdown.map((path) => join13(knowledgeRoot, path));
   const errors = [];
   const warnings = [];
   const changeIndex = await readProjectChangeIndex(target);
@@ -25549,7 +25638,7 @@ async function validateKnowledge(targetInput, conceptPaths) {
   const declaredVisions = await readDeclaredVisions(target);
   for (const path of inventory.symlinks) {
     errors.push({
-      path: portable2(join12("knowledge", path)),
+      path: portable2(join13("knowledge", path)),
       message: "curated knowledge tree must not contain symlinks"
     });
   }
@@ -25567,7 +25656,7 @@ async function validateKnowledge(targetInput, conceptPaths) {
     }
     let content3;
     try {
-      content3 = decodeUtf8(await readFile15(absolute));
+      content3 = decodeUtf8(await readFile16(absolute));
     } catch (error2) {
       errors.push({ path: displayPath, message: `cannot read UTF-8 Markdown: ${errorMessage(error2)}` });
       continue;
@@ -25956,9 +26045,9 @@ async function readDecisionNodes(target, knowledgeRoot, markdown) {
     if (/(?:^|\/)(?:index|log)\.md$/i.test(relativePath2)) {
       continue;
     }
-    const absolute = join12(knowledgeRoot, relativePath2);
+    const absolute = join13(knowledgeRoot, relativePath2);
     try {
-      const parsed = parseFrontmatter2(decodeUtf8(await readFile15(absolute)), true);
+      const parsed = parseFrontmatter2(decodeUtf8(await readFile16(absolute)), true);
       if (!parsed.metadata || !stringArray8(parsed.metadata.authority).includes("decision")) {
         continue;
       }
@@ -26127,7 +26216,7 @@ async function collectKnowledgeTree(root) {
   const symlinks = [];
   async function walk(directory) {
     for (const entry of await readdir9(directory, { withFileTypes: true })) {
-      const absolute = join12(directory, entry.name);
+      const absolute = join13(directory, entry.name);
       if (entry.isDirectory()) {
         await walk(absolute);
       } else if (entry.isSymbolicLink()) {
@@ -26145,13 +26234,13 @@ async function collectKnowledgeTree(root) {
 }
 async function readProjectChangeIndex(target) {
   return {
-    active: await projectChangeRecords(join12(target, "changes/active")),
-    archive: await projectChangeRecords(join12(target, "changes/archive"))
+    active: await projectChangeRecords(join13(target, "changes/active")),
+    archive: await projectChangeRecords(join13(target, "changes/archive"))
   };
 }
 async function readDeclaredVisions(target) {
   try {
-    const entries = await readdir9(join12(target, ".workflow/current/visions"));
+    const entries = await readdir9(join13(target, ".workflow/current/visions"));
     return new Set(
       entries.filter((entry) => entry.endsWith(".json")).map((entry) => entry.replace(/\.json$/, ""))
     );
@@ -26169,7 +26258,7 @@ async function readProjectReconstructionIndex(target) {
   };
 }
 async function projectReconstructionRecords(target, lifecycle) {
-  const root = join12(target, "reconstruction", lifecycle);
+  const root = join13(target, "reconstruction", lifecycle);
   try {
     const result = /* @__PURE__ */ new Map();
     for (const entry of await readdir9(root, { withFileTypes: true })) {
@@ -26177,7 +26266,7 @@ async function projectReconstructionRecords(target, lifecycle) {
         continue;
       }
       try {
-        const content3 = await readFile15(join12(root, entry.name, "case.md"), "utf8");
+        const content3 = await readFile16(join13(root, entry.name, "case.md"), "utf8");
         const parsed = parseFrontmatter2(content3, true);
         if (parsed.metadata) {
           const receipt = await inspectProjectReconstructionReceipt(
@@ -26213,11 +26302,11 @@ async function projectChangeRecords(root) {
         continue;
       }
       try {
-        const content3 = await readFile15(join12(root, entry.name, "change.md"), "utf8");
+        const content3 = await readFile16(join13(root, entry.name, "change.md"), "utf8");
         const document3 = parseWorkSpec(content3);
         if (document3.metadata) {
           const bundleIssues = await bundleCompletionIssues(
-            join12(root, entry.name),
+            join13(root, entry.name),
             document3
           );
           result.set(entry.name, {
@@ -26242,15 +26331,15 @@ async function projectChangeRecords(root) {
 }
 function resolveConceptPath(target, knowledgeRoot, input) {
   const normalized = input.replace(/^\/+/, "");
-  const absolute = resolve14(target, normalized.startsWith("knowledge/") ? normalized : join12("knowledge", normalized));
-  const boundary = `${resolve14(knowledgeRoot)}${sep7}`;
+  const absolute = resolve15(target, normalized.startsWith("knowledge/") ? normalized : join13("knowledge", normalized));
+  const boundary = `${resolve15(knowledgeRoot)}${sep7}`;
   if (!absolute.startsWith(boundary) || !absolute.toLowerCase().endsWith(".md")) {
     throw new Error(`Knowledge concept path escapes knowledge/: ${input}`);
   }
   return absolute;
 }
 async function requireKnowledgeRepository5(targetInput) {
-  const target = resolve14(targetInput);
+  const target = resolve15(targetInput);
   const config = await readConfig(target);
   if (config.profile !== "knowledge") {
     throw new Error(`Knowledge command requires a knowledge repository: ${target}`);
@@ -26719,9 +26808,9 @@ function isActor(value) {
 }
 async function hashKnowledgeConcept(targetInput, conceptPath) {
   const target = await requireKnowledgeRepository5(targetInput);
-  const knowledgeRoot = join12(target, "knowledge");
+  const knowledgeRoot = join13(target, "knowledge");
   const absolute = resolveConceptPath(target, knowledgeRoot, conceptPath);
-  const content3 = decodeUtf8(await readFile15(absolute));
+  const content3 = decodeUtf8(await readFile16(absolute));
   const parsed = parseFrontmatter2(content3, true);
   if (!parsed.metadata) {
     throw new Error(parsed.error ?? "concept frontmatter is missing");
@@ -26754,8 +26843,8 @@ function canonicalValue(value) {
   return value;
 }
 function decodeUtf8(content3) {
-  const text4 = new TextDecoder("utf-8", { fatal: true }).decode(content3);
-  return text4;
+  const text5 = new TextDecoder("utf-8", { fatal: true }).decode(content3);
+  return text5;
 }
 function portable2(path) {
   return path.split(sep7).join("/");
@@ -28079,20 +28168,20 @@ function parseArgumentsDefinition(argsDefinition, validate2 = true, all2) {
 }
 function dedent(str) {
   const lines = str.split(/\r?\n|\r/g);
-  let text4 = "";
+  let text5 = "";
   let indent = 0;
   for (const line of lines) {
-    if (text4 || line.trim()) {
-      if (!text4) {
-        text4 = line.trimStart();
-        indent = line.length - text4.length;
+    if (text5 || line.trim()) {
+      if (!text5) {
+        text5 = line.trimStart();
+        indent = line.length - text5.length;
       } else {
-        text4 += line.slice(indent);
+        text5 += line.slice(indent);
       }
-      text4 += "\n";
+      text5 += "\n";
     }
   }
-  return text4.trimEnd();
+  return text5.trimEnd();
 }
 function getDescription(description, short) {
   return short ? description.trim().split("\n", 1)[0].trim() : dedent(description);
@@ -28626,9 +28715,9 @@ var ansiRegexSource = (
   // deno-lint-ignore no-control-regex
   /\x1b\[(?:(?<_0>0)|(?<_22>1|2|22)|(?<_23>3|23)|(?<_24>4|24)|(?<_27>7|27)|(?<_28>8|28)|(?<_29>9|29)|(?<_39>30|31|32|33|34|35|36|37|38;2;\d+;\d+;\d+|38;5;\d+|39|90|91|92|93|94|95|96|97)|(?<_49>40|41|42|43|44|45|46|47|48;2;\d+;\d+;\d+|48;5;\d+|49|100|101|102|103|104|105|106|107))m/.source
 );
-function getUnclosedAnsiRuns(text4) {
+function getUnclosedAnsiRuns(text5) {
   const tokens = [];
-  for (const { groups } of text4.matchAll(new RegExp(ansiRegexSource, "g"))) {
+  for (const { groups } of text5.matchAll(new RegExp(ansiRegexSource, "g"))) {
     if (!groups) {
       continue;
     }
@@ -34722,9 +34811,9 @@ var Ora = class {
   #getFullSuffixText(suffixText = this.#suffixText, prefix = " ") {
     return this.#formatAffix(suffixText, prefix, true);
   }
-  #computeLineCountFrom(text4, columns) {
+  #computeLineCountFrom(text5, columns) {
     let count2 = 0;
-    for (const line of stripAnsi(text4).split("\n")) {
+    for (const line of stripAnsi(text5).split("\n")) {
       count2 += Math.max(1, Math.ceil(stringWidth(line) / columns));
     }
     return count2;
@@ -34809,9 +34898,9 @@ var Ora = class {
     this.#linesToClear = this.#computeLineCountFrom(frameContent, columns);
     return this;
   }
-  start(text4) {
-    if (text4) {
-      this.text = text4;
+  start(text5) {
+    if (text5) {
+      this.text = text5;
     }
     if (this.#isSilent) {
       return this;
@@ -34853,17 +34942,17 @@ var Ora = class {
     }
     return this;
   }
-  succeed(text4) {
-    return this.stopAndPersist({ symbol: browser_symbols_exports.success, text: text4 });
+  succeed(text5) {
+    return this.stopAndPersist({ symbol: browser_symbols_exports.success, text: text5 });
   }
-  fail(text4) {
-    return this.stopAndPersist({ symbol: browser_symbols_exports.error, text: text4 });
+  fail(text5) {
+    return this.stopAndPersist({ symbol: browser_symbols_exports.error, text: text5 });
   }
-  warn(text4) {
-    return this.stopAndPersist({ symbol: browser_symbols_exports.warning, text: text4 });
+  warn(text5) {
+    return this.stopAndPersist({ symbol: browser_symbols_exports.warning, text: text5 });
   }
-  info(text4) {
-    return this.stopAndPersist({ symbol: browser_symbols_exports.info, text: text4 });
+  info(text5) {
+    return this.stopAndPersist({ symbol: browser_symbols_exports.info, text: text5 });
   }
   stopAndPersist(options = {}) {
     if (this.#isSilent) {
@@ -34872,9 +34961,9 @@ var Ora = class {
     const prefixText = options.prefixText ?? this.#prefixText;
     const fullPrefixText = this.#getFullPrefixText(prefixText, " ");
     const symbolText = options.symbol ?? " ";
-    const text4 = options.text ?? this.text;
+    const text5 = options.text ?? this.text;
     const separatorText = symbolText ? " " : "";
-    const fullText = typeof text4 === "string" ? separatorText + text4 : "";
+    const fullText = typeof text5 === "string" ? separatorText + text5 : "";
     const suffixText = options.suffixText ?? this.#suffixText;
     const fullSuffixText = this.#getFullSuffixText(suffixText, " ");
     const textToWrite = fullPrefixText + symbolText + fullText + fullSuffixText + "\n";
@@ -34889,7 +34978,7 @@ function ora(options) {
 
 // src/cli.ts
 import { createInterface } from "node:readline/promises";
-import { resolve as resolve25 } from "node:path";
+import { resolve as resolve26 } from "node:path";
 
 // src/applier.ts
 init_planner();
@@ -35113,9 +35202,9 @@ init_git();
 init_knowledge();
 init_knowledge_graph();
 init_claim_ledger();
-import { access as access6, readFile as readFile17, realpath as realpath4 } from "node:fs/promises";
+import { access as access6, readFile as readFile18, realpath as realpath4 } from "node:fs/promises";
 import { constants as constants6 } from "node:fs";
-import { join as join15, resolve as resolve17 } from "node:path";
+import { join as join16, resolve as resolve18 } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 // src/capture.ts
@@ -35127,27 +35216,27 @@ import { constants as constants5 } from "node:fs";
 import {
   access as access5,
   mkdir as mkdir9,
-  readFile as readFile16,
+  readFile as readFile17,
   readdir as readdir10,
   realpath as realpath3,
   rename as rename8,
   stat as stat2,
-  writeFile as writeFile9
+  writeFile as writeFile10
 } from "node:fs/promises";
-import { isAbsolute as isAbsolute3, join as join13, posix as posix2, relative as relative8, resolve as resolve15, sep as sep8 } from "node:path";
+import { isAbsolute as isAbsolute3, join as join14, posix as posix2, relative as relative8, resolve as resolve16, sep as sep8 } from "node:path";
 async function createCapture(options) {
   const context = await resolveCaptureContext(options.target);
   const now = options.now ?? /* @__PURE__ */ new Date();
   const base = `${now.toISOString().slice(0, 10)}-${normalizeSlug4(options.slug)}`;
-  const inboxRoot = join13(context.knowledgeRoot, "changes/inbox");
+  const inboxRoot = join14(context.knowledgeRoot, "changes/inbox");
   const id = await uniqueFileId(
-    [inboxRoot, join13(context.knowledgeRoot, "changes/archive/captures")],
+    [inboxRoot, join14(context.knowledgeRoot, "changes/archive/captures")],
     base
   );
-  const path = join13(inboxRoot, `${id}.md`);
+  const path = join14(inboxRoot, `${id}.md`);
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile16(
-    join13(distributionRoot, "skills/manage-project-work/assets/capture.md"),
+  const template = parseWorkSpec(await readFile17(
+    join14(distributionRoot, "skills/manage-project-work/assets/capture.md"),
     "utf8"
   ));
   template.metadata = {
@@ -35159,7 +35248,7 @@ async function createCapture(options) {
     awaits: options.awaits ?? "agent",
     source: durableSource(context.source)
   };
-  await writeFile9(path, serializeWorkSpec(template), {
+  await writeFile10(path, serializeWorkSpec(template), {
     encoding: "utf8",
     flag: "wx"
   });
@@ -35172,15 +35261,15 @@ async function createCapture(options) {
 }
 async function listCaptures(target) {
   const context = await resolveCaptureContext(target);
-  const inboxRoot = join13(context.knowledgeRoot, "changes/inbox");
+  const inboxRoot = join14(context.knowledgeRoot, "changes/inbox");
   const entries = await readdir10(inboxRoot, { withFileTypes: true });
   const captures = [];
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (!entry.isFile() || !entry.name.endsWith(".md")) {
       continue;
     }
-    const path = join13(inboxRoot, entry.name);
-    const parsed = parsePendingCapture(await readFile16(path, "utf8"), path);
+    const path = join14(inboxRoot, entry.name);
+    const parsed = parsePendingCapture(await readFile17(path, "utf8"), path);
     captures.push({
       id: parsed.id,
       title: parsed.title,
@@ -35196,8 +35285,8 @@ async function listCaptures(target) {
 async function resolveCapture(options) {
   const context = await resolveCaptureContext(options.target);
   const id = normalizeCaptureId(options.id);
-  const inboxPath = join13(context.knowledgeRoot, "changes/inbox", `${id}.md`);
-  const document3 = parseWorkSpec(await readFile16(inboxPath, "utf8"));
+  const inboxPath = join14(context.knowledgeRoot, "changes/inbox", `${id}.md`);
+  const document3 = parseWorkSpec(await readFile17(inboxPath, "utf8"));
   parsePendingCapture(serializeWorkSpec(document3), inboxPath);
   const reason = requireText2(options.reason, "Capture resolution reason");
   const destinations = await normalizeDestinations(
@@ -35220,13 +35309,13 @@ async function resolveCapture(options) {
     reason,
     destinations
   };
-  const archiveRoot = join13(context.knowledgeRoot, "changes/archive/captures");
-  const archivePath = join13(archiveRoot, `${id}.md`);
+  const archiveRoot = join14(context.knowledgeRoot, "changes/archive/captures");
+  const archivePath = join14(archiveRoot, `${id}.md`);
   await assertAbsent(archivePath);
   await mkdir9(archiveRoot, { recursive: true });
   await rename8(inboxPath, archivePath);
   try {
-    await writeFile9(archivePath, serializeWorkSpec(document3), "utf8");
+    await writeFile10(archivePath, serializeWorkSpec(document3), "utf8");
   } catch (error2) {
     await rename8(archivePath, inboxPath);
     throw error2;
@@ -35234,7 +35323,7 @@ async function resolveCapture(options) {
   return { id, outcome: options.outcome, destinations, archivePath };
 }
 async function resolveCaptureContext(targetInput) {
-  const source = readRepositoryMetadata(resolve15(targetInput));
+  const source = readRepositoryMetadata(resolve16(targetInput));
   const target = source.root;
   const config = await readConfig(target);
   const knowledgeRoot = config.profile === "knowledge" ? await realpath3(target) : await realpath3(resolveKnowledgeRoot(target, config));
@@ -35283,7 +35372,7 @@ async function normalizeDestinations(knowledgeRoot, inputs) {
         `Capture destination must be a concrete knowledge concept, not an index or log: ${destination}`
       );
     }
-    const absolute = resolve15(knowledgeRoot, destination);
+    const absolute = resolve16(knowledgeRoot, destination);
     const scoped = relative8(knowledgeRoot, absolute);
     if (!scoped || scoped.startsWith(`..${sep8}`) || scoped === ".." || isAbsolute3(scoped)) {
       throw new Error(`Capture destination escapes the knowledge repository: ${destination}`);
@@ -35336,7 +35425,7 @@ async function uniqueFileId(roots, base) {
     const candidate = index2 === 1 ? base : `${base}-${index2}`;
     const states = await Promise.all(roots.map(async (root) => {
       try {
-        await access5(join13(root, `${candidate}.md`), constants5.F_OK);
+        await access5(join14(root, `${candidate}.md`), constants5.F_OK);
         return true;
       } catch (error2) {
         if (isMissingFileError(error2)) {
@@ -35390,7 +35479,7 @@ import {
   symlinkSync
 } from "node:fs";
 import { homedir, tmpdir as tmpdir2 } from "node:os";
-import { dirname as dirname10, join as join14, resolve as resolve16 } from "node:path";
+import { dirname as dirname10, join as join15, resolve as resolve17 } from "node:path";
 function installSkillsTransactional(options) {
   const transaction = snapshotSkillInstall(options);
   try {
@@ -35400,7 +35489,7 @@ function installSkillsTransactional(options) {
       const qmdSkillSource = resolveQmdSkillSource(options.runner);
       installSkillSource(
         cli,
-        resolve16(options.distributionRoot),
+        resolve17(options.distributionRoot),
         workflowSkillsForProfile(options.profile),
         options
       );
@@ -35428,7 +35517,7 @@ function installSkillSource(cli, source, skills, options) {
   ];
   const runtime = runtimeCommand(cli, args.slice(1));
   const result = spawnSync4(runtime.command, runtime.args, {
-    cwd: resolve16(options.target),
+    cwd: resolve17(options.target),
     encoding: "utf8",
     stdio: options.yes ? ["ignore", "pipe", "pipe"] : "inherit"
   });
@@ -35445,7 +35534,7 @@ function listInstalledSkills(target, global2) {
   const args = [cli, "list", "--json", ...global2 ? ["--global"] : []];
   const runtime = runtimeCommand(cli, args.slice(1));
   const result = spawnSync4(runtime.command, runtime.args, {
-    cwd: resolve16(target),
+    cwd: resolve17(target),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -35465,10 +35554,10 @@ function listInstalledSkills(target, global2) {
 function resolveSkillsCli() {
   const require2 = createRequire(import.meta.url);
   const packagePath = require2.resolve("skills/package.json");
-  return join14(dirname10(packagePath), "bin/cli.mjs");
+  return join15(dirname10(packagePath), "bin/cli.mjs");
 }
 function reconcileProjectWorkflowSkills(options) {
-  const lockPath = join14(options.target, "skills-lock.json");
+  const lockPath = join15(options.target, "skills-lock.json");
   if (!existsSync2(lockPath)) {
     return;
   }
@@ -35478,10 +35567,10 @@ function reconcileProjectWorkflowSkills(options) {
   } catch {
     return;
   }
-  const distributionRoot = resolve16(options.distributionRoot);
+  const distributionRoot = resolve17(options.distributionRoot);
   const owned = allWorkflowSkills().filter((skill) => {
     const entry = lock.skills?.[skill];
-    return entry?.sourceType === "local" && entry.source && resolve16(entry.source) === distributionRoot;
+    return entry?.sourceType === "local" && entry.source && resolve17(entry.source) === distributionRoot;
   });
   if (owned.length === 0) {
     return;
@@ -35491,7 +35580,7 @@ function reconcileProjectWorkflowSkills(options) {
   const cli = resolveSkillsCli();
   for (const skill of owned) {
     for (const agent of ["codex", "claude"]) {
-      const path = agent === "codex" ? join14(options.target, ".agents/skills", skill) : join14(options.target, ".claude/skills", skill);
+      const path = agent === "codex" ? join15(options.target, ".agents/skills", skill) : join15(options.target, ".claude/skills", skill);
       if (!existsSync2(path) || desired.has(skill) && selectedAgents.has(agent)) {
         continue;
       }
@@ -35505,7 +35594,7 @@ function reconcileProjectWorkflowSkills(options) {
       ];
       const runtime = runtimeCommand(cli, args.slice(1));
       const result = spawnSync4(runtime.command, runtime.args, {
-        cwd: resolve16(options.target),
+        cwd: resolve17(options.target),
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"]
       });
@@ -35524,20 +35613,20 @@ function runtimeCommand(cli, args) {
   return { command: process.execPath, args: [cli, ...args] };
 }
 function snapshotSkillInstall(options) {
-  const root = mkdtempSync(join14(tmpdir2(), "wfctl-skills-"));
+  const root = mkdtempSync(join15(tmpdir2(), "wfctl-skills-"));
   const names = [.../* @__PURE__ */ new Set([...allWorkflowSkills(), "qmd"])];
   const paths = /* @__PURE__ */ new Set();
   for (const agent of options.agents) {
-    const base = options.scope === "user" ? globalSkillRoot(agent) : join14(
-      resolve16(options.target),
+    const base = options.scope === "user" ? globalSkillRoot(agent) : join15(
+      resolve17(options.target),
       agent === "codex" ? ".agents/skills" : ".claude/skills"
     );
     for (const name of names) {
-      paths.add(join14(base, name));
+      paths.add(join15(base, name));
     }
   }
   if (options.scope === "project") {
-    paths.add(join14(resolve16(options.target), "skills-lock.json"));
+    paths.add(join15(resolve17(options.target), "skills-lock.json"));
   }
   const snapshots = [...paths].map(
     (path, index2) => snapshotSkillPath(path, root, index2)
@@ -35575,7 +35664,7 @@ function snapshotSkillPath(path, root, index2) {
   if (stat4.isSymbolicLink()) {
     return { path, kind: "symlink", linkTarget: readlinkSync(path) };
   }
-  const backup = join14(root, String(index2));
+  const backup = join15(root, String(index2));
   if (stat4.isDirectory()) {
     cpSync(path, backup, { recursive: true, verbatimSymlinks: true });
     return { path, kind: "directory", backup };
@@ -35600,17 +35689,17 @@ function restoreSkillPath(snapshot) {
 }
 function globalSkillRoot(agent) {
   if (agent === "codex") {
-    return join14(process.env.CODEX_HOME?.trim() || join14(homedir(), ".codex"), "skills");
+    return join15(process.env.CODEX_HOME?.trim() || join15(homedir(), ".codex"), "skills");
   }
-  return join14(
-    process.env.CLAUDE_CONFIG_DIR?.trim() || join14(homedir(), ".claude"),
+  return join15(
+    process.env.CLAUDE_CONFIG_DIR?.trim() || join15(homedir(), ".claude"),
     "skills"
   );
 }
 
 // src/doctor.ts
 async function runDoctor(targetInput, options = {}) {
-  const target = resolve17(targetInput);
+  const target = resolve18(targetInput);
   const checks = [];
   const runner = options.runner ?? runTool;
   let config;
@@ -35633,8 +35722,8 @@ async function runDoctor(targetInput, options = {}) {
       agents: config.skills?.agents ?? [],
       runner
     }));
-    checks.push(await graphifyGraphCheck(join15(target, "graphify-out/graph.json")));
-    checks.push(await graphifyScopeCheck(join15(target, ".graphifyignore"), config.profile));
+    checks.push(await graphifyGraphCheck(join16(target, "graphify-out/graph.json")));
+    checks.push(await graphifyScopeCheck(join16(target, ".graphifyignore"), config.profile));
     const ignored = runner(
       "git",
       ["check-ignore", "-q", "graphify-out/graph.json"],
@@ -35651,7 +35740,7 @@ async function runDoctor(targetInput, options = {}) {
       if (config.skills.agents.includes("codex")) {
         checks.push(await pathCheck(
           `codex-skill-${skill}`,
-          join15(target, ".agents/skills", skill, "SKILL.md"),
+          join16(target, ".agents/skills", skill, "SKILL.md"),
           "fail",
           `Codex skill ${skill} is installed`,
           `Codex skill ${skill} is missing`
@@ -35660,7 +35749,7 @@ async function runDoctor(targetInput, options = {}) {
       if (config.skills.agents.includes("claude")) {
         checks.push(await pathCheck(
           `claude-skill-${skill}`,
-          join15(target, ".claude/skills", skill, "SKILL.md"),
+          join16(target, ".claude/skills", skill, "SKILL.md"),
           "fail",
           `Claude skill ${skill} is installed`,
           `Claude skill ${skill} is missing`
@@ -35697,7 +35786,7 @@ async function runDoctor(targetInput, options = {}) {
   checks.push(qmdVersion);
   const qmdConfig = await pathCheck(
     "qmd-index-config",
-    join15(knowledgeRoot, ".qmd/index.yml"),
+    join16(knowledgeRoot, ".qmd/index.yml"),
     "fail",
     `Project-local QMD collections found at ${knowledgeRoot}`,
     `Project-local QMD configuration is missing at ${knowledgeRoot}`
@@ -35708,14 +35797,14 @@ async function runDoctor(targetInput, options = {}) {
   }
   checks.push(await pathCheck(
     "knowledge",
-    join15(knowledgeRoot, "knowledge/index.md"),
+    join16(knowledgeRoot, "knowledge/index.md"),
     "fail",
     `Knowledge bundle found at ${knowledgeRoot}`,
     `Knowledge bundle is missing at ${knowledgeRoot}`
   ));
   checks.push(await pathCheck(
     "maintainer-guide",
-    join15(target, "PROJECT_WORKFLOW.md"),
+    join16(target, "PROJECT_WORKFLOW.md"),
     "fail",
     "Maintainer guide is present",
     "PROJECT_WORKFLOW.md is missing"
@@ -35773,7 +35862,7 @@ async function runDoctor(targetInput, options = {}) {
     ]) {
       checks.push(await pathCheck(
         `knowledge-${directory}`,
-        join15(target, directory),
+        join16(target, directory),
         "fail",
         `${directory} exists`,
         `${directory} is missing`
@@ -35833,10 +35922,10 @@ async function runDoctor(targetInput, options = {}) {
       const connections = await listRepositoryConnections(knowledgeRoot);
       const currentRoot = await realpath4(target);
       const connection = connections.find(
-        (entry) => entry.checkouts.some((checkout2) => resolve17(checkout2.root) === currentRoot)
+        (entry) => entry.checkouts.some((checkout2) => resolve18(checkout2.root) === currentRoot)
       );
       const checkout = connection?.checkouts.find(
-        (entry) => resolve17(entry.root) === currentRoot
+        (entry) => resolve18(entry.root) === currentRoot
       );
       checks.push({
         name: "repository-connection",
@@ -35897,7 +35986,7 @@ function repositoryConnectionMessage(repository, selection) {
 }
 async function graphifyScopeCheck(path, profile) {
   try {
-    const content3 = await readFile17(path, "utf8");
+    const content3 = await readFile18(path, "utf8");
     const missing = graphifyIgnoreEntries(profile).filter((entry) => !content3.includes(entry));
     const blanket = [".agents/", ".claude/"].filter((entry) => new RegExp(`^${entry.replace(".", "\\.")}$`, "m").test(content3));
     if (blanket.length > 0) {
@@ -35921,9 +36010,9 @@ async function graphifyScopeCheck(path, profile) {
   }
 }
 async function knowledgeGraphCheck(target, expectedGraph) {
-  const path = join15(target, ".workflow/current/knowledge-graph.json");
+  const path = join16(target, ".workflow/current/knowledge-graph.json");
   try {
-    const value = JSON.parse(await readFile17(path, "utf8"));
+    const value = JSON.parse(await readFile18(path, "utf8"));
     if (!isDeepStrictEqual(value, expectedGraph)) {
       return {
         name: "knowledge-graph",
@@ -35945,9 +36034,9 @@ async function knowledgeGraphCheck(target, expectedGraph) {
   }
 }
 async function claimLedgerCheck(target, expectedLedger) {
-  const path = join15(target, ".workflow/current/claim-ledger.json");
+  const path = join16(target, ".workflow/current/claim-ledger.json");
   try {
-    const value = JSON.parse(await readFile17(path, "utf8"));
+    const value = JSON.parse(await readFile18(path, "utf8"));
     if (!isDeepStrictEqual(value, expectedLedger)) {
       return {
         name: "claim-ledger",
@@ -36098,7 +36187,7 @@ function isEtagOnlyModelCacheWarning(line) {
 }
 async function graphifyGraphCheck(path) {
   try {
-    const graph = JSON.parse(await readFile17(path, "utf8"));
+    const graph = JSON.parse(await readFile18(path, "utf8"));
     if (!Array.isArray(graph.nodes) || graph.nodes.length === 0) {
       return {
         name: "graphify-graph",
@@ -36140,16 +36229,16 @@ init_config();
 init_repository_registry();
 import { execFile } from "node:child_process";
 import { createHash as createHash11 } from "node:crypto";
-import { access as access7, mkdir as mkdir11, readFile as readFile19, readdir as readdir12, rename as rename9, writeFile as writeFile11 } from "node:fs/promises";
-import { dirname as dirname12, join as join17, resolve as resolve18 } from "node:path";
+import { access as access7, mkdir as mkdir11, readFile as readFile20, readdir as readdir12, rename as rename9, writeFile as writeFile12 } from "node:fs/promises";
+import { dirname as dirname12, join as join18, resolve as resolve19 } from "node:path";
 import { promisify } from "node:util";
 
 // src/vision.ts
 init_config();
 init_work_spec();
 import { createHash as createHash10 } from "node:crypto";
-import { mkdir as mkdir10, readFile as readFile18, readdir as readdir11, writeFile as writeFile10 } from "node:fs/promises";
-import { dirname as dirname11, join as join16 } from "node:path";
+import { mkdir as mkdir10, readFile as readFile19, readdir as readdir11, writeFile as writeFile11 } from "node:fs/promises";
+import { dirname as dirname11, join as join17 } from "node:path";
 var VISION_METHODS = ["attested", "interactive", "token"];
 var ATTESTED_METHODS = /* @__PURE__ */ new Set(["attested"]);
 function visionIdFor(trajectory, existing) {
@@ -36178,10 +36267,10 @@ function visionReceiptDigest(input) {
   ).digest("hex");
 }
 function visionRecordPath(knowledgeRoot, id) {
-  return join16(knowledgeRoot, ".workflow/current/visions", `${id}.json`);
+  return join17(knowledgeRoot, ".workflow/current/visions", `${id}.json`);
 }
 function visionDocumentPath(knowledgeRoot, id) {
-  return join16(knowledgeRoot, "trajectories", `${id}.md`);
+  return join17(knowledgeRoot, "trajectories", `${id}.md`);
 }
 async function declareVision(options) {
   const declaredBy = options.declaredBy.trim();
@@ -36229,11 +36318,11 @@ async function declareVision(options) {
   };
   const path = visionRecordPath(options.knowledgeRoot, record2.id);
   await mkdir10(dirname11(path), { recursive: true });
-  await writeFile10(path, `${JSON.stringify(record2, null, 2)}
+  await writeFile11(path, `${JSON.stringify(record2, null, 2)}
 `, "utf8");
   const documentPath = visionDocumentPath(options.knowledgeRoot, record2.id);
   await mkdir10(dirname11(documentPath), { recursive: true });
-  await writeFile10(
+  await writeFile11(
     documentPath,
     serializeWorkSpec({
       metadata: {
@@ -36266,7 +36355,7 @@ ${statement}
 }
 async function existingVisionIds(knowledgeRoot) {
   try {
-    return (await readdir11(join16(knowledgeRoot, ".workflow/current/visions"))).filter((entry) => entry.endsWith(".json")).map((entry) => entry.replace(/\.json$/, ""));
+    return (await readdir11(join17(knowledgeRoot, ".workflow/current/visions"))).filter((entry) => entry.endsWith(".json")).map((entry) => entry.replace(/\.json$/, ""));
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -36277,7 +36366,7 @@ async function existingVisionIds(knowledgeRoot) {
 async function readVisionRecord(knowledgeRoot, id) {
   try {
     const raw = JSON.parse(
-      await readFile18(visionRecordPath(knowledgeRoot, id), "utf8")
+      await readFile19(visionRecordPath(knowledgeRoot, id), "utf8")
     );
     return isVisionRecord(raw) ? raw : void 0;
   } catch (error2) {
@@ -36322,7 +36411,7 @@ var OBSERVATION_SOURCE_KINDS = [
   "maintainer"
 ];
 async function compileTrajectories(targetInput) {
-  const target = resolve18(targetInput);
+  const target = resolve19(targetInput);
   const config = await readConfig(target);
   if (config.profile !== "knowledge") {
     throw new Error(`Trajectories require a knowledge repository: ${target}`);
@@ -36589,7 +36678,7 @@ async function resolvePointers(target, pointers, errors, warnings) {
       continue;
     }
     const local = pointer.value.replace(/[#:][^/\\]*$/, "");
-    if (!await exists2(join17(target, local))) {
+    if (!await exists2(join18(target, local))) {
       errors.push({
         id: pointer.id,
         path: pointer.path,
@@ -36649,7 +36738,7 @@ function caseDirectories(kind, id) {
 }
 async function anyExists(target, candidates) {
   for (const candidate of candidates) {
-    if (await exists2(join17(target, candidate))) {
+    if (await exists2(join18(target, candidate))) {
       return true;
     }
   }
@@ -36670,10 +36759,10 @@ async function writeTrajectoryGraph(targetInput) {
       `Cannot build trajectory graph: ${result.errors.length} error(s) remain: ${result.errors.slice(0, 8).map((issue3) => `${issue3.path}: ${issue3.message}`).join("; ")}`
     );
   }
-  const path = join17(result.target, TRAJECTORY_GRAPH_PATH);
+  const path = join18(result.target, TRAJECTORY_GRAPH_PATH);
   await mkdir11(dirname12(path), { recursive: true });
   const temporary = `${path}.tmp-${process.pid}`;
-  await writeFile11(temporary, `${JSON.stringify(result.graph, null, 2)}
+  await writeFile12(temporary, `${JSON.stringify(result.graph, null, 2)}
 `, "utf8");
   await rename9(temporary, path);
   return { ...result, path };
@@ -36826,7 +36915,7 @@ function visionStatement(body) {
   return lines.join("\n").trim();
 }
 async function collectTrajectoryFiles(target) {
-  const root = join17(target, TRAJECTORY_ROOT);
+  const root = join18(target, TRAJECTORY_ROOT);
   let entries;
   try {
     entries = await readdir12(root, { withFileTypes: true });
@@ -36841,9 +36930,9 @@ async function collectTrajectoryFiles(target) {
     if (!entry.isFile() || !entry.name.endsWith(".md")) {
       continue;
     }
-    const path = join17(root, entry.name);
+    const path = join18(root, entry.name);
     try {
-      const document3 = parseWorkSpec(await readFile19(path, "utf8"));
+      const document3 = parseWorkSpec(await readFile20(path, "utf8"));
       files.push({
         kind: stringValue10(document3.metadata.kind) === "vision" ? "vision" : "trajectory",
         id: stringValue10(document3.metadata.id) || entry.name.replace(/\.md$/, ""),
@@ -37205,12 +37294,12 @@ function stringArray9(value) {
 
 // src/promotion.ts
 init_config();
-import { mkdir as mkdir12, readdir as readdir13, readFile as readFile20, writeFile as writeFile12 } from "node:fs/promises";
-import { dirname as dirname13, join as join18, resolve as resolve19 } from "node:path";
+import { mkdir as mkdir12, readdir as readdir13, readFile as readFile21, writeFile as writeFile13 } from "node:fs/promises";
+import { dirname as dirname13, join as join19, resolve as resolve20 } from "node:path";
 init_work_spec();
 var AUTHOR_MARK = "<!-- AUTHOR: ";
 async function promoteTrajectory(options) {
-  const target = resolve19(options.target);
+  const target = resolve20(options.target);
   const compilation = await compileTrajectories(target);
   if (compilation.errors.length > 0) {
     throw new Error(
@@ -37227,8 +37316,8 @@ async function promoteTrajectory(options) {
       `${record2.subject} has no declared vision. A curated page carries what it is, what it should become, and the gap between them; without the second there is no page to write, only the old one again.`
     );
   }
-  const path = join18("knowledge/areas", record2.area, `${record2.id.replace(/^traj-/, "")}.md`);
-  const absolute = join18(target, path);
+  const path = join19("knowledge/areas", record2.area, `${record2.id.replace(/^traj-/, "")}.md`);
+  const absolute = join19(target, path);
   const existed = await exists3(absolute);
   if (existed && !options.force) {
     throw new Error(`${path} already exists; pass --force to rewrite it`);
@@ -37272,7 +37361,7 @@ async function promoteTrajectory(options) {
     body
   };
   await mkdir12(dirname13(absolute), { recursive: true });
-  await writeFile12(absolute, serializeWorkSpec(document3), "utf8");
+  await writeFile13(absolute, serializeWorkSpec(document3), "utf8");
   return {
     trajectory: record2.id,
     path,
@@ -37398,12 +37487,12 @@ function areaTitle(area) {
 async function replacementState(target, record2) {
   const state = [];
   for (const path of record2.replaces) {
-    state.push({ path, present: await exists3(join18(target, path)) });
+    state.push({ path, present: await exists3(join19(target, path)) });
   }
   return state;
 }
 async function unclaimedPages(target, area, graph, written) {
-  const root = join18(target, "knowledge/areas", area);
+  const root = join19(target, "knowledge/areas", area);
   const claimed = new Set(
     graph.trajectories.filter((entry) => entry.area === area).flatMap((entry) => entry.replaces)
   );
@@ -37421,7 +37510,7 @@ async function unclaimedPages(target, area, graph, written) {
     for (const entry of entries) {
       const relative9 = `${prefix}/${entry.name}`;
       if (entry.isDirectory()) {
-        await walk(join18(directory, entry.name), relative9);
+        await walk(join19(directory, entry.name), relative9);
       } else if (entry.name.endsWith(".md") && entry.name !== "index.md") {
         if (!claimed.has(relative9) && !written.has(relative9)) {
           found.push(relative9);
@@ -37434,7 +37523,7 @@ async function unclaimedPages(target, area, graph, written) {
 }
 async function exists3(path) {
   try {
-    await readFile20(path);
+    await readFile21(path);
     return true;
   } catch {
     return false;
@@ -37443,14 +37532,14 @@ async function exists3(path) {
 
 // src/debts.ts
 init_config();
-import { readdir as readdir14, readFile as readFile21, writeFile as writeFile13 } from "node:fs/promises";
-import { join as join19, resolve as resolve20 } from "node:path";
+import { readdir as readdir14, readFile as readFile22, writeFile as writeFile14 } from "node:fs/promises";
+import { join as join20, resolve as resolve21 } from "node:path";
 init_work_spec();
 async function collectDebts(targetInput) {
-  const target = resolve20(targetInput);
+  const target = resolve21(targetInput);
   const compilation = await compileTrajectories(target);
-  const active = await bundleIds(join19(target, "changes/active"));
-  const archived = await bundleIds(join19(target, "changes/archive"));
+  const active = await bundleIds(join20(target, "changes/active"));
+  const archived = await bundleIds(join20(target, "changes/archive"));
   const debts = [];
   for (const record2 of compilation.graph.trajectories) {
     const root = rootOf(record2, compilation.graph);
@@ -37482,7 +37571,7 @@ async function collectDebts(targetInput) {
   };
 }
 async function scheduleDebt(options) {
-  const target = resolve20(options.target);
+  const target = resolve21(options.target);
   const compilation = await compileTrajectories(target);
   if (compilation.errors.length > 0) {
     throw new Error(
@@ -37496,9 +37585,9 @@ async function scheduleDebt(options) {
     throw new Error(`No trajectory named ${options.trajectory}`);
   }
   const work = options.work.trim().replace(/^changes\/active\//, "").replace(/\/$/, "");
-  const active = await bundleIds(join19(target, "changes/active"));
+  const active = await bundleIds(join20(target, "changes/active"));
   if (!active.has(work)) {
-    const archived = await bundleIds(join19(target, "changes/archive"));
+    const archived = await bundleIds(join20(target, "changes/archive"));
     throw new Error(
       archived.has(work) ? `${work} is already archived; a debt cannot be scheduled against finished work` : `No open change bundle named ${work}. Open one with wfctl work start, then schedule the debt against it.`
     );
@@ -37510,15 +37599,15 @@ async function scheduleDebt(options) {
       `That debt is already being closed by ${gap.work}. Two bundles closing one debt means neither owns it; retire one before scheduling the other.`
     );
   }
-  const absolute = join19(target, record2.path);
-  const document3 = parseWorkSpec(await readFile21(absolute, "utf8"));
+  const absolute = join20(target, record2.path);
+  const document3 = parseWorkSpec(await readFile22(absolute, "utf8"));
   const gaps = document3.metadata.gaps;
   if (!Array.isArray(gaps) || !isRecord6(gaps[index2])) {
     throw new Error(`${record2.path}: gaps no longer match the compiled record; re-run check`);
   }
   const previousStatus = gap.status;
   gaps[index2] = { ...gaps[index2], status: "to-close", work };
-  await writeFile13(absolute, serializeWorkSpec(document3), "utf8");
+  await writeFile14(absolute, serializeWorkSpec(document3), "utf8");
   return {
     trajectory: record2.id,
     path: record2.path,
@@ -37595,21 +37684,21 @@ function isRecord6(value) {
 // src/work-ask.ts
 init_assets();
 init_work_spec();
-import { readFile as readFile22 } from "node:fs/promises";
-import { join as join20, resolve as resolve21 } from "node:path";
+import { readFile as readFile23 } from "node:fs/promises";
+import { join as join21, resolve as resolve22 } from "node:path";
 async function readWorkGate(targetInput, id, options = {}) {
   const stage = options.stage ?? "framing";
-  const target = resolve21(targetInput);
-  const path = join20(target, "changes/active", id, "change.md");
-  const document3 = parseWorkSpec(await readFile22(path, "utf8"));
+  const target = resolve22(targetInput);
+  const path = join21(target, "changes/active", id, "change.md");
+  const document3 = parseWorkSpec(await readFile23(path, "utf8"));
   const metadata = document3.metadata;
   const review = isRecord2(metadata.maintainer_review) ? metadata.maintainer_review[stage] : void 0;
   const boilerplate = await templateLines(options.distributionRoot);
   return {
     id,
-    title: text3(metadata.title) || id,
+    title: text4(metadata.title) || id,
     stage,
-    approved: isRecord2(review) && text3(review.status) === "approved",
+    approved: isRecord2(review) && text4(review.status) === "approved",
     doing: section(document3.body, "In", boilerplate),
     notDoing: section(document3.body, "Out", boilerplate),
     doneWhen: acceptance(metadata.acceptance),
@@ -37619,8 +37708,8 @@ async function readWorkGate(targetInput, id, options = {}) {
 async function templateLines(distributionRoot) {
   try {
     const root = distributionRoot ?? await findDistributionRoot();
-    const template = await readFile22(
-      join20(root, "skills/manage-project-work/assets/work-spec.md"),
+    const template = await readFile23(
+      join21(root, "skills/manage-project-work/assets/work-spec.md"),
       "utf8"
     );
     return new Set(
@@ -37673,7 +37762,7 @@ function acceptance(value) {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.filter(isRecord2).map((entry) => text3(entry.criterion)).filter(Boolean);
+  return value.filter(isRecord2).map((entry) => text4(entry.criterion)).filter(Boolean);
 }
 function section(body, heading, boilerplate) {
   const lines = body.split(/\r?\n/);
@@ -37704,23 +37793,24 @@ function section(body, heading, boilerplate) {
 function escape(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-function text3(value) {
+function text4(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
 // src/resumability.ts
 init_config();
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { readFile as readFile24 } from "node:fs/promises";
-import { join as join22, resolve as resolve23 } from "node:path";
+import { readFile as readFile25 } from "node:fs/promises";
+import { join as join23, resolve as resolve24 } from "node:path";
 
 // src/state.ts
 init_config();
-import { resolve as resolve22 } from "node:path";
+import { resolve as resolve23 } from "node:path";
 
 // src/state-collectors.ts
-import { readdir as readdir15, readFile as readFile23, stat as stat3 } from "node:fs/promises";
-import { join as join21 } from "node:path";
+import { readdir as readdir15, readFile as readFile24, stat as stat3 } from "node:fs/promises";
+import { join as join22 } from "node:path";
+init_park();
 init_config();
 init_dependencies();
 init_knowledge_session();
@@ -37843,7 +37933,7 @@ function corpusCollector() {
     id: "corpus",
     profiles: ["knowledge"],
     async collect(context) {
-      const graphPath = join21(context.knowledgeRoot, ".workflow/current/knowledge-graph.json");
+      const graphPath = join22(context.knowledgeRoot, ".workflow/current/knowledge-graph.json");
       const graph = await readJson(graphPath);
       if (!graph) {
         return [{
@@ -37899,7 +37989,7 @@ function corpusCollector() {
         });
       }
       const compiledAt = stringValue11(graph.generatedAt);
-      const newest = await newestModification(join21(context.knowledgeRoot, "knowledge"));
+      const newest = await newestModification(join22(context.knowledgeRoot, "knowledge"));
       if (compiledAt && newest && newest > Date.parse(compiledAt)) {
         signals2.push({
           id: "corpus.stale-compilation",
@@ -37944,7 +38034,7 @@ function reconstructionCollector() {
     id: "reconstruction",
     profiles: ["knowledge"],
     async collect(context) {
-      const root = join21(context.knowledgeRoot, "reconstruction/active");
+      const root = join22(context.knowledgeRoot, "reconstruction/active");
       const signals2 = [];
       for (const entry of await activeRecords(root)) {
         const metadata = entry.document.metadata;
@@ -37955,7 +38045,7 @@ function reconstructionCollector() {
           if (!relative9) {
             continue;
           }
-          const ledger = await readJson(join21(entry.root, relative9));
+          const ledger = await readJson(join22(entry.root, relative9));
           const manifest = recordValue11(ledger?.manifest);
           const graphify = recordValue11(ledger?.graphify);
           const files = Array.isArray(manifest?.files) ? manifest.files : [];
@@ -38023,7 +38113,7 @@ function intakeCollector() {
     id: "intake",
     profiles: ["knowledge"],
     async collect(context) {
-      const root = join21(context.knowledgeRoot, "intake/cases/active");
+      const root = join22(context.knowledgeRoot, "intake/cases/active");
       const signals2 = [];
       for (const entry of await activeRecords(root)) {
         const metadata = entry.document.metadata;
@@ -38097,7 +38187,7 @@ function rawCollector() {
     id: "raw",
     profiles: ["knowledge"],
     async collect(context) {
-      const files = await countFiles(join21(context.knowledgeRoot, "raw"));
+      const files = await countFiles(join22(context.knowledgeRoot, "raw"));
       if (files === 0) {
         return [{
           id: "raw.empty",
@@ -38107,7 +38197,7 @@ function rawCollector() {
           blocks: ["process-raw-intake"]
         }];
       }
-      const cases = (await activeRecords(join21(context.knowledgeRoot, "intake/cases/active"))).length + await directoryCount(join21(context.knowledgeRoot, "intake/cases/archive"));
+      const cases = (await activeRecords(join22(context.knowledgeRoot, "intake/cases/active"))).length + await directoryCount(join22(context.knowledgeRoot, "intake/cases/archive"));
       return [{
         id: cases === 0 ? "raw.unprocessed" : "raw.present",
         domain: "raw",
@@ -38123,22 +38213,23 @@ function workCollector() {
     id: "work",
     profiles: ["knowledge", "leaf"],
     async collect(context) {
-      const root = join21(context.knowledgeRoot, "changes/active");
+      const root = join22(context.knowledgeRoot, "changes/active");
       const signals2 = [];
       for (const entry of await activeRecords(root, "change.md")) {
         const metadata = entry.document.metadata;
-        const issues = await issueCounts(join21(entry.root, "issues"));
+        const issues = await issueCounts(join22(entry.root, "issues"));
         const review = recordValue11(metadata.maintainer_review);
         const outstanding = ["framing", "completion"].filter(
           (stage) => stringValue11(recordValue11(review?.[stage])?.status) !== "approved"
         );
         const checkpoint = recordValue11(metadata.checkpoint);
-        const heldForMaintainer = outstanding.includes("framing") || stringValue11(checkpoint?.status) === "blocked" || Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0;
+        const park = readPark(metadata);
+        const heldForMaintainer = Boolean(park) || outstanding.includes("framing") || stringValue11(checkpoint?.status) === "blocked" || Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0;
         signals2.push({
           id: "work.active",
           domain: "work",
           level: "attention",
-          summary: heldForMaintainer ? "A change bundle is open and held for you" : "A change bundle is open",
+          summary: park ? "A change bundle is parked and does not start" : heldForMaintainer ? "A change bundle is open and held for you" : "A change bundle is open",
           subject: entry.id,
           facts: {
             title: stringValue11(metadata.title) || entry.id,
@@ -38174,7 +38265,9 @@ function workCollector() {
             summary: "Approval will be needed at closure, and cannot be given yet",
             subject: entry.id,
             facts: { stages: outstanding.join(",") },
-            awaits: "agent",
+            // Nobody owes an action. The maintainer cannot approve work that has
+            // not been done, and the agent has nothing to do about a future
+            // approval — so claiming either would arm the stop guard on a fact.
             blocks: ["close-work"]
           });
         }
@@ -38185,9 +38278,12 @@ function workCollector() {
             level: "info",
             summary: "The bundle has not passed verification",
             subject: entry.id,
-            // Nothing has been built until the framing is approved, so there is
-            // nothing to verify and this cannot be the agent's next action.
-            awaits: outstanding.includes("framing") ? "maintainer" : "agent",
+            // Nothing has been built until the framing is approved, and nothing
+            // may be built while the bundle is parked, so in neither case can
+            // verification be the agent's next action. Reporting it as one is
+            // what let a stop guard push a parked bundle into three source
+            // repositories, one re-entry at a time.
+            awaits: park || outstanding.includes("framing") ? "maintainer" : "agent",
             blocks: ["close-work"]
           });
         }
@@ -38256,7 +38352,7 @@ function inboxCollector() {
   };
 }
 async function workstreamSignals(entry) {
-  const packets = await markdownRecords(join21(entry.root, "workstreams"));
+  const packets = await markdownRecords(join22(entry.root, "workstreams"));
   const counts = { packets: packets.length, claimed: 0, submitted: 0, accepted: 0 };
   const stranded = [];
   for (const packet of packets) {
@@ -38389,9 +38485,9 @@ function checkpointSignals(domain, subject, metadata, currentBasis) {
 async function activeRecords(root, file = "case.md") {
   const records = [];
   for (const name of await directoryNames(root)) {
-    const directory = join21(root, name);
+    const directory = join22(root, name);
     try {
-      const content3 = await readFile23(join21(directory, file), "utf8");
+      const content3 = await readFile24(join22(directory, file), "utf8");
       records.push({ id: name, root: directory, document: parseWorkSpec(content3) });
     } catch {
       records.push({ id: name, root: directory, document: { metadata: {}, body: "" } });
@@ -38411,12 +38507,12 @@ async function markdownRecords(root) {
   }
   const records = [];
   for (const name of names) {
-    const path = join21(root, name);
+    const path = join22(root, name);
     try {
       records.push({
         id: name.slice(0, -3),
         root: path,
-        document: parseWorkSpec(await readFile23(path, "utf8"))
+        document: parseWorkSpec(await readFile24(path, "utf8"))
       });
     } catch {
       records.push({ id: name.slice(0, -3), root: path, document: { metadata: {}, body: "" } });
@@ -38439,7 +38535,7 @@ async function issueCounts(root) {
     counts.issues += 1;
     try {
       const status = stringValue11(
-        parseWorkSpec(await readFile23(join21(root, name), "utf8")).metadata.status
+        parseWorkSpec(await readFile24(join22(root, name), "utf8")).metadata.status
       );
       if (status === "claimed") {
         counts.issuesClaimed += 1;
@@ -38486,7 +38582,7 @@ async function countFiles(root, budget = { left: FILE_SCAN_LIMIT }) {
       continue;
     }
     if (entry.isDirectory()) {
-      total += await countFiles(join21(root, entry.name), budget);
+      total += await countFiles(join22(root, entry.name), budget);
     } else if (entry.isFile()) {
       budget.left -= 1;
       total += 1;
@@ -38509,7 +38605,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
     if (budget.left <= 0) {
       break;
     }
-    const path = join21(root, entry.name);
+    const path = join22(root, entry.name);
     if (entry.isDirectory()) {
       const nested = await newestModification(path, budget);
       if (nested !== void 0 && (newest === void 0 || nested > newest)) {
@@ -38527,7 +38623,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
 }
 async function readJson(path) {
   try {
-    const parsed = JSON.parse(await readFile23(path, "utf8"));
+    const parsed = JSON.parse(await readFile24(path, "utf8"));
     return recordValue11(parsed);
   } catch {
     return void 0;
@@ -38599,7 +38695,7 @@ var CAPABILITIES = [
   }
 ];
 async function collectWorkflowState(targetInput, options = {}) {
-  const root = resolve22(targetInput);
+  const root = resolve23(targetInput);
   const now = options.now ?? /* @__PURE__ */ new Date();
   const capabilities = options.capabilities ?? CAPABILITIES;
   const base = {
@@ -38685,7 +38781,7 @@ function sortSignals(signals2) {
 
 // src/resumability.ts
 async function assessResumability(targetInput) {
-  const target = resolve23(targetInput);
+  const target = resolve24(targetInput);
   const report = await collectWorkflowState(target, { collectors: STATE_COLLECTORS });
   const bySubject = /* @__PURE__ */ new Map();
   const current = [];
@@ -38757,6 +38853,7 @@ async function uncommittedPaths(target) {
 }
 
 // src/cli.ts
+init_park();
 init_knowledge();
 init_knowledge_graph();
 init_repository_registry();
@@ -38770,21 +38867,21 @@ import { constants as constants7 } from "node:fs";
 import {
   access as access8,
   mkdir as mkdir14,
-  readFile as readFile26,
+  readFile as readFile27,
   readdir as readdir16,
   realpath as realpath5,
   rename as rename10,
   rm as rm4,
-  writeFile as writeFile15
+  writeFile as writeFile16
 } from "node:fs/promises";
-import { dirname as dirname15, join as join24, resolve as resolve24, sep as sep9 } from "node:path";
+import { dirname as dirname15, join as join25, resolve as resolve25, sep as sep9 } from "node:path";
 
 // src/approval.ts
 init_config();
 init_work_spec();
 import { createHash as createHash12 } from "node:crypto";
-import { mkdir as mkdir13, readFile as readFile25, writeFile as writeFile14 } from "node:fs/promises";
-import { dirname as dirname14, join as join23 } from "node:path";
+import { mkdir as mkdir13, readFile as readFile26, writeFile as writeFile15 } from "node:fs/promises";
+import { dirname as dirname14, join as join24 } from "node:path";
 function approvalReceiptDigest(input) {
   const parts = [input.id, input.stage, input.by, input.at, input.method];
   if (input.attested) {
@@ -38793,7 +38890,7 @@ function approvalReceiptDigest(input) {
   return createHash12("sha256").update(parts.join("\0"), "utf8").digest("hex");
 }
 function approvalRecordPath(knowledgeRoot, id, stage) {
-  return join23(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
+  return join24(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
 }
 async function recordApproval(options) {
   if (!options.by.startsWith("human:") || options.by.trim().length <= "human:".length) {
@@ -38834,14 +38931,14 @@ async function recordApproval(options) {
   };
   const path = approvalRecordPath(options.knowledgeRoot, options.id, options.stage);
   await mkdir13(dirname14(path), { recursive: true });
-  await writeFile14(path, `${JSON.stringify(record2, null, 2)}
+  await writeFile15(path, `${JSON.stringify(record2, null, 2)}
 `, "utf8");
   return record2;
 }
 async function readApproval(knowledgeRoot, id, stage) {
   try {
     const raw = JSON.parse(
-      await readFile25(approvalRecordPath(knowledgeRoot, id, stage), "utf8")
+      await readFile26(approvalRecordPath(knowledgeRoot, id, stage), "utf8")
     );
     return isApprovalRecord(raw) ? raw : void 0;
   } catch (error2) {
@@ -38915,7 +39012,7 @@ init_repository_registry();
 init_work_spec();
 init_work_bundle();
 async function beginWork(options) {
-  const target = await realpath5(resolve24(options.target));
+  const target = await realpath5(resolve25(options.target));
   const config = await readConfig(target);
   let knowledgeRoot;
   let codeRoots;
@@ -38961,17 +39058,17 @@ async function beginWork(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const date = now.toISOString().slice(0, 10);
   const id = await uniqueWorkId(
-    join24(knowledgeRoot, "changes/active"),
+    join25(knowledgeRoot, "changes/active"),
     `${date}-${normalizeSlug5(options.slug)}`
   );
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile26(
-    join24(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
+  const template = parseWorkSpec(await readFile27(
+    join25(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
     "utf8"
   ));
   const createdAt = now.toISOString();
-  const activeDirectory = join24(knowledgeRoot, "changes/active", id);
-  const specPath = join24(activeDirectory, "change.md");
+  const activeDirectory = join25(knowledgeRoot, "changes/active", id);
+  const specPath = join25(activeDirectory, "change.md");
   const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
   const pointerPaths = boundRepositories.map(
     (entry) => leafPointerPath(entry.root, id)
@@ -39022,7 +39119,7 @@ async function beginWork(options) {
   };
   try {
     await mkdir14(activeDirectory, { recursive: false });
-    await writeFile15(specPath, serializeWorkSpec(template), {
+    await writeFile16(specPath, serializeWorkSpec(template), {
       encoding: "utf8",
       flag: "wx"
     });
@@ -39053,7 +39150,7 @@ async function beginWork(options) {
 }
 async function verifyWork(targetInput, id) {
   const context = await requireWorkContext(targetInput, id);
-  const document3 = parseWorkSpec(await readFile26(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile27(context.specPath, "utf8"));
   const issues = completionIssues(document3, false);
   issues.push(...await bundleCompletionIssues(dirname15(context.specPath), document3));
   issues.push(...repositoryVerificationIssues(document3, context.currentSources));
@@ -39077,7 +39174,7 @@ async function approveWork(options) {
     ...options.session ? { session: options.session } : {},
     ...options.now ? { now: options.now } : {}
   });
-  const document3 = parseWorkSpec(await readFile26(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile27(context.specPath, "utf8"));
   const review = record_(document3.metadata.maintainer_review) ?? {};
   const previous2 = record_(review[options.stage]) ?? {};
   review[options.stage] = {
@@ -39096,7 +39193,7 @@ async function approveWork(options) {
   };
   document3.metadata.maintainer_review = review;
   document3.metadata.updated_at = record2.at;
-  await writeFile15(context.specPath, serializeWorkSpec(document3), "utf8");
+  await writeFile16(context.specPath, serializeWorkSpec(document3), "utf8");
   return {
     id: context.id,
     stage: options.stage,
@@ -39117,7 +39214,7 @@ function uniqueNotes(existing, note) {
 async function closeWork(options) {
   const context = await requireWorkContext(options.target, options.id);
   const activeDirectory = dirname15(context.specPath);
-  const document3 = parseWorkSpec(await readFile26(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile27(context.specPath, "utf8"));
   if (options.outcome === "completed") {
     const issues = [
       ...completionIssues(document3, true),
@@ -39141,7 +39238,7 @@ async function closeWork(options) {
       }
     }
   }
-  const archivePath = join24(context.knowledgeRoot, "changes/archive", options.id);
+  const archivePath = join25(context.knowledgeRoot, "changes/archive", options.id);
   await assertAbsent2(archivePath, "archive");
   const now = options.now ?? /* @__PURE__ */ new Date();
   document3.metadata.status = options.outcome;
@@ -39162,8 +39259,8 @@ async function closeWork(options) {
   await mkdir14(dirname15(archivePath), { recursive: true });
   await rename10(activeDirectory, archivePath);
   try {
-    await writeFile15(
-      join24(archivePath, "change.md"),
+    await writeFile16(
+      join25(archivePath, "change.md"),
       serializeWorkSpec(document3),
       "utf8"
     );
@@ -39220,7 +39317,7 @@ async function createWorkIssue2(input) {
   });
 }
 async function claimWorkIssue2(input) {
-  const target = await realpath5(resolve24(input.target));
+  const target = await realpath5(resolve25(input.target));
   const config = await readConfig(target);
   const context = await requireWorkContext(target, input.id);
   const source = config.profile === "leaf" ? context.currentSources.find((entry) => entry.root === target) : void 0;
@@ -39234,7 +39331,7 @@ async function claimWorkIssue2(input) {
   });
 }
 async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath5(resolve24(target));
+  const resolvedTarget = await realpath5(resolve25(target));
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await releaseWorkIssue(
@@ -39245,7 +39342,7 @@ async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new 
   );
 }
 async function completeWorkIssue(input) {
-  const target = await realpath5(resolve24(input.target));
+  const target = await realpath5(resolve25(input.target));
   const context = await requireWorkContext(target, input.id);
   const claimContext = await claimContextForTarget(target, context);
   return await resolveWorkIssue({
@@ -39258,7 +39355,7 @@ async function completeWorkIssue(input) {
   });
 }
 async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath5(resolve24(target));
+  const resolvedTarget = await realpath5(resolve25(target));
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await dropWorkIssue(
@@ -39288,7 +39385,7 @@ async function finishWayfinder2(target, id, mode, now = /* @__PURE__ */ new Date
   return await finishWayfinder(dirname15(context.specPath), mode, now);
 }
 async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
-  const target = await realpath5(resolve24(targetInput));
+  const target = await realpath5(resolve25(targetInput));
   const config = await readConfig(target);
   if (config.profile !== "leaf") {
     throw new Error("Work rebind must target the replacement leaf checkout");
@@ -39307,8 +39404,8 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   }
   const previous2 = binding.repositories[index2];
   binding.repositories[index2] = { root: target, source: current };
-  const specPath = resolve24(knowledgeRoot, binding.spec);
-  const document3 = parseWorkSpec(await readFile26(specPath, "utf8"));
+  const specPath = resolve25(knowledgeRoot, binding.spec);
+  const document3 = parseWorkSpec(await readFile27(specPath, "utf8"));
   const repositories = recordArray8(document3.metadata.repositories);
   const durableIndex = repositories.findIndex(
     (entry) => entry.repository === current.repository
@@ -39332,7 +39429,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   ];
   const previousPointer = leafPointerPath(previous2.root, id);
   const currentPointer = leafPointerPath(target, id);
-  await writeFile15(specPath, serializeWorkSpec(document3), "utf8");
+  await writeFile16(specPath, serializeWorkSpec(document3), "utf8");
   await writeBinding(bindingPath, binding, true);
   await writeBinding(currentPointer, binding, true);
   if (previousPointer !== currentPointer) {
@@ -39348,9 +39445,9 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   };
 }
 async function workStatus(targetInput, id) {
-  const target = await realpath5(resolve24(targetInput));
+  const target = await realpath5(resolve25(targetInput));
   const config = await readConfig(target);
-  const pointerRoot = config.profile === "knowledge" ? join24(target, ".workflow/current/work") : join24(target, ".workflow/current");
+  const pointerRoot = config.profile === "knowledge" ? join25(target, ".workflow/current/work") : join25(target, ".workflow/current");
   const ids = id ? [id] : await pointerIds(pointerRoot);
   const results = [];
   for (const workId of ids) {
@@ -39437,14 +39534,14 @@ async function inspectWorkContext(target, profile, id) {
       issues.push(`${entry.source.repository}: ${errorMessage(error2)}`);
     }
   }
-  const specPath = resolve24(knowledgeRoot, binding.spec);
-  const activeRoot = join24(knowledgeRoot, "changes/active");
+  const specPath = resolve25(knowledgeRoot, binding.spec);
+  const activeRoot = join25(knowledgeRoot, "changes/active");
   let title = id;
   if (!inside(activeRoot, specPath)) {
     issues.push(`spec path is outside the active work root: ${specPath}`);
   }
   try {
-    const document3 = parseWorkSpec(await readFile26(specPath, "utf8"));
+    const document3 = parseWorkSpec(await readFile27(specPath, "utf8"));
     title = typeof document3.metadata.title === "string" ? document3.metadata.title.trim() || id : id;
     if (document3.metadata.scope !== binding.scope) {
       issues.push("spec scope does not match the local binding");
@@ -39461,7 +39558,7 @@ async function inspectWorkContext(target, profile, id) {
         issues.push(`${entry.source.repository}: durable repository binding is inconsistent`);
       }
     }
-    const serialized = await readFile26(specPath, "utf8");
+    const serialized = await readFile27(specPath, "utf8");
     for (const entry of binding.repositories) {
       if (serialized.includes(entry.root)) {
         issues.push("durable work record leaks a local checkout path");
@@ -39546,15 +39643,15 @@ function durableRepository(source) {
 }
 async function assertKnowledgeRoot(root) {
   try {
-    await access8(join24(root, "knowledge/index.md"), constants7.R_OK);
+    await access8(join25(root, "knowledge/index.md"), constants7.R_OK);
   } catch {
     throw new Error(`Knowledge repository is not initialized: ${root}`);
   }
 }
 async function assertKnowledgeReference(root, reference) {
   const normalized = reference.replace(/^\/+/, "");
-  const absolute = resolve24(root, normalized);
-  const knowledgeRoot = join24(root, "knowledge");
+  const absolute = resolve25(root, normalized);
+  const knowledgeRoot = join25(root, "knowledge");
   if (!inside(knowledgeRoot, absolute) || !absolute.toLowerCase().endsWith(".md")) {
     throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
   }
@@ -39566,22 +39663,22 @@ async function assertKnowledgeReference(root, reference) {
 }
 function knowledgeBindingPath(knowledgeRoot, id) {
   assertId(id);
-  return join24(knowledgeRoot, ".workflow/current/work", `${id}.json`);
+  return join25(knowledgeRoot, ".workflow/current/work", `${id}.json`);
 }
 function leafPointerPath(root, id) {
   assertId(id);
-  return join24(root, ".workflow/current", `${id}.json`);
+  return join25(root, ".workflow/current", `${id}.json`);
 }
 async function writeBinding(path, binding, replace = false) {
   await mkdir14(dirname15(path), { recursive: true });
-  await writeFile15(path, `${JSON.stringify(binding, null, 2)}
+  await writeFile16(path, `${JSON.stringify(binding, null, 2)}
 `, {
     encoding: "utf8",
     flag: replace ? "w" : "wx"
   });
 }
 async function readBinding2(path) {
-  const raw = JSON.parse(await readFile26(path, "utf8"));
+  const raw = JSON.parse(await readFile27(path, "utf8"));
   if (!isRecord8(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
     (entry) => isRecord8(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
   )) {
@@ -39604,7 +39701,7 @@ async function pointerIds(root) {
       }
       let parsed;
       try {
-        parsed = JSON.parse(await readFile26(join24(root, entry.name), "utf8"));
+        parsed = JSON.parse(await readFile27(join25(root, entry.name), "utf8"));
       } catch {
         continue;
       }
@@ -39626,8 +39723,8 @@ function relativeSpec(knowledgeRoot, specPath) {
   return value.split(sep9).join("/");
 }
 function inside(parent, child) {
-  const boundary = `${resolve24(parent)}${sep9}`;
-  return resolve24(child).startsWith(boundary);
+  const boundary = `${resolve25(parent)}${sep9}`;
+  return resolve25(child).startsWith(boundary);
 }
 function record(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
@@ -39645,7 +39742,7 @@ async function uniqueWorkId(activeRoot, base) {
   for (let index2 = 1; index2 < 1e3; index2 += 1) {
     const candidate = index2 === 1 ? base : `${base}-${index2}`;
     try {
-      await access8(join24(activeRoot, candidate), constants7.F_OK);
+      await access8(join25(activeRoot, candidate), constants7.F_OK);
     } catch (error2) {
       if (isMissingFileError(error2)) {
         return candidate;
@@ -39693,9 +39790,9 @@ init_assets();
 
 // src/hooks.ts
 init_config();
-import { mkdir as mkdir15, readFile as readFile27, rename as rename11, rm as rm5, writeFile as writeFile16 } from "node:fs/promises";
+import { mkdir as mkdir15, readFile as readFile28, rename as rename11, rm as rm5, writeFile as writeFile17 } from "node:fs/promises";
 import { randomUUID as randomUUID4 } from "node:crypto";
-import { dirname as dirname16, join as join25 } from "node:path";
+import { dirname as dirname16, join as join26 } from "node:path";
 var SESSION_BRIEF_COMMAND = "wfctl brief --hook";
 var SESSION_START_EVENT = "SessionStart";
 var BACKGROUND_GUARD_COMMAND = '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true';
@@ -39741,11 +39838,11 @@ function stopGuardHookInstalled(target) {
   return hookEntryInstalled(target, STOP_EVENT, STOP_GUARD_COMMAND);
 }
 function stopGuardDisabledPath(target) {
-  return join25(target, ".workflow/current/hooks/stop-guard.disabled");
+  return join26(target, ".workflow/current/hooks/stop-guard.disabled");
 }
 async function stopGuardEnabled(target) {
   try {
-    await readFile27(stopGuardDisabledPath(target), "utf8");
+    await readFile28(stopGuardDisabledPath(target), "utf8");
     return false;
   } catch (error2) {
     if (isMissingFileError(error2)) {
@@ -39764,7 +39861,7 @@ async function setStopGuardEnabled(target, enabled2, reason = "") {
     return { path, enabled: true, changed: was !== true };
   }
   await mkdir15(dirname16(path), { recursive: true });
-  await writeFile16(
+  await writeFile17(
     path,
     `${JSON.stringify({ disabledAt: (/* @__PURE__ */ new Date()).toISOString(), reason }, null, 2)}
 `,
@@ -39828,12 +39925,12 @@ function sessionStartEnvelope(context) {
 `;
 }
 function settingsPath(target) {
-  return join25(target, ".claude/settings.json");
+  return join26(target, ".claude/settings.json");
 }
 async function readSettings(path) {
   let content3;
   try {
-    content3 = await readFile27(path, "utf8");
+    content3 = await readFile28(path, "utf8");
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return {};
@@ -39852,8 +39949,8 @@ async function readSettings(path) {
 }
 async function writeSettings(path, settings) {
   await mkdir15(dirname16(path), { recursive: true });
-  const temporary = join25(dirname16(path), `.wfctl-${randomUUID4()}.tmp`);
-  await writeFile16(temporary, `${JSON.stringify(settings, null, 2)}
+  const temporary = join26(dirname16(path), `.wfctl-${randomUUID4()}.tmp`);
+  await writeFile17(temporary, `${JSON.stringify(settings, null, 2)}
 `, "utf8");
   await rename11(temporary, path);
 }
@@ -39898,17 +39995,17 @@ function initCommand() {
     "--init-git",
     "Initialize Git when creating a knowledge repository."
   ).option("-y, --yes", "Accept defaults and safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options, profileValue) => {
-    const target = resolve25(options.target);
+    const target = resolve26(options.target);
     const promptOptions = {
       yes: options.yes === true,
       json: options.json === true
     };
     const profile = await resolveProfile(profileValue, target, promptOptions);
-    let knowledge = options.knowledge ? resolve25(options.knowledge) : await installedKnowledgePath(target, profile);
+    let knowledge = options.knowledge ? resolve26(options.knowledge) : await installedKnowledgePath(target, profile);
     if (profile === "leaf" && !knowledge && !promptOptions.yes && !promptOptions.json && interactive()) {
       const answer = await ask("Knowledge repository path: ");
       if (answer) {
-        knowledge = resolve25(answer);
+        knowledge = resolve26(answer);
       }
     }
     if (options.printInstructions) {
@@ -39950,7 +40047,7 @@ function upgradeCommand() {
     "--maintainer <actor:string>",
     "Record who the maintainer is, as human:<id>, so nobody retypes their own name."
   ).option("--dry-run", "Preview files and dependency checks without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
-    const target = resolve25(options.target);
+    const target = resolve26(options.target);
     const config = await readConfig(target);
     const scope = options.skills ? parseSkillScope(options.skills) : config.skills?.scope ?? "project";
     const agents = options.agents ? parseAgentTargets(options.agents) : config.skills?.agents ?? ["codex", "claude"];
@@ -40139,7 +40236,7 @@ async function installWorkflow(input) {
 ${green("\u2713")} ${bold("Workflow installed")}
   ${dim("Target")}  ${resolved.target}
   ${dim("Changes")} ${applied.changed}
-  ${dim("Guide")}   ${resolve25(resolved.target, "PROJECT_WORKFLOW.md")}
+  ${dim("Guide")}   ${resolve26(resolved.target, "PROJECT_WORKFLOW.md")}
 `
     );
     printChangedPaths(applied.changedPaths);
@@ -40364,7 +40461,7 @@ function hooksCommand() {
   ).command(
     "install",
     new Command().description(`Add a SessionStart hook that runs \`${SESSION_BRIEF_COMMAND}\`.`).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const result = await installSessionBriefHook(resolve25(options.target));
+      const result = await installSessionBriefHook(resolve26(options.target));
       if (options.json) {
         printJson(result);
       } else {
@@ -40379,7 +40476,7 @@ ${dim("Restart the agent session for the hook to take effect.")}
   ).command(
     "remove",
     new Command().description("Remove the session-start brief hook and leave every other setting intact.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const result = await removeSessionBriefHook(resolve25(options.target));
+      const result = await removeSessionBriefHook(resolve26(options.target));
       if (options.json) {
         printJson(result);
       } else {
@@ -40391,7 +40488,7 @@ ${dim(result.path)}
   ).command(
     "status",
     new Command().description("Report whether the session-start brief hook is installed.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const target = resolve25(options.target);
+      const target = resolve26(options.target);
       const installed = await sessionBriefHookInstalled(target);
       if (options.json) {
         printJson({ target, installed, command: SESSION_BRIEF_COMMAND });
@@ -40408,7 +40505,7 @@ function stopGuardCommand() {
   return new Command().description(
     "Turn the stop guard on or off for this checkout, or report which it is.\nOff is remembered locally and survives upgrades; the settings entry stays installed."
   ).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--off", "Stop re-entering the agent when a turn ends with work outstanding.").option("--on", "Resume re-entering.").option("--reason <reason:string>", "Why it was turned off, for whoever finds it off later.").option("--json", "Print machine-readable JSON.").action(async (options) => {
-    const target = resolve25(options.target);
+    const target = resolve26(options.target);
     if (options.off && options.on) {
       throw new Error("Pass --on or --off, not both");
     }
@@ -40545,7 +40642,7 @@ Bindings: ${result.pointerPaths.join(", ")}
         );
       }
     })
-  ).command("context", workContextCommand()).command("checkpoint", workCheckpointCommand()).command("ask", workAskCommand()).command("approve", workApproveCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
+  ).command("context", workContextCommand()).command("checkpoint", workCheckpointCommand()).command("ask", workAskCommand()).command("approve", workApproveCommand()).command("park", workParkCommand()).command("release", workReleaseCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
     "status",
     new Command().description("Show and validate the code-root/bundle binding.").arguments("[id:string]").option("-t, --target <path:string>", "Leaf checkout.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
       const results = await workStatus(options.target, id);
@@ -40640,6 +40737,53 @@ Archive: ${result.archivePath}
     })
   );
 }
+function workParkCommand() {
+  return new Command().description(
+    "Hold a bundle from starting, whatever its approvals say.\nA park recorded as prose in a checkpoint stops nothing: the delivery gate reads state."
+  ).arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--by <actor:string>", "Deciding maintainer as human:<id>.", { required: true }).option("--reason <reason:string>", "Why it is held, in product language.", { required: true }).option("--attested <answer:string>", "The maintainer's own words, if they said it.").option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+    const result = await parkWork({
+      target: options.target,
+      id,
+      by: options.by,
+      reason: options.reason,
+      ...options.attested ? { attested: options.attested } : {}
+    });
+    if (options.json) {
+      printJson(result);
+    } else {
+      process.stdout.write(
+        `${result.id} is parked: ${result.reason}
+No delivery issue can be claimed until it is released.
+`
+      );
+    }
+  });
+}
+function workReleaseCommand() {
+  return new Command().description(
+    "Let a parked bundle start, on the maintainer's own words.\nAn answer to some other question is not a release."
+  ).arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--by <actor:string>", "Deciding maintainer as human:<id>.", { required: true }).option(
+    "--attested <answer:string>",
+    "What they said, word for word, that means start it.",
+    { required: true }
+  ).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+    const result = await releaseWork({
+      target: options.target,
+      id,
+      by: options.by,
+      attested: options.attested
+    });
+    if (options.json) {
+      printJson(result);
+    } else {
+      process.stdout.write(
+        `${result.id} is released and may be worked.
+It was held because: ${result.reason}
+`
+      );
+    }
+  });
+}
 function workAskCommand() {
   return new Command().description(
     "Render the framing a maintainer is being asked to approve, in four parts:\nwhat gets done, what deliberately does not, what will make it finished, and the order.\nEverything else in the record is bookkeeping the approval does not touch."
@@ -40661,6 +40805,9 @@ function workApproveCommand() {
     "--attested <answer:string>",
     "The maintainer's own answer, word for word. Records their decision from the session they gave it in, without sending them to a second terminal."
   ).option("--session <where:string>", "Where that answer was given, so it can be read back.").option(
+    "--park <reason:string>",
+    "Approve the framing and hold the work from starting. Use when the maintainer settles what the work is but says it is not to begin yet; approval alone never starts it."
+  ).option(
     "--token <token:string>",
     "Out-of-band approval token, for a stronger record than an attestation. Must equal WFCTL_APPROVAL_TOKEN."
   ).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
@@ -40683,8 +40830,15 @@ function workApproveCommand() {
       ...options.attested ? { attested: options.attested } : {},
       ...options.session ? { session: options.session } : {}
     });
+    const parked = options.park ? await parkWork({
+      target: options.target,
+      id,
+      by: options.by,
+      reason: options.park,
+      ...options.attested ? { attested: options.attested } : {}
+    }) : void 0;
     if (options.json) {
-      printJson(result);
+      printJson({ ...result, ...parked ? { parked } : {} });
     } else {
       process.stdout.write(
         `Recorded ${result.stage} approval for ${result.id}
@@ -40692,8 +40846,9 @@ By: ${result.by}
 Method: ${result.method}
 Receipt: ${result.receipt}
 Spec: ${result.specPath}
-The change record changed: re-read it, refresh its review receipt and checkpoint.
-`
+` + (parked ? `Parked: ${parked.reason}
+Approval settled what the work is; it does not start. Release it with wfctl work release when the maintainer says to begin.
+` : "") + "The change record changed: re-read it, refresh its review receipt and checkpoint.\n"
       );
     }
   });
@@ -41490,7 +41645,7 @@ ${result.unclaimed.length} page(s) in this area are claimed by no trajectory:
       "--token <token:string>",
       "Out-of-band token for an unattended run. Must equal WFCTL_APPROVAL_TOKEN."
     ).option("--json", "Print machine-readable JSON.").action(async (options, trajectory) => {
-      const target = resolve25(options.target);
+      const target = resolve26(options.target);
       const by = options.by ?? (await readConfig(target)).maintainer;
       if (!by) {
         throw new Error(
@@ -43043,7 +43198,7 @@ ${cyan(bold(section2.title))}
 }
 async function recordedAgents(target) {
   try {
-    const config = await readConfig(resolve25(target));
+    const config = await readConfig(resolve26(target));
     const agents = config.skills?.agents ?? [];
     return agents.length > 0 ? agents : ["codex", "claude"];
   } catch {

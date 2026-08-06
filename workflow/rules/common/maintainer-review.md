@@ -159,6 +159,16 @@ parks finished work behind a decision that could have been made on day one.
 Approving edits the change record, so refresh its checkpoint and re-read it
 before claiming.
 
+Approval and permission to start are different decisions and the record holds
+them separately. A maintainer who approves a framing and says the work is not to
+begin yet — including one approving only so the bundle stops cluttering their
+queue — is parking it: `wfctl work approve ... --park "<why>"`, or `wfctl work
+park` afterwards. A parked bundle refuses every delivery claim before any other
+gate is even read. Only `wfctl work release --attested "<their words>"` starts
+it, and a release is never inferred: not from a truthful answer to an unrelated
+question, and not from the condition that held it having cleared. The last time
+one was inferred, six commits landed in three source repositories.
+
 Render the framing with `wfctl work ask <id>` rather than composing one. It
 carries the four things approval fixes — what gets done, what deliberately does
 not, what will make it finished, and in what order — and nothing else from a

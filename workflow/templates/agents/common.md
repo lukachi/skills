@@ -15,6 +15,14 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   index, ranking, and snippets as navigation only; verify by direct reading and
   authoritative sources.
 - Present bounded review packets and require explicit maintainer decisions at the gates defined by the workflow.
+- Approving a framing settles what the work is, never that it begins. When the
+  maintainer approves and says starting is premature — including approving only
+  to clear their queue — record both: `wfctl work approve ... --park "<why>"`.
+  A parked bundle refuses every delivery claim, and only `wfctl work release
+  --attested "<their words>"` starts it. Never infer a release from an answer to
+  a different question, and never from the reconstruction or blocker that held
+  it having since cleared: the condition ending is not the same as being told to
+  go.
 - Put a framing to the maintainer with `wfctl work ask`, which renders the four
   things approval fixes — what gets done, what deliberately does not, what makes
   it finished, in what order — and nothing else from a record written for you.

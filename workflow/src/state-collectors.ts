@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { listCaptures } from "./capture.js";
+import { readPark } from "./park.js";
 import { isMissingFileError } from "./config.js";
 import { runTool } from "./dependencies.js";
 import { sessionBasis } from "./knowledge-session.js";
@@ -488,7 +489,9 @@ function workCollector(): StateCollector {
           stringValue(recordValue(review?.[stage])?.status) !== "approved"
         );
         const checkpoint = recordValue(metadata.checkpoint);
-        const heldForMaintainer = outstanding.includes("framing")
+        const park = readPark(metadata);
+        const heldForMaintainer = Boolean(park)
+          || outstanding.includes("framing")
           || stringValue(checkpoint?.status) === "blocked"
           || (Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0);
 
@@ -503,7 +506,9 @@ function workCollector(): StateCollector {
           id: "work.active",
           domain: "work",
           level: "attention",
-          summary: heldForMaintainer
+          summary: park
+            ? "A change bundle is parked and does not start"
+            : heldForMaintainer
             ? "A change bundle is open and held for you"
             : "A change bundle is open",
           subject: entry.id,
@@ -550,7 +555,9 @@ function workCollector(): StateCollector {
             summary: "Approval will be needed at closure, and cannot be given yet",
             subject: entry.id,
             facts: { stages: outstanding.join(",") },
-            awaits: "agent",
+            // Nobody owes an action. The maintainer cannot approve work that has
+            // not been done, and the agent has nothing to do about a future
+            // approval — so claiming either would arm the stop guard on a fact.
             blocks: ["close-work"],
           });
         }
@@ -561,9 +568,12 @@ function workCollector(): StateCollector {
             level: "info",
             summary: "The bundle has not passed verification",
             subject: entry.id,
-            // Nothing has been built until the framing is approved, so there is
-            // nothing to verify and this cannot be the agent's next action.
-            awaits: outstanding.includes("framing") ? "maintainer" : "agent",
+            // Nothing has been built until the framing is approved, and nothing
+            // may be built while the bundle is parked, so in neither case can
+            // verification be the agent's next action. Reporting it as one is
+            // what let a stop guard push a parked bundle into three source
+            // repositories, one re-entry at a time.
+            awaits: park || outstanding.includes("framing") ? "maintainer" : "agent",
             blocks: ["close-work"],
           });
         }

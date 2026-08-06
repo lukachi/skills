@@ -55,6 +55,7 @@ import { promoteTrajectory } from "./promotion.js";
 import { collectDebts, scheduleDebt } from "./debts.js";
 import { readWorkGate, renderWorkGate } from "./work-ask.js";
 import { assessResumability, type StopRisk } from "./resumability.js";
+import { parkWork, releaseWork } from "./park.js";
 import type { TodoEdit } from "./work-spec.js";
 import { declareVision, type VisionMethod } from "./vision.js";
 import { hashKnowledgeConcept, validateKnowledge } from "./knowledge.js";
@@ -1072,6 +1073,8 @@ function workCommand() {
     .command("checkpoint", workCheckpointCommand())
     .command("ask", workAskCommand())
     .command("approve", workApproveCommand())
+    .command("park", workParkCommand())
+    .command("release", workReleaseCommand())
     .command("issue", workIssueCommand())
     .command("map", workMapCommand())
     .command("review", workReviewCommand())
@@ -1190,6 +1193,70 @@ function workCommand() {
     );
 }
 
+function workParkCommand() {
+  return new Command()
+    .description(
+      "Hold a bundle from starting, whatever its approvals say.\n"
+        + "A park recorded as prose in a checkpoint stops nothing: the delivery gate reads state.",
+    )
+    .arguments("<id:string>")
+    .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+    .option("--by <actor:string>", "Deciding maintainer as human:<id>.", { required: true })
+    .option("--reason <reason:string>", "Why it is held, in product language.", { required: true })
+    .option("--attested <answer:string>", "The maintainer's own words, if they said it.")
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      const result = await parkWork({
+        target: options.target,
+        id,
+        by: options.by,
+        reason: options.reason,
+        ...(options.attested ? { attested: options.attested } : {}),
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `${result.id} is parked: ${result.reason}\n`
+            + "No delivery issue can be claimed until it is released.\n",
+        );
+      }
+    });
+}
+
+function workReleaseCommand() {
+  return new Command()
+    .description(
+      "Let a parked bundle start, on the maintainer's own words.\n"
+        + "An answer to some other question is not a release.",
+    )
+    .arguments("<id:string>")
+    .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+    .option("--by <actor:string>", "Deciding maintainer as human:<id>.", { required: true })
+    .option(
+      "--attested <answer:string>",
+      "What they said, word for word, that means start it.",
+      { required: true },
+    )
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      const result = await releaseWork({
+        target: options.target,
+        id,
+        by: options.by,
+        attested: options.attested,
+      });
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `${result.id} is released and may be worked.\n`
+            + `It was held because: ${result.reason}\n`,
+        );
+      }
+    });
+}
+
 function workAskCommand() {
   return new Command()
     .description(
@@ -1230,6 +1297,11 @@ function workApproveCommand() {
     )
     .option("--session <where:string>", "Where that answer was given, so it can be read back.")
     .option(
+      "--park <reason:string>",
+      "Approve the framing and hold the work from starting. Use when the maintainer settles "
+        + "what the work is but says it is not to begin yet; approval alone never starts it.",
+    )
+    .option(
       "--token <token:string>",
       "Out-of-band approval token, for a stronger record than an attestation. "
         + "Must equal WFCTL_APPROVAL_TOKEN.",
@@ -1255,8 +1327,17 @@ function workApproveCommand() {
         ...(options.attested ? { attested: options.attested } : {}),
         ...(options.session ? { session: options.session } : {}),
       });
+      const parked = options.park
+        ? await parkWork({
+          target: options.target,
+          id,
+          by: options.by,
+          reason: options.park,
+          ...(options.attested ? { attested: options.attested } : {}),
+        })
+        : undefined;
       if (options.json) {
-        printJson(result);
+        printJson({ ...result, ...(parked ? { parked } : {}) });
       } else {
         process.stdout.write(
           `Recorded ${result.stage} approval for ${result.id}\n`
@@ -1264,6 +1345,11 @@ function workApproveCommand() {
             + `Method: ${result.method}\n`
             + `Receipt: ${result.receipt}\n`
             + `Spec: ${result.specPath}\n`
+            + (parked
+              ? `Parked: ${parked.reason}\n`
+                + "Approval settled what the work is; it does not start. Release it with "
+                + "wfctl work release when the maintainer says to begin.\n"
+              : "")
             + "The change record changed: re-read it, refresh its review receipt and checkpoint.\n",
         );
       }

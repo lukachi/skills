@@ -521,7 +521,9 @@ test("completion approval is not demanded of a bundle that has not been done", a
   );
   const later = report.signals.find((signal) => signal.id === "work.approvals-later");
   assert.equal(later?.facts?.stages, "completion");
-  assert.equal(later?.awaits, "agent");
+  // Neither party owes an action on a future approval, so it claims neither and
+  // the stop guard is not armed by a fact.
+  assert.equal(later?.awaits, undefined);
   const close = report.capabilities.find((entry) => entry.id === "close-work");
   assert.equal(close?.available, false);
 });

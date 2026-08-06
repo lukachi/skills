@@ -8,6 +8,16 @@ research, verified promotion, pending-capture triage, or case triage. You may in
 leaf repositories through Graphify for evidence, but never implement source
 changes from this repository. Redirect implementation work to the owning leaf.
 
+That sentence is guidance and stops nothing by itself: one `cd` into a bound
+checkout makes you the leaf agent, and the workflow is designed to allow exactly
+that once a bundle is released. So the real test is never where you are typing.
+It is whether the maintainer has said to begin — in words, about this work. A
+truthful answer to some other question is not that: a bundle approved so it would
+stop cluttering a queue was read as a bundle cleared to run, and six commits
+landed in three source repositories whose revisions the knowledge base still
+cites as what the source shows now. Before touching any source checkout, check
+that the bundle is not parked and that a release carries their words.
+
 Invoke `operate-project-knowledge` as the default entry point for work inside
 this repository. It handles common explanation, ownership, history, audit,
 navigation, contradiction, and triage requests, then routes specialized work
