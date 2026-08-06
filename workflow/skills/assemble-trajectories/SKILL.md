@@ -276,7 +276,40 @@ A reconstruction that ends with every debt correctly recorded and none of it
 reaching work has not finished; it has produced a document. This is the road out,
 and it is the same road for one debt and for two hundred.
 
-Ask what is owed:
+**You do not decide when this happens; the brief does.** The debt gate opens when
+every subject that owes something has a direction to owe it against, and not
+before — ordering debts against a direction nobody set asks the maintainer to
+rank work with no standard. Until then the brief shows the vision gate instead,
+and that is the work.
+
+When it opens, do not compose the list. Render it:
+
+```sh
+wfctl knowledge trajectory debts --ask
+```
+
+Grouped by subject, heaviest first, with what distinguishes each group and no
+identifier anywhere — the same rule the vision packet obeys. The order is a
+proposal from what the graph knows: how much else stops working without a
+subject, and how much its own line owes. Say so, and say plainly that theirs
+replaces it. Forty-eight questions is the overload this pipeline exists to
+remove; one ordered conversation is not.
+
+Their answer has exactly three outcomes per group, and every debt must land in
+one of them:
+
+| They say | You run |
+| --- | --- |
+| this is next | `wfctl work start`, then `trajectory schedule` for each debt |
+| deliberately not now | `wfctl knowledge trajectory defer --reason "<theirs>"` |
+| something else first | nothing yet; it stays open and the gate stays open with it |
+
+A debt left in none of the three is a debt that will be forgotten, which is the
+failure the ledger exists to prevent. `defer` requires a reason for the same
+reason a park does: set aside without one, it cannot be told from unread, and the
+next session reopens the decision.
+
+The full ledger, for your own reading rather than theirs:
 
 ```sh
 wfctl knowledge trajectory debts

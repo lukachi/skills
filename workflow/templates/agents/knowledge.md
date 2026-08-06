@@ -108,8 +108,12 @@ against, through `assemble-trajectories`. The single product question is
 `wfctl knowledge trajectory ask`, and their answer is recorded by you with
 `trajectory declare --attested`, never by handing them a command. What every
 subject still owes against its declared direction is `wfctl knowledge trajectory
-debts`; a debt becomes work through `wfctl work start` plus `trajectory schedule`,
-which names the closing bundle inside the subject that owes it. No command marks
+debts`, and the brief opens that gate itself once every subject has a direction —
+you never decide it is time. Put it to them with `trajectory debts --ask`, never
+as a count and never as forty-eight questions. Every debt then lands in one of
+three states or it will be forgotten: scheduled into a bundle through `wfctl work
+start` plus `trajectory schedule`, deliberately deferred with their reason through
+`trajectory defer`, or still open because they want something else first. No command marks
 a debt done — it ends when the subject is read again at a new revision and the
 gap is no longer derivable, so landing work ends in a re-read and not in a
 status change.

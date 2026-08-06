@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { applyInstallPlan } from "../src/applier.js";
-import { collectDebts, scheduleDebt } from "../src/debts.js";
+import { collectDebts, deferDebt, renderDebtPacket, scheduleDebt } from "../src/debts.js";
 import { buildInstallPlan } from "../src/planner.js";
 import { declareVision } from "../src/vision.js";
 import { collectWorkflowState } from "../src/state.js";
@@ -311,4 +311,76 @@ test("a scheduled debt stops being unscheduled, and the gate says so", async () 
     false,
     "nothing is owed and unclaimed, so the maintainer is asked nothing",
   );
+});
+
+test("the packet groups by subject, orders by what depends on it, and prints no identifier", async () => {
+  const target = await knowledgeRepository("wfctl-debts-packet-");
+  await writeTrajectory(target, "traj-rules", {
+    subject: "How faithfully the game follows its rules",
+    gaps: [{
+      kind: "delivery-debt",
+      statement: "Seventeen named places play differently from the rules, and none has an owner.",
+      status: "open",
+      work: "",
+    }],
+  });
+  await writeTrajectory(target, "traj-money", {
+    subject: "Money",
+    gaps: [{ kind: "hole", statement: "What a thing is worth was never established.", status: "open", work: "" }],
+    edges: [{ kind: "depends-on", target: "traj-rules" }],
+  });
+  for (const trajectory of ["traj-rules", "traj-money"]) {
+    await declareVision({
+      knowledgeRoot: target,
+      trajectory,
+      declaredBy: "human:nzafat",
+      statement: "As decided.",
+      method: "attested",
+      attested: "yes",
+    });
+  }
+
+  const packet = renderDebtPacket(await collectDebts(target));
+  // The depended-upon subject comes first, and a hole says it is a question.
+  assert.ok(
+    packet.indexOf("How faithfully") < packet.indexOf("## Money"),
+    packet,
+  );
+  assert.match(packet, /One other subject does not work without this one\./);
+  assert.match(packet, /questions rather than jobs/);
+  // Same rule as the vision packet: bookkeeping stays in the record.
+  for (const token of ["traj-", "delivery-debt", "gaps:", "status:", "hole"]) {
+    assert.doesNotMatch(packet, new RegExp(token), `${token} is the agent's bookkeeping`);
+  }
+});
+
+test("a deferred debt records who set it aside and why", async () => {
+  const target = await knowledgeRepository("wfctl-debts-defer-");
+  await writeTrajectory(target, "traj-equipment");
+
+  await assert.rejects(
+    () =>
+      deferDebt({
+        target,
+        trajectory: "traj-equipment",
+        gap: "1",
+        by: "human:nzafat",
+        reason: "   ",
+      }),
+    /requires a reason/,
+  );
+
+  await deferDebt({
+    target,
+    trajectory: "traj-equipment",
+    gap: "1",
+    by: "human:nzafat",
+    reason: "Waits for the delivery axis.",
+    attested: "не сейчас",
+  });
+  const ledger = await collectDebts(target);
+  assert.equal(ledger.debts[0]!.status, "deferred");
+  // Deliberately set aside is not the same as unread, and the packet stops
+  // asking about it while it stays visible in the ledger.
+  assert.doesNotMatch(renderDebtPacket(ledger), /Equip logic/);
 });

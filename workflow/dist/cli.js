@@ -37543,7 +37543,12 @@ async function collectDebts(targetInput) {
   const debts = [];
   for (const record2 of compilation.graph.trajectories) {
     const root = rootOf(record2, compilation.graph);
+    const dependents = compilation.graph.edges.filter(
+      (edge) => edge.kind === "depends-on" && edge.target === record2.id
+    ).length;
+    const rootWeight = compilation.graph.trajectories.find((entry) => entry.id === root)?.gapWeight ?? record2.gapWeight;
     record2.gaps.forEach((gap, index2) => {
+      const weighed = weigh(gap.kind, dependents, rootWeight);
       debts.push({
         trajectory: record2.id,
         subject: record2.subject,
@@ -37555,19 +37560,128 @@ async function collectDebts(targetInput) {
         work: gap.work,
         workState: workState(gap.work, active, archived),
         vision: record2.vision,
-        root
+        root,
+        weight: weighed.weight,
+        weightBecause: weighed.because,
+        dependents
       });
     });
   }
   const rank = { open: 0, "to-close": 1, deferred: 2 };
   debts.sort(
-    (left, right) => rank[left.status] - rank[right.status] || left.root.localeCompare(right.root) || left.trajectory.localeCompare(right.trajectory) || left.position - right.position
+    (left, right) => rank[left.status] - rank[right.status] || right.weight - left.weight || left.root.localeCompare(right.root) || left.trajectory.localeCompare(right.trajectory) || left.position - right.position
   );
   return {
     debts,
     settled: debts.filter((debt) => debt.workState === "archived"),
     directionless: debts.filter((debt) => !debt.vision),
     dangling: debts.filter((debt) => debt.workState === "missing")
+  };
+}
+function renderDebtPacket(ledger) {
+  const open2 = ledger.debts.filter((debt) => debt.status === "open");
+  if (open2.length === 0) {
+    return "Nothing is owed that nobody has taken.\n";
+  }
+  const groups = /* @__PURE__ */ new Map();
+  for (const debt of open2) {
+    const key = debt.subject;
+    groups.set(key, [...groups.get(key) ?? [], debt]);
+  }
+  const ordered = [...groups.entries()].sort(
+    (left, right) => Math.max(...right[1].map((debt) => debt.weight)) - Math.max(...left[1].map((debt) => debt.weight)) || left[0].localeCompare(right[0])
+  );
+  const lines = [];
+  lines.push("# What the project owes", "");
+  lines.push(
+    `${open2.length} thing(s) the reconstruction found undone, across ${ordered.length} subject(s).`,
+    "Ordered by how much else stops working without each subject and how much its own",
+    "line owes. That is a proposal from what the graph knows, not a judgement about the",
+    "product. Yours replaces it.",
+    ""
+  );
+  for (const [subject, debts] of ordered) {
+    lines.push(`## ${subject}`, "");
+    const dependents = Math.max(...debts.map((debt) => debt.dependents));
+    const notes = [];
+    if (dependents > 0) {
+      notes.push(
+        dependents === 1 ? "One other subject does not work without this one." : `${dependents} other subjects do not work without this one.`
+      );
+    }
+    if (!debts[0].vision) {
+      notes.push("No direction is declared here, so what these are owed against is unstated.");
+    }
+    if (debts.every((debt) => debt.kind === "hole")) {
+      notes.push("Nothing was established here; these are questions rather than jobs.");
+    }
+    if (notes.length > 0) {
+      lines.push(notes.join(" "), "");
+    }
+    for (const debt of debts) {
+      lines.push(`- ${debt.statement}`);
+    }
+    lines.push("");
+  }
+  const deferred = ledger.debts.filter((debt) => debt.status === "deferred");
+  const scheduled = ledger.debts.filter((debt) => debt.status === "to-close");
+  if (scheduled.length > 0 || deferred.length > 0) {
+    lines.push("## Already settled", "");
+    if (scheduled.length > 0) {
+      lines.push(`${scheduled.length} being closed by work already open.`);
+    }
+    if (deferred.length > 0) {
+      lines.push(`${deferred.length} deliberately not now.`);
+    }
+    lines.push("");
+  }
+  lines.push(
+    "For each group: is it next, is it deliberately not now, or is it something else",
+    "you would rather see first. Nothing here is scheduled without your answer.",
+    ""
+  );
+  return lines.join("\n");
+}
+async function deferDebt(options) {
+  const target = resolve21(options.target);
+  const by = options.by.trim();
+  if (!by.startsWith("human:") || by.length <= "human:".length) {
+    throw new Error("Deferring a debt is the maintainer's decision; pass --by human:<id>");
+  }
+  const reason = options.reason.trim();
+  if (!reason) {
+    throw new Error(
+      "Deferring requires a reason. A debt set aside without one cannot be told from a debt nobody read, and the next session reopens the question."
+    );
+  }
+  const compilation = await compileTrajectories(target);
+  const record2 = compilation.graph.trajectories.find(
+    (entry) => entry.id === options.trajectory
+  );
+  if (!record2) {
+    throw new Error(`No trajectory named ${options.trajectory}`);
+  }
+  const index2 = resolveGapIndex(record2, options.gap);
+  const gap = record2.gaps[index2];
+  if (gap.status === "to-close") {
+    throw new Error(
+      `That debt is already being closed by ${gap.work}; retire the work before deferring it`
+    );
+  }
+  const absolute = join20(target, record2.path);
+  const document3 = parseWorkSpec(await readFile22(absolute, "utf8"));
+  const gaps = document3.metadata.gaps;
+  if (!Array.isArray(gaps) || !isRecord6(gaps[index2])) {
+    throw new Error(`${record2.path}: gaps no longer match the compiled record; re-run check`);
+  }
+  gaps[index2] = { ...gaps[index2], status: "deferred", work: "", deferred: { by, reason, attested: (options.attested ?? "").trim() } };
+  await writeFile14(absolute, serializeWorkSpec(document3), "utf8");
+  return {
+    trajectory: record2.id,
+    path: record2.path,
+    statement: gap.statement,
+    work: "",
+    previousStatus: gap.status
   };
 }
 async function scheduleDebt(options) {
@@ -37638,6 +37752,31 @@ function resolveGapIndex(record2, selector) {
     );
   }
   return matches[0].index;
+}
+function weigh(kind, dependents, rootWeight) {
+  const because = [];
+  let weight = 0;
+  if (kind === "hole") {
+    return {
+      weight: -1,
+      because: ["nothing was established here, so this is a question rather than a job"]
+    };
+  }
+  if (dependents > 0) {
+    weight += dependents * 10;
+    because.push(
+      dependents === 1 ? "another subject does not work without this one" : `${dependents} subjects do not work without this one`
+    );
+  }
+  if (kind === "delivery-debt") {
+    weight += 3;
+    because.push("this was accepted and never delivered, so nothing needs deciding to start it");
+  }
+  weight += Math.min(rootWeight, 20);
+  if (rootWeight >= 5) {
+    because.push("it sits in the line that owes the most");
+  }
+  return { weight, because };
 }
 function workState(work, active, archived) {
   if (!work) {
@@ -41772,13 +41911,20 @@ The gap is recomputed from this; run trajectory check to see what it now costs.
         );
       }
     })
-  ).command("debts", knowledgeDebtsCommand()).command("schedule", knowledgeScheduleCommand());
+  ).command("debts", knowledgeDebtsCommand()).command("schedule", knowledgeScheduleCommand()).command("defer", knowledgeDeferCommand());
 }
 function knowledgeDebtsCommand() {
   return new Command().description(
     "List what every subject still owes against its declared direction.\nOpen debts first, then the ones being closed, then the deferred.\nThis is a view: nothing here decides what is owed, and nothing here strikes one off."
-  ).option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--open", "Only debts nobody has scheduled.").option("--json", "Print machine-readable JSON.").action(async (options) => {
+  ).option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--open", "Only debts nobody has scheduled.").option(
+    "--ask",
+    "Render the packet the maintainer reads: grouped by subject, heaviest first, with why, and carrying no identifier."
+  ).option("--json", "Print machine-readable JSON.").action(async (options) => {
     const ledger = await collectDebts(options.target);
+    if (options.ask) {
+      process.stdout.write(renderDebtPacket(ledger));
+      return;
+    }
     const shown = options.open ? ledger.debts.filter((debt) => debt.status === "open") : ledger.debts;
     if (options.json) {
       printJson({ ...ledger, shown });
@@ -41826,6 +41972,34 @@ they are owed against is unstated. Run trajectory ask on those subjects first.
 `
       );
     }
+  });
+}
+function knowledgeDeferCommand() {
+  return new Command().description(
+    "Record a debt the maintainer looked at and set aside, with their reason.\nA debt deferred without one cannot be told from a debt nobody read."
+  ).arguments("<trajectory:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option(
+    "--gap <selector:string>",
+    "Which debt: its position from `trajectory debts`, or a phrase from its statement.",
+    { required: true }
+  ).option("--by <actor:string>", "Deciding maintainer as human:<id>.", { required: true }).option("--reason <reason:string>", "Why not now, in product language.", { required: true }).option("--attested <answer:string>", "Their own words, if they said it in the session.").option("--json", "Print machine-readable JSON.").action(async (options, trajectory) => {
+    const result = await deferDebt({
+      target: options.target,
+      trajectory,
+      gap: options.gap,
+      by: options.by,
+      reason: options.reason,
+      ...options.attested ? { attested: options.attested } : {}
+    });
+    if (options.json) {
+      printJson(result);
+      return;
+    }
+    process.stdout.write(
+      `${result.trajectory}: a debt is deliberately not now
+Debt: ${result.statement}
+It stays visible and owned by nobody, which is the honest state.
+`
+    );
   });
 }
 function knowledgeScheduleCommand() {

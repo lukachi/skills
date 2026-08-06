@@ -57,6 +57,12 @@ export interface Debt {
   vision: string | null;
   /** The root subject this rolls up to, which is where direction is set. */
   root: string;
+  /** A proposed order, never a truth. See `weigh`. */
+  weight: number;
+  /** Subjects that declare they do not work without this one. */
+  dependents: number;
+  /** Why it weighs that, in words, for a packet that must not print numbers. */
+  weightBecause: string[];
 }
 
 export interface DebtLedger {
@@ -78,7 +84,13 @@ export async function collectDebts(targetInput: string): Promise<DebtLedger> {
   const debts: Debt[] = [];
   for (const record of compilation.graph.trajectories) {
     const root = rootOf(record, compilation.graph);
+    const dependents = compilation.graph.edges.filter((edge) =>
+      edge.kind === "depends-on" && edge.target === record.id
+    ).length;
+    const rootWeight = compilation.graph.trajectories
+      .find((entry) => entry.id === root)?.gapWeight ?? record.gapWeight;
     record.gaps.forEach((gap, index) => {
+      const weighed = weigh(gap.kind, dependents, rootWeight);
       debts.push({
         trajectory: record.id,
         subject: record.subject,
@@ -91,15 +103,20 @@ export async function collectDebts(targetInput: string): Promise<DebtLedger> {
         workState: workState(gap.work, active, archived),
         vision: record.vision,
         root,
+        weight: weighed.weight,
+        weightBecause: weighed.because,
+        dependents,
       });
     });
   }
 
-  // Worst first, and "worst" is the product's order rather than the corpus's:
-  // an open debt on a subject with a direction is work someone can start today.
+  // Heaviest first inside each status, because the previous order — status,
+  // then root name, then filename — was alphabetical, and an alphabetical debt
+  // ledger asks the maintainer to rank forty-eight things with no signal at all.
   const rank: Record<GapStatus, number> = { open: 0, "to-close": 1, deferred: 2 };
   debts.sort((left, right) =>
     rank[left.status] - rank[right.status]
+    || right.weight - left.weight
     || left.root.localeCompare(right.root)
     || left.trajectory.localeCompare(right.trajectory)
     || left.position - right.position
@@ -110,6 +127,154 @@ export async function collectDebts(targetInput: string): Promise<DebtLedger> {
     settled: debts.filter((debt) => debt.workState === "archived"),
     directionless: debts.filter((debt) => !debt.vision),
     dangling: debts.filter((debt) => debt.workState === "missing"),
+  };
+}
+
+/**
+ * What the project owes, composed for the person who decides the order.
+ *
+ * The signal says forty-eight. A number is not a decision, and forty-eight
+ * questions is the overload this whole pipeline exists to remove — so the packet
+ * groups by the subject the maintainer already set a direction for, puts the
+ * heaviest first, and says why each group weighs what it does in words.
+ *
+ * Rendered from the record, so it carries no trajectory id, no gap position and
+ * no schema token. Those are the agent's bookkeeping, and the last time they
+ * reached a maintainer the review turned into paperwork.
+ */
+export function renderDebtPacket(ledger: DebtLedger): string {
+  const open = ledger.debts.filter((debt) => debt.status === "open");
+  if (open.length === 0) {
+    return "Nothing is owed that nobody has taken.\n";
+  }
+  const groups = new Map<string, Debt[]>();
+  for (const debt of open) {
+    const key = debt.subject;
+    groups.set(key, [...(groups.get(key) ?? []), debt]);
+  }
+  const ordered = [...groups.entries()].sort((left, right) =>
+    Math.max(...right[1].map((debt) => debt.weight))
+      - Math.max(...left[1].map((debt) => debt.weight))
+    || left[0].localeCompare(right[0])
+  );
+
+  const lines: string[] = [];
+  lines.push("# What the project owes", "");
+  lines.push(
+    `${open.length} thing(s) the reconstruction found undone, across ${ordered.length} subject(s).`,
+    "Ordered by how much else stops working without each subject and how much its own",
+    "line owes. That is a proposal from what the graph knows, not a judgement about the",
+    "product. Yours replaces it.",
+    "",
+  );
+  for (const [subject, debts] of ordered) {
+    lines.push(`## ${subject}`, "");
+    // Only what distinguishes this group. The reasons behind the weight are the
+    // same three phrases for most subjects, so printing them per group read as
+    // four identical paragraphs and taught the reader to skip them.
+    const dependents = Math.max(...debts.map((debt) => debt.dependents));
+    const notes: string[] = [];
+    if (dependents > 0) {
+      notes.push(
+        dependents === 1
+          ? "One other subject does not work without this one."
+          : `${dependents} other subjects do not work without this one.`,
+      );
+    }
+    if (!debts[0]!.vision) {
+      notes.push("No direction is declared here, so what these are owed against is unstated.");
+    }
+    if (debts.every((debt) => debt.kind === "hole")) {
+      notes.push("Nothing was established here; these are questions rather than jobs.");
+    }
+    if (notes.length > 0) {
+      lines.push(notes.join(" "), "");
+    }
+    for (const debt of debts) {
+      lines.push(`- ${debt.statement}`);
+    }
+    lines.push("");
+  }
+  const deferred = ledger.debts.filter((debt) => debt.status === "deferred");
+  const scheduled = ledger.debts.filter((debt) => debt.status === "to-close");
+  if (scheduled.length > 0 || deferred.length > 0) {
+    lines.push("## Already settled", "");
+    if (scheduled.length > 0) {
+      lines.push(`${scheduled.length} being closed by work already open.`);
+    }
+    if (deferred.length > 0) {
+      lines.push(`${deferred.length} deliberately not now.`);
+    }
+    lines.push("");
+  }
+  lines.push(
+    "For each group: is it next, is it deliberately not now, or is it something else",
+    "you would rather see first. Nothing here is scheduled without your answer.",
+    "",
+  );
+  return lines.join("\n");
+}
+
+export interface DeferDebtOptions {
+  target: string;
+  trajectory: string;
+  gap: string;
+  by: string;
+  reason: string;
+  attested?: string;
+}
+
+/**
+ * A debt the maintainer looked at and decided against, for now.
+ *
+ * `deferred` existed in the schema and nothing could write it, so a debt they
+ * had considered and set aside was indistinguishable from one nobody had opened.
+ * The reason is required for the same purpose the park's is: a debt held for no
+ * stated reason reads as neglect, and the next session reopens the decision.
+ */
+export async function deferDebt(options: DeferDebtOptions): Promise<ScheduleDebtResult> {
+  const target = resolve(options.target);
+  const by = options.by.trim();
+  if (!by.startsWith("human:") || by.length <= "human:".length) {
+    throw new Error("Deferring a debt is the maintainer's decision; pass --by human:<id>");
+  }
+  const reason = options.reason.trim();
+  if (!reason) {
+    throw new Error(
+      "Deferring requires a reason. A debt set aside without one cannot be told from a "
+        + "debt nobody read, and the next session reopens the question.",
+    );
+  }
+  const compilation = await compileTrajectories(target);
+  const record = compilation.graph.trajectories.find((entry) =>
+    entry.id === options.trajectory
+  );
+  if (!record) {
+    throw new Error(`No trajectory named ${options.trajectory}`);
+  }
+  const index = resolveGapIndex(record, options.gap);
+  const gap = record.gaps[index]!;
+  if (gap.status === "to-close") {
+    throw new Error(
+      `That debt is already being closed by ${gap.work}; retire the work before deferring it`,
+    );
+  }
+  const absolute = join(target, record.path);
+  const document = parseWorkSpec(await readFile(absolute, "utf8"));
+  const gaps = document.metadata.gaps;
+  if (!Array.isArray(gaps) || !isRecord(gaps[index])) {
+    throw new Error(`${record.path}: gaps no longer match the compiled record; re-run check`);
+  }
+  // `work` stays empty: the schema pairs it with to-close alone, and a deferred
+  // debt is owned by nobody by definition.
+  gaps[index] = { ...gaps[index], status: "deferred", work: "", deferred: { by, reason, attested: (options.attested ?? "").trim() } };
+  await writeFile(absolute, serializeWorkSpec(document), "utf8");
+  return {
+    trajectory: record.id,
+    path: record.path,
+    statement: gap.statement,
+    work: "",
+    previousStatus: gap.status,
   };
 }
 
@@ -218,6 +383,59 @@ function resolveGapIndex(record: TrajectoryRecord, selector: string): number {
     );
   }
   return matches[0]!.index;
+}
+
+/**
+ * A proposed order for debts, and nothing stronger than that.
+ *
+ * Three things are known about a debt without inventing anything, and each is a
+ * fact already in the graph rather than a judgement about the product:
+ *
+ * How many subjects declare they do not work without this one. A debt on a
+ * subject others depend on holds up more than its own line.
+ *
+ * How much the whole line it belongs to owes. A subject inside a root that owes
+ * a great deal is where the reconstruction found the most missing.
+ *
+ * What kind of debt it is. A hole is not work — it is something nobody
+ * established — so it cannot be scheduled and sorts below anything that can. A
+ * delivery debt is intent already accepted and not delivered, which is the
+ * cheapest kind to justify starting.
+ *
+ * The maintainer's order overrides this completely and is never derived from it.
+ * The point is only that they should not be handed an alphabetical list.
+ */
+function weigh(
+  kind: GapKind,
+  dependents: number,
+  rootWeight: number,
+): { weight: number; because: string[] } {
+  const because: string[] = [];
+  let weight = 0;
+  if (kind === "hole") {
+    // Deliberately below everything schedulable, including its own root's pull.
+    return {
+      weight: -1,
+      because: ["nothing was established here, so this is a question rather than a job"],
+    };
+  }
+  if (dependents > 0) {
+    weight += dependents * 10;
+    because.push(
+      dependents === 1
+        ? "another subject does not work without this one"
+        : `${dependents} subjects do not work without this one`,
+    );
+  }
+  if (kind === "delivery-debt") {
+    weight += 3;
+    because.push("this was accepted and never delivered, so nothing needs deciding to start it");
+  }
+  weight += Math.min(rootWeight, 20);
+  if (rootWeight >= 5) {
+    because.push("it sits in the line that owes the most");
+  }
+  return { weight, because };
 }
 
 function workState(

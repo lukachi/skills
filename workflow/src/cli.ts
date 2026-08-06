@@ -52,7 +52,7 @@ import {
   writeTrajectoryGraph,
 } from "./trajectory.js";
 import { promoteTrajectory } from "./promotion.js";
-import { collectDebts, scheduleDebt } from "./debts.js";
+import { collectDebts, deferDebt, renderDebtPacket, scheduleDebt } from "./debts.js";
 import { readWorkGate, renderWorkGate } from "./work-ask.js";
 import { assessResumability, type StopRisk } from "./resumability.js";
 import { parkWork, releaseWork } from "./park.js";
@@ -2403,7 +2403,8 @@ function knowledgeTrajectoryCommand() {
         }),
     )
     .command("debts", knowledgeDebtsCommand())
-    .command("schedule", knowledgeScheduleCommand());
+    .command("schedule", knowledgeScheduleCommand())
+    .command("defer", knowledgeDeferCommand());
 }
 
 /**
@@ -2424,9 +2425,18 @@ function knowledgeDebtsCommand() {
     )
     .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
     .option("--open", "Only debts nobody has scheduled.")
+    .option(
+      "--ask",
+      "Render the packet the maintainer reads: grouped by subject, heaviest first, "
+        + "with why, and carrying no identifier.",
+    )
     .option("--json", "Print machine-readable JSON.")
     .action(async (options) => {
       const ledger = await collectDebts(options.target);
+      if (options.ask) {
+        process.stdout.write(renderDebtPacket(ledger));
+        return;
+      }
       const shown = options.open
         ? ledger.debts.filter((debt) => debt.status === "open")
         : ledger.debts;
@@ -2472,6 +2482,44 @@ function knowledgeDebtsCommand() {
             + "they are owed against is unstated. Run trajectory ask on those subjects first.\n",
         );
       }
+    });
+}
+
+function knowledgeDeferCommand() {
+  return new Command()
+    .description(
+      "Record a debt the maintainer looked at and set aside, with their reason.\n"
+        + "A debt deferred without one cannot be told from a debt nobody read.",
+    )
+    .arguments("<trajectory:string>")
+    .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+    .option(
+      "--gap <selector:string>",
+      "Which debt: its position from `trajectory debts`, or a phrase from its statement.",
+      { required: true },
+    )
+    .option("--by <actor:string>", "Deciding maintainer as human:<id>.", { required: true })
+    .option("--reason <reason:string>", "Why not now, in product language.", { required: true })
+    .option("--attested <answer:string>", "Their own words, if they said it in the session.")
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, trajectory) => {
+      const result = await deferDebt({
+        target: options.target,
+        trajectory,
+        gap: options.gap,
+        by: options.by,
+        reason: options.reason,
+        ...(options.attested ? { attested: options.attested } : {}),
+      });
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(
+        `${result.trajectory}: a debt is deliberately not now\n`
+          + `Debt: ${result.statement}\n`
+          + "It stays visible and owned by nobody, which is the honest state.\n",
+      );
     });
 }
 
