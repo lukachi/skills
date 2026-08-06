@@ -18,7 +18,8 @@ import {
 } from "../src/state.js";
 import { STATE_COLLECTORS } from "../src/state-collectors.js";
 import { beginIntakeCase, intakeContext, updateIntakeCheckpoint } from "../src/intake.js";
-import { approveWork, beginWork } from "../src/work.js";
+import { approveWork, beginWork, updateWorkCheckpoint } from "../src/work.js";
+import { assessResumability } from "../src/resumability.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -427,4 +428,66 @@ test("keeps every shipped capability reachable from a collector or a requirement
       `${required} must be a signal id, not a capability id`,
     );
   }
+});
+
+test("the brief carries where the work stopped, not only what is outstanding", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "account-recovery",
+    title: "Account recovery",
+    mode: "full",
+  });
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test-session",
+    status: "active",
+    currentState: "Three of seven services read; the fourth contradicts the design note.",
+    lastCompleted: "Read the trading service at the pin.",
+    nextAction: "Read the quests service and settle the contradiction before writing anything.",
+  });
+
+  const report = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  const resume = report.signals.find((signal) => signal.id === "work.resume");
+  // A fresh session receives the brief and nothing else. Without these two
+  // fields it learns what is outstanding and never learns where work stopped.
+  assert.equal(resume?.subject, started.id);
+  assert.match(String(resume?.facts?.state), /contradicts the design note/);
+  assert.match(String(resume?.facts?.next), /settle the contradiction/);
+});
+
+test("a session is unsafe to stop while work sits outside every checkpoint", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "account-recovery",
+    title: "Account recovery",
+    mode: "full",
+  });
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test-session",
+    status: "active",
+    currentState: "Shaped.",
+    lastCompleted: "Wrote the framing.",
+    nextAction: "Put the framing to the maintainer.",
+  });
+  execFileSync("git", ["add", "-A"], { cwd: knowledge });
+  execFileSync("git", ["commit", "-qm", "record the framing"], { cwd: knowledge });
+
+  const clean = await assessResumability(knowledge);
+  assert.equal(clean.safe, true, JSON.stringify(clean.entries));
+
+  // Work on disk that no checkpoint describes is the one loss a basis digest
+  // cannot see: it compares a checkpoint to its own record, and this is neither.
+  await writeFile(join(knowledge, "trajectories-probe.md"), "# probe\n", "utf8");
+  const dirty = await assessResumability(knowledge);
+  assert.equal(dirty.safe, false);
+  assert.deepEqual(dirty.uncommitted, ["trajectories-probe.md"]);
+  assert.equal(
+    dirty.entries.some((entry) => entry.risks.includes("uncommitted")),
+    true,
+  );
 });

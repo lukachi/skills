@@ -729,6 +729,29 @@ function checkpointSignals(
     return [];
   }
   const signals: StateSignal[] = [];
+  // The two fields written for the sole purpose of resuming a session were the
+  // two the brief did not carry. A new session received seventeen signals about
+  // what is outstanding and not one word about where the work actually stopped,
+  // so it had to know, unprompted, to go and read the record — and when it did
+  // not, it rebuilt the frontier by guessing. The prose costs a few hundred
+  // characters and is the whole point of the record.
+  const currentState = stringValue(checkpoint.current_state).trim();
+  const nextAction = stringValue(checkpoint.next_action).trim();
+  if (currentState || nextAction) {
+    signals.push({
+      id: `${domain}.resume`,
+      domain,
+      level: "info",
+      summary: "Where this work stopped, and the next action it named",
+      subject,
+      facts: {
+        ...(currentState ? { state: currentState } : {}),
+        ...(nextAction ? { next: nextAction } : {}),
+        stage: stringValue(checkpoint.stage),
+      },
+      since: updatedAt,
+    });
+  }
   const recordedBasis = stringValue(checkpoint.basis_sha256);
   if (currentBasis === undefined) {
     signals.push({

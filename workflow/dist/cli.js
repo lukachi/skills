@@ -10779,10 +10779,10 @@ function resolveAll(constructs2, events, context) {
   const called = [];
   let index2 = -1;
   while (++index2 < constructs2.length) {
-    const resolve25 = constructs2[index2].resolveAll;
-    if (resolve25 && !called.includes(resolve25)) {
-      events = resolve25(events, context);
-      called.push(resolve25);
+    const resolve26 = constructs2[index2].resolveAll;
+    if (resolve26 && !called.includes(resolve26)) {
+      events = resolve26(events, context);
+      called.push(resolve26);
     }
   }
   return events;
@@ -15966,9 +15966,9 @@ async function readPinnedGitTextRange(root, gitArguments, options = {}) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve25, reject) => {
+  const completion = new Promise((resolve26, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve25(code2 ?? 1));
+    child.once("close", (code2) => resolve26(code2 ?? 1));
   });
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const selected = [];
@@ -19646,9 +19646,9 @@ async function readGitTree2(root, commit) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve25, reject) => {
+  const completion = new Promise((resolve26, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve25(code2 ?? 1));
+    child.once("close", (code2) => resolve26(code2 ?? 1));
   });
   const entries = [];
   let pending = Buffer.alloc(0);
@@ -19838,9 +19838,9 @@ async function readPinnedBlob(root, objectId) {
   const child = spawn3("git", ["-C", root, "cat-file", "blob", objectId], {
     stdio: ["ignore", "pipe", "pipe"]
   });
-  const completion = new Promise((resolve25, reject) => {
+  const completion = new Promise((resolve26, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve25(code2 ?? 1));
+    child.once("close", (code2) => resolve26(code2 ?? 1));
   });
   let content3 = "";
   child.stdout.setEncoding("utf8");
@@ -23579,6 +23579,9 @@ async function reconstructionSessionState(target, id, document3) {
       document: workstream.document
     });
   }
+  for (const trajectory of await reconstructionTrajectoryFiles(target)) {
+    related.push(trajectory);
+  }
   const bindingPath = reconstructionBindingPath(target, id);
   try {
     const bindingContent = await readFile13(bindingPath);
@@ -23838,6 +23841,26 @@ function isLocalBinding2(value) {
 function reconstructionCasePath(target, state, id) {
   assertCaseId2(id);
   return join10(target, "reconstruction", state, id, "case.md");
+}
+async function reconstructionTrajectoryFiles(target) {
+  const root = join10(target, "trajectories");
+  let names;
+  try {
+    names = (await readdir7(root)).filter((name) => name.endsWith(".md")).sort();
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return [];
+    }
+    throw error2;
+  }
+  const files = [];
+  for (const name of names) {
+    files.push({
+      path: relative5(target, join10(root, name)),
+      content: await readFile13(join10(root, name))
+    });
+  }
+  return files;
 }
 function reconstructionBindingPath(target, id) {
   assertCaseId2(id);
@@ -34866,7 +34889,7 @@ function ora(options) {
 
 // src/cli.ts
 import { createInterface } from "node:readline/promises";
-import { resolve as resolve24 } from "node:path";
+import { resolve as resolve25 } from "node:path";
 
 // src/applier.ts
 init_planner();
@@ -37685,948 +37708,19 @@ function text3(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-// src/cli.ts
-init_knowledge();
-init_knowledge_graph();
-init_repository_registry();
-init_git();
-init_reconstruction();
-init_reconstruction_orchestration();
-init_types();
-
-// src/work.ts
-import { constants as constants7 } from "node:fs";
-import {
-  access as access8,
-  mkdir as mkdir14,
-  readFile as readFile24,
-  readdir as readdir15,
-  realpath as realpath5,
-  rename as rename10,
-  rm as rm4,
-  writeFile as writeFile15
-} from "node:fs/promises";
-import { dirname as dirname15, join as join22, resolve as resolve22, sep as sep9 } from "node:path";
-
-// src/approval.ts
+// src/resumability.ts
 init_config();
-init_work_spec();
-import { createHash as createHash12 } from "node:crypto";
-import { mkdir as mkdir13, readFile as readFile23, writeFile as writeFile14 } from "node:fs/promises";
-import { dirname as dirname14, join as join21 } from "node:path";
-function approvalReceiptDigest(input) {
-  const parts = [input.id, input.stage, input.by, input.at, input.method];
-  if (input.attested) {
-    parts.push(input.attested);
-  }
-  return createHash12("sha256").update(parts.join("\0"), "utf8").digest("hex");
-}
-function approvalRecordPath(knowledgeRoot, id, stage) {
-  return join21(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
-}
-async function recordApproval(options) {
-  if (!options.by.startsWith("human:") || options.by.trim().length <= "human:".length) {
-    throw new Error("Maintainer approval requires --by human:<maintainer-id>");
-  }
-  if (!APPROVAL_METHODS.includes(options.method)) {
-    throw new Error(`Unsupported approval method: ${options.method}`);
-  }
-  const attested = (options.attested ?? "").trim();
-  if (ATTESTED_APPROVAL_METHODS.has(options.method) && !attested) {
-    throw new Error(
-      "An attested approval requires the maintainer's own answer; without it there is nothing distinguishing a recorded decision from an invented one"
-    );
-  }
-  if (!ATTESTED_APPROVAL_METHODS.has(options.method) && attested) {
-    throw new Error(
-      `A ${options.method} approval carries its own proof; do not also record an attestation`
-    );
-  }
-  const at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
-  const record2 = {
-    schemaVersion: 1,
-    id: options.id,
-    stage: options.stage,
-    by: options.by.trim(),
-    at,
-    method: options.method,
-    note: (options.note ?? "").trim(),
-    ...attested ? { attested, session: (options.session ?? "").trim() } : {},
-    receipt: approvalReceiptDigest({
-      id: options.id,
-      stage: options.stage,
-      by: options.by.trim(),
-      at,
-      method: options.method,
-      ...attested ? { attested } : {}
-    })
-  };
-  const path = approvalRecordPath(options.knowledgeRoot, options.id, options.stage);
-  await mkdir13(dirname14(path), { recursive: true });
-  await writeFile14(path, `${JSON.stringify(record2, null, 2)}
-`, "utf8");
-  return record2;
-}
-async function readApproval(knowledgeRoot, id, stage) {
-  try {
-    const raw = JSON.parse(
-      await readFile23(approvalRecordPath(knowledgeRoot, id, stage), "utf8")
-    );
-    return isApprovalRecord(raw) ? raw : void 0;
-  } catch (error2) {
-    if (isMissingFileError(error2)) {
-      return void 0;
-    }
-    throw error2;
-  }
-}
-async function approvalIssues(knowledgeRoot, id, document3) {
-  if (!requiresApprovalReceipt(document3)) {
-    return [];
-  }
-  const issues = [];
-  for (const stage of ["framing", "completion"]) {
-    const entry = maintainerReviewEntry(document3, stage);
-    const prefix = `maintainer_review.${stage}`;
-    const receipt = typeof entry?.receipt === "string" ? entry.receipt : "";
-    if (!receipt) {
-      continue;
-    }
-    const record2 = await readApproval(knowledgeRoot, id, stage);
-    if (!record2) {
-      issues.push(
-        `${prefix}.receipt has no recorded approval; re-run wfctl work approve --stage ${stage}`
-      );
-      continue;
-    }
-    if (record2.receipt !== receipt) {
-      issues.push(`${prefix}.receipt does not match the recorded approval`);
-    }
-    if (record2.by !== (typeof entry?.by === "string" ? entry.by : "")) {
-      issues.push(`${prefix}.by does not match the recorded approval actor`);
-    }
-    if (record2.at !== (typeof entry?.at === "string" ? entry.at : "")) {
-      issues.push(`${prefix}.at does not match the recorded approval time`);
-    }
-    if (record2.method !== (typeof entry?.method === "string" ? entry.method : "")) {
-      issues.push(`${prefix}.method does not match the recorded approval method`);
-    }
-    if (record2.receipt !== approvalReceiptDigest({
-      id,
-      stage,
-      by: record2.by,
-      at: record2.at,
-      method: record2.method,
-      ...record2.attested ? { attested: record2.attested } : {}
-    })) {
-      issues.push(`${prefix}: the recorded approval digest is inconsistent`);
-    }
-    if (ATTESTED_APPROVAL_METHODS.has(record2.method) && !record2.attested?.trim()) {
-      issues.push(`${prefix}: an attested approval carries no record of what was said`);
-    }
-  }
-  return issues;
-}
-function isApprovalRecord(value) {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const record2 = value;
-  return record2.schemaVersion === 1 && typeof record2.id === "string" && (record2.stage === "framing" || record2.stage === "completion") && typeof record2.by === "string" && typeof record2.at === "string" && APPROVAL_METHODS.includes(record2.method) && typeof record2.note === "string" && (record2.attested === void 0 || typeof record2.attested === "string") && (record2.session === void 0 || typeof record2.session === "string") && typeof record2.receipt === "string";
-}
-
-// src/work.ts
-init_assets();
-init_config();
-init_git();
-init_knowledge();
-init_repository_registry();
-init_work_spec();
-init_work_bundle();
-async function beginWork(options) {
-  const target = await realpath5(resolve22(options.target));
-  const config = await readConfig(target);
-  let knowledgeRoot;
-  let codeRoots;
-  if (config.profile === "leaf") {
-    if ((options.leaves ?? []).length > 0) {
-      throw new Error("--leaf may be used only when work starts from a knowledge repository");
-    }
-    knowledgeRoot = await realpath5(resolveKnowledgeRoot(target, config));
-    codeRoots = [target];
-  } else {
-    knowledgeRoot = target;
-    codeRoots = (options.leaves ?? []).length > 0 ? await resolveReconstructionLeaves(knowledgeRoot, options.leaves ?? [], "audit") : [];
-  }
-  await assertKnowledgeRoot(knowledgeRoot);
-  if (options.knowledgeRef) {
-    await assertKnowledgeReference(knowledgeRoot, options.knowledgeRef);
-  }
-  const repositories = codeRoots.map((root) => {
-    const leafConfigPromise = readConfig(root);
-    return { root, leafConfigPromise };
-  });
-  const boundRepositories = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const input of repositories) {
-    const leafConfig = await input.leafConfigPromise;
-    if (leafConfig.profile !== "leaf") {
-      throw new Error(`Work source is not an initialized leaf: ${input.root}`);
-    }
-    const configuredKnowledge = await realpath5(resolveKnowledgeRoot(input.root, leafConfig));
-    if (configuredKnowledge !== knowledgeRoot) {
-      throw new Error(
-        `Leaf points to a different knowledge repository: ${input.root} -> ${configuredKnowledge}`
-      );
-    }
-    const source = readRepositoryMetadata(input.root);
-    if (seen.has(source.repository)) {
-      throw new Error(`Work received multiple checkouts for ${source.repository}`);
-    }
-    seen.add(source.repository);
-    boundRepositories.push({ root: input.root, source });
-  }
-  const scope = boundRepositories.length === 0 ? "project" : boundRepositories.length === 1 ? "leaf" : "multi-repo";
-  const now = options.now ?? /* @__PURE__ */ new Date();
-  const date = now.toISOString().slice(0, 10);
-  const id = await uniqueWorkId(
-    join22(knowledgeRoot, "changes/active"),
-    `${date}-${normalizeSlug5(options.slug)}`
-  );
-  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile24(
-    join22(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
-    "utf8"
-  ));
-  const createdAt = now.toISOString();
-  const activeDirectory = join22(knowledgeRoot, "changes/active", id);
-  const specPath = join22(activeDirectory, "change.md");
-  const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
-  const pointerPaths = boundRepositories.map(
-    (entry) => leafPointerPath(entry.root, id)
-  );
-  const durableRepositories = boundRepositories.map(
-    (entry) => durableRepository(entry.source)
-  );
-  template.metadata = {
-    ...template.metadata,
-    workflow_version: 5,
-    id,
-    title: options.title,
-    mode: options.mode,
-    scope,
-    status: "shaping",
-    created_at: createdAt,
-    updated_at: createdAt,
-    repositories: durableRepositories,
-    knowledge_alignment: {
-      reviewed: options.knowledgeRef ? [options.knowledgeRef] : [],
-      conflicts: []
-    },
-    graph_evidence: {
-      queries: options.graphQuery ? [options.graphQuery] : []
-    },
-    direction: options.mode === "wayfinder" ? { status: "charting", map: "map.md", resolved_at: "" } : { status: "bounded", map: "", resolved_at: "" }
-  };
-  delete template.metadata.source;
-  delete template.metadata.workspace;
-  initializeDocumentCheckpoint(template, {
-    status: "active",
-    stage: options.mode === "wayfinder" ? "wayfind" : "shape",
-    actor: "system:wfctl",
-    currentState: options.mode === "wayfinder" ? "The direction map is ready for initial charting." : "Initial change framing is pending.",
-    lastCompleted: "Central work bundle created.",
-    nextAction: options.mode === "wayfinder" ? "Chart the destination and first bounded frontier question." : "Persist the first agreed framing and refresh this checkpoint.",
-    blockers: [],
-    now
-  });
-  const binding = {
-    schemaVersion: 4,
-    id,
-    knowledgeRoot,
-    spec: relativeSpec(knowledgeRoot, specPath),
-    createdAt,
-    scope,
-    repositories: boundRepositories
-  };
-  try {
-    await mkdir14(activeDirectory, { recursive: false });
-    await writeFile15(specPath, serializeWorkSpec(template), {
-      encoding: "utf8",
-      flag: "wx"
-    });
-    await initializeWorkBundle(activeDirectory, distributionRoot, options.mode, now);
-    await writeBinding(bindingPath, binding);
-    for (const pointerPath of pointerPaths) {
-      await writeBinding(pointerPath, binding);
-    }
-  } catch (error2) {
-    await removePath(activeDirectory);
-    await removePath(bindingPath);
-    for (const pointerPath of pointerPaths) {
-      await removePath(pointerPath);
-    }
-    throw error2;
-  }
-  return {
-    id,
-    scope,
-    codeRoots,
-    ...codeRoots[0] ? { codeRoot: codeRoots[0] } : {},
-    knowledgeRoot,
-    specPath,
-    pointerPaths: [bindingPath, ...pointerPaths],
-    pointerPath: pointerPaths[0] ?? bindingPath,
-    bundleRoot: activeDirectory
-  };
-}
-async function verifyWork(targetInput, id) {
-  const context = await requireWorkContext(targetInput, id);
-  const document3 = parseWorkSpec(await readFile24(context.specPath, "utf8"));
-  const issues = completionIssues(document3, false);
-  issues.push(...await bundleCompletionIssues(dirname15(context.specPath), document3));
-  issues.push(...repositoryVerificationIssues(document3, context.currentSources));
-  issues.push(...await approvalIssues(context.knowledgeRoot, context.id, document3));
-  return {
-    id,
-    specPath: context.specPath,
-    issues: [...new Set(issues)]
-  };
-}
-async function approveWork(options) {
-  const context = await requireWorkContext(options.target, options.id);
-  const record2 = await recordApproval({
-    knowledgeRoot: context.knowledgeRoot,
-    id: context.id,
-    stage: options.stage,
-    by: options.by,
-    method: options.method,
-    ...options.note ? { note: options.note } : {},
-    ...options.attested ? { attested: options.attested } : {},
-    ...options.session ? { session: options.session } : {},
-    ...options.now ? { now: options.now } : {}
-  });
-  const document3 = parseWorkSpec(await readFile24(context.specPath, "utf8"));
-  const review = record_(document3.metadata.maintainer_review) ?? {};
-  const previous2 = record_(review[options.stage]) ?? {};
-  review[options.stage] = {
-    ...previous2,
-    status: "approved",
-    by: record2.by,
-    at: record2.at,
-    method: record2.method,
-    receipt: record2.receipt,
-    // The maintainer's own words live in the record they approved, not only in
-    // an ignored runtime file, so a reader months later can weigh the answer
-    // against the framing without reconstructing the session.
-    ...record2.attested ? { attested: record2.attested } : {},
-    ...record2.session ? { session: record2.session } : {},
-    notes: uniqueNotes(previous2.notes, record2.note)
-  };
-  document3.metadata.maintainer_review = review;
-  document3.metadata.updated_at = record2.at;
-  await writeFile15(context.specPath, serializeWorkSpec(document3), "utf8");
-  return {
-    id: context.id,
-    stage: options.stage,
-    by: record2.by,
-    at: record2.at,
-    method: record2.method,
-    receipt: record2.receipt,
-    specPath: context.specPath
-  };
-}
-function record_(value) {
-  return record(value);
-}
-function uniqueNotes(existing, note) {
-  const notes = stringArray10(existing);
-  return note && !notes.includes(note) ? [...notes, note] : notes;
-}
-async function closeWork(options) {
-  const context = await requireWorkContext(options.target, options.id);
-  const activeDirectory = dirname15(context.specPath);
-  const document3 = parseWorkSpec(await readFile24(context.specPath, "utf8"));
-  if (options.outcome === "completed") {
-    const issues = [
-      ...completionIssues(document3, true),
-      ...await bundleCompletionIssues(activeDirectory, document3),
-      ...repositoryVerificationIssues(document3, context.currentSources),
-      ...await approvalIssues(context.knowledgeRoot, context.id, document3)
-    ];
-    if (issues.length > 0) {
-      throw new Error(`Completed close is blocked: ${[...new Set(issues)].join("; ")}`);
-    }
-    const promotion = record(document3.metadata.knowledge_promotion);
-    if (promotion?.status === "applied") {
-      const validation = await validateKnowledge(
-        context.knowledgeRoot,
-        stringArray10(promotion.concepts)
-      );
-      if (!validation.valid) {
-        throw new Error(
-          `Completed close is blocked by curated knowledge validation: ${validation.errors.map((issue3) => `${issue3.path}: ${issue3.message}`).join("; ")}`
-        );
-      }
-    }
-  }
-  const archivePath = join22(context.knowledgeRoot, "changes/archive", options.id);
-  await assertAbsent2(archivePath, "archive");
-  const now = options.now ?? /* @__PURE__ */ new Date();
-  document3.metadata.status = options.outcome;
-  document3.metadata.outcome = options.outcome;
-  document3.metadata.closed_at = now.toISOString();
-  document3.metadata.sources_at_close = context.currentSources.map(durableRepository);
-  const checkpoint = record(document3.metadata.checkpoint);
-  initializeDocumentCheckpoint(document3, {
-    status: "complete",
-    stage: "complete",
-    actor: typeof checkpoint?.actor === "string" ? checkpoint.actor : "system:wfctl",
-    currentState: `Change bundle closed as ${options.outcome}.`,
-    lastCompleted: "Completion gates passed and the bundle was archived.",
-    nextAction: "None \u2014 this bundle is closed.",
-    blockers: [],
-    now
-  });
-  await mkdir14(dirname15(archivePath), { recursive: true });
-  await rename10(activeDirectory, archivePath);
-  try {
-    await writeFile15(
-      join22(archivePath, "change.md"),
-      serializeWorkSpec(document3),
-      "utf8"
-    );
-    if ([3, 4, 5].includes(Number(document3.metadata.workflow_version))) {
-      await carryForwardCloseReview(archivePath, now);
-    }
-  } catch (error2) {
-    await rename10(archivePath, activeDirectory);
-    throw error2;
-  }
-  for (const pointerPath of context.pointerPaths) {
-    await removePath(pointerPath);
-  }
-  return { id: options.id, outcome: options.outcome, archivePath };
-}
-async function workBundleContext(target, id, stage, issueId) {
-  const context = await requireWorkContext(target, id);
-  return {
-    id: context.id,
-    ...await inspectWorkBundle(dirname15(context.specPath), stage, issueId)
-  };
-}
-async function updateWorkCheckpoint(options) {
-  const context = await requireWorkContext(options.target, options.id);
-  return await updateBundleCheckpoint({
-    bundleRoot: dirname15(context.specPath),
-    ...options.issueId ? { issueId: options.issueId } : {},
-    actor: options.actor,
-    status: options.status,
-    ...options.stage ? { stage: options.stage } : {},
-    currentState: options.currentState,
-    ...options.lastCompleted ? { lastCompleted: options.lastCompleted } : {},
-    nextAction: options.nextAction,
-    blockers: options.blockers ?? [],
-    ...options.todo ? { todo: options.todo } : {},
-    ...options.now ? { now: options.now } : {}
-  });
-}
-async function createWorkIssue2(input) {
-  const context = await requireWorkContext(input.target, input.id);
-  const distributionRoot = input.distributionRoot ?? await findDistributionRoot();
-  return await createWorkIssue({
-    bundleRoot: dirname15(context.specPath),
-    slug: input.slug,
-    title: input.title,
-    phase: input.phase,
-    type: input.type,
-    ...input.blockedBy ? { blockedBy: input.blockedBy } : {},
-    ...input.satisfies ? { satisfies: input.satisfies } : {},
-    ...input.repositories ? { repositories: input.repositories } : {},
-    ...input.artifacts ? { artifacts: input.artifacts } : {},
-    ...input.now ? { now: input.now } : {},
-    distributionRoot
-  });
-}
-async function claimWorkIssue2(input) {
-  const target = await realpath5(resolve22(input.target));
-  const config = await readConfig(target);
-  const context = await requireWorkContext(target, input.id);
-  const source = config.profile === "leaf" ? context.currentSources.find((entry) => entry.root === target) : void 0;
-  return await claimWorkIssue({
-    bundleRoot: dirname15(context.specPath),
-    issueId: input.issueId,
-    actor: input.actor,
-    ...source ? { source } : {},
-    projectOnly: context.scope === "project",
-    ...input.now ? { now: input.now } : {}
-  });
-}
-async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath5(resolve22(target));
-  const context = await requireWorkContext(resolvedTarget, id);
-  const claimContext = await claimContextForTarget(resolvedTarget, context);
-  return await releaseWorkIssue(
-    dirname15(context.specPath),
-    issueId,
-    claimContext,
-    now
-  );
-}
-async function completeWorkIssue(input) {
-  const target = await realpath5(resolve22(input.target));
-  const context = await requireWorkContext(target, input.id);
-  const claimContext = await claimContextForTarget(target, context);
-  return await resolveWorkIssue({
-    bundleRoot: dirname15(context.specPath),
-    issueId: input.issueId,
-    summary: input.summary,
-    evidence: input.evidence,
-    claimContext,
-    ...input.now ? { now: input.now } : {}
-  });
-}
-async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath5(resolve22(target));
-  const context = await requireWorkContext(resolvedTarget, id);
-  const claimContext = await claimContextForTarget(resolvedTarget, context);
-  return await dropWorkIssue(
-    dirname15(context.specPath),
-    issueId,
-    reason,
-    claimContext,
-    now
-  );
-}
-async function setWorkIssueBlocker2(target, id, issueId, blockerId, blocked, now = /* @__PURE__ */ new Date()) {
-  const context = await requireWorkContext(target, id);
-  return await setWorkIssueBlocker(
-    dirname15(context.specPath),
-    issueId,
-    blockerId,
-    blocked,
-    now
-  );
-}
-async function reviewWorkBundleFile(target, id, path, status, reason, now = /* @__PURE__ */ new Date()) {
-  const context = await requireWorkContext(target, id);
-  return await reviewBundleFile(dirname15(context.specPath), path, status, reason, now);
-}
-async function finishWayfinder2(target, id, mode, now = /* @__PURE__ */ new Date()) {
-  const context = await requireWorkContext(target, id);
-  return await finishWayfinder(dirname15(context.specPath), mode, now);
-}
-async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
-  const target = await realpath5(resolve22(targetInput));
-  const config = await readConfig(target);
-  if (config.profile !== "leaf") {
-    throw new Error("Work rebind must target the replacement leaf checkout");
-  }
-  const knowledgeRoot = await realpath5(resolveKnowledgeRoot(target, config));
-  const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
-  const binding = await readBinding2(bindingPath);
-  const current = readRepositoryMetadata(target);
-  const index2 = binding.repositories.findIndex(
-    (entry) => entry.source.repository === current.repository
-  );
-  if (index2 < 0) {
-    throw new Error(
-      `Work ${id} is not scoped to repository ${current.repository}`
-    );
-  }
-  const previous2 = binding.repositories[index2];
-  binding.repositories[index2] = { root: target, source: current };
-  const specPath = resolve22(knowledgeRoot, binding.spec);
-  const document3 = parseWorkSpec(await readFile24(specPath, "utf8"));
-  const repositories = recordArray7(document3.metadata.repositories);
-  const durableIndex = repositories.findIndex(
-    (entry) => entry.repository === current.repository
-  );
-  if (durableIndex < 0) {
-    throw new Error(`Work spec has no durable repository entry for ${current.repository}`);
-  }
-  repositories[durableIndex] = { ...durableRepository(current) };
-  document3.metadata.repositories = repositories;
-  document3.metadata.updated_at = now.toISOString();
-  document3.metadata.rebindings = [
-    ...recordArray7(document3.metadata.rebindings),
-    {
-      repository: current.repository,
-      from_worktree_id: previous2.source.worktreeId,
-      from_branch: previous2.source.branch,
-      to_worktree_id: current.worktreeId,
-      to_branch: current.branch,
-      at: now.toISOString()
-    }
-  ];
-  const previousPointer = leafPointerPath(previous2.root, id);
-  const currentPointer = leafPointerPath(target, id);
-  await writeFile15(specPath, serializeWorkSpec(document3), "utf8");
-  await writeBinding(bindingPath, binding, true);
-  await writeBinding(currentPointer, binding, true);
-  if (previousPointer !== currentPointer) {
-    await removePath(previousPointer);
-  }
-  return {
-    id,
-    repository: current.repository,
-    previousRoot: previous2.root,
-    currentRoot: target,
-    branch: current.branch,
-    worktreeId: current.worktreeId
-  };
-}
-async function workStatus(targetInput, id) {
-  const target = await realpath5(resolve22(targetInput));
-  const config = await readConfig(target);
-  const pointerRoot = config.profile === "knowledge" ? join22(target, ".workflow/current/work") : join22(target, ".workflow/current");
-  const ids = id ? [id] : await pointerIds(pointerRoot);
-  const results = [];
-  for (const workId of ids) {
-    results.push(await inspectWorkContext(target, config.profile, workId));
-  }
-  return results;
-}
-async function requireWorkContext(targetInput, id) {
-  const results = await workStatus(targetInput, id);
-  if (!id && results.length === 0) {
-    throw new Error("No active work records are bound to this checkout");
-  }
-  if (!id && results.length > 1) {
-    throw new Error(
-      `Multiple active work records are bound to this checkout: ${results.map((entry) => `${entry.id} (${entry.title})`).join(", ")}. Run wfctl work status, inspect the candidates, and ask the maintainer which outcome to resume; do not guess`
-    );
-  }
-  const context = results[0];
-  if (!context) {
-    throw new Error(`Active work binding not found: ${id}`);
-  }
-  if (!context.valid) {
-    throw new Error(`Work context mismatch for ${context.id}: ${context.issues.join("; ")}`);
-  }
-  return context;
-}
-async function claimContextForTarget(target, context) {
-  const config = await readConfig(target);
-  const source = config.profile === "leaf" ? context.currentSources.find((entry) => entry.root === target) : void 0;
-  return {
-    ...source ? { source } : {},
-    allowProject: config.profile === "knowledge"
-  };
-}
-async function inspectWorkContext(target, profile, id) {
-  const config = await readConfig(target);
-  const knowledgeRoot = profile === "knowledge" ? target : await realpath5(resolveKnowledgeRoot(target, config));
-  const preferred = profile === "knowledge" ? knowledgeBindingPath(knowledgeRoot, id) : leafPointerPath(target, id);
-  let binding;
-  let preferredExists = true;
-  try {
-    binding = await readBinding2(preferred);
-  } catch (error2) {
-    if (profile !== "leaf" || !isMissingFileError(error2)) {
-      throw error2;
-    }
-    preferredExists = false;
-    binding = await readBinding2(knowledgeBindingPath(knowledgeRoot, id));
-  }
-  const issues = [];
-  if (binding.id !== id || binding.knowledgeRoot !== knowledgeRoot) {
-    issues.push("local work binding does not match this knowledge checkout");
-  }
-  if (profile === "leaf" && !preferredExists) {
-    issues.push("this checkout is not bound to the work; use wfctl work rebind explicitly");
-  }
-  if (profile === "leaf" && !binding.repositories.some((entry) => entry.root === target)) {
-    issues.push(`current checkout ${target} is outside the bound workspaces`);
-  }
-  const currentSources = [];
-  for (const entry of binding.repositories) {
-    try {
-      const current = readRepositoryMetadata(entry.root);
-      currentSources.push(current);
-      if (current.root !== entry.source.root) {
-        issues.push(`${entry.source.repository}: checkout root changed`);
-      }
-      if (current.repository !== entry.source.repository) {
-        issues.push(
-          `${entry.source.repository}: bound path now identifies ${current.repository}`
-        );
-      }
-      if (current.worktreeId !== entry.source.worktreeId) {
-        issues.push(
-          `${entry.source.repository}: worktree changed from ${entry.source.worktreeId} to ${current.worktreeId}`
-        );
-      }
-      if (current.branch !== entry.source.branch) {
-        issues.push(
-          `${entry.source.repository}: branch changed from ${entry.source.branch} to ${current.branch}; run wfctl work rebind`
-        );
-      }
-    } catch (error2) {
-      issues.push(`${entry.source.repository}: ${errorMessage(error2)}`);
-    }
-  }
-  const specPath = resolve22(knowledgeRoot, binding.spec);
-  const activeRoot = join22(knowledgeRoot, "changes/active");
-  let title = id;
-  if (!inside(activeRoot, specPath)) {
-    issues.push(`spec path is outside the active work root: ${specPath}`);
-  }
-  try {
-    const document3 = parseWorkSpec(await readFile24(specPath, "utf8"));
-    title = typeof document3.metadata.title === "string" ? document3.metadata.title.trim() || id : id;
-    if (document3.metadata.scope !== binding.scope) {
-      issues.push("spec scope does not match the local binding");
-    }
-    const durable = recordArray7(document3.metadata.repositories);
-    if (durable.length !== binding.repositories.length) {
-      issues.push("spec repository scope does not match the local binding");
-    }
-    for (const entry of binding.repositories) {
-      const stored = durable.find(
-        (candidate) => candidate.repository === entry.source.repository
-      );
-      if (!stored || stored.worktree_id !== entry.source.worktreeId || stored.branch !== entry.source.branch) {
-        issues.push(`${entry.source.repository}: durable repository binding is inconsistent`);
-      }
-    }
-    const serialized = await readFile24(specPath, "utf8");
-    for (const entry of binding.repositories) {
-      if (serialized.includes(entry.root)) {
-        issues.push("durable work record leaks a local checkout path");
-        break;
-      }
-    }
-  } catch (error2) {
-    issues.push(`cannot read bound spec: ${errorMessage(error2)}`);
-  }
-  const pointerPaths = [
-    knowledgeBindingPath(knowledgeRoot, id),
-    ...binding.repositories.map((entry) => leafPointerPath(entry.root, id))
-  ];
-  const codeRoots = binding.repositories.map((entry) => entry.root);
-  const sources = binding.repositories.map((entry) => entry.source);
-  return {
-    id,
-    title,
-    valid: issues.length === 0,
-    scope: binding.scope,
-    codeRoots,
-    ...codeRoots[0] ? { codeRoot: codeRoots[0] } : {},
-    knowledgeRoot,
-    specPath,
-    bundleRoot: dirname15(specPath),
-    pointerPaths,
-    pointerPath: profile === "leaf" ? preferred : knowledgeBindingPath(knowledgeRoot, id),
-    sources,
-    currentSources,
-    ...sources[0] ? { source: sources[0] } : {},
-    ...currentSources[0] ? { currentSource: currentSources[0] } : {},
-    issues
-  };
-}
-function repositoryVerificationIssues(document3, sources) {
-  const issues = [];
-  if (document3.metadata.scope === "project") {
-    return issues;
-  }
-  const verification = record(document3.metadata.verification);
-  const receipts = recordArray7(verification?.repositories);
-  for (const source of sources) {
-    if (source.dirty) {
-      issues.push(`${source.repository}: bound source checkout must be clean for final verification`);
-    }
-    const receipt = receipts.find((entry) => entry.repository === source.repository) ?? (sources.length === 1 ? verification : void 0);
-    if (!receipt) {
-      issues.push(`${source.repository}: verification receipt is missing`);
-      continue;
-    }
-    if (receipt.revision !== source.commit) {
-      issues.push(
-        `${source.repository}: verification revision does not match current commit`
-      );
-    }
-    if (receipt.worktree_id !== source.worktreeId) {
-      issues.push(
-        `${source.repository}: verification worktree_id does not match current worktree`
-      );
-    }
-    if (receipts.length > 0 && !nonEmptyArray2(receipt.checks)) {
-      issues.push(`${source.repository}: verification checks are missing`);
-    }
-  }
-  for (const receipt of receipts) {
-    if (!sources.some((source) => source.repository === receipt.repository)) {
-      issues.push(`verification receipt is outside work scope: ${String(receipt.repository)}`);
-    }
-  }
-  return issues;
-}
-function durableRepository(source) {
-  return {
-    repository: source.repository,
-    checkout: source.checkout,
-    branch: source.branch,
-    commit_at_start: source.commit,
-    remote: /^(?:https?:\/\/|ssh:\/\/|git@)/.test(source.remote) ? source.remote : "",
-    worktree: source.worktree,
-    worktree_id: source.worktreeId
-  };
-}
-async function assertKnowledgeRoot(root) {
-  try {
-    await access8(join22(root, "knowledge/index.md"), constants7.R_OK);
-  } catch {
-    throw new Error(`Knowledge repository is not initialized: ${root}`);
-  }
-}
-async function assertKnowledgeReference(root, reference) {
-  const normalized = reference.replace(/^\/+/, "");
-  const absolute = resolve22(root, normalized);
-  const knowledgeRoot = join22(root, "knowledge");
-  if (!inside(knowledgeRoot, absolute) || !absolute.toLowerCase().endsWith(".md")) {
-    throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
-  }
-  try {
-    await access8(absolute, constants7.R_OK);
-  } catch (error2) {
-    throw new Error(`Knowledge reference is not readable: ${reference} (${errorMessage(error2)})`);
-  }
-}
-function knowledgeBindingPath(knowledgeRoot, id) {
-  assertId(id);
-  return join22(knowledgeRoot, ".workflow/current/work", `${id}.json`);
-}
-function leafPointerPath(root, id) {
-  assertId(id);
-  return join22(root, ".workflow/current", `${id}.json`);
-}
-async function writeBinding(path, binding, replace = false) {
-  await mkdir14(dirname15(path), { recursive: true });
-  await writeFile15(path, `${JSON.stringify(binding, null, 2)}
-`, {
-    encoding: "utf8",
-    flag: replace ? "w" : "wx"
-  });
-}
-async function readBinding2(path) {
-  const raw = JSON.parse(await readFile24(path, "utf8"));
-  if (!isRecord7(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
-    (entry) => isRecord7(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
-  )) {
-    throw new Error(`Unsupported or malformed active work binding: ${path}`);
-  }
-  return raw;
-}
-function isRepositoryMetadata(value) {
-  return isRecord7(value) && typeof value.repository === "string" && typeof value.root === "string" && typeof value.checkout === "string" && typeof value.branch === "string" && typeof value.commit === "string" && typeof value.remote === "string" && typeof value.dirty === "boolean" && typeof value.worktree === "boolean" && typeof value.worktreeId === "string";
-}
-function isRecord7(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-async function pointerIds(root) {
-  try {
-    const ids = [];
-    for (const entry of await readdir15(root, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) {
-        continue;
-      }
-      let parsed;
-      try {
-        parsed = JSON.parse(await readFile24(join22(root, entry.name), "utf8"));
-      } catch {
-        continue;
-      }
-      if (!isRecord7(parsed) || parsed.schemaVersion === void 0 || typeof parsed.spec !== "string" || typeof parsed.knowledgeRoot !== "string") {
-        continue;
-      }
-      ids.push(entry.name.slice(0, -5));
-    }
-    return ids.sort();
-  } catch (error2) {
-    if (isMissingFileError(error2)) {
-      return [];
-    }
-    throw error2;
-  }
-}
-function relativeSpec(knowledgeRoot, specPath) {
-  const value = specPath.slice(`${knowledgeRoot}${sep9}`.length);
-  return value.split(sep9).join("/");
-}
-function inside(parent, child) {
-  const boundary = `${resolve22(parent)}${sep9}`;
-  return resolve22(child).startsWith(boundary);
-}
-function record(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
-}
-function recordArray7(value) {
-  return Array.isArray(value) ? value.filter((entry) => Boolean(record(entry))) : [];
-}
-function stringArray10(value) {
-  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
-}
-function nonEmptyArray2(value) {
-  return Array.isArray(value) && value.length > 0;
-}
-async function uniqueWorkId(activeRoot, base) {
-  for (let index2 = 1; index2 < 1e3; index2 += 1) {
-    const candidate = index2 === 1 ? base : `${base}-${index2}`;
-    try {
-      await access8(join22(activeRoot, candidate), constants7.F_OK);
-    } catch (error2) {
-      if (isMissingFileError(error2)) {
-        return candidate;
-      }
-      throw error2;
-    }
-  }
-  throw new Error(`Cannot allocate a unique work id for ${base}`);
-}
-async function assertAbsent2(path, label) {
-  try {
-    await access8(path, constants7.F_OK);
-    throw new Error(`${label} already exists: ${path}`);
-  } catch (error2) {
-    if (isMissingFileError(error2)) {
-      return;
-    }
-    throw error2;
-  }
-}
-async function removePath(path) {
-  try {
-    await rm4(path, { recursive: true, force: true });
-  } catch (error2) {
-    if (!isMissingFileError(error2)) {
-      throw error2;
-    }
-  }
-}
-function normalizeSlug5(value) {
-  const slug = value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  if (!slug) {
-    throw new Error("Work slug must contain ASCII letters or digits");
-  }
-  return slug.slice(0, 64);
-}
-function assertId(id) {
-  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
-    throw new Error(`Invalid work id: ${id}`);
-  }
-}
-
-// src/cli.ts
-init_assets();
+import { spawnSync as spawnSync5 } from "node:child_process";
+import { readFile as readFile24 } from "node:fs/promises";
+import { join as join22, resolve as resolve23 } from "node:path";
 
 // src/state.ts
 init_config();
-import { resolve as resolve23 } from "node:path";
+import { resolve as resolve22 } from "node:path";
 
 // src/state-collectors.ts
-import { readdir as readdir16, readFile as readFile25, stat as stat3 } from "node:fs/promises";
-import { join as join23 } from "node:path";
+import { readdir as readdir15, readFile as readFile23, stat as stat3 } from "node:fs/promises";
+import { join as join21 } from "node:path";
 init_config();
 init_dependencies();
 init_knowledge_session();
@@ -38749,7 +37843,7 @@ function corpusCollector() {
     id: "corpus",
     profiles: ["knowledge"],
     async collect(context) {
-      const graphPath = join23(context.knowledgeRoot, ".workflow/current/knowledge-graph.json");
+      const graphPath = join21(context.knowledgeRoot, ".workflow/current/knowledge-graph.json");
       const graph = await readJson(graphPath);
       if (!graph) {
         return [{
@@ -38805,7 +37899,7 @@ function corpusCollector() {
         });
       }
       const compiledAt = stringValue11(graph.generatedAt);
-      const newest = await newestModification(join23(context.knowledgeRoot, "knowledge"));
+      const newest = await newestModification(join21(context.knowledgeRoot, "knowledge"));
       if (compiledAt && newest && newest > Date.parse(compiledAt)) {
         signals2.push({
           id: "corpus.stale-compilation",
@@ -38850,18 +37944,18 @@ function reconstructionCollector() {
     id: "reconstruction",
     profiles: ["knowledge"],
     async collect(context) {
-      const root = join23(context.knowledgeRoot, "reconstruction/active");
+      const root = join21(context.knowledgeRoot, "reconstruction/active");
       const signals2 = [];
       for (const entry of await activeRecords(root)) {
         const metadata = entry.document.metadata;
-        const repositories = recordArray8(metadata.repositories);
+        const repositories = recordArray7(metadata.repositories);
         const totals = { files: 0, pendingFiles: 0, communities: 0, pendingCommunities: 0 };
         for (const repository of repositories) {
           const relative9 = stringValue11(repository.coverage);
           if (!relative9) {
             continue;
           }
-          const ledger = await readJson(join23(entry.root, relative9));
+          const ledger = await readJson(join21(entry.root, relative9));
           const manifest = recordValue11(ledger?.manifest);
           const graphify = recordValue11(ledger?.graphify);
           const files = Array.isArray(manifest?.files) ? manifest.files : [];
@@ -38919,7 +38013,7 @@ function reconstructionCollector() {
   };
 }
 function pendingDecisions(metadata) {
-  return recordArray8(metadata.candidate_claims).filter((candidate) => {
+  return recordArray7(metadata.candidate_claims).filter((candidate) => {
     const decision = recordValue11(candidate.maintainer_decision);
     return stringValue11(decision?.status) === "required" && !stringValue11(decision?.at);
   }).length;
@@ -38929,11 +38023,11 @@ function intakeCollector() {
     id: "intake",
     profiles: ["knowledge"],
     async collect(context) {
-      const root = join23(context.knowledgeRoot, "intake/cases/active");
+      const root = join21(context.knowledgeRoot, "intake/cases/active");
       const signals2 = [];
       for (const entry of await activeRecords(root)) {
         const metadata = entry.document.metadata;
-        const sources = recordArray8(metadata.sources);
+        const sources = recordArray7(metadata.sources);
         const reviewed = sources.filter(
           (source) => source.status === "reviewed" || source.status === "no-relevant-claims"
         ).length;
@@ -39003,7 +38097,7 @@ function rawCollector() {
     id: "raw",
     profiles: ["knowledge"],
     async collect(context) {
-      const files = await countFiles(join23(context.knowledgeRoot, "raw"));
+      const files = await countFiles(join21(context.knowledgeRoot, "raw"));
       if (files === 0) {
         return [{
           id: "raw.empty",
@@ -39013,7 +38107,7 @@ function rawCollector() {
           blocks: ["process-raw-intake"]
         }];
       }
-      const cases = (await activeRecords(join23(context.knowledgeRoot, "intake/cases/active"))).length + await directoryCount(join23(context.knowledgeRoot, "intake/cases/archive"));
+      const cases = (await activeRecords(join21(context.knowledgeRoot, "intake/cases/active"))).length + await directoryCount(join21(context.knowledgeRoot, "intake/cases/archive"));
       return [{
         id: cases === 0 ? "raw.unprocessed" : "raw.present",
         domain: "raw",
@@ -39029,11 +38123,11 @@ function workCollector() {
     id: "work",
     profiles: ["knowledge", "leaf"],
     async collect(context) {
-      const root = join23(context.knowledgeRoot, "changes/active");
+      const root = join21(context.knowledgeRoot, "changes/active");
       const signals2 = [];
       for (const entry of await activeRecords(root, "change.md")) {
         const metadata = entry.document.metadata;
-        const issues = await issueCounts(join23(entry.root, "issues"));
+        const issues = await issueCounts(join21(entry.root, "issues"));
         const review = recordValue11(metadata.maintainer_review);
         const outstanding = ["framing", "completion"].filter(
           (stage) => stringValue11(recordValue11(review?.[stage])?.status) !== "approved"
@@ -39050,7 +38144,7 @@ function workCollector() {
             title: stringValue11(metadata.title) || entry.id,
             mode: stringValue11(metadata.mode),
             status: stringValue11(metadata.status),
-            repositories: recordArray8(metadata.repositories).length,
+            repositories: recordArray7(metadata.repositories).length,
             ...issues
           },
           ...stringValue11(metadata.updated_at) ? { since: stringValue11(metadata.updated_at) } : {},
@@ -39149,7 +38243,7 @@ function inboxCollector() {
   };
 }
 async function workstreamSignals(entry) {
-  const packets = await markdownRecords(join23(entry.root, "workstreams"));
+  const packets = await markdownRecords(join21(entry.root, "workstreams"));
   const counts = { packets: packets.length, claimed: 0, submitted: 0, accepted: 0 };
   const stranded = [];
   for (const packet of packets) {
@@ -39203,6 +38297,23 @@ function checkpointSignals(domain, subject, metadata, currentBasis) {
     return [];
   }
   const signals2 = [];
+  const currentState = stringValue11(checkpoint.current_state).trim();
+  const nextAction = stringValue11(checkpoint.next_action).trim();
+  if (currentState || nextAction) {
+    signals2.push({
+      id: `${domain}.resume`,
+      domain,
+      level: "info",
+      summary: "Where this work stopped, and the next action it named",
+      subject,
+      facts: {
+        ...currentState ? { state: currentState } : {},
+        ...nextAction ? { next: nextAction } : {},
+        stage: stringValue11(checkpoint.stage)
+      },
+      since: updatedAt
+    });
+  }
   const recordedBasis = stringValue11(checkpoint.basis_sha256);
   if (currentBasis === void 0) {
     signals2.push({
@@ -39265,9 +38376,9 @@ function checkpointSignals(domain, subject, metadata, currentBasis) {
 async function activeRecords(root, file = "case.md") {
   const records = [];
   for (const name of await directoryNames(root)) {
-    const directory = join23(root, name);
+    const directory = join21(root, name);
     try {
-      const content3 = await readFile25(join23(directory, file), "utf8");
+      const content3 = await readFile23(join21(directory, file), "utf8");
       records.push({ id: name, root: directory, document: parseWorkSpec(content3) });
     } catch {
       records.push({ id: name, root: directory, document: { metadata: {}, body: "" } });
@@ -39278,7 +38389,7 @@ async function activeRecords(root, file = "case.md") {
 async function markdownRecords(root) {
   let names;
   try {
-    names = (await readdir16(root)).filter((name) => name.endsWith(".md")).sort();
+    names = (await readdir15(root)).filter((name) => name.endsWith(".md")).sort();
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -39287,12 +38398,12 @@ async function markdownRecords(root) {
   }
   const records = [];
   for (const name of names) {
-    const path = join23(root, name);
+    const path = join21(root, name);
     try {
       records.push({
         id: name.slice(0, -3),
         root: path,
-        document: parseWorkSpec(await readFile25(path, "utf8"))
+        document: parseWorkSpec(await readFile23(path, "utf8"))
       });
     } catch {
       records.push({ id: name.slice(0, -3), root: path, document: { metadata: {}, body: "" } });
@@ -39304,7 +38415,7 @@ async function issueCounts(root) {
   const counts = { issues: 0, issuesOpen: 0, issuesClaimed: 0 };
   let names;
   try {
-    names = (await readdir16(root)).filter((name) => name.endsWith(".md"));
+    names = (await readdir15(root)).filter((name) => name.endsWith(".md"));
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return counts;
@@ -39315,7 +38426,7 @@ async function issueCounts(root) {
     counts.issues += 1;
     try {
       const status = stringValue11(
-        parseWorkSpec(await readFile25(join23(root, name), "utf8")).metadata.status
+        parseWorkSpec(await readFile23(join21(root, name), "utf8")).metadata.status
       );
       if (status === "claimed") {
         counts.issuesClaimed += 1;
@@ -39331,7 +38442,7 @@ async function issueCounts(root) {
 }
 async function directoryNames(root) {
   try {
-    return (await readdir16(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    return (await readdir15(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -39347,7 +38458,7 @@ async function countFiles(root, budget = { left: FILE_SCAN_LIMIT }) {
   let total = 0;
   let entries;
   try {
-    entries = await readdir16(root, { withFileTypes: true });
+    entries = await readdir15(root, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return 0;
@@ -39362,7 +38473,7 @@ async function countFiles(root, budget = { left: FILE_SCAN_LIMIT }) {
       continue;
     }
     if (entry.isDirectory()) {
-      total += await countFiles(join23(root, entry.name), budget);
+      total += await countFiles(join21(root, entry.name), budget);
     } else if (entry.isFile()) {
       budget.left -= 1;
       total += 1;
@@ -39374,7 +38485,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
   let newest;
   let entries;
   try {
-    entries = await readdir16(root, { withFileTypes: true });
+    entries = await readdir15(root, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return void 0;
@@ -39385,7 +38496,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
     if (budget.left <= 0) {
       break;
     }
-    const path = join23(root, entry.name);
+    const path = join21(root, entry.name);
     if (entry.isDirectory()) {
       const nested = await newestModification(path, budget);
       if (nested !== void 0 && (newest === void 0 || nested > newest)) {
@@ -39403,7 +38514,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
 }
 async function readJson(path) {
   try {
-    const parsed = JSON.parse(await readFile25(path, "utf8"));
+    const parsed = JSON.parse(await readFile23(path, "utf8"));
     return recordValue11(parsed);
   } catch {
     return void 0;
@@ -39412,13 +38523,13 @@ async function readJson(path) {
 function isPending(value) {
   return recordValue11(value)?.status === "pending";
 }
-function recordArray8(value) {
-  return Array.isArray(value) ? value.filter(isRecord8) : [];
+function recordArray7(value) {
+  return Array.isArray(value) ? value.filter(isRecord7) : [];
 }
 function recordValue11(value) {
-  return isRecord8(value) ? value : void 0;
+  return isRecord7(value) ? value : void 0;
 }
-function isRecord8(value) {
+function isRecord7(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function stringValue11(value) {
@@ -39475,7 +38586,7 @@ var CAPABILITIES = [
   }
 ];
 async function collectWorkflowState(targetInput, options = {}) {
-  const root = resolve23(targetInput);
+  const root = resolve22(targetInput);
   const now = options.now ?? /* @__PURE__ */ new Date();
   const capabilities = options.capabilities ?? CAPABILITIES;
   const base = {
@@ -39559,11 +38670,1019 @@ function sortSignals(signals2) {
   );
 }
 
+// src/resumability.ts
+async function assessResumability(targetInput) {
+  const target = resolve23(targetInput);
+  const report = await collectWorkflowState(target, { collectors: STATE_COLLECTORS });
+  const bySubject = /* @__PURE__ */ new Map();
+  const current = [];
+  const entryFor = (domain, subject) => {
+    const key = `${domain}/${subject}`;
+    const existing = bySubject.get(key);
+    if (existing) {
+      return existing;
+    }
+    const created = { domain, subject, risks: [], nextAction: "" };
+    bySubject.set(key, created);
+    return created;
+  };
+  for (const signal of report.signals) {
+    const subject = signal.subject ?? "";
+    if (signal.id.endsWith(".resume")) {
+      const entry = entryFor(signal.domain, subject);
+      entry.nextAction = String(signal.facts?.next ?? "");
+      current.push(subject || signal.domain);
+      continue;
+    }
+    if (signal.id.endsWith(".stale-checkpoint") || signal.id.endsWith(".unverifiable-checkpoint")) {
+      entryFor(signal.domain, subject).risks.push("stale-checkpoint");
+    }
+  }
+  for (const signal of report.signals) {
+    if (!ACTIVE_RECORD_SIGNALS.has(signal.id)) {
+      continue;
+    }
+    const subject = signal.subject ?? "";
+    const key = `${signal.domain}/${subject}`;
+    if (!bySubject.has(key)) {
+      entryFor(signal.domain, subject).risks.push("missing-checkpoint");
+    }
+  }
+  const uncommitted = await uncommittedPaths(target);
+  if (uncommitted.length > 0) {
+    entryFor("repository", "").risks.push("uncommitted");
+  }
+  const entries = [...bySubject.values()].filter((entry) => entry.risks.length > 0);
+  return {
+    safe: entries.length === 0,
+    entries,
+    uncommitted,
+    current: [...new Set(current)]
+  };
+}
+var ACTIVE_RECORD_SIGNALS = /* @__PURE__ */ new Set([
+  "reconstruction.active",
+  "reconstruction.awaiting-decision",
+  "intake.active",
+  "intake.awaiting-decision",
+  "work.active"
+]);
+async function uncommittedPaths(target) {
+  const config = await readConfig(target).catch(() => void 0);
+  if (!config) {
+    return [];
+  }
+  const result = spawnSync5("git", ["status", "--porcelain"], {
+    cwd: target,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024
+  });
+  if (result.status !== 0 || !result.stdout) {
+    return [];
+  }
+  return result.stdout.split("\n").map((line) => line.slice(3).trim()).filter(Boolean).filter((path) => !path.startsWith(".workflow/current/"));
+}
+
+// src/cli.ts
+init_knowledge();
+init_knowledge_graph();
+init_repository_registry();
+init_git();
+init_reconstruction();
+init_reconstruction_orchestration();
+init_types();
+
+// src/work.ts
+import { constants as constants7 } from "node:fs";
+import {
+  access as access8,
+  mkdir as mkdir14,
+  readFile as readFile26,
+  readdir as readdir16,
+  realpath as realpath5,
+  rename as rename10,
+  rm as rm4,
+  writeFile as writeFile15
+} from "node:fs/promises";
+import { dirname as dirname15, join as join24, resolve as resolve24, sep as sep9 } from "node:path";
+
+// src/approval.ts
+init_config();
+init_work_spec();
+import { createHash as createHash12 } from "node:crypto";
+import { mkdir as mkdir13, readFile as readFile25, writeFile as writeFile14 } from "node:fs/promises";
+import { dirname as dirname14, join as join23 } from "node:path";
+function approvalReceiptDigest(input) {
+  const parts = [input.id, input.stage, input.by, input.at, input.method];
+  if (input.attested) {
+    parts.push(input.attested);
+  }
+  return createHash12("sha256").update(parts.join("\0"), "utf8").digest("hex");
+}
+function approvalRecordPath(knowledgeRoot, id, stage) {
+  return join23(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
+}
+async function recordApproval(options) {
+  if (!options.by.startsWith("human:") || options.by.trim().length <= "human:".length) {
+    throw new Error("Maintainer approval requires --by human:<maintainer-id>");
+  }
+  if (!APPROVAL_METHODS.includes(options.method)) {
+    throw new Error(`Unsupported approval method: ${options.method}`);
+  }
+  const attested = (options.attested ?? "").trim();
+  if (ATTESTED_APPROVAL_METHODS.has(options.method) && !attested) {
+    throw new Error(
+      "An attested approval requires the maintainer's own answer; without it there is nothing distinguishing a recorded decision from an invented one"
+    );
+  }
+  if (!ATTESTED_APPROVAL_METHODS.has(options.method) && attested) {
+    throw new Error(
+      `A ${options.method} approval carries its own proof; do not also record an attestation`
+    );
+  }
+  const at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+  const record2 = {
+    schemaVersion: 1,
+    id: options.id,
+    stage: options.stage,
+    by: options.by.trim(),
+    at,
+    method: options.method,
+    note: (options.note ?? "").trim(),
+    ...attested ? { attested, session: (options.session ?? "").trim() } : {},
+    receipt: approvalReceiptDigest({
+      id: options.id,
+      stage: options.stage,
+      by: options.by.trim(),
+      at,
+      method: options.method,
+      ...attested ? { attested } : {}
+    })
+  };
+  const path = approvalRecordPath(options.knowledgeRoot, options.id, options.stage);
+  await mkdir13(dirname14(path), { recursive: true });
+  await writeFile14(path, `${JSON.stringify(record2, null, 2)}
+`, "utf8");
+  return record2;
+}
+async function readApproval(knowledgeRoot, id, stage) {
+  try {
+    const raw = JSON.parse(
+      await readFile25(approvalRecordPath(knowledgeRoot, id, stage), "utf8")
+    );
+    return isApprovalRecord(raw) ? raw : void 0;
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return void 0;
+    }
+    throw error2;
+  }
+}
+async function approvalIssues(knowledgeRoot, id, document3) {
+  if (!requiresApprovalReceipt(document3)) {
+    return [];
+  }
+  const issues = [];
+  for (const stage of ["framing", "completion"]) {
+    const entry = maintainerReviewEntry(document3, stage);
+    const prefix = `maintainer_review.${stage}`;
+    const receipt = typeof entry?.receipt === "string" ? entry.receipt : "";
+    if (!receipt) {
+      continue;
+    }
+    const record2 = await readApproval(knowledgeRoot, id, stage);
+    if (!record2) {
+      issues.push(
+        `${prefix}.receipt has no recorded approval; re-run wfctl work approve --stage ${stage}`
+      );
+      continue;
+    }
+    if (record2.receipt !== receipt) {
+      issues.push(`${prefix}.receipt does not match the recorded approval`);
+    }
+    if (record2.by !== (typeof entry?.by === "string" ? entry.by : "")) {
+      issues.push(`${prefix}.by does not match the recorded approval actor`);
+    }
+    if (record2.at !== (typeof entry?.at === "string" ? entry.at : "")) {
+      issues.push(`${prefix}.at does not match the recorded approval time`);
+    }
+    if (record2.method !== (typeof entry?.method === "string" ? entry.method : "")) {
+      issues.push(`${prefix}.method does not match the recorded approval method`);
+    }
+    if (record2.receipt !== approvalReceiptDigest({
+      id,
+      stage,
+      by: record2.by,
+      at: record2.at,
+      method: record2.method,
+      ...record2.attested ? { attested: record2.attested } : {}
+    })) {
+      issues.push(`${prefix}: the recorded approval digest is inconsistent`);
+    }
+    if (ATTESTED_APPROVAL_METHODS.has(record2.method) && !record2.attested?.trim()) {
+      issues.push(`${prefix}: an attested approval carries no record of what was said`);
+    }
+  }
+  return issues;
+}
+function isApprovalRecord(value) {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record2 = value;
+  return record2.schemaVersion === 1 && typeof record2.id === "string" && (record2.stage === "framing" || record2.stage === "completion") && typeof record2.by === "string" && typeof record2.at === "string" && APPROVAL_METHODS.includes(record2.method) && typeof record2.note === "string" && (record2.attested === void 0 || typeof record2.attested === "string") && (record2.session === void 0 || typeof record2.session === "string") && typeof record2.receipt === "string";
+}
+
+// src/work.ts
+init_assets();
+init_config();
+init_git();
+init_knowledge();
+init_repository_registry();
+init_work_spec();
+init_work_bundle();
+async function beginWork(options) {
+  const target = await realpath5(resolve24(options.target));
+  const config = await readConfig(target);
+  let knowledgeRoot;
+  let codeRoots;
+  if (config.profile === "leaf") {
+    if ((options.leaves ?? []).length > 0) {
+      throw new Error("--leaf may be used only when work starts from a knowledge repository");
+    }
+    knowledgeRoot = await realpath5(resolveKnowledgeRoot(target, config));
+    codeRoots = [target];
+  } else {
+    knowledgeRoot = target;
+    codeRoots = (options.leaves ?? []).length > 0 ? await resolveReconstructionLeaves(knowledgeRoot, options.leaves ?? [], "audit") : [];
+  }
+  await assertKnowledgeRoot(knowledgeRoot);
+  if (options.knowledgeRef) {
+    await assertKnowledgeReference(knowledgeRoot, options.knowledgeRef);
+  }
+  const repositories = codeRoots.map((root) => {
+    const leafConfigPromise = readConfig(root);
+    return { root, leafConfigPromise };
+  });
+  const boundRepositories = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const input of repositories) {
+    const leafConfig = await input.leafConfigPromise;
+    if (leafConfig.profile !== "leaf") {
+      throw new Error(`Work source is not an initialized leaf: ${input.root}`);
+    }
+    const configuredKnowledge = await realpath5(resolveKnowledgeRoot(input.root, leafConfig));
+    if (configuredKnowledge !== knowledgeRoot) {
+      throw new Error(
+        `Leaf points to a different knowledge repository: ${input.root} -> ${configuredKnowledge}`
+      );
+    }
+    const source = readRepositoryMetadata(input.root);
+    if (seen.has(source.repository)) {
+      throw new Error(`Work received multiple checkouts for ${source.repository}`);
+    }
+    seen.add(source.repository);
+    boundRepositories.push({ root: input.root, source });
+  }
+  const scope = boundRepositories.length === 0 ? "project" : boundRepositories.length === 1 ? "leaf" : "multi-repo";
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const date = now.toISOString().slice(0, 10);
+  const id = await uniqueWorkId(
+    join24(knowledgeRoot, "changes/active"),
+    `${date}-${normalizeSlug5(options.slug)}`
+  );
+  const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
+  const template = parseWorkSpec(await readFile26(
+    join24(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
+    "utf8"
+  ));
+  const createdAt = now.toISOString();
+  const activeDirectory = join24(knowledgeRoot, "changes/active", id);
+  const specPath = join24(activeDirectory, "change.md");
+  const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
+  const pointerPaths = boundRepositories.map(
+    (entry) => leafPointerPath(entry.root, id)
+  );
+  const durableRepositories = boundRepositories.map(
+    (entry) => durableRepository(entry.source)
+  );
+  template.metadata = {
+    ...template.metadata,
+    workflow_version: 5,
+    id,
+    title: options.title,
+    mode: options.mode,
+    scope,
+    status: "shaping",
+    created_at: createdAt,
+    updated_at: createdAt,
+    repositories: durableRepositories,
+    knowledge_alignment: {
+      reviewed: options.knowledgeRef ? [options.knowledgeRef] : [],
+      conflicts: []
+    },
+    graph_evidence: {
+      queries: options.graphQuery ? [options.graphQuery] : []
+    },
+    direction: options.mode === "wayfinder" ? { status: "charting", map: "map.md", resolved_at: "" } : { status: "bounded", map: "", resolved_at: "" }
+  };
+  delete template.metadata.source;
+  delete template.metadata.workspace;
+  initializeDocumentCheckpoint(template, {
+    status: "active",
+    stage: options.mode === "wayfinder" ? "wayfind" : "shape",
+    actor: "system:wfctl",
+    currentState: options.mode === "wayfinder" ? "The direction map is ready for initial charting." : "Initial change framing is pending.",
+    lastCompleted: "Central work bundle created.",
+    nextAction: options.mode === "wayfinder" ? "Chart the destination and first bounded frontier question." : "Persist the first agreed framing and refresh this checkpoint.",
+    blockers: [],
+    now
+  });
+  const binding = {
+    schemaVersion: 4,
+    id,
+    knowledgeRoot,
+    spec: relativeSpec(knowledgeRoot, specPath),
+    createdAt,
+    scope,
+    repositories: boundRepositories
+  };
+  try {
+    await mkdir14(activeDirectory, { recursive: false });
+    await writeFile15(specPath, serializeWorkSpec(template), {
+      encoding: "utf8",
+      flag: "wx"
+    });
+    await initializeWorkBundle(activeDirectory, distributionRoot, options.mode, now);
+    await writeBinding(bindingPath, binding);
+    for (const pointerPath of pointerPaths) {
+      await writeBinding(pointerPath, binding);
+    }
+  } catch (error2) {
+    await removePath(activeDirectory);
+    await removePath(bindingPath);
+    for (const pointerPath of pointerPaths) {
+      await removePath(pointerPath);
+    }
+    throw error2;
+  }
+  return {
+    id,
+    scope,
+    codeRoots,
+    ...codeRoots[0] ? { codeRoot: codeRoots[0] } : {},
+    knowledgeRoot,
+    specPath,
+    pointerPaths: [bindingPath, ...pointerPaths],
+    pointerPath: pointerPaths[0] ?? bindingPath,
+    bundleRoot: activeDirectory
+  };
+}
+async function verifyWork(targetInput, id) {
+  const context = await requireWorkContext(targetInput, id);
+  const document3 = parseWorkSpec(await readFile26(context.specPath, "utf8"));
+  const issues = completionIssues(document3, false);
+  issues.push(...await bundleCompletionIssues(dirname15(context.specPath), document3));
+  issues.push(...repositoryVerificationIssues(document3, context.currentSources));
+  issues.push(...await approvalIssues(context.knowledgeRoot, context.id, document3));
+  return {
+    id,
+    specPath: context.specPath,
+    issues: [...new Set(issues)]
+  };
+}
+async function approveWork(options) {
+  const context = await requireWorkContext(options.target, options.id);
+  const record2 = await recordApproval({
+    knowledgeRoot: context.knowledgeRoot,
+    id: context.id,
+    stage: options.stage,
+    by: options.by,
+    method: options.method,
+    ...options.note ? { note: options.note } : {},
+    ...options.attested ? { attested: options.attested } : {},
+    ...options.session ? { session: options.session } : {},
+    ...options.now ? { now: options.now } : {}
+  });
+  const document3 = parseWorkSpec(await readFile26(context.specPath, "utf8"));
+  const review = record_(document3.metadata.maintainer_review) ?? {};
+  const previous2 = record_(review[options.stage]) ?? {};
+  review[options.stage] = {
+    ...previous2,
+    status: "approved",
+    by: record2.by,
+    at: record2.at,
+    method: record2.method,
+    receipt: record2.receipt,
+    // The maintainer's own words live in the record they approved, not only in
+    // an ignored runtime file, so a reader months later can weigh the answer
+    // against the framing without reconstructing the session.
+    ...record2.attested ? { attested: record2.attested } : {},
+    ...record2.session ? { session: record2.session } : {},
+    notes: uniqueNotes(previous2.notes, record2.note)
+  };
+  document3.metadata.maintainer_review = review;
+  document3.metadata.updated_at = record2.at;
+  await writeFile15(context.specPath, serializeWorkSpec(document3), "utf8");
+  return {
+    id: context.id,
+    stage: options.stage,
+    by: record2.by,
+    at: record2.at,
+    method: record2.method,
+    receipt: record2.receipt,
+    specPath: context.specPath
+  };
+}
+function record_(value) {
+  return record(value);
+}
+function uniqueNotes(existing, note) {
+  const notes = stringArray10(existing);
+  return note && !notes.includes(note) ? [...notes, note] : notes;
+}
+async function closeWork(options) {
+  const context = await requireWorkContext(options.target, options.id);
+  const activeDirectory = dirname15(context.specPath);
+  const document3 = parseWorkSpec(await readFile26(context.specPath, "utf8"));
+  if (options.outcome === "completed") {
+    const issues = [
+      ...completionIssues(document3, true),
+      ...await bundleCompletionIssues(activeDirectory, document3),
+      ...repositoryVerificationIssues(document3, context.currentSources),
+      ...await approvalIssues(context.knowledgeRoot, context.id, document3)
+    ];
+    if (issues.length > 0) {
+      throw new Error(`Completed close is blocked: ${[...new Set(issues)].join("; ")}`);
+    }
+    const promotion = record(document3.metadata.knowledge_promotion);
+    if (promotion?.status === "applied") {
+      const validation = await validateKnowledge(
+        context.knowledgeRoot,
+        stringArray10(promotion.concepts)
+      );
+      if (!validation.valid) {
+        throw new Error(
+          `Completed close is blocked by curated knowledge validation: ${validation.errors.map((issue3) => `${issue3.path}: ${issue3.message}`).join("; ")}`
+        );
+      }
+    }
+  }
+  const archivePath = join24(context.knowledgeRoot, "changes/archive", options.id);
+  await assertAbsent2(archivePath, "archive");
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  document3.metadata.status = options.outcome;
+  document3.metadata.outcome = options.outcome;
+  document3.metadata.closed_at = now.toISOString();
+  document3.metadata.sources_at_close = context.currentSources.map(durableRepository);
+  const checkpoint = record(document3.metadata.checkpoint);
+  initializeDocumentCheckpoint(document3, {
+    status: "complete",
+    stage: "complete",
+    actor: typeof checkpoint?.actor === "string" ? checkpoint.actor : "system:wfctl",
+    currentState: `Change bundle closed as ${options.outcome}.`,
+    lastCompleted: "Completion gates passed and the bundle was archived.",
+    nextAction: "None \u2014 this bundle is closed.",
+    blockers: [],
+    now
+  });
+  await mkdir14(dirname15(archivePath), { recursive: true });
+  await rename10(activeDirectory, archivePath);
+  try {
+    await writeFile15(
+      join24(archivePath, "change.md"),
+      serializeWorkSpec(document3),
+      "utf8"
+    );
+    if ([3, 4, 5].includes(Number(document3.metadata.workflow_version))) {
+      await carryForwardCloseReview(archivePath, now);
+    }
+  } catch (error2) {
+    await rename10(archivePath, activeDirectory);
+    throw error2;
+  }
+  for (const pointerPath of context.pointerPaths) {
+    await removePath(pointerPath);
+  }
+  return { id: options.id, outcome: options.outcome, archivePath };
+}
+async function workBundleContext(target, id, stage, issueId) {
+  const context = await requireWorkContext(target, id);
+  return {
+    id: context.id,
+    ...await inspectWorkBundle(dirname15(context.specPath), stage, issueId)
+  };
+}
+async function updateWorkCheckpoint(options) {
+  const context = await requireWorkContext(options.target, options.id);
+  return await updateBundleCheckpoint({
+    bundleRoot: dirname15(context.specPath),
+    ...options.issueId ? { issueId: options.issueId } : {},
+    actor: options.actor,
+    status: options.status,
+    ...options.stage ? { stage: options.stage } : {},
+    currentState: options.currentState,
+    ...options.lastCompleted ? { lastCompleted: options.lastCompleted } : {},
+    nextAction: options.nextAction,
+    blockers: options.blockers ?? [],
+    ...options.todo ? { todo: options.todo } : {},
+    ...options.now ? { now: options.now } : {}
+  });
+}
+async function createWorkIssue2(input) {
+  const context = await requireWorkContext(input.target, input.id);
+  const distributionRoot = input.distributionRoot ?? await findDistributionRoot();
+  return await createWorkIssue({
+    bundleRoot: dirname15(context.specPath),
+    slug: input.slug,
+    title: input.title,
+    phase: input.phase,
+    type: input.type,
+    ...input.blockedBy ? { blockedBy: input.blockedBy } : {},
+    ...input.satisfies ? { satisfies: input.satisfies } : {},
+    ...input.repositories ? { repositories: input.repositories } : {},
+    ...input.artifacts ? { artifacts: input.artifacts } : {},
+    ...input.now ? { now: input.now } : {},
+    distributionRoot
+  });
+}
+async function claimWorkIssue2(input) {
+  const target = await realpath5(resolve24(input.target));
+  const config = await readConfig(target);
+  const context = await requireWorkContext(target, input.id);
+  const source = config.profile === "leaf" ? context.currentSources.find((entry) => entry.root === target) : void 0;
+  return await claimWorkIssue({
+    bundleRoot: dirname15(context.specPath),
+    issueId: input.issueId,
+    actor: input.actor,
+    ...source ? { source } : {},
+    projectOnly: context.scope === "project",
+    ...input.now ? { now: input.now } : {}
+  });
+}
+async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new Date()) {
+  const resolvedTarget = await realpath5(resolve24(target));
+  const context = await requireWorkContext(resolvedTarget, id);
+  const claimContext = await claimContextForTarget(resolvedTarget, context);
+  return await releaseWorkIssue(
+    dirname15(context.specPath),
+    issueId,
+    claimContext,
+    now
+  );
+}
+async function completeWorkIssue(input) {
+  const target = await realpath5(resolve24(input.target));
+  const context = await requireWorkContext(target, input.id);
+  const claimContext = await claimContextForTarget(target, context);
+  return await resolveWorkIssue({
+    bundleRoot: dirname15(context.specPath),
+    issueId: input.issueId,
+    summary: input.summary,
+    evidence: input.evidence,
+    claimContext,
+    ...input.now ? { now: input.now } : {}
+  });
+}
+async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */ new Date()) {
+  const resolvedTarget = await realpath5(resolve24(target));
+  const context = await requireWorkContext(resolvedTarget, id);
+  const claimContext = await claimContextForTarget(resolvedTarget, context);
+  return await dropWorkIssue(
+    dirname15(context.specPath),
+    issueId,
+    reason,
+    claimContext,
+    now
+  );
+}
+async function setWorkIssueBlocker2(target, id, issueId, blockerId, blocked, now = /* @__PURE__ */ new Date()) {
+  const context = await requireWorkContext(target, id);
+  return await setWorkIssueBlocker(
+    dirname15(context.specPath),
+    issueId,
+    blockerId,
+    blocked,
+    now
+  );
+}
+async function reviewWorkBundleFile(target, id, path, status, reason, now = /* @__PURE__ */ new Date()) {
+  const context = await requireWorkContext(target, id);
+  return await reviewBundleFile(dirname15(context.specPath), path, status, reason, now);
+}
+async function finishWayfinder2(target, id, mode, now = /* @__PURE__ */ new Date()) {
+  const context = await requireWorkContext(target, id);
+  return await finishWayfinder(dirname15(context.specPath), mode, now);
+}
+async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
+  const target = await realpath5(resolve24(targetInput));
+  const config = await readConfig(target);
+  if (config.profile !== "leaf") {
+    throw new Error("Work rebind must target the replacement leaf checkout");
+  }
+  const knowledgeRoot = await realpath5(resolveKnowledgeRoot(target, config));
+  const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
+  const binding = await readBinding2(bindingPath);
+  const current = readRepositoryMetadata(target);
+  const index2 = binding.repositories.findIndex(
+    (entry) => entry.source.repository === current.repository
+  );
+  if (index2 < 0) {
+    throw new Error(
+      `Work ${id} is not scoped to repository ${current.repository}`
+    );
+  }
+  const previous2 = binding.repositories[index2];
+  binding.repositories[index2] = { root: target, source: current };
+  const specPath = resolve24(knowledgeRoot, binding.spec);
+  const document3 = parseWorkSpec(await readFile26(specPath, "utf8"));
+  const repositories = recordArray8(document3.metadata.repositories);
+  const durableIndex = repositories.findIndex(
+    (entry) => entry.repository === current.repository
+  );
+  if (durableIndex < 0) {
+    throw new Error(`Work spec has no durable repository entry for ${current.repository}`);
+  }
+  repositories[durableIndex] = { ...durableRepository(current) };
+  document3.metadata.repositories = repositories;
+  document3.metadata.updated_at = now.toISOString();
+  document3.metadata.rebindings = [
+    ...recordArray8(document3.metadata.rebindings),
+    {
+      repository: current.repository,
+      from_worktree_id: previous2.source.worktreeId,
+      from_branch: previous2.source.branch,
+      to_worktree_id: current.worktreeId,
+      to_branch: current.branch,
+      at: now.toISOString()
+    }
+  ];
+  const previousPointer = leafPointerPath(previous2.root, id);
+  const currentPointer = leafPointerPath(target, id);
+  await writeFile15(specPath, serializeWorkSpec(document3), "utf8");
+  await writeBinding(bindingPath, binding, true);
+  await writeBinding(currentPointer, binding, true);
+  if (previousPointer !== currentPointer) {
+    await removePath(previousPointer);
+  }
+  return {
+    id,
+    repository: current.repository,
+    previousRoot: previous2.root,
+    currentRoot: target,
+    branch: current.branch,
+    worktreeId: current.worktreeId
+  };
+}
+async function workStatus(targetInput, id) {
+  const target = await realpath5(resolve24(targetInput));
+  const config = await readConfig(target);
+  const pointerRoot = config.profile === "knowledge" ? join24(target, ".workflow/current/work") : join24(target, ".workflow/current");
+  const ids = id ? [id] : await pointerIds(pointerRoot);
+  const results = [];
+  for (const workId of ids) {
+    results.push(await inspectWorkContext(target, config.profile, workId));
+  }
+  return results;
+}
+async function requireWorkContext(targetInput, id) {
+  const results = await workStatus(targetInput, id);
+  if (!id && results.length === 0) {
+    throw new Error("No active work records are bound to this checkout");
+  }
+  if (!id && results.length > 1) {
+    throw new Error(
+      `Multiple active work records are bound to this checkout: ${results.map((entry) => `${entry.id} (${entry.title})`).join(", ")}. Run wfctl work status, inspect the candidates, and ask the maintainer which outcome to resume; do not guess`
+    );
+  }
+  const context = results[0];
+  if (!context) {
+    throw new Error(`Active work binding not found: ${id}`);
+  }
+  if (!context.valid) {
+    throw new Error(`Work context mismatch for ${context.id}: ${context.issues.join("; ")}`);
+  }
+  return context;
+}
+async function claimContextForTarget(target, context) {
+  const config = await readConfig(target);
+  const source = config.profile === "leaf" ? context.currentSources.find((entry) => entry.root === target) : void 0;
+  return {
+    ...source ? { source } : {},
+    allowProject: config.profile === "knowledge"
+  };
+}
+async function inspectWorkContext(target, profile, id) {
+  const config = await readConfig(target);
+  const knowledgeRoot = profile === "knowledge" ? target : await realpath5(resolveKnowledgeRoot(target, config));
+  const preferred = profile === "knowledge" ? knowledgeBindingPath(knowledgeRoot, id) : leafPointerPath(target, id);
+  let binding;
+  let preferredExists = true;
+  try {
+    binding = await readBinding2(preferred);
+  } catch (error2) {
+    if (profile !== "leaf" || !isMissingFileError(error2)) {
+      throw error2;
+    }
+    preferredExists = false;
+    binding = await readBinding2(knowledgeBindingPath(knowledgeRoot, id));
+  }
+  const issues = [];
+  if (binding.id !== id || binding.knowledgeRoot !== knowledgeRoot) {
+    issues.push("local work binding does not match this knowledge checkout");
+  }
+  if (profile === "leaf" && !preferredExists) {
+    issues.push("this checkout is not bound to the work; use wfctl work rebind explicitly");
+  }
+  if (profile === "leaf" && !binding.repositories.some((entry) => entry.root === target)) {
+    issues.push(`current checkout ${target} is outside the bound workspaces`);
+  }
+  const currentSources = [];
+  for (const entry of binding.repositories) {
+    try {
+      const current = readRepositoryMetadata(entry.root);
+      currentSources.push(current);
+      if (current.root !== entry.source.root) {
+        issues.push(`${entry.source.repository}: checkout root changed`);
+      }
+      if (current.repository !== entry.source.repository) {
+        issues.push(
+          `${entry.source.repository}: bound path now identifies ${current.repository}`
+        );
+      }
+      if (current.worktreeId !== entry.source.worktreeId) {
+        issues.push(
+          `${entry.source.repository}: worktree changed from ${entry.source.worktreeId} to ${current.worktreeId}`
+        );
+      }
+      if (current.branch !== entry.source.branch) {
+        issues.push(
+          `${entry.source.repository}: branch changed from ${entry.source.branch} to ${current.branch}; run wfctl work rebind`
+        );
+      }
+    } catch (error2) {
+      issues.push(`${entry.source.repository}: ${errorMessage(error2)}`);
+    }
+  }
+  const specPath = resolve24(knowledgeRoot, binding.spec);
+  const activeRoot = join24(knowledgeRoot, "changes/active");
+  let title = id;
+  if (!inside(activeRoot, specPath)) {
+    issues.push(`spec path is outside the active work root: ${specPath}`);
+  }
+  try {
+    const document3 = parseWorkSpec(await readFile26(specPath, "utf8"));
+    title = typeof document3.metadata.title === "string" ? document3.metadata.title.trim() || id : id;
+    if (document3.metadata.scope !== binding.scope) {
+      issues.push("spec scope does not match the local binding");
+    }
+    const durable = recordArray8(document3.metadata.repositories);
+    if (durable.length !== binding.repositories.length) {
+      issues.push("spec repository scope does not match the local binding");
+    }
+    for (const entry of binding.repositories) {
+      const stored = durable.find(
+        (candidate) => candidate.repository === entry.source.repository
+      );
+      if (!stored || stored.worktree_id !== entry.source.worktreeId || stored.branch !== entry.source.branch) {
+        issues.push(`${entry.source.repository}: durable repository binding is inconsistent`);
+      }
+    }
+    const serialized = await readFile26(specPath, "utf8");
+    for (const entry of binding.repositories) {
+      if (serialized.includes(entry.root)) {
+        issues.push("durable work record leaks a local checkout path");
+        break;
+      }
+    }
+  } catch (error2) {
+    issues.push(`cannot read bound spec: ${errorMessage(error2)}`);
+  }
+  const pointerPaths = [
+    knowledgeBindingPath(knowledgeRoot, id),
+    ...binding.repositories.map((entry) => leafPointerPath(entry.root, id))
+  ];
+  const codeRoots = binding.repositories.map((entry) => entry.root);
+  const sources = binding.repositories.map((entry) => entry.source);
+  return {
+    id,
+    title,
+    valid: issues.length === 0,
+    scope: binding.scope,
+    codeRoots,
+    ...codeRoots[0] ? { codeRoot: codeRoots[0] } : {},
+    knowledgeRoot,
+    specPath,
+    bundleRoot: dirname15(specPath),
+    pointerPaths,
+    pointerPath: profile === "leaf" ? preferred : knowledgeBindingPath(knowledgeRoot, id),
+    sources,
+    currentSources,
+    ...sources[0] ? { source: sources[0] } : {},
+    ...currentSources[0] ? { currentSource: currentSources[0] } : {},
+    issues
+  };
+}
+function repositoryVerificationIssues(document3, sources) {
+  const issues = [];
+  if (document3.metadata.scope === "project") {
+    return issues;
+  }
+  const verification = record(document3.metadata.verification);
+  const receipts = recordArray8(verification?.repositories);
+  for (const source of sources) {
+    if (source.dirty) {
+      issues.push(`${source.repository}: bound source checkout must be clean for final verification`);
+    }
+    const receipt = receipts.find((entry) => entry.repository === source.repository) ?? (sources.length === 1 ? verification : void 0);
+    if (!receipt) {
+      issues.push(`${source.repository}: verification receipt is missing`);
+      continue;
+    }
+    if (receipt.revision !== source.commit) {
+      issues.push(
+        `${source.repository}: verification revision does not match current commit`
+      );
+    }
+    if (receipt.worktree_id !== source.worktreeId) {
+      issues.push(
+        `${source.repository}: verification worktree_id does not match current worktree`
+      );
+    }
+    if (receipts.length > 0 && !nonEmptyArray2(receipt.checks)) {
+      issues.push(`${source.repository}: verification checks are missing`);
+    }
+  }
+  for (const receipt of receipts) {
+    if (!sources.some((source) => source.repository === receipt.repository)) {
+      issues.push(`verification receipt is outside work scope: ${String(receipt.repository)}`);
+    }
+  }
+  return issues;
+}
+function durableRepository(source) {
+  return {
+    repository: source.repository,
+    checkout: source.checkout,
+    branch: source.branch,
+    commit_at_start: source.commit,
+    remote: /^(?:https?:\/\/|ssh:\/\/|git@)/.test(source.remote) ? source.remote : "",
+    worktree: source.worktree,
+    worktree_id: source.worktreeId
+  };
+}
+async function assertKnowledgeRoot(root) {
+  try {
+    await access8(join24(root, "knowledge/index.md"), constants7.R_OK);
+  } catch {
+    throw new Error(`Knowledge repository is not initialized: ${root}`);
+  }
+}
+async function assertKnowledgeReference(root, reference) {
+  const normalized = reference.replace(/^\/+/, "");
+  const absolute = resolve24(root, normalized);
+  const knowledgeRoot = join24(root, "knowledge");
+  if (!inside(knowledgeRoot, absolute) || !absolute.toLowerCase().endsWith(".md")) {
+    throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
+  }
+  try {
+    await access8(absolute, constants7.R_OK);
+  } catch (error2) {
+    throw new Error(`Knowledge reference is not readable: ${reference} (${errorMessage(error2)})`);
+  }
+}
+function knowledgeBindingPath(knowledgeRoot, id) {
+  assertId(id);
+  return join24(knowledgeRoot, ".workflow/current/work", `${id}.json`);
+}
+function leafPointerPath(root, id) {
+  assertId(id);
+  return join24(root, ".workflow/current", `${id}.json`);
+}
+async function writeBinding(path, binding, replace = false) {
+  await mkdir14(dirname15(path), { recursive: true });
+  await writeFile15(path, `${JSON.stringify(binding, null, 2)}
+`, {
+    encoding: "utf8",
+    flag: replace ? "w" : "wx"
+  });
+}
+async function readBinding2(path) {
+  const raw = JSON.parse(await readFile26(path, "utf8"));
+  if (!isRecord8(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
+    (entry) => isRecord8(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
+  )) {
+    throw new Error(`Unsupported or malformed active work binding: ${path}`);
+  }
+  return raw;
+}
+function isRepositoryMetadata(value) {
+  return isRecord8(value) && typeof value.repository === "string" && typeof value.root === "string" && typeof value.checkout === "string" && typeof value.branch === "string" && typeof value.commit === "string" && typeof value.remote === "string" && typeof value.dirty === "boolean" && typeof value.worktree === "boolean" && typeof value.worktreeId === "string";
+}
+function isRecord8(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+async function pointerIds(root) {
+  try {
+    const ids = [];
+    for (const entry of await readdir16(root, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        continue;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(await readFile26(join24(root, entry.name), "utf8"));
+      } catch {
+        continue;
+      }
+      if (!isRecord8(parsed) || parsed.schemaVersion === void 0 || typeof parsed.spec !== "string" || typeof parsed.knowledgeRoot !== "string") {
+        continue;
+      }
+      ids.push(entry.name.slice(0, -5));
+    }
+    return ids.sort();
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return [];
+    }
+    throw error2;
+  }
+}
+function relativeSpec(knowledgeRoot, specPath) {
+  const value = specPath.slice(`${knowledgeRoot}${sep9}`.length);
+  return value.split(sep9).join("/");
+}
+function inside(parent, child) {
+  const boundary = `${resolve24(parent)}${sep9}`;
+  return resolve24(child).startsWith(boundary);
+}
+function record(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
+}
+function recordArray8(value) {
+  return Array.isArray(value) ? value.filter((entry) => Boolean(record(entry))) : [];
+}
+function stringArray10(value) {
+  return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+}
+function nonEmptyArray2(value) {
+  return Array.isArray(value) && value.length > 0;
+}
+async function uniqueWorkId(activeRoot, base) {
+  for (let index2 = 1; index2 < 1e3; index2 += 1) {
+    const candidate = index2 === 1 ? base : `${base}-${index2}`;
+    try {
+      await access8(join24(activeRoot, candidate), constants7.F_OK);
+    } catch (error2) {
+      if (isMissingFileError(error2)) {
+        return candidate;
+      }
+      throw error2;
+    }
+  }
+  throw new Error(`Cannot allocate a unique work id for ${base}`);
+}
+async function assertAbsent2(path, label) {
+  try {
+    await access8(path, constants7.F_OK);
+    throw new Error(`${label} already exists: ${path}`);
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return;
+    }
+    throw error2;
+  }
+}
+async function removePath(path) {
+  try {
+    await rm4(path, { recursive: true, force: true });
+  } catch (error2) {
+    if (!isMissingFileError(error2)) {
+      throw error2;
+    }
+  }
+}
+function normalizeSlug5(value) {
+  const slug = value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!slug) {
+    throw new Error("Work slug must contain ASCII letters or digits");
+  }
+  return slug.slice(0, 64);
+}
+function assertId(id) {
+  if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(id)) {
+    throw new Error(`Invalid work id: ${id}`);
+  }
+}
+
+// src/cli.ts
+init_assets();
+
 // src/hooks.ts
 init_config();
-import { mkdir as mkdir15, readFile as readFile26, rename as rename11, rm as rm5, writeFile as writeFile16 } from "node:fs/promises";
+import { mkdir as mkdir15, readFile as readFile27, rename as rename11, rm as rm5, writeFile as writeFile16 } from "node:fs/promises";
 import { randomUUID as randomUUID4 } from "node:crypto";
-import { dirname as dirname16, join as join24 } from "node:path";
+import { dirname as dirname16, join as join25 } from "node:path";
 var SESSION_BRIEF_COMMAND = "wfctl brief --hook";
 var SESSION_START_EVENT = "SessionStart";
 var BACKGROUND_GUARD_COMMAND = '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true';
@@ -39609,11 +39728,11 @@ function stopGuardHookInstalled(target) {
   return hookEntryInstalled(target, STOP_EVENT, STOP_GUARD_COMMAND);
 }
 function stopGuardDisabledPath(target) {
-  return join24(target, ".workflow/current/hooks/stop-guard.disabled");
+  return join25(target, ".workflow/current/hooks/stop-guard.disabled");
 }
 async function stopGuardEnabled(target) {
   try {
-    await readFile26(stopGuardDisabledPath(target), "utf8");
+    await readFile27(stopGuardDisabledPath(target), "utf8");
     return false;
   } catch (error2) {
     if (isMissingFileError(error2)) {
@@ -39696,12 +39815,12 @@ function sessionStartEnvelope(context) {
 `;
 }
 function settingsPath(target) {
-  return join24(target, ".claude/settings.json");
+  return join25(target, ".claude/settings.json");
 }
 async function readSettings(path) {
   let content3;
   try {
-    content3 = await readFile26(path, "utf8");
+    content3 = await readFile27(path, "utf8");
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return {};
@@ -39720,7 +39839,7 @@ async function readSettings(path) {
 }
 async function writeSettings(path, settings) {
   await mkdir15(dirname16(path), { recursive: true });
-  const temporary = join24(dirname16(path), `.wfctl-${randomUUID4()}.tmp`);
+  const temporary = join25(dirname16(path), `.wfctl-${randomUUID4()}.tmp`);
   await writeFile16(temporary, `${JSON.stringify(settings, null, 2)}
 `, "utf8");
   await rename11(temporary, path);
@@ -39745,7 +39864,7 @@ function isRecord9(value) {
 setColorEnabled(process.stdout.isTTY === true && !("NO_COLOR" in process.env));
 var main = new Command().name("wfctl").version(WORKFLOW_VERSION).description(
   "Install and operate a shared project workflow.\nMaintainers normally use init; installed agents own the remaining commands.\n\nSetup:\n  init       Install or repair a knowledge or leaf repository\n  check      Validate the current workflow installation\n\nMaintenance:\n  upgrade    Upgrade installed rules, skills, templates, and guides\n\nOrientation:\n  brief      Report current repository state at session start\n  hooks      Install or remove the session-start brief hook\n\nKnowledge operations:\n  knowledge  Process raw input, validate knowledge, and build its graph\n\nProject work:\n  work       Operate captures, checkpoints, change bundles, issues, and closure"
-).throwErrors().command("init", initCommand()).command("check", checkCommand()).command("upgrade", upgradeCommand()).command("brief", briefCommand()).command("hooks", hooksCommand()).command("knowledge", knowledgeCommand()).command("work", workCommand());
+).throwErrors().command("init", initCommand()).command("check", checkCommand()).command("upgrade", upgradeCommand()).command("brief", briefCommand()).command("resumable", resumableCommand()).command("hooks", hooksCommand()).command("knowledge", knowledgeCommand()).command("work", workCommand());
 try {
   await main.parse(process.argv.slice(2));
 } catch (error2) {
@@ -39766,17 +39885,17 @@ function initCommand() {
     "--init-git",
     "Initialize Git when creating a knowledge repository."
   ).option("-y, --yes", "Accept defaults and safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options, profileValue) => {
-    const target = resolve24(options.target);
+    const target = resolve25(options.target);
     const promptOptions = {
       yes: options.yes === true,
       json: options.json === true
     };
     const profile = await resolveProfile(profileValue, target, promptOptions);
-    let knowledge = options.knowledge ? resolve24(options.knowledge) : await installedKnowledgePath(target, profile);
+    let knowledge = options.knowledge ? resolve25(options.knowledge) : await installedKnowledgePath(target, profile);
     if (profile === "leaf" && !knowledge && !promptOptions.yes && !promptOptions.json && interactive()) {
       const answer = await ask("Knowledge repository path: ");
       if (answer) {
-        knowledge = resolve24(answer);
+        knowledge = resolve25(answer);
       }
     }
     if (options.printInstructions) {
@@ -39818,7 +39937,7 @@ function upgradeCommand() {
     "--maintainer <actor:string>",
     "Record who the maintainer is, as human:<id>, so nobody retypes their own name."
   ).option("--dry-run", "Preview files and dependency checks without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
-    const target = resolve24(options.target);
+    const target = resolve25(options.target);
     const config = await readConfig(target);
     const scope = options.skills ? parseSkillScope(options.skills) : config.skills?.scope ?? "project";
     const agents = options.agents ? parseAgentTargets(options.agents) : config.skills?.agents ?? ["codex", "claude"];
@@ -40007,7 +40126,7 @@ async function installWorkflow(input) {
 ${green("\u2713")} ${bold("Workflow installed")}
   ${dim("Target")}  ${resolved.target}
   ${dim("Changes")} ${applied.changed}
-  ${dim("Guide")}   ${resolve24(resolved.target, "PROJECT_WORKFLOW.md")}
+  ${dim("Guide")}   ${resolve25(resolved.target, "PROJECT_WORKFLOW.md")}
 `
     );
     printChangedPaths(applied.changedPaths);
@@ -40167,13 +40286,72 @@ async function briefContext(target) {
     return `The workflow session brief could not be collected: ${errorMessage(error2)}`;
   }
 }
+function resumableCommand() {
+  return new Command().description(
+    "Say whether this session can stop right now without losing anything.\nExits non-zero when it cannot, so it can gate the end of a turn."
+  ).option("-t, --target <path:string>", "Workflow repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
+    const result = await assessResumability(options.target);
+    if (options.json) {
+      printJson(result);
+    } else if (result.safe) {
+      process.stdout.write(
+        `${green("Safe to stop.")} ${result.current.length} record(s) carry a current checkpoint.
+`
+      );
+      for (const subject of result.current) {
+        process.stdout.write(`  ${dim(subject)}
+`);
+      }
+    } else {
+      process.stdout.write(`${yellow("Not safe to stop.")}
+`);
+      for (const entry of result.entries) {
+        const label = entry.subject || entry.domain;
+        process.stdout.write(`  ${bold(label)}
+`);
+        for (const risk of entry.risks) {
+          process.stdout.write(`    ${resumabilityRisk(risk)}
+`);
+        }
+      }
+      if (result.uncommitted.length > 0) {
+        process.stdout.write(
+          `
+${result.uncommitted.length} uncommitted path(s):
+`
+        );
+        for (const path of result.uncommitted.slice(0, 20)) {
+          process.stdout.write(`  ${path}
+`);
+        }
+        if (result.uncommitted.length > 20) {
+          process.stdout.write(`  ${dim(`and ${result.uncommitted.length - 20} more`)}
+`);
+        }
+      }
+    }
+    if (!result.safe) {
+      process.exitCode = 1;
+    }
+  });
+}
+function resumabilityRisk(risk) {
+  switch (risk) {
+    case "stale-checkpoint":
+      return "its checkpoint describes a record that has changed since; the resume prose reads as current and is not";
+    case "missing-checkpoint":
+      return "no checkpoint was ever written, so nothing says where the work stopped";
+    case "uncommitted":
+      return "work on disk that no checkpoint describes and no commit preserves";
+  }
+}
 function hooksCommand() {
   return new Command().description(
     "Install or remove the session-start brief in this repository's Claude Code settings."
   ).command(
     "install",
     new Command().description(`Add a SessionStart hook that runs \`${SESSION_BRIEF_COMMAND}\`.`).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const result = await installSessionBriefHook(resolve24(options.target));
+      const result = await installSessionBriefHook(resolve25(options.target));
       if (options.json) {
         printJson(result);
       } else {
@@ -40188,7 +40366,7 @@ ${dim("Restart the agent session for the hook to take effect.")}
   ).command(
     "remove",
     new Command().description("Remove the session-start brief hook and leave every other setting intact.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const result = await removeSessionBriefHook(resolve24(options.target));
+      const result = await removeSessionBriefHook(resolve25(options.target));
       if (options.json) {
         printJson(result);
       } else {
@@ -40200,7 +40378,7 @@ ${dim(result.path)}
   ).command(
     "status",
     new Command().description("Report whether the session-start brief hook is installed.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const target = resolve24(options.target);
+      const target = resolve25(options.target);
       const installed = await sessionBriefHookInstalled(target);
       if (options.json) {
         printJson({ target, installed, command: SESSION_BRIEF_COMMAND });
@@ -40217,7 +40395,7 @@ function stopGuardCommand() {
   return new Command().description(
     "Turn the stop guard on or off for this checkout, or report which it is.\nOff is remembered locally and survives upgrades; the settings entry stays installed."
   ).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--off", "Stop re-entering the agent when a turn ends with work outstanding.").option("--on", "Resume re-entering.").option("--reason <reason:string>", "Why it was turned off, for whoever finds it off later.").option("--json", "Print machine-readable JSON.").action(async (options) => {
-    const target = resolve24(options.target);
+    const target = resolve25(options.target);
     if (options.off && options.on) {
       throw new Error("Pass --on or --off, not both");
     }
@@ -41299,7 +41477,7 @@ ${result.unclaimed.length} page(s) in this area are claimed by no trajectory:
       "--token <token:string>",
       "Out-of-band token for an unattended run. Must equal WFCTL_APPROVAL_TOKEN."
     ).option("--json", "Print machine-readable JSON.").action(async (options, trajectory) => {
-      const target = resolve24(options.target);
+      const target = resolve25(options.target);
       const by = options.by ?? (await readConfig(target)).maintainer;
       if (!by) {
         throw new Error(
@@ -42852,7 +43030,7 @@ ${cyan(bold(section2.title))}
 }
 async function recordedAgents(target) {
   try {
-    const config = await readConfig(resolve24(target));
+    const config = await readConfig(resolve25(target));
     const agents = config.skills?.agents ?? [];
     return agents.length > 0 ? agents : ["codex", "claude"];
   } catch {

@@ -54,6 +54,7 @@ import {
 import { promoteTrajectory } from "./promotion.js";
 import { collectDebts, scheduleDebt } from "./debts.js";
 import { readWorkGate, renderWorkGate } from "./work-ask.js";
+import { assessResumability, type StopRisk } from "./resumability.js";
 import type { TodoEdit } from "./work-spec.js";
 import { declareVision, type VisionMethod } from "./vision.js";
 import { hashKnowledgeConcept, validateKnowledge } from "./knowledge.js";
@@ -197,6 +198,7 @@ const main = new Command()
   .command("check", checkCommand())
   .command("upgrade", upgradeCommand())
   .command("brief", briefCommand())
+  .command("resumable", resumableCommand())
   .command("hooks", hooksCommand())
   .command("knowledge", knowledgeCommand())
   .command("work", workCommand());
@@ -755,6 +757,75 @@ async function briefContext(target: string): Promise<string> {
     ].join("\n");
   } catch (error) {
     return `The workflow session brief could not be collected: ${errorMessage(error)}`;
+  }
+}
+
+/**
+ * Whether stopping now would lose anything, asked of the repository rather than
+ * of the agent. The maintainer had to request a wrap-up every time and then take
+ * the answer on trust; this is the same answer, checkable, and cheap enough for
+ * the agent to run before it ends a turn.
+ */
+function resumableCommand() {
+  return new Command()
+    .description(
+      "Say whether this session can stop right now without losing anything.\n"
+        + "Exits non-zero when it cannot, so it can gate the end of a turn.",
+    )
+    .option("-t, --target <path:string>", "Workflow repository.", { default: "." })
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options) => {
+      const result = await assessResumability(options.target);
+      if (options.json) {
+        printJson(result);
+      } else if (result.safe) {
+        process.stdout.write(
+          `${green("Safe to stop.")} ${result.current.length} record(s) carry a current checkpoint.\n`,
+        );
+        for (const subject of result.current) {
+          process.stdout.write(`  ${dim(subject)}\n`);
+        }
+      } else {
+        process.stdout.write(`${yellow("Not safe to stop.")}\n`);
+        for (const entry of result.entries) {
+          const label = entry.subject || entry.domain;
+          process.stdout.write(`  ${bold(label)}\n`);
+          for (const risk of entry.risks) {
+            process.stdout.write(`    ${resumabilityRisk(risk)}\n`);
+          }
+        }
+        if (result.uncommitted.length > 0) {
+          process.stdout.write(
+            `\n${result.uncommitted.length} uncommitted path(s):\n`,
+          );
+          for (const path of result.uncommitted.slice(0, 20)) {
+            process.stdout.write(`  ${path}\n`);
+          }
+          if (result.uncommitted.length > 20) {
+            process.stdout.write(`  ${dim(`and ${result.uncommitted.length - 20} more`)}\n`);
+          }
+        }
+      }
+      if (!result.safe) {
+        process.exitCode = 1;
+      }
+    });
+}
+
+/**
+ * A function rather than a module-level constant: `main.parse()` runs above every
+ * declaration in this file, so a const referenced from a command action is still
+ * in its temporal dead zone when the action fires.
+ */
+function resumabilityRisk(risk: StopRisk): string {
+  switch (risk) {
+    case "stale-checkpoint":
+      return "its checkpoint describes a record that has changed since; "
+        + "the resume prose reads as current and is not";
+    case "missing-checkpoint":
+      return "no checkpoint was ever written, so nothing says where the work stopped";
+    case "uncommitted":
+      return "work on disk that no checkpoint describes and no commit preserves";
   }
 }
 

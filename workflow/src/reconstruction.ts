@@ -3200,6 +3200,17 @@ async function reconstructionSessionState(
       document: workstream.document,
     });
   }
+  // The trajectories a reconstruction produces belong to its basis.
+  //
+  // Without them the basis covered only the case, the dossiers and the coverage
+  // ledgers, so a day spent rewriting twenty-one trajectories left the checkpoint
+  // reporting itself perfectly fresh — and nothing ever prompted a refresh. That
+  // is the failure this digest exists to catch, happening in the one place the
+  // digest was not looking. Measured on a live corpus: editing a trajectory, a
+  // capture and a curated page moved no signal at all.
+  for (const trajectory of await reconstructionTrajectoryFiles(target)) {
+    related.push(trajectory);
+  }
   const bindingPath = reconstructionBindingPath(target, id);
   try {
     const bindingContent = await readFile(bindingPath);
@@ -3538,6 +3549,37 @@ function reconstructionCasePath(
 ): string {
   assertCaseId(id);
   return join(target, "reconstruction", state, id, "case.md");
+}
+
+/**
+ * Every trajectory and vision document, in a stable order.
+ *
+ * Sorted rather than read in directory order so the digest is a fact about the
+ * content and not about the filesystem: an unsorted listing would make the same
+ * corpus hash differently on another machine and report a stale checkpoint that
+ * nothing had changed.
+ */
+async function reconstructionTrajectoryFiles(
+  target: string,
+): Promise<RelatedSessionContent[]> {
+  const root = join(target, "trajectories");
+  let names: string[];
+  try {
+    names = (await readdir(root)).filter((name) => name.endsWith(".md")).sort();
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return [];
+    }
+    throw error;
+  }
+  const files: RelatedSessionContent[] = [];
+  for (const name of names) {
+    files.push({
+      path: relative(target, join(root, name)),
+      content: await readFile(join(root, name)),
+    });
+  }
+  return files;
 }
 
 function reconstructionBindingPath(target: string, id: string): string {
