@@ -519,7 +519,16 @@ function workCollector(): StateCollector {
             : {}),
           awaits: heldForMaintainer ? "maintainer" : "agent",
         });
-        if (outstanding.length > 0) {
+        // Outstanding is not the same as answerable. Completion approves work
+        // that has been done and verified; asking for it on a bundle still being
+        // shaped is a demand nobody can satisfy, and two of them stood in the
+        // live queue permanently, indistinguishable from decisions actually
+        // waiting. The capability still reports both as blocking closure —
+        // that is what closure requires — but the maintainer is only shown the
+        // one they can answer today.
+        const verified = stringValue(recordValue(metadata.verification)?.result) === "passed";
+        const answerable = outstanding.filter((stage) => stage === "framing" || verified);
+        if (answerable.length > 0) {
           signals.push({
             id: "work.approvals-outstanding",
             domain: "work",
@@ -527,10 +536,21 @@ function workCollector(): StateCollector {
             summary: "Closure still requires your recorded approval",
             subject: entry.id,
             facts: {
-              stages: outstanding.join(","),
-              command: `wfctl work ask ${entry.id} --stage ${outstanding[0]}`,
+              stages: answerable.join(","),
+              command: `wfctl work ask ${entry.id} --stage ${answerable[0]}`,
             },
             awaits: "maintainer",
+            blocks: ["close-work"],
+          });
+        } else if (outstanding.length > 0) {
+          signals.push({
+            id: "work.approvals-later",
+            domain: "work",
+            level: "info",
+            summary: "Approval will be needed at closure, and cannot be given yet",
+            subject: entry.id,
+            facts: { stages: outstanding.join(",") },
+            awaits: "agent",
             blocks: ["close-work"],
           });
         }

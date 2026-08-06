@@ -38150,7 +38150,9 @@ function workCollector() {
           ...stringValue11(metadata.updated_at) ? { since: stringValue11(metadata.updated_at) } : {},
           awaits: heldForMaintainer ? "maintainer" : "agent"
         });
-        if (outstanding.length > 0) {
+        const verified = stringValue11(recordValue11(metadata.verification)?.result) === "passed";
+        const answerable = outstanding.filter((stage) => stage === "framing" || verified);
+        if (answerable.length > 0) {
           signals2.push({
             id: "work.approvals-outstanding",
             domain: "work",
@@ -38158,10 +38160,21 @@ function workCollector() {
             summary: "Closure still requires your recorded approval",
             subject: entry.id,
             facts: {
-              stages: outstanding.join(","),
-              command: `wfctl work ask ${entry.id} --stage ${outstanding[0]}`
+              stages: answerable.join(","),
+              command: `wfctl work ask ${entry.id} --stage ${answerable[0]}`
             },
             awaits: "maintainer",
+            blocks: ["close-work"]
+          });
+        } else if (outstanding.length > 0) {
+          signals2.push({
+            id: "work.approvals-later",
+            domain: "work",
+            level: "info",
+            summary: "Approval will be needed at closure, and cannot be given yet",
+            subject: entry.id,
+            facts: { stages: outstanding.join(",") },
+            awaits: "agent",
             blocks: ["close-work"]
           });
         }

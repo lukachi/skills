@@ -235,7 +235,9 @@ test("holds bundle closure until approvals and verification are recorded", async
   const approvals = report.signals.find((signal) => signal.id === "work.approvals-outstanding");
 
   assert.equal(active?.facts?.title, "Account recovery");
-  assert.equal(approvals?.facts?.stages, "framing,completion");
+  // Only the stage the maintainer can answer today. Completion approves work
+  // that has been done and verified, and this bundle is still being shaped.
+  assert.equal(approvals?.facts?.stages, "framing");
   assert.equal(approvals?.awaits, "maintainer");
 
   const close = report.capabilities.find((entry) => entry.id === "close-work");
@@ -490,4 +492,36 @@ test("a session is unsafe to stop while work sits outside every checkpoint", asy
     dirty.entries.some((entry) => entry.risks.includes("uncommitted")),
     true,
   );
+});
+
+test("completion approval is not demanded of a bundle that has not been done", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "account-recovery",
+    title: "Account recovery",
+    mode: "full",
+  });
+  await approveWork({
+    target: leaf,
+    id: started.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "attested",
+    attested: "yes",
+  });
+
+  const report = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  // Nothing is left for the maintainer to answer, so nothing sits in their
+  // queue. Closure still requires the approval, and the capability still says so.
+  assert.equal(
+    report.signals.some((signal) => signal.id === "work.approvals-outstanding"),
+    false,
+    JSON.stringify(report.signals.map((signal) => signal.id)),
+  );
+  const later = report.signals.find((signal) => signal.id === "work.approvals-later");
+  assert.equal(later?.facts?.stages, "completion");
+  assert.equal(later?.awaits, "agent");
+  const close = report.capabilities.find((entry) => entry.id === "close-work");
+  assert.equal(close?.available, false);
 });
