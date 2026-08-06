@@ -2296,9 +2296,12 @@ function knowledgeTrajectoryCommand() {
       "promote",
       new Command()
         .description(
-          "Write a curated page from a trajectory that has a declared vision.\n"
+          "Write a curated page from a trajectory.\n"
             + "Produces a draft: everything the trajectory holds is filled in, and the sections\n"
-            + "no record in this pipeline carries are marked for an author. Deletes nothing.",
+            + "no record in this pipeline carries are marked for an author. Deletes nothing.\n"
+            + "A subject with no declared direction still gets a page, carrying what the source\n"
+            + "shows at the pin and no accepted intent; declaring the direction and promoting\n"
+            + "again with --force adds where it is going and the gap against it.",
         )
         .arguments("<trajectory:string>")
         .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
@@ -2317,6 +2320,13 @@ function knowledgeTrajectoryCommand() {
           process.stdout.write(
             `${result.created ? "Wrote" : "Rewrote"} ${result.path}\n`,
           );
+          if (result.direction === "undeclared") {
+            process.stdout.write(
+              "\nThe page carries what the source shows and no accepted intent, because nobody has\n"
+                + "said where this subject should go. That is the maintainer's answer, not an author's\n"
+                + "task; once it is recorded, promote again with --force to add the second half.\n",
+            );
+          }
           if (result.awaitingAuthor.length > 0) {
             process.stdout.write(
               `\nThe draft does not validate yet. ${result.awaitingAuthor.length} section(s) need an author:\n`,

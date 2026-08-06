@@ -104,9 +104,17 @@ Prefer primary sources and retain the synthesis as a candidate until normal
 project authority and curation gates pass.
 
 What a reconstruction reads becomes subjects the maintainer can set a direction
-against, through `assemble-trajectories`. The single product question is
+against, through `assemble-trajectories`. Publish every subject it produced with
+`wfctl knowledge trajectory promote`, including the ones they have not answered
+for: a subject with no declared direction still gets a page carrying what the
+source shows at the pin. Holding it back would make curated knowledge a
+derivative of their decision queue, where a subject read in full does not appear
+to exist until they answer and nothing says so. The brief names any subject no
+page carries. The single product question is
 `wfctl knowledge trajectory ask`, and their answer is recorded by you with
-`trajectory declare --attested`, never by handing them a command. What every
+`trajectory declare --attested`, never by handing them a command; promoting again
+with `--force` afterwards adds where the subject is going to the page that
+already says what it does. What every
 subject still owes against its declared direction is `wfctl knowledge trajectory
 debts`, and the brief opens that gate itself once every subject has a direction —
 you never decide it is time. Put it to them with `trajectory debts --ask`, never

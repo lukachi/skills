@@ -14,13 +14,94 @@ import { serializeWorkSpec } from "../src/work-spec.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-test("a subject with no declared vision cannot be promoted", async () => {
+test("a subject with no declared direction still gets the page its evidence supports", async () => {
   const target = await knowledgeRepository("wfctl-promote-novision-");
   await writeTrajectory(target, "traj-equipment");
 
+  const result = await promoteTrajectory({ target, trajectory: "traj-equipment" });
+  assert.equal(result.direction, "undeclared");
+  assert.equal(result.path, "knowledge/areas/characters/equipment.md");
+
+  const page = await readFile(join(target, result.path), "utf8");
+  assert.match(page, /^title: Equipment$/m);
+  assert.match(page, /## Current behavior/, "what it does today is the point of the page");
+  assert.match(page, /Gear reaches a fight/);
+  assert.doesNotMatch(page, /^ {2}vision:/m, "no direction was declared, so none is cited");
+  assert.doesNotMatch(page, /kind: trajectory-vision/, "and none is a source");
+  assert.match(page, /intent: not-applicable/, "accepted intent is the maintainer's word");
+  assert.match(
+    page,
+    /alignment: not-applicable/,
+    "drift is distance from an intent, and none is stated",
+  );
+  assert.match(page, /No direction has been declared for this subject/);
+  assert.match(page, /Equip logic is written by hand\./, "the open gap still reaches the page");
+});
+
+test("the undeclared page validates on everything except its author markers", async () => {
+  const target = await knowledgeRepository("wfctl-promote-novision-valid-");
+  await writeTrajectory(target, "traj-equipment");
+  const result = await promoteTrajectory({ target, trajectory: "traj-equipment" });
+
+  const validation = await validateKnowledge(target, [result.path]);
+  assert.deepEqual(
+    validation.errors
+      .filter((issue) => !/still carries author markers/.test(issue.message))
+      .map((issue) => issue.message),
+    [],
+    "an undeclared page is a legal page, not a page that limps",
+  );
+});
+
+test("declaring the direction later adds the second half to the same page", async () => {
+  const target = await knowledgeRepository("wfctl-promote-latevision-");
+  await writeTrajectory(target, "traj-equipment");
+  const first = await promoteTrajectory({ target, trajectory: "traj-equipment" });
+  assert.equal(first.direction, "undeclared");
+  assert.doesNotMatch(
+    await readFile(join(target, first.path), "utf8"),
+    /Equipment should be composable/,
+  );
+
+  await declareVision({
+    knowledgeRoot: target,
+    trajectory: "traj-equipment",
+    declaredBy: "human:nzafat",
+    statement: "Equipment should be composable and authorable.",
+    method: "attested",
+    attested: "yes, that one",
+  });
+  const second = await promoteTrajectory({
+    target,
+    trajectory: "traj-equipment",
+    force: true,
+  });
+  assert.equal(second.direction, "declared");
+  assert.equal(second.created, false, "the same page, not a second one");
+
+  const page = await readFile(join(target, second.path), "utf8");
+  assert.match(page, /Equipment should be composable and authorable\.\[\^1\]/);
+  assert.match(page, /intent: accepted/);
+  assert.match(page, /alignment: drifted/);
+});
+
+test("a subject with no direction and nothing citable is refused", async () => {
+  const target = await knowledgeRepository("wfctl-promote-nosources-");
+  await writeTrajectory(target, "traj-equipment", {
+    observations: [{
+      id: "obs-design",
+      at: "2026-07-11T00:00:00.000Z",
+      read_at: "2026-08-04T00:00:00.000Z",
+      source: { kind: "raw", resource: "raw/api/design.md" },
+      says: "The design scoped equipment as service plumbing.",
+    }],
+    findings: [],
+    gaps: [],
+  });
+
   await assert.rejects(
     () => promoteTrajectory({ target, trajectory: "traj-equipment" }),
-    /has no declared vision/,
+    /nothing citable to rest on/,
   );
 });
 

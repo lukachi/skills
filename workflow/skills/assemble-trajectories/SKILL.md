@@ -242,7 +242,8 @@ choice to make, not a default to impose on them.
 
 ## Phase six — the page
 
-Once a subject has a declared vision, write its curated page from the trajectory:
+Write every subject's curated page from its trajectory, whether or not a
+direction has been declared for it:
 
 ```sh
 wfctl knowledge trajectory promote <trajectory>
@@ -252,6 +253,20 @@ It fills everything the records hold — what the subject does, where it is goin
 the gap, the pinned evidence, the three axes — and marks the sections no record in
 this pipeline carries: who it serves, the words the domain uses, an example. Those
 are yours to write, and the page does not validate until you have.
+
+**Do not wait for a direction before publishing.** A subject with none still gets
+its page: what it does today, read at the pin, with no accepted intent and no
+alignment, because there is nothing yet to be aligned with. Waiting instead makes
+curated knowledge a derivative of the maintainer's decision queue — a subject read
+in full from source does not appear to exist until they answer, so "what does this
+project do" quietly returns a filtered subset and never mentions the filter.
+Current behavior is an observation and direction is a decision; publish the
+observation when you have it. When the direction arrives, promote again with
+`--force` and the same page gains its second half.
+
+The one subject that cannot be published is one whose every observation came from
+raw, because curated knowledge may not cite untrusted input and the page would
+rest on nothing. Read it at a pin first.
 
 Two things it will tell you that matter more than the page.
 

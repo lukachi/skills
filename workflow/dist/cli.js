@@ -37349,11 +37349,6 @@ async function promoteTrajectory(options) {
     throw new Error(`No trajectory named ${options.trajectory}`);
   }
   const vision = compilation.graph.visions.find((entry) => entry.id === record2.vision);
-  if (!vision) {
-    throw new Error(
-      `${record2.subject} has no declared vision. A curated page carries what it is, what it should become, and the gap between them; without the second there is no page to write, only the old one again.`
-    );
-  }
   const path = join19("knowledge/areas", record2.area, `${record2.id.replace(/^traj-/, "")}.md`);
   const absolute = join19(target, path);
   const existed = await exists3(absolute);
@@ -37361,8 +37356,13 @@ async function promoteTrajectory(options) {
     throw new Error(`${path} already exists; pass --force to rewrite it`);
   }
   const at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
-  const { sources, dropped } = deriveSources(record2, vision.id, vision.declaredBy);
-  const body = renderBody(record2, compilation.graph, vision.statement, sources);
+  const { sources, dropped } = deriveSources(record2, vision);
+  if (sources.length === 0) {
+    throw new Error(
+      `${record2.subject} has no direction declared and nothing citable to rest on: all ${dropped} observation(s) come from untrusted input, which curated knowledge may not cite. Read the subject at a pinned revision, or declare where it should go.`
+    );
+  }
+  const body = renderBody(record2, compilation.graph, vision, sources);
   const document3 = {
     metadata: {
       okf_version: "0.2",
@@ -37379,20 +37379,34 @@ async function promoteTrajectory(options) {
         at,
         method: "trajectory-promotion"
       },
-      authority: ["product-meaning", "intent", "implementation"],
+      // Accepted intent is the maintainer's word, and product meaning is a
+      // claim about what the project means to offer. An undeclared subject
+      // carries neither: what it holds is read from the pin, so implementation
+      // is the only authority its evidence supports. That also keeps the page
+      // out of the product-bearing branch of validation, where an unstated
+      // intent would be an error rather than a fact.
+      authority: vision ? ["product-meaning", "intent", "implementation"] : ["implementation"],
       sources,
-      realization: {
+      realization: vision ? {
         intent: "accepted",
         delivery: deliveryFrom(record2),
         alignment: record2.gaps.length > 0 ? "drifted" : "aligned",
         vision: vision.id,
+        assessed_at: at
+      } : {
+        intent: "not-applicable",
+        delivery: deliveryFrom(record2),
+        // Drift is distance from an intent. With none declared there is no
+        // distance to report, and calling it "aligned" would invent agreement
+        // with something nobody has stated.
+        alignment: "not-applicable",
         assessed_at: at
       },
       "x-wf": {
         relations: [{
           kind: "supports",
           target: `knowledge/areas/${record2.area}/index.md`,
-          context: `What ${record2.subject} is, and where it is going.`
+          context: vision ? `What ${record2.subject} is, and where it is going.` : `What ${record2.subject} is, read at the pinned revision.`
         }]
       }
     },
@@ -37404,6 +37418,7 @@ async function promoteTrajectory(options) {
     trajectory: record2.id,
     path,
     created: !existed,
+    direction: vision ? "declared" : "undeclared",
     awaitingAuthor: [
       ...body.split("\n").filter((line) => line.startsWith(AUTHOR_MARK)).map((line) => line.slice(AUTHOR_MARK.length).replace(/ -->$/, "")),
       "Engineering details says not-applicable; link the engineering concepts if any exist"
@@ -37413,16 +37428,16 @@ async function promoteTrajectory(options) {
     unclaimed: await unclaimedPages(target, record2.area, compilation.graph, /* @__PURE__ */ new Set([path]))
   };
 }
-function deriveSources(record2, visionId, declaredBy) {
-  const sources = [{
+function deriveSources(record2, vision) {
+  const sources = vision ? [{
     id: "1",
     kind: "trajectory-vision",
-    author: declaredBy,
-    resource: `trajectory-vision:${visionId}`,
+    author: vision.declaredBy,
+    resource: `trajectory-vision:${vision.id}`,
     claim: "Where this subject is going, as the maintainer declared it."
-  }];
+  }] : [];
   let dropped = 0;
-  let next = 2;
+  let next = sources.length + 1;
   const seen = /* @__PURE__ */ new Set();
   for (const observation of record2.observations) {
     if (observation.source.kind === "raw") {
@@ -37472,13 +37487,28 @@ function renderBody(record2, graph, vision, sources) {
     }
     lines.push("");
   }
-  lines.push("## Where this is going", "", `${vision}[^1]`, "");
-  if (record2.gaps.length > 0) {
-    lines.push("Outstanding against it:", "");
-    for (const gap of record2.gaps) {
-      lines.push(`- ${gap.statement}`);
+  lines.push("## Where this is going", "");
+  if (vision) {
+    lines.push(`${vision.statement}[^1]`, "");
+    if (record2.gaps.length > 0) {
+      lines.push("Outstanding against it:", "");
+      for (const gap of record2.gaps) {
+        lines.push(`- ${gap.statement}`);
+      }
+      lines.push("");
     }
-    lines.push("");
+  } else {
+    lines.push(
+      "No direction has been declared for this subject, so nothing here states where it should go. What this page holds is what the source shows at the pinned revision.",
+      ""
+    );
+    if (record2.gaps.length > 0) {
+      lines.push("Recorded as outstanding on the subject itself:", "");
+      for (const gap of record2.gaps) {
+        lines.push(`- ${gap.statement}`);
+      }
+      lines.push("");
+    }
   }
   lines.push("## Rules and outcomes", "");
   lines.push(author("state the rules a reader can rely on, or link them"), "");
@@ -37492,10 +37522,17 @@ function renderBody(record2, graph, vision, sources) {
   }
   lines.push(author("state what this subject does not cover"), "");
   lines.push("## Delivery", "");
-  lines.push(
-    record2.gaps.length === 0 ? "Intent accepted and delivered." : `Intent accepted, delivery partial. ${record2.gaps.length} outstanding.`,
-    ""
-  );
+  if (vision) {
+    lines.push(
+      record2.gaps.length === 0 ? "Intent accepted and delivered." : `Intent accepted, delivery partial. ${record2.gaps.length} outstanding.`,
+      ""
+    );
+  } else {
+    lines.push(
+      record2.gaps.length === 0 ? "No intent is accepted for this subject. What is described is what the pinned revision delivers." : `No intent is accepted for this subject. What is described is what the pinned revision delivers, and ${record2.gaps.length} item(s) stand open on it.`,
+      ""
+    );
+  }
   lines.push("**Unproven:** read from the pinned revision; nothing was built or run.", "");
   lines.push("## Examples", "");
   lines.push(author("one concrete example a person would recognise"), "");
@@ -38166,6 +38203,31 @@ function corpusCollector() {
           // claiming it awaits the agent would arm the stop guard on a fact.
         });
       }
+      const engineering = nodes.filter(
+        (node2) => recordValue11(node2)?.kind === "concept" && stringValue11(recordValue11(node2)?.view) === "engineering"
+      ).length;
+      if (engineering === 0) {
+        const connections = await listRepositoryConnections(context.knowledgeRoot);
+        if (connections.length > 0) {
+          signals2.push({
+            id: "corpus.engineering-road-empty",
+            domain: "corpus",
+            level: "attention",
+            summary: "Source repositories are registered and nothing in curated knowledge describes how they work",
+            facts: {
+              repositories: connections.length,
+              productPages: concepts,
+              engineeringPages: 0
+            }
+            // Writing that road is a deliberate undertaking, not a step someone
+            // takes before ending a turn. Claiming it awaits the agent would arm
+            // the stop guard against work no turn can finish; claiming it awaits
+            // the maintainer would put a question in their queue that is not
+            // theirs to answer. It is a fact about the corpus, and being in the
+            // brief at all is the whole of what it needs to do.
+          });
+        }
+      }
       const compiledAt = stringValue11(graph.generatedAt);
       const newest = await newestModification(join22(context.knowledgeRoot, "knowledge"));
       if (compiledAt && newest && newest > Date.parse(compiledAt)) {
@@ -38429,6 +38491,32 @@ function trajectoryCollector() {
             command: "wfctl knowledge trajectory ask"
           },
           awaits: "maintainer"
+        });
+      }
+      const unpublished = [];
+      for (const record2 of compilation.graph.trajectories) {
+        const page = join22(
+          context.knowledgeRoot,
+          "knowledge/areas",
+          record2.area,
+          `${record2.id.replace(/^traj-/, "")}.md`
+        );
+        if (!await pathExists2(page)) {
+          unpublished.push(record2.subject);
+        }
+      }
+      if (unpublished.length > 0) {
+        signals2.push({
+          id: "trajectory.unpublished",
+          domain: "trajectory",
+          level: "attention",
+          summary: "Subjects were read from source and no curated page carries them",
+          facts: {
+            subjects: unpublished.length,
+            named: nameThem(unpublished),
+            command: "wfctl knowledge trajectory promote"
+          },
+          awaits: "agent"
         });
       }
       const open2 = ledger.debts.filter((debt) => debt.status === "open");
@@ -38883,6 +38971,17 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
     }
   }
   return newest;
+}
+async function pathExists2(path) {
+  try {
+    await stat3(path);
+    return true;
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return false;
+    }
+    throw error2;
+  }
 }
 async function readJson(path) {
   try {
@@ -41857,7 +41956,7 @@ function knowledgeTrajectoryCommand() {
   ).command(
     "promote",
     new Command().description(
-      "Write a curated page from a trajectory that has a declared vision.\nProduces a draft: everything the trajectory holds is filled in, and the sections\nno record in this pipeline carries are marked for an author. Deletes nothing."
+      "Write a curated page from a trajectory.\nProduces a draft: everything the trajectory holds is filled in, and the sections\nno record in this pipeline carries are marked for an author. Deletes nothing.\nA subject with no declared direction still gets a page, carrying what the source\nshows at the pin and no accepted intent; declaring the direction and promoting\nagain with --force adds where it is going and the gap against it."
     ).arguments("<trajectory:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--force", "Rewrite the page if it already exists.").option("--json", "Print machine-readable JSON.").action(async (options, trajectory) => {
       const result = await promoteTrajectory({
         target: options.target,
@@ -41872,6 +41971,11 @@ function knowledgeTrajectoryCommand() {
         `${result.created ? "Wrote" : "Rewrote"} ${result.path}
 `
       );
+      if (result.direction === "undeclared") {
+        process.stdout.write(
+          "\nThe page carries what the source shows and no accepted intent, because nobody has\nsaid where this subject should go. That is the maintainer's answer, not an author's\ntask; once it is recorded, promote again with --force to add the second half.\n"
+        );
+      }
       if (result.awaitingAuthor.length > 0) {
         process.stdout.write(
           `

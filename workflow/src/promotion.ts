@@ -1,7 +1,12 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { isMissingFileError } from "./config.js";
-import { compileTrajectories, type TrajectoryGraph, type TrajectoryRecord } from "./trajectory.js";
+import {
+  compileTrajectories,
+  type TrajectoryGraph,
+  type TrajectoryRecord,
+  type TrajectoryVision,
+} from "./trajectory.js";
 import { serializeWorkSpec } from "./work-spec.js";
 
 /**
@@ -21,6 +26,19 @@ import { serializeWorkSpec } from "./work-spec.js";
  * trajectory, checked for existence, and reported; removing them is a separate
  * deliberate act after the draft validates. A tool that quietly retires
  * knowledge is a tool nobody can run twice with confidence.
+ *
+ * What it does do, and used to refuse to, is write a subject whose direction the
+ * maintainer has not declared. Refusing made the knowledge base a derivative of
+ * their decision queue: a subject read in full from source did not exist in
+ * curated knowledge until they said where it should go, so "what does this
+ * project do" answered with a filtered subset and said nothing about the filter.
+ * Direction is a decision and current behavior is an observation; making the
+ * observation wait on the decision loses the observation for as long as the
+ * decision is open, which can be forever. So a subject without a declared
+ * direction gets the page its evidence supports and no more: what it does today,
+ * read at the pin, with no accepted intent and no alignment — because there is
+ * nothing yet to be aligned with. Declaring the direction later promotes again
+ * over the same path and the page gains its second half.
  */
 
 const AUTHOR_MARK = "<!-- AUTHOR: ";
@@ -29,6 +47,12 @@ export interface PromotionResult {
   trajectory: string;
   path: string;
   created: boolean;
+  /**
+   * Whether the maintainer has said where this subject should go. An undeclared
+   * page is complete for what it claims and half of what the subject deserves;
+   * the caller says so rather than letting a reader assume the page is finished.
+   */
+  direction: "declared" | "undeclared";
   /** Sections the trajectory cannot supply, left marked for an author. */
   awaitingAuthor: string[];
   /** Observations dropped because curated knowledge may not cite untrusted input. */
@@ -59,12 +83,6 @@ export async function promoteTrajectory(options: PromoteOptions): Promise<Promot
     throw new Error(`No trajectory named ${options.trajectory}`);
   }
   const vision = compilation.graph.visions.find((entry) => entry.id === record.vision);
-  if (!vision) {
-    throw new Error(
-      `${record.subject} has no declared vision. A curated page carries what it is, what it should become, `
-        + "and the gap between them; without the second there is no page to write, only the old one again.",
-    );
-  }
 
   const path = join("knowledge/areas", record.area, `${record.id.replace(/^traj-/, "")}.md`);
   const absolute = join(target, path);
@@ -74,8 +92,18 @@ export async function promoteTrajectory(options: PromoteOptions): Promise<Promot
   }
 
   const at = (options.now ?? new Date()).toISOString();
-  const { sources, dropped } = deriveSources(record, vision.id, vision.declaredBy);
-  const body = renderBody(record, compilation.graph, vision.statement, sources);
+  const { sources, dropped } = deriveSources(record, vision);
+  if (sources.length === 0) {
+    // Every citable observation was raw, and no declared vision stands in as the
+    // one thing a page may cite an actor for. A page here would assert the
+    // subject's behavior on nothing a reader could check.
+    throw new Error(
+      `${record.subject} has no direction declared and nothing citable to rest on: all `
+        + `${dropped} observation(s) come from untrusted input, which curated knowledge may not `
+        + "cite. Read the subject at a pinned revision, or declare where it should go.",
+    );
+  }
+  const body = renderBody(record, compilation.graph, vision, sources);
   const document = {
     metadata: {
       okf_version: "0.2",
@@ -92,20 +120,40 @@ export async function promoteTrajectory(options: PromoteOptions): Promise<Promot
         at,
         method: "trajectory-promotion",
       },
-      authority: ["product-meaning", "intent", "implementation"],
+      // Accepted intent is the maintainer's word, and product meaning is a
+      // claim about what the project means to offer. An undeclared subject
+      // carries neither: what it holds is read from the pin, so implementation
+      // is the only authority its evidence supports. That also keeps the page
+      // out of the product-bearing branch of validation, where an unstated
+      // intent would be an error rather than a fact.
+      authority: vision
+        ? ["product-meaning", "intent", "implementation"]
+        : ["implementation"],
       sources,
-      realization: {
-        intent: "accepted",
-        delivery: deliveryFrom(record),
-        alignment: record.gaps.length > 0 ? "drifted" : "aligned",
-        vision: vision.id,
-        assessed_at: at,
-      },
+      realization: vision
+        ? {
+          intent: "accepted",
+          delivery: deliveryFrom(record),
+          alignment: record.gaps.length > 0 ? "drifted" : "aligned",
+          vision: vision.id,
+          assessed_at: at,
+        }
+        : {
+          intent: "not-applicable",
+          delivery: deliveryFrom(record),
+          // Drift is distance from an intent. With none declared there is no
+          // distance to report, and calling it "aligned" would invent agreement
+          // with something nobody has stated.
+          alignment: "not-applicable",
+          assessed_at: at,
+        },
       "x-wf": {
         relations: [{
           kind: "supports",
           target: `knowledge/areas/${record.area}/index.md`,
-          context: `What ${record.subject} is, and where it is going.`,
+          context: vision
+            ? `What ${record.subject} is, and where it is going.`
+            : `What ${record.subject} is, read at the pinned revision.`,
         }],
       },
     },
@@ -119,6 +167,7 @@ export async function promoteTrajectory(options: PromoteOptions): Promise<Promot
     trajectory: record.id,
     path,
     created: !existed,
+    direction: vision ? "declared" : "undeclared",
     awaitingAuthor: [
       ...body.split("\n")
         .filter((line) => line.startsWith(AUTHOR_MARK))
@@ -140,18 +189,19 @@ export async function promoteTrajectory(options: PromoteOptions): Promise<Promot
  */
 function deriveSources(
   record: TrajectoryRecord,
-  visionId: string,
-  declaredBy: string,
+  vision: TrajectoryVision | undefined,
 ): { sources: Array<Record<string, unknown>>; dropped: number } {
-  const sources: Array<Record<string, unknown>> = [{
-    id: "1",
-    kind: "trajectory-vision",
-    author: declaredBy,
-    resource: `trajectory-vision:${visionId}`,
-    claim: "Where this subject is going, as the maintainer declared it.",
-  }];
+  const sources: Array<Record<string, unknown>> = vision
+    ? [{
+      id: "1",
+      kind: "trajectory-vision",
+      author: vision.declaredBy,
+      resource: `trajectory-vision:${vision.id}`,
+      claim: "Where this subject is going, as the maintainer declared it.",
+    }]
+    : [];
   let dropped = 0;
-  let next = 2;
+  let next = sources.length + 1;
   const seen = new Set<string>();
   for (const observation of record.observations) {
     if (observation.source.kind === "raw") {
@@ -183,7 +233,7 @@ function deliveryFrom(record: TrajectoryRecord): string {
 function renderBody(
   record: TrajectoryRecord,
   graph: TrajectoryGraph,
-  vision: string,
+  vision: TrajectoryVision | undefined,
   sources: Array<Record<string, unknown>>,
 ): string {
   const children = graph.edges
@@ -212,13 +262,31 @@ function renderBody(
     }
     lines.push("");
   }
-  lines.push("## Where this is going", "", `${vision}[^1]`, "");
-  if (record.gaps.length > 0) {
-    lines.push("Outstanding against it:", "");
-    for (const gap of record.gaps) {
-      lines.push(`- ${gap.statement}`);
+  lines.push("## Where this is going", "");
+  if (vision) {
+    lines.push(`${vision.statement}[^1]`, "");
+    if (record.gaps.length > 0) {
+      lines.push("Outstanding against it:", "");
+      for (const gap of record.gaps) {
+        lines.push(`- ${gap.statement}`);
+      }
+      lines.push("");
     }
-    lines.push("");
+  } else {
+    // Stated on the page rather than left out, so a reader meets the absence
+    // instead of mistaking a page that stops early for a subject that is done.
+    lines.push(
+      "No direction has been declared for this subject, so nothing here states where it "
+        + "should go. What this page holds is what the source shows at the pinned revision.",
+      "",
+    );
+    if (record.gaps.length > 0) {
+      lines.push("Recorded as outstanding on the subject itself:", "");
+      for (const gap of record.gaps) {
+        lines.push(`- ${gap.statement}`);
+      }
+      lines.push("");
+    }
   }
   lines.push("## Rules and outcomes", "");
   lines.push(author("state the rules a reader can rely on, or link them"), "");
@@ -232,12 +300,23 @@ function renderBody(
   }
   lines.push(author("state what this subject does not cover"), "");
   lines.push("## Delivery", "");
-  lines.push(
-    record.gaps.length === 0
-      ? "Intent accepted and delivered."
-      : `Intent accepted, delivery partial. ${record.gaps.length} outstanding.`,
-    "",
-  );
+  if (vision) {
+    lines.push(
+      record.gaps.length === 0
+        ? "Intent accepted and delivered."
+        : `Intent accepted, delivery partial. ${record.gaps.length} outstanding.`,
+      "",
+    );
+  } else {
+    lines.push(
+      record.gaps.length === 0
+        ? "No intent is accepted for this subject. What is described is what the pinned "
+          + "revision delivers."
+        : `No intent is accepted for this subject. What is described is what the pinned `
+          + `revision delivers, and ${record.gaps.length} item(s) stand open on it.`,
+      "",
+    );
+  }
   lines.push("**Unproven:** read from the pinned revision; nothing was built or run.", "");
   lines.push("## Examples", "");
   lines.push(author("one concrete example a person would recognise"), "");

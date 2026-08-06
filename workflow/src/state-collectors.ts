@@ -202,6 +202,39 @@ function corpusCollector(): StateCollector {
           // claiming it awaits the agent would arm the stop guard on a fact.
         });
       }
+      // Curated knowledge runs on two roads: what the product does for a person,
+      // and how it is built. Every check before this one was per-file, so a road
+      // with no files on it passed them all trivially — the corpus validated,
+      // the graph matched it, and the count of pages said "populated". Three
+      // repositories can be read end to end and produce nothing that says how
+      // they work, and the only reader who notices is the maintainer, by eye.
+      const engineering = nodes.filter((node) =>
+        recordValue(node)?.kind === "concept"
+        && stringValue(recordValue(node)?.view) === "engineering"
+      ).length;
+      if (engineering === 0) {
+        const connections = await listRepositoryConnections(context.knowledgeRoot);
+        if (connections.length > 0) {
+          signals.push({
+            id: "corpus.engineering-road-empty",
+            domain: "corpus",
+            level: "attention",
+            summary:
+              "Source repositories are registered and nothing in curated knowledge describes how they work",
+            facts: {
+              repositories: connections.length,
+              productPages: concepts,
+              engineeringPages: 0,
+            },
+            // Writing that road is a deliberate undertaking, not a step someone
+            // takes before ending a turn. Claiming it awaits the agent would arm
+            // the stop guard against work no turn can finish; claiming it awaits
+            // the maintainer would put a question in their queue that is not
+            // theirs to answer. It is a fact about the corpus, and being in the
+            // brief at all is the whole of what it needs to do.
+          });
+        }
+      }
       const compiledAt = stringValue(graph.generatedAt);
       const newest = await newestModification(join(context.knowledgeRoot, "knowledge"));
       if (compiledAt && newest && newest > Date.parse(compiledAt)) {
@@ -535,6 +568,39 @@ function trajectoryCollector(): StateCollector {
             command: "wfctl knowledge trajectory ask",
           },
           awaits: "maintainer",
+        });
+      }
+
+      // A subject read from source and never written down exists only in the
+      // pipeline's own working records. Curated knowledge is what anyone else
+      // reads, so an unpublished subject is a subject the project does not
+      // appear to have. This used to be unreachable for anything the maintainer
+      // had not given a direction; now the only thing between a read subject and
+      // its page is running the promotion, which is the agent's to run.
+      const unpublished: string[] = [];
+      for (const record of compilation.graph.trajectories) {
+        const page = join(
+          context.knowledgeRoot,
+          "knowledge/areas",
+          record.area,
+          `${record.id.replace(/^traj-/, "")}.md`,
+        );
+        if (!await pathExists(page)) {
+          unpublished.push(record.subject);
+        }
+      }
+      if (unpublished.length > 0) {
+        signals.push({
+          id: "trajectory.unpublished",
+          domain: "trajectory",
+          level: "attention",
+          summary: "Subjects were read from source and no curated page carries them",
+          facts: {
+            subjects: unpublished.length,
+            named: nameThem(unpublished),
+            command: "wfctl knowledge trajectory promote",
+          },
+          awaits: "agent",
         });
       }
 
@@ -1117,6 +1183,18 @@ async function newestModification(
     }
   }
   return newest;
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function readJson(path: string): Promise<Record<string, unknown> | undefined> {

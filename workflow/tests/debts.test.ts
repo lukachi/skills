@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { applyInstallPlan } from "../src/applier.js";
 import { collectDebts, deferDebt, renderDebtPacket, scheduleDebt } from "../src/debts.js";
 import { buildInstallPlan } from "../src/planner.js";
+import { promoteTrajectory } from "../src/promotion.js";
 import { declareVision } from "../src/vision.js";
 import { collectWorkflowState } from "../src/state.js";
 import { STATE_COLLECTORS } from "../src/state-collectors.js";
@@ -383,4 +384,72 @@ test("a deferred debt records who set it aside and why", async () => {
   // Deliberately set aside is not the same as unread, and the packet stops
   // asking about it while it stays visible in the ledger.
   assert.doesNotMatch(renderDebtPacket(ledger), /Equip logic/);
+});
+
+/**
+ * The fixture's own observation is raw, which curated knowledge may not cite, so
+ * a subject built only from it has no page to write. These add the pinned read
+ * beside it: the question here is publication, not what may be evidence.
+ */
+const PINNED_OBSERVATIONS = [
+  {
+    id: "obs-design",
+    at: "2026-07-11T00:00:00.000Z",
+    read_at: "2026-08-04T00:00:00.000Z",
+    source: { kind: "raw", resource: "raw/api/design.md" },
+    says: "The design scoped equipment as service plumbing.",
+  },
+  {
+    id: "obs-loadout",
+    at: "2026-08-02T00:00:00.000Z",
+    read_at: "2026-08-04T00:00:00.000Z",
+    source: {
+      kind: "source-code",
+      resource: `git:lukachi/dnd-api@${"a".repeat(40)}#crates/rules-core/src/loadout.rs`,
+    },
+    says: "A shield and a two-handed weapon can be worn together.",
+  },
+];
+
+test("a subject read from source and never written down is named in the brief", async () => {
+  const target = await knowledgeRepository("wfctl-unpublished-");
+  await writeTrajectory(target, "traj-equipment", { observations: PINNED_OBSERVATIONS });
+  await writeTrajectory(target, "traj-money", {
+    subject: "Money",
+    observations: PINNED_OBSERVATIONS,
+  });
+
+  const before = await collectWorkflowState(target, { collectors: STATE_COLLECTORS });
+  const signal = before.signals.find((entry) => entry.id === "trajectory.unpublished");
+  // Curated knowledge is what anyone but this pipeline reads. A subject that
+  // reaches no page is a subject the project does not appear to have, and the
+  // count of pages cannot show it because the missing ones were never counted.
+  assert.equal(signal?.facts?.subjects, 2, JSON.stringify(before.signals.map((s) => s.id)));
+  assert.match(String(signal?.facts?.named), /Equipment/);
+  // Running the promotion is the agent's, not a question for the maintainer.
+  assert.equal(signal?.awaits, "agent");
+
+  await promoteTrajectory({ target, trajectory: "traj-equipment" });
+  const after = await collectWorkflowState(target, { collectors: STATE_COLLECTORS });
+  const left = after.signals.find((entry) => entry.id === "trajectory.unpublished");
+  assert.equal(left?.facts?.subjects, 1);
+  assert.match(String(left?.facts?.named), /Money/);
+});
+
+test("publishing every subject clears the signal, direction declared or not", async () => {
+  const target = await knowledgeRepository("wfctl-unpublished-clear-");
+  await writeTrajectory(target, "traj-equipment", { observations: PINNED_OBSERVATIONS });
+  await promoteTrajectory({ target, trajectory: "traj-equipment" });
+
+  const report = await collectWorkflowState(target, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    report.signals.some((entry) => entry.id === "trajectory.unpublished"),
+    false,
+    "an undeclared subject still has a page, so nothing is owed here",
+  );
+  // The direction is still owed, and that gate is untouched by publication.
+  assert.equal(
+    report.signals.some((entry) => entry.id === "trajectory.awaiting-vision"),
+    true,
+  );
 });

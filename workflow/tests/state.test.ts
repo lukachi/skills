@@ -527,3 +527,65 @@ test("completion approval is not demanded of a bundle that has not been done", a
   const close = report.capabilities.find((entry) => entry.id === "close-work");
   assert.equal(close?.available, false);
 });
+
+test("a corpus with no engineering page says so once repositories are registered", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  await addLeafRepository(knowledge, leaf);
+  await writeKnowledgeGraph(knowledge, [
+    { id: "combat.capabilities.combat", path: "knowledge/areas/combat/combat.md", view: "product" },
+    { id: "world.capabilities.money", path: "knowledge/areas/world/money.md", view: "product" },
+  ]);
+
+  const report = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  const empty = report.signals.find((signal) => signal.id === "corpus.engineering-road-empty");
+
+  // Both roads validate per file, so a road with no files on it passed every
+  // check there was: the corpus was valid, the graph matched it, and the count
+  // said populated. Only the maintainer noticed, by looking.
+  assert.equal(empty !== undefined, true, JSON.stringify(report.signals.map((s) => s.id)));
+  assert.equal(empty?.facts?.repositories, 1);
+  assert.equal(empty?.facts?.productPages, 2);
+  assert.equal(empty?.facts?.engineeringPages, 0);
+  // Writing that road is an undertaking, not a step before ending a turn.
+  assert.equal(empty?.awaits, undefined, "it is a fact, and must not arm the stop guard");
+});
+
+test("one engineering page is enough to stop reporting the road as empty", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  await addLeafRepository(knowledge, leaf);
+  await writeKnowledgeGraph(knowledge, [
+    { id: "combat.capabilities.combat", path: "knowledge/areas/combat/combat.md", view: "product" },
+    {
+      id: "architecture.service-boundaries",
+      path: "knowledge/architecture/service-boundaries.md",
+      view: "engineering",
+    },
+  ]);
+
+  const report = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    report.signals.some((signal) => signal.id === "corpus.engineering-road-empty"),
+    false,
+  );
+});
+
+async function writeKnowledgeGraph(
+  knowledge: string,
+  concepts: Array<{ id: string; path: string; view: string }>,
+): Promise<void> {
+  const path = join(knowledge, ".workflow/current/knowledge-graph.json");
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(
+    path,
+    JSON.stringify({
+      generatedAt: "2026-08-06T00:00:00.000Z",
+      nodes: concepts.map((concept) => ({
+        ...concept,
+        kind: "concept",
+        title: concept.id,
+      })),
+      edges: [],
+    }),
+    "utf8",
+  );
+}
