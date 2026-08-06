@@ -79,9 +79,10 @@ wfctl work approve <id> --stage completion \
   --note "<what the maintainer accepted>"
 ```
 
-It requires an interactive terminal, or `--token` matching
-`WFCTL_APPROVAL_TOKEN`. `wfctl work verify` rejects a receipt with no matching
-approval record. Finish all semantic edits to `change.md`, then refresh its
+Record what they answered with `--attested "<their words>" --session
+"<where>"`; a typed confirmation and a `--token` matching `WFCTL_APPROVAL_TOKEN`
+remain for a stronger record. `wfctl work verify` rejects a receipt with no
+matching approval record. Finish all semantic edits to `change.md`, then refresh its
 checkpoint in review stage **before** recording the final hash receipt:
 
 ```sh

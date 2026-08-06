@@ -93,6 +93,17 @@ Use `research-project-context` for an explicit material external evidence gap.
 Prefer primary sources and retain the synthesis as a candidate until normal
 project authority and curation gates pass.
 
+What a reconstruction reads becomes subjects the maintainer can set a direction
+against, through `assemble-trajectories`. The single product question is
+`wfctl knowledge trajectory ask`, and their answer is recorded by you with
+`trajectory declare --attested`, never by handing them a command. What every
+subject still owes against its declared direction is `wfctl knowledge trajectory
+debts`; a debt becomes work through `wfctl work start` plus `trajectory schedule`,
+which names the closing bundle inside the subject that owes it. No command marks
+a debt done — it ends when the subject is read again at a new revision and the
+gap is no longer derivable, so landing work ends in a re-read and not in a
+status change.
+
 Treat `changes/inbox/` as a pending queue, not durable truth or active work.
 Run `wfctl work capture list`, read each selected capture completely, create
 and verify its real owners, then resolve it as routed or discarded. Leave it

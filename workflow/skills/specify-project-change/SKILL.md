@@ -67,8 +67,10 @@ wfctl work approve <id> --stage framing \
   --note "<what was approved>"
 ```
 
-The command requires an interactive terminal, or `--token` matching
-`WFCTL_APPROVAL_TOKEN` in unattended use. A hand-written
+Render the framing with `wfctl work ask <id>` and record their reply with
+`--attested "<their words>" --session "<where>"`. A typed confirmation and a
+`--token` matching `WFCTL_APPROVAL_TOKEN` remain available and are theirs to ask
+for; do not send them to a second terminal by default. A hand-written
 `maintainer_review.framing` receipt fails verification. Approving rewrites
 `change.md`, so re-read it, refresh its review receipt, and refresh the
 checkpoint afterwards.

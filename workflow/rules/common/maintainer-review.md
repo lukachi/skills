@@ -159,11 +159,26 @@ parks finished work behind a decision that could have been made on day one.
 Approving edits the change record, so refresh its checkpoint and re-read it
 before claiming.
 
+Render the framing with `wfctl work ask <id>` rather than composing one. It
+carries the four things approval fixes — what gets done, what deliberately does
+not, what will make it finished, and in what order — and nothing else from a
+record written for an agent. A section still holding the shipped template's own
+words is reported as unwritten rather than read out as scope.
+
 For significant work, record framing and completion decisions with `wfctl work
-approve <id> --stage framing|completion --by human:<maintainer-id>`. That
-command needs an interactive terminal, or an out-of-band `--token` matching
-`WFCTL_APPROVAL_TOKEN`; it writes both the `maintainer_review` receipt and the
-durable approval record the completion gate checks. Never hand-write
+approve <id> --stage framing|completion --by human:<maintainer-id>`. It writes
+both the `maintainer_review` receipt and the durable approval record the
+completion gate checks.
+
+Pass `--attested "<their answer, word for word>" --session "<where they said
+it>"`. That is the ordinary path, because the ordinary case is a maintainer who
+already answered in conversation, and sending them to a second terminal to
+retype a generated bundle id, a stage name and their own identity relocates the
+same answer to a less convenient channel while recording no more than the
+attestation does. A typed confirmation and an out-of-band `--token` matching
+`WFCTL_APPROVAL_TOKEN` both remain, unequal and recorded as such: they prove a
+command ran outside your own writing, which is a stronger record and the
+maintainer's to ask for, never your default. Never hand-write
 `maintainer_review.status`, `by`, `at`, `method`, or `receipt`: a hand-written
 receipt fails verification. Existing explicit maintainer instructions may
 satisfy the framing decision, but still record it through the command; do not
