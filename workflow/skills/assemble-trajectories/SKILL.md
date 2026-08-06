@@ -360,9 +360,18 @@ close together belong in one bundle, and a bundle spanning two subjects is
 ordinary — a subject is a unit of direction, not a unit of work.
 
 ```sh
-wfctl work start <slug> --title "<what becomes true>" --leaf <checkout>
+wfctl work start <slug> --title "<what becomes true>" --leaf <checkout> [--leaf <checkout> ...]
 wfctl knowledge trajectory schedule <trajectory> --gap <n or phrase> --work <bundle>
 ```
+
+Repeat `--leaf` for every repository the debt actually reaches. A subject is a
+unit of direction and a repository is a unit of code, so one debt crossing three
+of them is ordinary rather than a sign the grouping is wrong. Shape it from here:
+only this repository sees all three at once, and `wfctl work repositories <id>`
+reads what each one declares about itself — its own instructions and the skills
+installed only there — which a session inside any single checkout would see for
+that checkout alone. This is delivery and not another reconstruction: it reads
+what the debt touches and ends in one approved specification.
 
 `schedule` refuses a bundle that does not exist, and refuses a second bundle for
 a debt one already claims. Both refusals are the same rule: a debt pointing at

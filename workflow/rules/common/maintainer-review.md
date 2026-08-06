@@ -19,6 +19,16 @@ Do not request review for freezing a clean Git raw scope, file accounting, QMD
 refresh, index or log maintenance, or source-backed drafts that keep their
 trust state honest. Raw intake itself never counts as evidence.
 
+Reading is never a decision. Accounting for what each bound repository declares
+about itself, running Graphify in every bound root, checking curated knowledge
+before settling meaning — a gate refusing until those are done is telling the
+agent to go and do them, not handing the agent a question. Nothing about them
+reaches the maintainer: not as a request, not as a status line, and not as an
+apology for the delay. The one thing that does reach them is a product
+consequence found while reading — a rule in one repository that makes the
+proposed route impossible there is a decision, and it is put to them as what the
+product must do instead, never as the file it was found in.
+
 Present a compact review packet containing the exact decision, evidence,
 conflicts, recommendation, and requested response. Record approve, correct, or
 defer. Ask one focused question at a time. Silence is not approval.

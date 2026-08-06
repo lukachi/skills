@@ -61,6 +61,17 @@ stable. It must run independent authority/truth and reader-communication
 passes against one unchanged content hash. Never let code define accepted
 product intent or let product pages contain implementation walkthroughs.
 
+Two different operations read several source repositories from here, and
+confusing them costs days. A reconstruction establishes what the project *is*:
+it accounts for every file at a pinned revision, writes nothing to source, and
+ends in curated knowledge. Delivery shaping decides what the project *should
+do next*: it reads only what the change touches, ends in one approved
+specification and issues claimed in the leaves, and is the right operation for
+work that came out of debts, captures or a maintainer's request. The test is
+what the session is meant to leave behind — a page or a bundle — not how many
+repositories it opens. Do not run a reconstruction because delivery spans three
+repositories, and do not shape delivery from a corpus nobody has read.
+
 Use `reconstruct-project-knowledge` when current knowledge must be built or
 audited from one or more existing leaf repositories. Bind exact clean
 checkouts with `wfctl knowledge reconstruct start`, keep local paths only in

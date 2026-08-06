@@ -77,7 +77,8 @@ ambiguous or a request could activate more than one expensive mode.
 | Discuss a bounded product or architecture change | Invoke `manage-project-work` after it is classified as significant. Start a project-only central bundle before extended material discussion; bind leaves only when implementation enters scope. |
 | Shape a broad initiative whose route cannot yet be specified | Recommend `shape-project-direction`. Start it only after explicit user intent or confirmation. It uses a Wayfinder map and question issues in the same central bundle and never implements code. |
 | Research an external fact, standard, precedent, or constraint | Answer an incidental fact directly when no durable project consequence exists. For an explicit or material evidence gap, invoke `research-project-context` and keep its synthesis as a candidate until normal authority and curation gates pass. |
-| Implement or fix source code | Identify the owning leaf repository and redirect the task there. Never write product code from the knowledge repository. |
+| Deliver one change across several repositories | Shape it from here; only here are all the repositories visible at once. Start the bundle with one `--leaf` per exact bound checkout, run `wfctl work repositories <id>` and read what each declares about itself, then invoke `shape-project-direction` when the route is foggy or `specify-project-change` when it is not. This is delivery, not a reconstruction: it reads what the change touches and ends in an approved specification, not in curated pages. |
+| Implement or fix source code | Identify the owning leaf repository and redirect the implementation there. Shaping and specifying stay here whenever more than one repository is involved; only the claim and the edit move to the leaf. Never write product code from the knowledge repository. |
 
 ## Answer current-knowledge questions
 
