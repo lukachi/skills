@@ -134,6 +134,7 @@ import {
   finishWayfinder,
   rebindWork,
   releaseWorkIssue,
+  reopenWorkIssue,
   reviewWorkBundleFile,
   setWorkIssueBlocker,
   verifyWork,
@@ -1918,6 +1919,31 @@ function workIssueCommand() {
           });
           if (options.json) printJson(result);
           else process.stdout.write(`Completed ${result.id}: ${result.title}\n`);
+        }),
+    )
+    .command(
+      "reopen",
+      new Command()
+        .description(
+          "Return a completed issue to the route when its result no longer exists.\n"
+            + "The withdrawn completion stays readable: it was once believed finished.",
+        )
+        .arguments("<id:string> <issue:string>")
+        .option("-t, --target <path:string>", "Bound checkout.", { default: "." })
+        .option("--reason <reason:string>", "Why the completion no longer holds.", {
+          required: true,
+        })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id, issue) => {
+          const result = await reopenWorkIssue(options.target, id, issue, options.reason);
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `${result.id} is back on the route as ${result.status}\n`
+                + "Its previous completion and evidence are kept in the record.\n",
+            );
+          }
         }),
     )
     .command(

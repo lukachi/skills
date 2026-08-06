@@ -14,7 +14,10 @@ import {
   approveWork,
   beginWork,
   claimWorkIssue,
+  completeWorkIssue,
   createWorkIssue,
+  reopenWorkIssue,
+  reviewWorkBundleFile,
   updateWorkCheckpoint,
 } from "../src/work.js";
 import { parseWorkSpec } from "../src/work-spec.js";
@@ -209,3 +212,94 @@ async function installed(): Promise<{ knowledge: string; leaf: string }> {
   execFileSync("git", ["commit", "-m", "initialize workflow"], { cwd: leaf });
   return { knowledge, leaf };
 }
+
+test("a completion whose result was undone can be withdrawn, and says so", async () => {
+  const { knowledge, leaf } = await installed();
+  const started = await beginWork({
+    target: leaf,
+    slug: "licence-and-rename",
+    title: "Carry the licence statement",
+    mode: "full",
+  });
+  await approveWork({
+    target: leaf,
+    id: started.id,
+    stage: "framing",
+    by: "human:nzafat",
+    method: "attested",
+    attested: "одобряю",
+  });
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test-session",
+    status: "active",
+    currentState: "Framing approved.",
+    lastCompleted: "Recorded the approval.",
+    nextAction: "Cut the route.",
+  });
+  const change = parseWorkSpec(
+    await readFile(join(knowledge, "changes/active", started.id, "change.md"), "utf8"),
+  );
+  const repository = String(
+    ((change.metadata.repositories as Array<Record<string, unknown>>)[0]!).repository,
+  );
+  const issue = await createWorkIssue({
+    target: leaf,
+    id: started.id,
+    slug: "licence-in-every-readme",
+    title: "Carry the statement into every README",
+    phase: "delivery",
+    type: "delivery",
+    repositories: [repository],
+  });
+  await reviewWorkBundleFile(leaf, started.id, "change.md", "reviewed", "read in full");
+  await reviewWorkBundleFile(
+    leaf,
+    started.id,
+    `issues/${issue.id}-licence-in-every-readme.md`,
+    "reviewed",
+    "read in full",
+  );
+  await claimWorkIssue({
+    target: leaf,
+    id: started.id,
+    issueId: issue.id,
+    actor: "agent:test-session",
+  });
+  await completeWorkIssue({
+    target: leaf,
+    id: started.id,
+    issueId: issue.id,
+    summary: "The statement is in every README.",
+    evidence: ["README.md at the working revision"],
+  });
+
+  await assert.rejects(
+    () => reopenWorkIssue(leaf, started.id, issue.id, "  "),
+    /requires a reason/,
+  );
+  // The commits were reverted out of every source tree. Leaving the issue
+  // completed makes a bundle with no finished work read as finished.
+  const reopened = await reopenWorkIssue(
+    leaf,
+    started.id,
+    issue.id,
+    "Every commit it produced was reverted; the result exists nowhere.",
+  );
+  assert.equal(reopened.status, "ready");
+
+  const document = parseWorkSpec(
+    await readFile(
+      join(knowledge, "changes/active", started.id, "issues", `${issue.id}-licence-in-every-readme.md`),
+      "utf8",
+    ),
+  );
+  assert.equal(document.metadata.resolution, null);
+  const reopenedRecord = document.metadata.reopened as Record<string, unknown>;
+  assert.match(String(reopenedRecord.reason), /reverted/);
+  // The completion is kept, not erased: someone has to see that this evidence
+  // was accepted and then withdrawn.
+  const withdrawn = reopenedRecord.withdrawn_resolution as Record<string, unknown>;
+  assert.match(String(withdrawn.summary), /in every README/);
+});

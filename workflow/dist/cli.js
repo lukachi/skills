@@ -24543,6 +24543,44 @@ async function resolveWorkIssue(options) {
   }
   return (await readIssueById(options.bundleRoot, parsed.summary.id)).summary;
 }
+async function reopenWorkIssue(bundleRoot, issueId, reason, now = /* @__PURE__ */ new Date()) {
+  const parsed = await readIssueById(bundleRoot, issueId);
+  if (parsed.summary.status === "dropped") {
+    throw new Error(
+      `Work issue ${parsed.summary.id} was dropped from the route; create a new issue rather than undoing a removal`
+    );
+  }
+  if (parsed.summary.status !== "completed") {
+    throw new Error(
+      `Work issue ${parsed.summary.id} is ${parsed.summary.status}, not completed; release it if it is claimed`
+    );
+  }
+  if (!reason.trim()) {
+    throw new Error(
+      "Reopening requires a reason. An issue that returned to the route for no stated reason cannot be told from one that was never finished."
+    );
+  }
+  const withdrawn = recordValue8(parsed.document.metadata.resolution);
+  parsed.document.metadata.status = "ready";
+  parsed.document.metadata.resolution = null;
+  parsed.document.metadata.reopened = {
+    at: now.toISOString(),
+    reason: reason.trim(),
+    ...withdrawn ? { withdrawn_resolution: withdrawn } : {}
+  };
+  writeCheckpoint(parsed.document, {
+    status: "ready",
+    stage: parsed.summary.phase === "wayfinding" ? "wayfind" : "implement",
+    actor: "system:wfctl",
+    currentState: `Reopened: ${reason.trim()}`,
+    lastCompleted: "The completion this issue carried was withdrawn.",
+    nextAction: "Claim it again from the bound checkout when the bundle is released.",
+    blockers: [],
+    now
+  });
+  await writeFile9(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+  return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
+}
 async function dropWorkIssue(bundleRoot, issueId, reason, claimContext, now = /* @__PURE__ */ new Date()) {
   const parsed = await readIssueById(bundleRoot, issueId);
   if (parsed.summary.status === "completed" || parsed.summary.status === "dropped") {
@@ -39580,6 +39618,10 @@ async function completeWorkIssue(input) {
     ...input.now ? { now: input.now } : {}
   });
 }
+async function reopenWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */ new Date()) {
+  const context = await requireWorkContext(await realpath5(resolve25(target)), id);
+  return await reopenWorkIssue(dirname15(context.specPath), issueId, reason, now);
+}
 async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */ new Date()) {
   const resolvedTarget = await realpath5(resolve25(target));
   const context = await requireWorkContext(resolvedTarget, id);
@@ -41517,6 +41559,24 @@ Required full reads:
       if (options.json) printJson(result);
       else process.stdout.write(`Completed ${result.id}: ${result.title}
 `);
+    })
+  ).command(
+    "reopen",
+    new Command().description(
+      "Return a completed issue to the route when its result no longer exists.\nThe withdrawn completion stays readable: it was once believed finished."
+    ).arguments("<id:string> <issue:string>").option("-t, --target <path:string>", "Bound checkout.", { default: "." }).option("--reason <reason:string>", "Why the completion no longer holds.", {
+      required: true
+    }).option("--json", "Print machine-readable JSON.").action(async (options, id, issue3) => {
+      const result = await reopenWorkIssue2(options.target, id, issue3, options.reason);
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `${result.id} is back on the route as ${result.status}
+Its previous completion and evidence are kept in the record.
+`
+        );
+      }
     })
   ).command(
     "drop",

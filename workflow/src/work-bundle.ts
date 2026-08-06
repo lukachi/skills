@@ -648,6 +648,71 @@ export async function resolveWorkIssue(
   return (await readIssueById(options.bundleRoot, parsed.summary.id)).summary;
 }
 
+/**
+ * A completed issue whose result no longer exists.
+ *
+ * Completion was terminal with no way back, and that is right while the work
+ * stands. It stops being right the moment the work is undone: five issues in one
+ * bundle read `completed` after every commit they produced was reverted out of
+ * every source tree, and nothing in the record said so. A bundle that carries
+ * five finished issues and no finished work is the exact silence this workflow
+ * exists to remove — the next session reads the route as five-sixths done.
+ *
+ * Reopening keeps the completion rather than erasing it. What was claimed, when
+ * it was resolved and on what evidence stays readable under `reopened`, because
+ * the fact that this was once believed finished is part of the record: someone
+ * has to be able to see that the evidence was accepted and then withdrawn.
+ *
+ * A dropped issue is not reopenable. Dropping is a deliberate removal from the
+ * route, and putting one back is creating an issue, not undoing an outcome.
+ */
+export async function reopenWorkIssue(
+  bundleRoot: string,
+  issueId: string,
+  reason: string,
+  now = new Date(),
+): Promise<WorkIssueSummary> {
+  const parsed = await readIssueById(bundleRoot, issueId);
+  if (parsed.summary.status === "dropped") {
+    throw new Error(
+      `Work issue ${parsed.summary.id} was dropped from the route; create a new issue rather `
+        + "than undoing a removal",
+    );
+  }
+  if (parsed.summary.status !== "completed") {
+    throw new Error(
+      `Work issue ${parsed.summary.id} is ${parsed.summary.status}, not completed; `
+        + "release it if it is claimed",
+    );
+  }
+  if (!reason.trim()) {
+    throw new Error(
+      "Reopening requires a reason. An issue that returned to the route for no stated "
+        + "reason cannot be told from one that was never finished.",
+    );
+  }
+  const withdrawn = recordValue(parsed.document.metadata.resolution);
+  parsed.document.metadata.status = "ready";
+  parsed.document.metadata.resolution = null;
+  parsed.document.metadata.reopened = {
+    at: now.toISOString(),
+    reason: reason.trim(),
+    ...(withdrawn ? { withdrawn_resolution: withdrawn } : {}),
+  };
+  writeCheckpoint(parsed.document, {
+    status: "ready",
+    stage: parsed.summary.phase === "wayfinding" ? "wayfind" : "implement",
+    actor: "system:wfctl",
+    currentState: `Reopened: ${reason.trim()}`,
+    lastCompleted: "The completion this issue carried was withdrawn.",
+    nextAction: "Claim it again from the bound checkout when the bundle is released.",
+    blockers: [],
+    now,
+  });
+  await writeFile(parsed.path, serializeWorkSpec(parsed.document), "utf8");
+  return (await readIssueById(bundleRoot, parsed.summary.id)).summary;
+}
+
 export async function dropWorkIssue(
   bundleRoot: string,
   issueId: string,

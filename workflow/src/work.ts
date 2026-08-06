@@ -41,6 +41,7 @@ import {
   initializeWorkBundle,
   inspectWorkBundle as inspectBundle,
   releaseWorkIssue as releaseBundleIssue,
+  reopenWorkIssue as reopenBundleIssue,
   resolveWorkIssue as resolveBundleIssue,
   reviewBundleFile,
   setWorkIssueBlocker as setBundleIssueBlocker,
@@ -642,6 +643,20 @@ export async function completeWorkIssue(
     claimContext,
     ...(input.now ? { now: input.now } : {}),
   });
+}
+
+export async function reopenWorkIssue(
+  target: string,
+  id: string,
+  issueId: string,
+  reason: string,
+  now = new Date(),
+): Promise<WorkIssueSummary> {
+  const context = await requireWorkContext(await realpath(resolve(target)), id);
+  // No claim context: reopening is a correction to the record, made from the
+  // knowledge repository, and demanding a bound source checkout for it would
+  // require standing in the tree whose contents were just withdrawn.
+  return await reopenBundleIssue(dirname(context.specPath), issueId, reason, now);
 }
 
 export async function dropWorkIssue(
