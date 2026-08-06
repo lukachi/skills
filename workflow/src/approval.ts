@@ -99,6 +99,33 @@ export function approvalRecordPath(
   return join(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
 }
 
+/**
+ * Who is approving, and by what means — checked before anything about what is
+ * being approved. An agent recording itself as the maintainer is a different
+ * kind of wrong from a framing that is not ready, and being told to go read
+ * repositories would bury it.
+ */
+export function approvalIdentityIssue(
+  by: string,
+  method: ApprovalMethod,
+  attested: string,
+): string {
+  if (!by.startsWith("human:") || by.trim().length <= "human:".length) {
+    return "Maintainer approval requires --by human:<maintainer-id>";
+  }
+  if (!APPROVAL_METHODS.includes(method)) {
+    return `Unsupported approval method: ${method}`;
+  }
+  if (ATTESTED_APPROVAL_METHODS.has(method) && !attested.trim()) {
+    return "An attested approval requires the maintainer's own answer; without it there is "
+      + "nothing distinguishing a recorded decision from an invented one";
+  }
+  if (!ATTESTED_APPROVAL_METHODS.has(method) && attested.trim()) {
+    return `A ${method} approval carries its own proof; do not also record an attestation`;
+  }
+  return "";
+}
+
 export async function recordApproval(
   options: RecordApprovalOptions,
 ): Promise<ApprovalRecord> {

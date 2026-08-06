@@ -17,6 +17,7 @@ import {
   includesVersion,
   isRecord,
   parseWorkSpec,
+  repositoryAccountingIssues,
   resolveTodo,
   serializeWorkSpec,
   SUPPORTED_CHANGE_VERSIONS,
@@ -906,6 +907,16 @@ export async function finishWayfinder(
   const acceptance = acceptanceCriteria(change);
   if (acceptance.length === 0) {
     throw new Error("Synthesize the map into stable acceptance criteria before finishing Wayfinder");
+  }
+  // The map becomes the delivery contract here, so this is the last moment the
+  // repositories it will be built in can still change what it says.
+  const unaccounted = repositoryAccountingIssues(change);
+  if (unaccounted.length > 0) {
+    throw new Error(
+      `Wayfinder finish is blocked until every bound repository is accounted for: ${
+        unaccounted.join("; ")
+      }`,
+    );
   }
   const inspection = await inspectWorkBundle(bundleRoot, "review");
   if (inspection.validationIssues.length > 0) {

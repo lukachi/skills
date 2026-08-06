@@ -35,6 +35,88 @@ export function includesVersion(allowed: readonly number[], value: unknown): boo
   return allowed.includes(Number(value));
 }
 
+/**
+ * What must be true about the source repositories before a framing is settled.
+ *
+ * Work that spans more than one repository can only be shaped from the centre,
+ * and the centre cannot see what each repository declares about itself unless it
+ * goes and reads it. Nothing used to require that, and nothing reported its
+ * absence: the only check that mentioned source evidence at all was one flat
+ * "at least one graph query" at the closing gate, which a three-repository
+ * bundle satisfied by looking at one repository.
+ *
+ * So the accounting is per repository and it runs before approval, because
+ * afterwards it is paperwork — the direction is chosen, the acceptance criteria
+ * are written, and filling the field changes nothing except whether the gate
+ * opens. Every bound repository is either read on its own terms or declared
+ * untouched with a reason. Saying nothing is not one of the options.
+ */
+export function repositoryAccountingIssues(document: WorkSpecDocument): string[] {
+  const issues: string[] = [];
+  const repositories = Array.isArray(document.metadata.repositories)
+    ? document.metadata.repositories.filter(isRecord)
+    : [];
+  for (const entry of repositories) {
+    const name = stringValue(entry.repository) || "(unnamed repository)";
+    const accounted = isRecord(entry.accounted) ? entry.accounted : undefined;
+    const status = stringValue(accounted?.status);
+    if (status !== "read" && status !== "untouched") {
+      issues.push(
+        `${name} has not been accounted for: read what it declares about itself, or record why this work does not touch it`,
+      );
+      continue;
+    }
+    if (status === "untouched" && !stringValue(accounted?.reason).trim()) {
+      issues.push(`${name} is declared untouched without a reason`);
+    }
+    if (status === "read" && !stringValue(accounted?.note).trim()) {
+      issues.push(
+        `${name} was accounted for without saying what its own rules require of this work`,
+      );
+    }
+  }
+  return issues;
+}
+
+/**
+ * The alignment gate, in a shape an honest answer can pass.
+ *
+ * A project installed into this workflow starts with an empty knowledge base,
+ * and most first tasks run before anyone pays for a reconstruction. Demanding a
+ * non-empty list of reviewed concepts there leaves one way through: invent a
+ * path. That is worse than no gate, because a fabricated concept path reads
+ * exactly like a real one. So absence is a legal answer — stated, with what the
+ * contract rested on instead — and only silence is refused.
+ */
+export function alignmentIssues(document: WorkSpecDocument): string[] {
+  const issues: string[] = [];
+  const alignment = isRecord(document.metadata.knowledge_alignment)
+    ? document.metadata.knowledge_alignment
+    : undefined;
+  const reviewed = Array.isArray(alignment?.reviewed) ? alignment.reviewed : [];
+  const covered = alignment?.covered;
+  if (reviewed.length === 0) {
+    if (covered !== false) {
+      issues.push(
+        "knowledge_alignment must name the concepts reviewed, or record covered: false with the basis the contract rests on instead",
+      );
+    } else if (!stringValue(alignment?.basis).trim()) {
+      issues.push(
+        "knowledge_alignment.basis must say what the contract rests on when no curated concept covers this work",
+      );
+    }
+  }
+  if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
+    issues.push("knowledge_alignment.conflicts must be resolved");
+  }
+  return issues;
+}
+
+/** Everything that must hold before a maintainer is asked to approve a framing. */
+export function framingIssues(document: WorkSpecDocument): string[] {
+  return [...alignmentIssues(document), ...repositoryAccountingIssues(document)];
+}
+
 export function parseWorkSpec(content: string): WorkSpecDocument {
   const lines = content.split(/\r?\n/);
   if (lines[0] !== "---") {
@@ -105,9 +187,11 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
     issues.push("verification.unresolved must be an empty list");
   }
 
-  if (!nonEmptyArray(alignment?.reviewed)) {
-    issues.push("knowledge_alignment.reviewed must contain at least one concept");
-  }
+  // The same two gates the framing had to pass, re-checked here because a
+  // bundle can be edited after approval and because bundles created before
+  // these gates existed reach completion without ever having met them.
+  issues.push(...alignmentIssues(document));
+  issues.push(...repositoryAccountingIssues(document));
   if (!projectOnly && !nonEmptyArray(graph?.queries)) {
     issues.push("graph_evidence.queries must contain at least one query");
   }
@@ -119,9 +203,6 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   }
   if (scope === "leaf" && !stringValue(verification?.worktree_id).trim()) {
     issues.push("verification.worktree_id must identify the verified checkout");
-  }
-  if (!Array.isArray(alignment?.conflicts) || alignment.conflicts.length > 0) {
-    issues.push("knowledge_alignment.conflicts must be resolved");
   }
   const requiresApprovalReceipt = includesVersion(
     APPROVAL_RECEIPT_CHANGE_VERSIONS,

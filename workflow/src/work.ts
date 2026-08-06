@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import { approvalIssues, recordApproval } from "./approval.js";
+import { approvalIdentityIssue, approvalIssues, recordApproval } from "./approval.js";
 import { findDistributionRoot } from "./assets.js";
 import {
   errorMessage,
@@ -24,12 +24,14 @@ import { validateKnowledge } from "./knowledge.js";
 import { resolveReconstructionLeaves } from "./repository-registry.js";
 import {
   completionIssues,
+  framingIssues,
   parseWorkSpec,
   serializeWorkSpec,
   type ApprovalMethod,
   type MaintainerReviewStage,
   type TodoEdit,
 } from "./work-spec.js";
+import { readLeafDeclarations, type LeafDeclaration } from "./leaf-declarations.js";
 import {
   bundleCompletionIssues,
   carryForwardCloseReview,
@@ -415,10 +417,170 @@ export interface ApproveWorkResult {
  * out-of-band confirmation that selects `method`; this function only binds the
  * resulting receipt to the change record and the ignored runtime approval file.
  */
+export interface WorkRepositoryView extends LeafDeclaration {
+  /** What the bundle already records about this repository, if anything. */
+  accounted?: {
+    status: string;
+    note: string;
+    reason: string;
+    at: string;
+    instructions_sha256: string;
+    skills: string[];
+  };
+  /**
+   * True when the repository changed its own rules after being accounted for.
+   * The receipt is then a record of something that is no longer there.
+   */
+  stale: boolean;
+}
+
+/** What every bound repository declares about itself, read from the centre. */
+export async function readWorkRepositories(
+  target: string,
+  id?: string,
+): Promise<{ id: string; specPath: string; repositories: WorkRepositoryView[] }> {
+  const context = await requireWorkContext(target, id);
+  const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
+  const recorded = new Map<string, Record<string, unknown>>();
+  for (const entry of recordArray_(document.metadata.repositories)) {
+    const name = String(entry.repository ?? "");
+    if (name) {
+      recorded.set(name, entry);
+    }
+  }
+  const declarations = await readLeafDeclarations(
+    context.currentSources.map((source) => ({
+      repository: source.repository,
+      root: source.root,
+    })),
+  );
+  return {
+    id: context.id,
+    specPath: context.specPath,
+    repositories: declarations.map((declaration) => {
+      const accounted = record_(recorded.get(declaration.repository)?.accounted);
+      const view: WorkRepositoryView = {
+        ...declaration,
+        stale: Boolean(accounted)
+          && String(accounted?.status ?? "") === "read"
+          && String(accounted?.instructions_sha256 ?? "") !== declaration.instructionsSha256,
+      };
+      if (accounted) {
+        view.accounted = {
+          status: String(accounted.status ?? ""),
+          note: String(accounted.note ?? ""),
+          reason: String(accounted.reason ?? ""),
+          at: String(accounted.at ?? ""),
+          instructions_sha256: String(accounted.instructions_sha256 ?? ""),
+          skills: Array.isArray(accounted.skills) ? accounted.skills.map(String) : [],
+        };
+      }
+      return view;
+    }),
+  };
+}
+
+export interface AccountRepositoryOptions {
+  target: string;
+  id?: string;
+  repository: string;
+  /** What its own rules require of this work. Required when it was read. */
+  note?: string;
+  /** Why this work does not touch it. Required when it is untouched. */
+  untouched?: string;
+  now?: Date;
+}
+
+/**
+ * Record that one bound repository was read on its own terms, or that it is not
+ * touched by this work.
+ *
+ * The hash and the skill list are taken from the checkout rather than passed in,
+ * so the receipt binds to what was actually there. What the agent supplies is
+ * the only part no tool can derive: what those rules require of this particular
+ * work. An empty note is refused, because "read it" and "read it and it matters
+ * here" are different claims and only the second is worth recording.
+ */
+export async function accountWorkRepository(
+  options: AccountRepositoryOptions,
+): Promise<{ id: string; repository: string; status: "read" | "untouched"; specPath: string }> {
+  const context = await requireWorkContext(options.target, options.id);
+  const source = context.currentSources.find(
+    (entry) => entry.repository === options.repository,
+  );
+  if (!source) {
+    throw new Error(
+      `${options.repository} is not bound to ${context.id}; bound repositories are ${
+        context.currentSources.map((entry) => entry.repository).join(", ") || "none"
+      }`,
+    );
+  }
+  const untouched = (options.untouched ?? "").trim();
+  const note = (options.note ?? "").trim();
+  if (untouched && note) {
+    throw new Error("A repository is either read or untouched by this work, not both");
+  }
+  if (!untouched && !note) {
+    throw new Error(
+      "Say what this repository's own rules require of this work, or why the work does not touch it",
+    );
+  }
+
+  const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
+  const repositories = recordArray_(document.metadata.repositories);
+  const entry = repositories.find((item) => String(item.repository ?? "") === options.repository);
+  if (!entry) {
+    throw new Error(`${options.repository} is not recorded in the bundle`);
+  }
+  const at = (options.now ?? new Date()).toISOString();
+  if (untouched) {
+    entry.accounted = { status: "untouched", reason: untouched, at };
+  } else {
+    const [declaration] = await readLeafDeclarations([{
+      repository: source.repository,
+      root: source.root,
+    }]);
+    entry.accounted = {
+      status: "read",
+      note,
+      at,
+      instructions_sha256: declaration?.instructionsSha256 ?? "",
+      skills: (declaration?.skills ?? []).map((skill) => skill.name),
+    };
+  }
+  document.metadata.repositories = repositories;
+  document.metadata.updated_at = at;
+  await writeFile(context.specPath, serializeWorkSpec(document), "utf8");
+  return {
+    id: context.id,
+    repository: options.repository,
+    status: untouched ? "untouched" : "read",
+    specPath: context.specPath,
+  };
+}
+
 export async function approveWork(
   options: ApproveWorkOptions,
 ): Promise<ApproveWorkResult> {
   const context = await requireWorkContext(options.target, options.id);
+  const identity = approvalIdentityIssue(
+    options.by,
+    options.method,
+    options.attested ?? "",
+  );
+  if (options.stage === "framing" && !identity) {
+    // Approval settles what the work is, so everything the framing rests on has
+    // to be true before it is asked for. Checking afterwards only ever produced
+    // a field filled to open a gate.
+    const pending = framingIssues(
+      parseWorkSpec(await readFile(context.specPath, "utf8")),
+    );
+    if (pending.length > 0) {
+      throw new Error(
+        `Framing approval is blocked until the framing rests on something: ${pending.join("; ")}`,
+      );
+    }
+  }
   const record = await recordApproval({
     knowledgeRoot: context.knowledgeRoot,
     id: context.id,
@@ -463,6 +625,10 @@ export async function approveWork(
 
 function record_(value: unknown): Record<string, unknown> | undefined {
   return record(value);
+}
+
+function recordArray_(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
 function uniqueNotes(existing: unknown, note: string): string[] {

@@ -17,6 +17,7 @@ import {
   type StateSignal,
 } from "../src/state.js";
 import { STATE_COLLECTORS } from "../src/state-collectors.js";
+import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 import { beginIntakeCase, intakeContext, updateIntakeCheckpoint } from "../src/intake.js";
 import { approveWork, beginWork, updateWorkCheckpoint } from "../src/work.js";
 import { assessResumability } from "../src/resumability.js";
@@ -268,6 +269,8 @@ test("a bundle held for the maintainer is not reported as work awaiting the agen
   assert.match(String(active?.summary), /held for you/);
   assert.equal(verification?.awaits, "maintainer");
 
+  await prepareFraming(started.specPath);
+
   await approveWork({
     target: leaf,
     id: started.id,
@@ -502,6 +505,7 @@ test("completion approval is not demanded of a bundle that has not been done", a
     title: "Account recovery",
     mode: "full",
   });
+  await prepareFraming(started.specPath);
   await approveWork({
     target: leaf,
     id: started.id,
@@ -588,4 +592,23 @@ async function writeKnowledgeGraph(
     }),
     "utf8",
   );
+}
+
+/** Fill what a framing must rest on, so these tests reach what they are about. */
+async function prepareFraming(specPath: string): Promise<void> {
+  const document = parseWorkSpec(await readFile(specPath, "utf8"));
+  document.metadata.knowledge_alignment = {
+    reviewed: ["knowledge/index.md"],
+    conflicts: [],
+  };
+  for (const entry of Array.isArray(document.metadata.repositories) ? document.metadata.repositories : []) {
+    if (entry && typeof entry === "object") {
+      (entry as Record<string, unknown>).accounted = {
+        status: "read",
+        note: "Its own rules were read for this work.",
+        at: "2026-08-06T00:00:00.000Z",
+      };
+    }
+  }
+  await writeFile(specPath, serializeWorkSpec(document), "utf8");
 }

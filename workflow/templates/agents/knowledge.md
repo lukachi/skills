@@ -135,7 +135,22 @@ For significant product, architecture, or decision discussion, run
 `wfctl work start` from this repository before extended discussion. With no
 `--leaf`, it creates a project-only bundle and no code workspace. Repeat
 `--leaf` only when implementation is genuinely scoped across exact source
-checkouts. `wfctl work status` is the authority for every code root and bundle;
+checkouts.
+
+Work that reaches more than one source repository is shaped from here, because
+only here are all of them visible at once. What is not visible from here is what
+each repository declares about itself — the instructions its maintainer wrote in
+its own agent file, outside the block this workflow manages, and the skills
+installed only in that checkout. They are specific and binding, and a session
+that never entered the checkout has no way to learn they exist. Run `wfctl work
+repositories <id>`, read every one, and account for each bound repository with
+`--read <repository> --note "<what its rules require of this work>"` or
+`--untouched <repository> --reason "<why the work does not reach it>"`. Framing
+approval and `wfctl work map finish` refuse until each is one or the other,
+because afterwards the direction is already chosen and filling the field changes
+nothing but whether a gate opens.
+
+`wfctl work status` is the authority for every code root and bundle;
 `wfctl work context` enumerates the exact files and checkpoints required for
 each stage. On an unspecified resume, invoke `wfctl work context --stage
 resume` without an ID; auto-select only one active record, otherwise ask the

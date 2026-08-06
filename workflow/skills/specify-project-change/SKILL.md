@@ -33,6 +33,33 @@ the contract, invoke `analyze-with-graphify` in every relevant bound root, then
 open the actual source locations. Invoke `align-project-knowledge` before
 settling product or architecture meaning.
 
+Work spanning more than one repository is shaped here, at the centre, because
+only the centre sees them all at once. What the centre does not see is what each
+repository declares about itself: the instructions its maintainer wrote in its
+own agent file, and the skills installed only there. Those are specific and
+binding — one repository opens with a plan file to read first, another calls its
+navigation rule BINDING — and a session that never entered the checkout has no
+way to know they exist.
+
+```sh
+wfctl work repositories <id>
+```
+
+This prints them without leaving the centre. Read every one, then account for
+each bound repository before asking for approval:
+
+```sh
+wfctl work repositories <id> --read <repository> --note "<what its rules require of this work>"
+wfctl work repositories <id> --untouched <repository> --reason "<why this work does not reach it>"
+```
+
+The hash of its instructions and the list of its own skills are taken from the
+checkout, not from you, so the receipt binds to what was there; if the
+repository changes its rules afterwards the receipt is reported stale rather
+than quietly wrong. Framing approval and `wfctl work map finish` both refuse
+until every bound repository is one or the other. Saying nothing is not a third
+option, and neither is a note that only says the file was opened.
+
 Update `change.md` with:
 
 - the problem and intended observable outcome;

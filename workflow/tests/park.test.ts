@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -20,8 +20,7 @@ import {
   reviewWorkBundleFile,
   updateWorkCheckpoint,
 } from "../src/work.js";
-import { parseWorkSpec } from "../src/work-spec.js";
-import { readFile } from "node:fs/promises";
+import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -35,6 +34,7 @@ test("an approved framing does not start a parked bundle", async () => {
   });
   // Exactly what the maintainer did: approve to settle what the work is, and
   // say in the same breath that starting is premature.
+  await prepareFraming(started.specPath);
   await approveWork({
     target: leaf,
     id: started.id,
@@ -137,6 +137,7 @@ test("a parked bundle asks nothing of the agent, so no guard drives it", async (
     title: "Carry the licence statement",
     mode: "full",
   });
+  await prepareFraming(started.specPath);
   await approveWork({
     target: leaf,
     id: started.id,
@@ -221,6 +222,7 @@ test("a completion whose result was undone can be withdrawn, and says so", async
     title: "Carry the licence statement",
     mode: "full",
   });
+  await prepareFraming(started.specPath);
   await approveWork({
     target: leaf,
     id: started.id,
@@ -303,3 +305,26 @@ test("a completion whose result was undone can be withdrawn, and says so", async
   const withdrawn = reopenedRecord.withdrawn_resolution as Record<string, unknown>;
   assert.match(String(withdrawn.summary), /in every README/);
 });
+
+/**
+ * Fill what a framing must rest on before anyone may approve it: what curated
+ * knowledge says, and what each bound repository declares about itself. These
+ * tests are about the park, and would otherwise all fail at that gate.
+ */
+async function prepareFraming(specPath: string): Promise<void> {
+  const document = parseWorkSpec(await readFile(specPath, "utf8"));
+  document.metadata.knowledge_alignment = {
+    reviewed: ["knowledge/index.md"],
+    conflicts: [],
+  };
+  for (const entry of Array.isArray(document.metadata.repositories) ? document.metadata.repositories : []) {
+    if (entry && typeof entry === "object") {
+      (entry as Record<string, unknown>).accounted = {
+        status: "read",
+        note: "Its own rules were read for this work.",
+        at: "2026-08-06T00:00:00.000Z",
+      };
+    }
+  }
+  await writeFile(specPath, serializeWorkSpec(document), "utf8");
+}

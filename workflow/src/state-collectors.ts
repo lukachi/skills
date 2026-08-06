@@ -711,6 +711,33 @@ function workCollector(): StateCollector {
         // waiting. The capability still reports both as blocking closure —
         // that is what closure requires — but the maintainer is only shown the
         // one they can answer today.
+        // Work spanning more than one repository can only be shaped from the
+        // centre, where each repository's own rules — the instructions it
+        // writes for itself and the skills installed only there — are invisible
+        // unless someone goes and reads them. This says which ones nobody has.
+        // It is the agent's: reading them needs no decision from anyone.
+        const unaccounted = recordArray(metadata.repositories)
+          .filter((entry) => {
+            const status = stringValue(recordValue(entry.accounted)?.status);
+            return status !== "read" && status !== "untouched";
+          })
+          .map((entry) => stringValue(entry.repository))
+          .filter(Boolean);
+        if (unaccounted.length > 0 && outstanding.includes("framing")) {
+          signals.push({
+            id: "work.repositories-unaccounted",
+            domain: "work",
+            level: "attention",
+            summary: "Source repositories have not been read on their own terms",
+            subject: entry.id,
+            facts: {
+              repositories: unaccounted.length,
+              named: nameThem(unaccounted),
+              command: `wfctl work repositories ${entry.id}`,
+            },
+            awaits: "agent",
+          });
+        }
         const verified = stringValue(recordValue(metadata.verification)?.result) === "passed";
         const answerable = outstanding.filter((stage) => stage === "framing" || verified);
         if (answerable.length > 0) {

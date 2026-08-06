@@ -182,6 +182,7 @@ test("runs the completed central work lifecycle", async () => {
     reviewed: ["knowledge/index.md"],
     conflicts: [],
   };
+  accountEveryRepository(document);
   document.metadata.graph_evidence = {
     queries: ["Trace the world loop"],
   };
@@ -926,6 +927,10 @@ test("enforces full bundle reads, exact claims, dependency frontier, and stale r
     }),
     /framing is not approved/,
   );
+  // Framing approval now rests on the framing itself: what curated knowledge
+  // says about the work, and what each bound repository declares about itself.
+  // Prepare both so this test reaches what it is actually about.
+  await prepareFraming(started.specPath);
   await approveWork({
     target: leaf,
     id: started.id,
@@ -1231,6 +1236,7 @@ async function completeWorkDocument(
     reviewed: ["knowledge/index.md"],
     conflicts: [],
   };
+  accountEveryRepository(document);
   document.metadata.graph_evidence = {
     queries: scope === "project" ? [] : ["Trace the shared contract"],
   };
@@ -1388,6 +1394,7 @@ test("enforces the bundle completion gate on the current schema", async () => {
     reviewed: ["knowledge/index.md"],
     conflicts: [],
   };
+  accountEveryRepository(document);
   document.metadata.graph_evidence = { queries: ["Trace the gate"] };
   document.body = document.body.replaceAll("- [ ]", "- [x]");
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
@@ -1483,6 +1490,11 @@ test("binds maintainer approval to a receipt wfctl work approve produced", async
     /requires --by human:/,
   );
 
+  // Framing approval now rests on the framing itself: what curated knowledge
+  // says about the work, and what each bound repository declares about itself.
+  // Prepare both so this test reaches what it is actually about.
+  await prepareFraming(started.specPath);
+
   const approval = await approveWork({
     target: leaf,
     id: started.id,
@@ -1529,3 +1541,38 @@ test("binds maintainer approval to a receipt wfctl work approve produced", async
     ),
   );
 });
+
+/**
+ * Mark every bound repository as read on its own terms.
+ *
+ * Framing approval and completion both refuse a bundle whose repositories were
+ * never looked at, which is the point of that gate; these fixtures are testing
+ * other things and would otherwise all fail on it.
+ */
+function accountEveryRepository(document: ReturnType<typeof parseWorkSpec>): void {
+  const repositories = Array.isArray(document.metadata.repositories)
+    ? document.metadata.repositories
+    : [];
+  for (const entry of repositories) {
+    if (entry && typeof entry === "object") {
+      (entry as Record<string, unknown>).accounted = {
+        status: "read",
+        note: "Its own instructions and repo-local skills were read for this work.",
+        at: "2026-07-28T10:00:00.000Z",
+        instructions_sha256: "",
+        skills: [],
+      };
+    }
+  }
+}
+
+/** Fill what a framing must rest on before anyone may approve it. */
+async function prepareFraming(specPath: string): Promise<void> {
+  const document = parseWorkSpec(await readFile(specPath, "utf8"));
+  document.metadata.knowledge_alignment = {
+    reviewed: ["knowledge/index.md"],
+    conflicts: [],
+  };
+  accountEveryRepository(document);
+  await writeFile(specPath, serializeWorkSpec(document), "utf8");
+}

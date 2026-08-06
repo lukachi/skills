@@ -125,7 +125,9 @@ import type {
 import { WORKFLOW_VERSION } from "./types.js";
 import {
   approveWork,
+  accountWorkRepository,
   beginWork,
+  readWorkRepositories,
   claimWorkIssue,
   closeWork,
   completeWorkIssue,
@@ -1071,6 +1073,7 @@ function workCommand() {
         }),
     )
     .command("context", workContextCommand())
+    .command("repositories", workRepositoriesCommand())
     .command("checkpoint", workCheckpointCommand())
     .command("ask", workAskCommand())
     .command("approve", workApproveCommand())
@@ -1690,6 +1693,92 @@ function workContextCommand() {
           process.stdout.write(`- ${issue}\n`);
         }
         process.exitCode = 2;
+      }
+    });
+}
+
+function workRepositoriesCommand() {
+  return new Command()
+    .description(
+      "Read what every bound source repository declares about itself, and account for each.\n"
+        + "Work spanning more than one repository is shaped from the centre, where the rules\n"
+        + "each repository writes for itself — its own agent instructions and the skills\n"
+        + "installed only there — are invisible. This shows them without leaving the centre.\n"
+        + "Framing approval and Wayfinder finish stay shut until every one is read or\n"
+        + "explicitly declared untouched.",
+    )
+    .arguments("[id:string]")
+    .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", { default: "." })
+    .option("--read <repository:string>", "Record that this repository was read on its own terms.")
+    .option("--note <text:string>", "With --read: what its own rules require of this work.")
+    .option("--untouched <repository:string>", "Record that this work does not touch it.")
+    .option("--reason <text:string>", "With --untouched: why it is not touched.")
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      const named = options.read ?? options.untouched;
+      if (named) {
+        const result = await accountWorkRepository({
+          target: options.target,
+          ...(id ? { id } : {}),
+          repository: named,
+          ...(options.read ? { note: options.note ?? "" } : {}),
+          ...(options.untouched ? { untouched: options.reason ?? "" } : {}),
+        });
+        if (options.json) printJson(result);
+        else {
+          process.stdout.write(
+            result.status === "read"
+              ? `${result.repository} is accounted for: read on its own terms.\n`
+              : `${result.repository} is accounted for: this work does not touch it.\n`,
+          );
+        }
+        return;
+      }
+
+      const result = await readWorkRepositories(options.target, id);
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      if (result.repositories.length === 0) {
+        process.stdout.write(
+          `${result.id} binds no source repository, so there is nothing here to account for.\n`,
+        );
+        return;
+      }
+      for (const entry of result.repositories) {
+        process.stdout.write(`\n=== ${entry.repository}\n${entry.root}\n`);
+        if (entry.unreadable) {
+          process.stdout.write(`Cannot be read right now: ${entry.unreadable}\n`);
+          continue;
+        }
+        if (entry.instructions) {
+          process.stdout.write(
+            `\nIts own instructions (${entry.instructionsPath}, `
+              + `${entry.instructions.split("\n").length} lines):\n\n${entry.instructions}\n`,
+          );
+        } else {
+          process.stdout.write("\nIt states no rules of its own.\n");
+        }
+        if (entry.skills.length > 0) {
+          process.stdout.write(`\nSkills installed only here (${entry.skills.length}):\n`);
+          for (const skill of entry.skills) {
+            process.stdout.write(`  ${skill.name} — ${skill.description || "(no description)"}\n`);
+          }
+        }
+        if (!entry.accounted) {
+          process.stdout.write("\nNot accounted for in this bundle yet.\n");
+        } else if (entry.accounted.status === "untouched") {
+          process.stdout.write(`\nDeclared untouched: ${entry.accounted.reason}\n`);
+        } else {
+          process.stdout.write(`\nRead: ${entry.accounted.note}\n`);
+          if (entry.stale) {
+            process.stdout.write(
+              "This repository changed its own rules after that was recorded, so the\n"
+                + "receipt describes something that is no longer there. Read it again.\n",
+            );
+          }
+        }
       }
     });
 }
