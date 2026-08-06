@@ -96,6 +96,7 @@ import {
   isRecord,
   parseWorkSpec,
   serializeWorkSpec,
+  type TodoEdit,
 } from "./work-spec.js";
 
 const RECONSTRUCTION_VERSION = 5;
@@ -363,6 +364,8 @@ export interface UpdateReconstructionCheckpointOptions {
   lastCompleted: string;
   nextAction: string;
   blockers?: string[];
+  /** How the carried list of small jobs changes. Omitted, it survives untouched. */
+  todo?: TodoEdit;
   now?: Date;
 }
 
@@ -1673,6 +1676,7 @@ export async function updateReconstructionCheckpoint(
     lastCompleted: options.lastCompleted,
     nextAction: options.nextAction,
     blockers: options.blockers ?? [],
+    ...(options.todo ? { todo: options.todo } : {}),
     ...(options.now ? { now: options.now } : {}),
   };
   writeSessionCheckpoint(document, checkpointInput, session.basis);

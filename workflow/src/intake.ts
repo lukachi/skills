@@ -1,3 +1,4 @@
+import type { TodoEdit } from "./work-spec.js";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { constants } from "node:fs";
@@ -291,6 +292,8 @@ export interface UpdateIntakeCheckpointOptions {
   lastCompleted: string;
   nextAction: string;
   blockers?: string[];
+  /** How the carried list of small jobs changes. Omitted, it survives untouched. */
+  todo?: TodoEdit;
   now?: Date;
 }
 
@@ -554,6 +557,7 @@ export async function updateIntakeCheckpoint(
     lastCompleted: options.lastCompleted,
     nextAction: options.nextAction,
     blockers: options.blockers ?? [],
+    ...(options.todo ? { todo: options.todo } : {}),
     ...(options.now ? { now: options.now } : {}),
   };
   writeSessionCheckpoint(document, checkpointInput, basis);

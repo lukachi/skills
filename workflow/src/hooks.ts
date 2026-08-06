@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { isMissingFileError } from "./config.js";
@@ -105,6 +105,57 @@ export function installStopGuardHook(target: string): Promise<HookResult> {
 
 export function stopGuardHookInstalled(target: string): Promise<boolean> {
   return hookEntryInstalled(target, STOP_EVENT, STOP_GUARD_COMMAND);
+}
+
+/**
+ * Silencing the guard is a switch, not an uninstall.
+ *
+ * Removing the settings entry would be undone by the next upgrade, which
+ * reinstalls it — so a maintainer who turned it off would find it back on
+ * without being told. A marker the guard itself reads survives upgrades and
+ * takes effect on the next turn.
+ *
+ * It lives under `.workflow/current/`, which is gitignored, because whether a
+ * guard should re-enter this session is a local working condition: an
+ * unattended overnight run wants it and someone reading over the agent's
+ * shoulder does not, in the same repository on the same day.
+ */
+export function stopGuardDisabledPath(target: string): string {
+  return join(target, ".workflow/current/hooks/stop-guard.disabled");
+}
+
+export async function stopGuardEnabled(target: string): Promise<boolean> {
+  try {
+    await readFile(stopGuardDisabledPath(target), "utf8");
+    return false;
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return true;
+    }
+    throw error;
+  }
+}
+
+export async function setStopGuardEnabled(
+  target: string,
+  enabled: boolean,
+  reason = "",
+): Promise<{ path: string; enabled: boolean; changed: boolean }> {
+  const path = stopGuardDisabledPath(target);
+  const was = await stopGuardEnabled(target);
+  if (enabled) {
+    if (!was) {
+      await rm(path, { force: true });
+    }
+    return { path, enabled: true, changed: was !== true };
+  }
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(
+    path,
+    `${JSON.stringify({ disabledAt: new Date().toISOString(), reason }, null, 2)}\n`,
+    "utf8",
+  );
+  return { path, enabled: false, changed: was !== false };
 }
 
 export async function removeHookEntry(

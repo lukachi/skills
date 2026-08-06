@@ -16,11 +16,13 @@ import {
   includesVersion,
   isRecord,
   parseWorkSpec,
+  resolveTodo,
   serializeWorkSpec,
   SUPPORTED_CHANGE_VERSIONS,
   SUPPORTED_ISSUE_VERSIONS,
   SUPPORTED_MAP_VERSION,
   SUPPORTED_REVIEW_VERSION,
+  type TodoEdit,
 } from "./work-spec.js";
 
 export type WorkBundleStage = "shape" | "wayfind" | "implement" | "review" | "resume";
@@ -52,6 +54,7 @@ export interface WorkCheckpointSummary {
   lastCompleted: string;
   nextAction: string;
   blockers: string[];
+  todo: string[];
   updatedAt: string;
   valid: boolean;
   issues: string[];
@@ -109,6 +112,8 @@ export interface UpdateWorkCheckpointOptions {
   lastCompleted?: string;
   nextAction: string;
   blockers?: string[];
+  /** How the carried list of small jobs changes. Omitted, it survives untouched. */
+  todo?: TodoEdit;
   now?: Date;
 }
 
@@ -272,6 +277,11 @@ export async function updateBundleCheckpoint(
       : requireCheckpointText(previous?.last_completed, "last completed action"),
     nextAction: requireCheckpointText(options.nextAction, "next action"),
     blockers: uniqueStrings(options.blockers ?? []),
+    // Carried forward unless edited. A checkpoint written without mentioning the
+    // list must not silently empty it: every later checkpoint would then erase
+    // the small jobs an earlier one recorded, which is the exact loss the list
+    // exists to prevent.
+    todo: resolveTodo(stringArray(previous?.todo), options.todo),
     now,
   });
   await writeFile(path, serializeWorkSpec(document), "utf8");
@@ -1578,10 +1588,12 @@ function writeCheckpoint(
     lastCompleted: string;
     nextAction: string;
     blockers?: string[];
+    todo?: string[];
     now: Date;
   },
 ): void {
   const blockers = uniqueStrings(input.blockers ?? []);
+  const todo = uniqueStrings(input.todo ?? []);
   if (input.status === "blocked" && blockers.length === 0) {
     throw new Error("A blocked checkpoint requires at least one blocker");
   }
@@ -1602,6 +1614,9 @@ function writeCheckpoint(
     last_completed: requireCheckpointText(input.lastCompleted, "last completed action"),
     next_action: requireCheckpointText(input.nextAction, "next action"),
     blockers,
+    // Small jobs that are neither the next action nor a blocker. They are the
+    // first thing a compaction loses and the last thing anyone writes down.
+    todo,
     updated_at: updatedAt,
     basis_sha256: "",
   };
@@ -1644,6 +1659,8 @@ function checkpointSummary(
   const updatedAt = stringValue(checkpoint?.updated_at).trim();
   const blockersValue = checkpoint?.blockers;
   const blockers = stringArray(blockersValue).map((entry) => entry.trim()).filter(Boolean);
+  const todoValue = checkpoint?.todo;
+  const todo = stringArray(todoValue).map((entry) => entry.trim()).filter(Boolean);
   if (!actor) issues.push(`${path}: checkpoint.actor is required`);
   if (!currentState) issues.push(`${path}: checkpoint.current_state is required`);
   if (!lastCompleted) issues.push(`${path}: checkpoint.last_completed is required`);
@@ -1653,6 +1670,11 @@ function checkpointSummary(
   }
   if (!Array.isArray(blockersValue) || blockers.length !== blockersValue.length) {
     issues.push(`${path}: checkpoint.blockers must contain only non-empty strings`);
+  }
+  // Absent on every checkpoint written before the list existed, which is not an
+  // error: a resume record is complete under the contract it was written to.
+  if (todoValue !== undefined && (!Array.isArray(todoValue) || todo.length !== todoValue.length)) {
+    issues.push(`${path}: checkpoint.todo must contain only non-empty strings`);
   }
   if (statusValue === "blocked" && blockers.length === 0) {
     issues.push(`${path}: blocked checkpoint requires a blocker`);
@@ -1704,6 +1726,7 @@ function checkpointSummary(
     lastCompleted,
     nextAction,
     blockers,
+    todo,
     updatedAt,
     valid: issues.length === 0,
     issues,

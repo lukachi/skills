@@ -24,8 +24,11 @@ export const SUPPORTED_MAP_VERSION = 1;
 export const SUPPORTED_REVIEW_VERSION = 1;
 export const CURRENT_CHANGE_VERSION = 5;
 
-export const APPROVAL_METHODS = ["interactive", "token"] as const;
+export const APPROVAL_METHODS = ["attested", "interactive", "token"] as const;
 export type ApprovalMethod = (typeof APPROVAL_METHODS)[number];
+
+/** Methods whose authority rests on a recorded answer rather than a channel. */
+export const ATTESTED_APPROVAL_METHODS = new Set<ApprovalMethod>(["attested"]);
 export type MaintainerReviewStage = "framing" | "completion";
 
 export function includesVersion(allowed: readonly number[], value: unknown): boolean {
@@ -166,6 +169,41 @@ export function requiresApprovalReceipt(document: WorkSpecDocument): boolean {
     APPROVAL_RECEIPT_CHANGE_VERSIONS,
     document.metadata.workflow_version,
   );
+}
+
+/**
+ * How a checkpoint's list of small jobs changes.
+ *
+ * Three intents rather than one replacement, because the common edit is not
+ * "here is the whole list again" — it is "one more thing" or "that one is done".
+ * Resolving them where the carried list lives keeps a caller that mentions
+ * nothing from silently emptying it.
+ */
+export interface TodoEdit {
+  /** Replace the list outright. */
+  set?: string[];
+  /** Append, keeping what is carried. */
+  add?: string[];
+  /** Drop every carried entry containing any of these phrases, case-insensitively. */
+  drop?: string[];
+}
+
+export function resolveTodo(carried: readonly string[], edit: TodoEdit | undefined): string[] {
+  const base = edit?.set ?? [...carried];
+  const dropped = (edit?.drop ?? []).map((phrase) => phrase.trim().toLowerCase()).filter(Boolean);
+  const kept = dropped.length === 0
+    ? base
+    : base.filter((entry) => !dropped.some((phrase) => entry.toLowerCase().includes(phrase)));
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const entry of [...kept, ...(edit?.add ?? [])]) {
+    const trimmed = entry.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  }
+  return result;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

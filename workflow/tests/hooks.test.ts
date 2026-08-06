@@ -14,6 +14,8 @@ import {
   sessionStartEnvelope,
   STOP_GUARD_COMMAND,
   installStopGuardHook,
+  setStopGuardEnabled,
+  stopGuardEnabled,
   stopGuardHookInstalled,
 } from "../src/hooks.js";
 
@@ -194,4 +196,27 @@ test("anchors the stop guard on the project directory and never fails a turn", (
     /\|\| true$/,
     "a guard that errors must end the turn rather than trap the session",
   );
+});
+
+test("turning the stop guard off is a switch an upgrade cannot undo", async () => {
+  const root = await workspace({});
+  await installStopGuardHook(root);
+  assert.equal(await stopGuardEnabled(root), true);
+
+  const off = await setStopGuardEnabled(root, false, "reading over its shoulder");
+  assert.equal(off.enabled, false);
+  assert.equal(off.changed, true);
+  assert.equal(await stopGuardEnabled(root), false);
+
+  // The settings entry stays, so `wfctl upgrade` reinstalling it changes
+  // nothing. Removing the entry instead would put the guard back on without
+  // telling the maintainer who turned it off.
+  await installStopGuardHook(root);
+  assert.equal(await stopGuardHookInstalled(root), true);
+  assert.equal(await stopGuardEnabled(root), false);
+
+  const on = await setStopGuardEnabled(root, true);
+  assert.equal(on.changed, true);
+  assert.equal(await stopGuardEnabled(root), true);
+  assert.equal((await setStopGuardEnabled(root, true)).changed, false);
 });

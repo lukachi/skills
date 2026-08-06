@@ -52,6 +52,9 @@ import {
   writeTrajectoryGraph,
 } from "./trajectory.js";
 import { promoteTrajectory } from "./promotion.js";
+import { collectDebts, scheduleDebt } from "./debts.js";
+import { readWorkGate, renderWorkGate } from "./work-ask.js";
+import type { TodoEdit } from "./work-spec.js";
 import { declareVision, type VisionMethod } from "./vision.js";
 import { hashKnowledgeConcept, validateKnowledge } from "./knowledge.js";
 import { writeKnowledgeGraph } from "./knowledge-graph.js";
@@ -163,6 +166,9 @@ import {
   SESSION_BRIEF_COMMAND,
   sessionBriefHookInstalled,
   sessionStartEnvelope,
+  setStopGuardEnabled,
+  stopGuardEnabled,
+  stopGuardHookInstalled,
 } from "./hooks.js";
 
 setColorEnabled(process.stdout.isTTY === true && !("NO_COLOR" in process.env));
@@ -807,7 +813,60 @@ function hooksCommand() {
             );
           }
         }),
-    );
+    )
+    .command("stop-guard", stopGuardCommand());
+}
+
+/**
+ * The stop guard re-enters the agent when a turn ends while the repository still
+ * reports agent-side work. That is right for an unattended run and wrong for a
+ * session where a person is answering, so it needs a switch a maintainer can
+ * reach without editing settings by hand.
+ */
+function stopGuardCommand() {
+  return new Command()
+    .description(
+      "Turn the stop guard on or off for this checkout, or report which it is.\n"
+        + "Off is remembered locally and survives upgrades; the settings entry stays installed.",
+    )
+    .option("-t, --target <path:string>", "Target repository.", { default: "." })
+    .option("--off", "Stop re-entering the agent when a turn ends with work outstanding.")
+    .option("--on", "Resume re-entering.")
+    .option("--reason <reason:string>", "Why it was turned off, for whoever finds it off later.")
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options) => {
+      const target = resolve(options.target);
+      if (options.off && options.on) {
+        throw new Error("Pass --on or --off, not both");
+      }
+      if (!options.off && !options.on) {
+        const enabled = await stopGuardEnabled(target);
+        const installed = await stopGuardHookInstalled(target);
+        if (options.json) {
+          printJson({ target, enabled, installed });
+        } else {
+          process.stdout.write(
+            `${enabled ? green("on") : yellow("off")}  stop guard\n`
+              + `${dim(installed ? "hook installed" : "hook not installed")}\n`,
+          );
+        }
+        return;
+      }
+      const result = await setStopGuardEnabled(
+        target,
+        Boolean(options.on),
+        options.reason ?? "",
+      );
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(
+        result.enabled
+          ? `Stop guard on. A turn ending with agent-side work outstanding costs one more turn.\n`
+          : `Stop guard off. Turns end where the agent ends them.\n${dim(result.path)}\n`,
+      );
+    });
 }
 
 function printBrief(report: StateReport): void {
@@ -940,6 +999,7 @@ function workCommand() {
     )
     .command("context", workContextCommand())
     .command("checkpoint", workCheckpointCommand())
+    .command("ask", workAskCommand())
     .command("approve", workApproveCommand())
     .command("issue", workIssueCommand())
     .command("map", workMapCommand())
@@ -1059,6 +1119,29 @@ function workCommand() {
     );
 }
 
+function workAskCommand() {
+  return new Command()
+    .description(
+      "Render the framing a maintainer is being asked to approve, in four parts:\n"
+        + "what gets done, what deliberately does not, what will make it finished, and the order.\n"
+        + "Everything else in the record is bookkeeping the approval does not touch.",
+    )
+    .arguments("<id:string>")
+    .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+    .option("--stage <stage:string>", "framing or completion.", { default: "framing" })
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      const gate = await readWorkGate(options.target, id, {
+        stage: parseApprovalStage(options.stage),
+      });
+      if (options.json) {
+        printJson(gate);
+        return;
+      }
+      process.stdout.write(renderWorkGate(gate));
+    });
+}
+
 function workApproveCommand() {
   return new Command()
     .description(
@@ -1070,8 +1153,14 @@ function workApproveCommand() {
     .option("--by <actor:string>", "Approving maintainer as human:<id>.", { required: true })
     .option("--note <note:string>", "What was approved, in project language.")
     .option(
+      "--attested <answer:string>",
+      "The maintainer's own answer, word for word. Records their decision from the "
+        + "session they gave it in, without sending them to a second terminal.",
+    )
+    .option("--session <where:string>", "Where that answer was given, so it can be read back.")
+    .option(
       "--token <token:string>",
-      "Out-of-band approval token; required when no interactive terminal is available. "
+      "Out-of-band approval token, for a stronger record than an attestation. "
         + "Must equal WFCTL_APPROVAL_TOKEN.",
     )
     .option("--json", "Print machine-readable JSON.")
@@ -1082,6 +1171,7 @@ function workApproveCommand() {
         stage,
         by: options.by,
         ...(options.note ? { note: options.note } : {}),
+        ...(options.attested ? { attested: options.attested } : {}),
         ...(options.token ? { token: options.token } : {}),
       });
       const result = await approveWork({
@@ -1091,6 +1181,8 @@ function workApproveCommand() {
         by: options.by,
         method,
         ...(options.note ? { note: options.note } : {}),
+        ...(options.attested ? { attested: options.attested } : {}),
+        ...(options.session ? { session: options.session } : {}),
       });
       if (options.json) {
         printJson(result);
@@ -1115,17 +1207,36 @@ function parseApprovalStage(value: string): MaintainerReviewStage {
 }
 
 /**
- * Approval must not be producible by the same unattended path that writes the
- * rest of the record. Interactive use requires a typed confirmation; automation
- * requires a token supplied out of band through the environment.
+ * Three methods, and the record keeps them apart.
+ *
+ * `attested` is first because it is the ordinary case: the maintainer already
+ * answered, in conversation, and the agent is writing that answer down. Sending
+ * them to a second terminal to retype a bundle id, a stage name and their own
+ * identity relocates the decision without adding evidence — the same answer,
+ * carried by a less convenient channel. That was the previous behaviour and it
+ * is what made approval read as paperwork.
+ *
+ * `interactive` and `token` remain, unchanged, for a maintainer who wants a
+ * receipt the agent could not have written. They are the stronger record they
+ * always were; they are no longer the only one.
  */
 async function resolveApprovalMethod(input: {
   id: string;
   stage: MaintainerReviewStage;
   by: string;
   note?: string;
+  attested?: string;
   token?: string;
 }): Promise<ApprovalMethod> {
+  if (input.attested?.trim()) {
+    if (input.token) {
+      throw new Error(
+        "Pass either --attested or --token; a token carries its own proof and an "
+          + "attestation records an answer, and the record must say which one this was",
+      );
+    }
+    return "attested";
+  }
   const expected = process.env.WFCTL_APPROVAL_TOKEN?.trim();
   if (input.token) {
     if (!expected) {
@@ -1140,8 +1251,9 @@ async function resolveApprovalMethod(input: {
   }
   if (!interactive()) {
     throw new Error(
-      "Maintainer approval requires an interactive terminal, or --token with a matching "
-        + "WFCTL_APPROVAL_TOKEN. wfctl does not record approval from an unattended session.",
+      "No approval was supplied. Record the maintainer's own answer with --attested "
+        + "\"<what they said>\" --session \"<where they said it>\", or supply --token with a "
+        + "matching WFCTL_APPROVAL_TOKEN. wfctl does not approve anything by itself.",
     );
   }
   process.stdout.write(
@@ -1321,6 +1433,19 @@ function workCheckpointCommand() {
     .option("--blocker <text:string>", "Current blocker; repeat as needed.", {
       collect: true,
     })
+    .option(
+      "--todo <text:string>",
+      "Replace the carried list of small jobs; repeat as needed. Omitted, the list survives.",
+      { collect: true },
+    )
+    .option("--todo-add <text:string>", "Append one small job; repeat as needed.", {
+      collect: true,
+    })
+    .option(
+      "--todo-drop <phrase:string>",
+      "Drop every carried job containing this phrase; repeat as needed.",
+      { collect: true },
+    )
     .option("--json", "Print machine-readable JSON.")
     .action(async (options, id) => {
       const result = await updateWorkCheckpoint({
@@ -1334,6 +1459,7 @@ function workCheckpointCommand() {
         ...(options.last ? { lastCompleted: options.last } : {}),
         nextAction: options.next,
         blockers: collectedStrings(options.blocker),
+        ...todoEdit(options),
       });
       if (options.json) {
         printJson(result);
@@ -1343,7 +1469,8 @@ function workCheckpointCommand() {
             + `Status: ${result.status}; stage: ${result.stage}\n`
             + `Current: ${result.currentState}\n`
             + `Next: ${result.nextAction}\n`
-            + `Blockers: ${result.blockers.length > 0 ? result.blockers.join(", ") : "none"}\n`,
+            + `Blockers: ${result.blockers.length > 0 ? result.blockers.join(", ") : "none"}\n`
+            + `Todo: ${result.todo.length > 0 ? result.todo.join("; ") : "none"}\n`,
         );
       }
     });
@@ -2117,7 +2244,114 @@ function knowledgeTrajectoryCommand() {
             );
           }
         }),
-    );
+    )
+    .command("debts", knowledgeDebtsCommand())
+    .command("schedule", knowledgeScheduleCommand());
+}
+
+/**
+ * What the project owes, in one place.
+ *
+ * The debts existed from the first assembly and there was no way to ask for
+ * them: the maintainer had to be handed a list of trajectory filenames and told
+ * which YAML block to read in each. A ledger nobody can read is a ledger nobody
+ * acts on, which is how a reconstruction ends with every debt correctly recorded
+ * and none of it reaching work.
+ */
+function knowledgeDebtsCommand() {
+  return new Command()
+    .description(
+      "List what every subject still owes against its declared direction.\n"
+        + "Open debts first, then the ones being closed, then the deferred.\n"
+        + "This is a view: nothing here decides what is owed, and nothing here strikes one off.",
+    )
+    .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+    .option("--open", "Only debts nobody has scheduled.")
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options) => {
+      const ledger = await collectDebts(options.target);
+      const shown = options.open
+        ? ledger.debts.filter((debt) => debt.status === "open")
+        : ledger.debts;
+      if (options.json) {
+        printJson({ ...ledger, shown });
+        return;
+      }
+      if (shown.length === 0) {
+        process.stdout.write("Nothing is owed against any declared direction.\n");
+        return;
+      }
+      let subject = "";
+      for (const debt of shown) {
+        if (debt.subject !== subject) {
+          subject = debt.subject;
+          process.stdout.write(
+            `\n${subject}${debt.vision ? "" : "  (no direction declared yet)"}\n`,
+          );
+        }
+        const owner = debt.work
+          ? `  → ${debt.work}${debt.workState === "missing" ? " (which does not exist)" : ""}`
+          : "";
+        process.stdout.write(
+          `  ${String(debt.position).padStart(2)}. [${debt.status}] ${debt.statement}${owner}\n`,
+        );
+      }
+      process.stdout.write("\n");
+      if (ledger.settled.length > 0) {
+        process.stdout.write(
+          `${ledger.settled.length} debt(s) name work that has landed. A debt does not end by being\n`
+            + "marked done: re-read the subject at a new pin and it disappears if it is no longer true.\n",
+        );
+      }
+      if (ledger.dangling.length > 0) {
+        process.stdout.write(
+          `${ledger.dangling.length} debt(s) name a change bundle that exists nowhere; each reads as\n`
+            + "handled and is not.\n",
+        );
+      }
+      if (ledger.directionless.length > 0) {
+        process.stdout.write(
+          `${ledger.directionless.length} debt(s) sit on subjects with no declared direction, so what\n`
+            + "they are owed against is unstated. Run trajectory ask on those subjects first.\n",
+        );
+      }
+    });
+}
+
+function knowledgeScheduleCommand() {
+  return new Command()
+    .description(
+      "Name the change bundle that closes one debt, and mark the debt as being closed.\n"
+        + "Refuses a bundle that does not exist: a debt pointing at nothing reads as handled.",
+    )
+    .arguments("<trajectory:string>")
+    .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+    .option(
+      "--gap <selector:string>",
+      "Which debt: its position from `trajectory debts`, or a phrase from its statement.",
+      { required: true },
+    )
+    .option("--work <id:string>", "The open change bundle that closes it.", { required: true })
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, trajectory) => {
+      const result = await scheduleDebt({
+        target: options.target,
+        trajectory,
+        gap: options.gap,
+        work: options.work,
+      });
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(
+        `${result.trajectory}: a debt is now being closed by ${result.work}\n`
+          + `Debt: ${result.statement}\n`
+          + `Was:  ${result.previousStatus}\n`
+          + `Spec: ${result.path}\n`
+          + "The debt ends when the subject is re-read at a new pin, not when the bundle closes.\n",
+      );
+    });
 }
 
 /**
@@ -2305,6 +2539,11 @@ function knowledgeReconstructCommand() {
                     result.checkpoint.blockers.length > 0
                       ? result.checkpoint.blockers.join(", ")
                       : "none"
+                  }\n`
+                  + `Todo: ${
+                    result.checkpoint.todo.length > 0
+                      ? result.checkpoint.todo.join("; ")
+                      : "none"
                   }\n`,
               );
             }
@@ -2364,6 +2603,19 @@ function knowledgeReconstructCommand() {
         .option("--last <text:string>", "Last material action completed.", { required: true })
         .option("--next <text:string>", "Exact next action for a fresh session.", { required: true })
         .option("--blocker <text:string>", "Current blocker; repeat as needed.", { collect: true })
+        .option(
+          "--todo <text:string>",
+          "Replace the carried list of small jobs; repeat as needed. Omitted, the list survives.",
+          { collect: true },
+        )
+        .option("--todo-add <text:string>", "Append one small job; repeat as needed.", {
+          collect: true,
+        })
+        .option(
+          "--todo-drop <phrase:string>",
+          "Drop every carried job containing this phrase; repeat as needed.",
+          { collect: true },
+        )
         .option("--json", "Print machine-readable JSON.")
         .action(async (options, id) => {
           const result = await updateReconstructionCheckpoint({
@@ -2376,6 +2628,7 @@ function knowledgeReconstructCommand() {
             lastCompleted: options.last,
             nextAction: options.next,
             blockers: collectedStrings(options.blocker),
+            ...todoEdit(options),
           });
           if (options.json) {
             printJson(result);
@@ -3229,6 +3482,11 @@ function knowledgeCaseCommand() {
                     result.checkpoint.blockers.length > 0
                       ? result.checkpoint.blockers.join(", ")
                       : "none"
+                  }\n`
+                  + `Todo: ${
+                    result.checkpoint.todo.length > 0
+                      ? result.checkpoint.todo.join("; ")
+                      : "none"
                   }\n`,
               );
             }
@@ -3273,6 +3531,19 @@ function knowledgeCaseCommand() {
         .option("--last <text:string>", "Last material action completed.", { required: true })
         .option("--next <text:string>", "Exact next action for a fresh session.", { required: true })
         .option("--blocker <text:string>", "Current blocker; repeat as needed.", { collect: true })
+        .option(
+          "--todo <text:string>",
+          "Replace the carried list of small jobs; repeat as needed. Omitted, the list survives.",
+          { collect: true },
+        )
+        .option("--todo-add <text:string>", "Append one small job; repeat as needed.", {
+          collect: true,
+        })
+        .option(
+          "--todo-drop <phrase:string>",
+          "Drop every carried job containing this phrase; repeat as needed.",
+          { collect: true },
+        )
         .option("--json", "Print machine-readable JSON.")
         .action(async (options, id) => {
           const result = await updateIntakeCheckpoint({
@@ -3285,6 +3556,7 @@ function knowledgeCaseCommand() {
             lastCompleted: options.last,
             nextAction: options.next,
             blockers: collectedStrings(options.blocker),
+            ...todoEdit(options),
           });
           if (options.json) {
             printJson(result);
@@ -3820,6 +4092,28 @@ function collectedStrings(value: string | string[] | undefined): string[] {
     return value;
   }
   return value === undefined ? [] : [value];
+}
+
+/**
+ * Absent entirely when no flag was given, so a checkpoint that says nothing
+ * about the list leaves it exactly as it was. An empty `TodoEdit` would read the
+ * same to a caller and behave the same here, but the distinction is worth
+ * keeping at the boundary: `--todo` with no value is a deliberate empty list.
+ */
+function todoEdit(
+  options: { todo?: string | string[]; todoAdd?: string | string[]; todoDrop?: string | string[] },
+): { todo?: TodoEdit } {
+  const edit: TodoEdit = {};
+  if (options.todo !== undefined) {
+    edit.set = collectedStrings(options.todo);
+  }
+  if (options.todoAdd !== undefined) {
+    edit.add = collectedStrings(options.todoAdd);
+  }
+  if (options.todoDrop !== undefined) {
+    edit.drop = collectedStrings(options.todoDrop);
+  }
+  return Object.keys(edit).length > 0 ? { todo: edit } : {};
 }
 
 function printCoverageSummary(

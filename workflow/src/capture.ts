@@ -240,9 +240,20 @@ async function normalizeDestinations(
 ): Promise<string[]> {
   const destinations = [...new Set(inputs.map((input) => normalizeDestination(input)))];
   for (const destination of destinations) {
-    if (!destination.startsWith("knowledge/") && !destination.startsWith("changes/active/")) {
+    // A trajectory is an owner. Curated pages are written at the end of a
+    // reconstruction, but the captures a reconstruction produces exist from its
+    // first day — so requiring a curated destination deadlocked the queue
+    // against itself: seventeen captures sat unresolvable, waiting for pages
+    // that could not be written until the queue was resolved. A subject that
+    // holds the capture's debt is a real owner whether or not its page exists.
+    if (
+      !destination.startsWith("knowledge/")
+      && !destination.startsWith("changes/active/")
+      && !destination.startsWith("trajectories/")
+    ) {
       throw new Error(
-        `Capture destination must be under knowledge/ or changes/active/: ${destination}`,
+        "Capture destination must be under knowledge/, trajectories/ or changes/active/: "
+          + destination,
       );
     }
     if (!destination.endsWith(".md")) {

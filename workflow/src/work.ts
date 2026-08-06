@@ -28,6 +28,7 @@ import {
   serializeWorkSpec,
   type ApprovalMethod,
   type MaintainerReviewStage,
+  type TodoEdit,
 } from "./work-spec.js";
 import {
   bundleCompletionIssues,
@@ -175,6 +176,8 @@ export interface UpdateWorkCheckpointOptions {
   lastCompleted?: string;
   nextAction: string;
   blockers?: string[];
+  /** How the carried list of small jobs changes. Omitted, it survives untouched. */
+  todo?: TodoEdit;
   now?: Date;
 }
 
@@ -391,6 +394,8 @@ export interface ApproveWorkOptions {
   by: string;
   method: ApprovalMethod;
   note?: string;
+  attested?: string;
+  session?: string;
   now?: Date;
 }
 
@@ -420,6 +425,8 @@ export async function approveWork(
     by: options.by,
     method: options.method,
     ...(options.note ? { note: options.note } : {}),
+    ...(options.attested ? { attested: options.attested } : {}),
+    ...(options.session ? { session: options.session } : {}),
     ...(options.now ? { now: options.now } : {}),
   });
   const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
@@ -432,6 +439,11 @@ export async function approveWork(
     at: record.at,
     method: record.method,
     receipt: record.receipt,
+    // The maintainer's own words live in the record they approved, not only in
+    // an ignored runtime file, so a reader months later can weigh the answer
+    // against the framing without reconstructing the session.
+    ...(record.attested ? { attested: record.attested } : {}),
+    ...(record.session ? { session: record.session } : {}),
     notes: uniqueNotes(previous.notes, record.note),
   };
   document.metadata.maintainer_review = review;
@@ -555,6 +567,7 @@ export async function updateWorkCheckpoint(
     ...(options.lastCompleted ? { lastCompleted: options.lastCompleted } : {}),
     nextAction: options.nextAction,
     blockers: options.blockers ?? [],
+    ...(options.todo ? { todo: options.todo } : {}),
     ...(options.now ? { now: options.now } : {}),
   });
 }

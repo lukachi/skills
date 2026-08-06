@@ -18,7 +18,7 @@ import {
 } from "../src/state.js";
 import { STATE_COLLECTORS } from "../src/state-collectors.js";
 import { beginIntakeCase, intakeContext, updateIntakeCheckpoint } from "../src/intake.js";
-import { beginWork } from "../src/work.js";
+import { approveWork, beginWork } from "../src/work.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -243,6 +243,47 @@ test("holds bundle closure until approvals and verification are recorded", async
     "work.verification-pending",
   ]);
   assert.deepEqual(close?.missing, []);
+});
+
+test("a bundle held for the maintainer is not reported as work awaiting the agent", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "account-recovery",
+    title: "Account recovery",
+    mode: "full",
+  });
+
+  // The stop guard re-enters the agent for every signal that awaits it. While
+  // the framing is unapproved there is nothing the agent can do and nothing to
+  // verify, so labelling either as agent-side re-entered the agent on every
+  // turn for as long as the maintainer took to answer.
+  const held = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  const active = held.signals.find((signal) => signal.id === "work.active");
+  const verification = held.signals.find((signal) => signal.id === "work.verification-pending");
+  assert.equal(active?.awaits, "maintainer");
+  assert.match(String(active?.summary), /held for you/);
+  assert.equal(verification?.awaits, "maintainer");
+
+  await approveWork({
+    target: leaf,
+    id: started.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "attested",
+    attested: "yes, that framing is right",
+    session: "this session",
+  });
+
+  const released = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    released.signals.find((signal) => signal.id === "work.active")?.awaits,
+    "agent",
+  );
+  assert.equal(
+    released.signals.find((signal) => signal.id === "work.verification-pending")?.awaits,
+    "agent",
+  );
 });
 
 test("tests the checkpoint against its record, not against the clock", async () => {

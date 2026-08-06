@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { WorkSpecDocument } from "./types.js";
-import { isRecord, parseWorkSpec } from "./work-spec.js";
+import { isRecord, parseWorkSpec, resolveTodo, type TodoEdit } from "./work-spec.js";
 
 export type KnowledgeSessionStatus = "active" | "blocked" | "complete";
 
@@ -14,6 +14,14 @@ export interface KnowledgeSessionCheckpointInput {
   lastCompleted: string;
   nextAction: string;
   blockers?: string[];
+  /**
+   * Small things noticed along the way that nobody will remember next session.
+   * Kept apart from `blockers`, which stop the work, and from `nextAction`,
+   * which is the one thing to do first: a list of three ten-minute jobs is
+   * neither, and until now it had nowhere to live, so it lived in prose and was
+   * lost with the context that held it.
+   */
+  todo?: TodoEdit;
   now?: Date;
 }
 
@@ -25,6 +33,7 @@ export interface KnowledgeSessionCheckpointSummary {
   lastCompleted: string;
   nextAction: string;
   blockers: string[];
+  todo: string[];
   updatedAt: string;
   basisSha256: string;
   currentBasisSha256: string;
@@ -135,6 +144,13 @@ export function writeSessionCheckpoint(
   basis: string,
 ): void {
   const now = input.now ?? new Date();
+  // Carried forward unless replaced. A checkpoint written without mentioning the
+  // list must not silently empty it: every later checkpoint in the session would
+  // then erase the small jobs an earlier one recorded, which is the exact loss
+  // the list exists to prevent.
+  const carried = isRecord(document.metadata.checkpoint)
+    ? stringArray(document.metadata.checkpoint.todo)
+    : [];
   document.metadata.checkpoint = {
     status: input.status,
     stage: requireText(input.stage, "stage"),
@@ -143,6 +159,7 @@ export function writeSessionCheckpoint(
     last_completed: requireText(input.lastCompleted, "last completed action"),
     next_action: requireText(input.nextAction, "next action"),
     blockers: uniqueStrings(input.blockers ?? []),
+    todo: resolveTodo(carried, input.todo),
     updated_at: now.toISOString(),
     basis_sha256: basis,
   };
@@ -171,6 +188,10 @@ export function inspectSessionCheckpoint(
   const lastCompleted = stringValue(checkpoint.last_completed);
   const nextAction = stringValue(checkpoint.next_action);
   const blockers = stringArray(checkpoint.blockers);
+  // Absent on every checkpoint written before the list existed, which is not an
+  // error: a resume record that predates a field is complete under the contract
+  // it was written to.
+  const todo = stringArray(checkpoint.todo);
   const updatedAt = stringValue(checkpoint.updated_at);
   const basisSha256 = stringValue(checkpoint.basis_sha256);
   if (!(["active", "blocked", "complete"] as string[]).includes(status)) {
@@ -192,6 +213,12 @@ export function inspectSessionCheckpoint(
   if (!Array.isArray(checkpoint.blockers) || blockers.length !== checkpoint.blockers.length) {
     issues.push("checkpoint.blockers must contain strings only");
   }
+  if (
+    checkpoint.todo !== undefined
+    && (!Array.isArray(checkpoint.todo) || todo.length !== checkpoint.todo.length)
+  ) {
+    issues.push("checkpoint.todo must contain strings only");
+  }
   if (!isIsoDateTime(updatedAt)) {
     issues.push("checkpoint.updated_at must be an ISO 8601 datetime");
   }
@@ -210,6 +237,7 @@ export function inspectSessionCheckpoint(
     lastCompleted,
     nextAction,
     blockers,
+    todo,
     updatedAt,
     basisSha256,
     currentBasisSha256: currentBasis,
@@ -240,6 +268,7 @@ function invalidCheckpoint(
     lastCompleted: "",
     nextAction: "",
     blockers: [],
+    todo: [],
     updatedAt: "",
     basisSha256: "",
     currentBasisSha256,

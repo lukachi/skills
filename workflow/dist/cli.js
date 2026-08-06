@@ -934,14 +934,14 @@ var init_stringifyComment = __esm({
 });
 
 // node_modules/yaml/browser/dist/stringify/foldFlowLines.js
-function foldFlowLines(text3, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
+function foldFlowLines(text4, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
   if (!lineWidth || lineWidth < 0)
-    return text3;
+    return text4;
   if (lineWidth < minContentWidth)
     minContentWidth = 0;
   const endStep = Math.max(1 + minContentWidth, 1 + lineWidth - indent.length);
-  if (text3.length <= endStep)
-    return text3;
+  if (text4.length <= endStep)
+    return text4;
   const folds = [];
   const escapedFolds = {};
   let end = lineWidth - indent.length;
@@ -958,14 +958,14 @@ function foldFlowLines(text3, indent, mode = "flow", { indentAtStart, lineWidth 
   let escStart = -1;
   let escEnd = -1;
   if (mode === FOLD_BLOCK) {
-    i = consumeMoreIndentedLines(text3, i, indent.length);
+    i = consumeMoreIndentedLines(text4, i, indent.length);
     if (i !== -1)
       end = i + endStep;
   }
-  for (let ch; ch = text3[i += 1]; ) {
+  for (let ch; ch = text4[i += 1]; ) {
     if (mode === FOLD_QUOTED && ch === "\\") {
       escStart = i;
-      switch (text3[i + 1]) {
+      switch (text4[i + 1]) {
         case "x":
           i += 3;
           break;
@@ -982,12 +982,12 @@ function foldFlowLines(text3, indent, mode = "flow", { indentAtStart, lineWidth 
     }
     if (ch === "\n") {
       if (mode === FOLD_BLOCK)
-        i = consumeMoreIndentedLines(text3, i, indent.length);
+        i = consumeMoreIndentedLines(text4, i, indent.length);
       end = i + indent.length + endStep;
       split = void 0;
     } else {
       if (ch === " " && prev && prev !== " " && prev !== "\n" && prev !== "	") {
-        const next = text3[i + 1];
+        const next = text4[i + 1];
         if (next && next !== " " && next !== "\n" && next !== "	")
           split = i;
       }
@@ -999,12 +999,12 @@ function foldFlowLines(text3, indent, mode = "flow", { indentAtStart, lineWidth 
         } else if (mode === FOLD_QUOTED) {
           while (prev === " " || prev === "	") {
             prev = ch;
-            ch = text3[i += 1];
+            ch = text4[i += 1];
             overflow = true;
           }
           const j = i > escEnd + 1 ? i - 2 : escStart - 1;
           if (escapedFolds[j])
-            return text3;
+            return text4;
           folds.push(j);
           escapedFolds[j] = true;
           end = j + endStep;
@@ -1019,39 +1019,39 @@ function foldFlowLines(text3, indent, mode = "flow", { indentAtStart, lineWidth 
   if (overflow && onOverflow)
     onOverflow();
   if (folds.length === 0)
-    return text3;
+    return text4;
   if (onFold)
     onFold();
-  let res = text3.slice(0, folds[0]);
+  let res = text4.slice(0, folds[0]);
   for (let i2 = 0; i2 < folds.length; ++i2) {
     const fold = folds[i2];
-    const end2 = folds[i2 + 1] || text3.length;
+    const end2 = folds[i2 + 1] || text4.length;
     if (fold === 0)
       res = `
-${indent}${text3.slice(0, end2)}`;
+${indent}${text4.slice(0, end2)}`;
     else {
       if (mode === FOLD_QUOTED && escapedFolds[fold])
-        res += `${text3[fold]}\\`;
+        res += `${text4[fold]}\\`;
       res += `
-${indent}${text3.slice(fold + 1, end2)}`;
+${indent}${text4.slice(fold + 1, end2)}`;
     }
   }
   return res;
 }
-function consumeMoreIndentedLines(text3, i, indent) {
+function consumeMoreIndentedLines(text4, i, indent) {
   let end = i;
   let start = i + 1;
-  let ch = text3[start];
+  let ch = text4[start];
   while (ch === " " || ch === "	") {
     if (i < start + indent) {
-      ch = text3[++i];
+      ch = text4[++i];
     } else {
       do {
-        ch = text3[++i];
+        ch = text4[++i];
       } while (ch && ch !== "\n");
       end = i;
       start = i + 1;
-      ch = text3[start];
+      ch = text4[start];
     }
   }
   return end;
@@ -10779,10 +10779,10 @@ function resolveAll(constructs2, events, context) {
   const called = [];
   let index2 = -1;
   while (++index2 < constructs2.length) {
-    const resolve23 = constructs2[index2].resolveAll;
-    if (resolve23 && !called.includes(resolve23)) {
-      events = resolve23(events, context);
-      called.push(resolve23);
+    const resolve25 = constructs2[index2].resolveAll;
+    if (resolve25 && !called.includes(resolve25)) {
+      events = resolve25(events, context);
+      called.push(resolve25);
     }
   }
   return events;
@@ -10797,7 +10797,7 @@ function resolveAllAttention(events, context) {
   let index2 = -1;
   let open2;
   let group;
-  let text3;
+  let text4;
   let openingSequence;
   let closingSequence;
   let use;
@@ -10835,7 +10835,7 @@ function resolveAllAttention(events, context) {
             },
             end
           };
-          text3 = {
+          text4 = {
             type: use > 1 ? "strongText" : "emphasisText",
             start: {
               ...events[open2][1].end
@@ -10863,9 +10863,9 @@ function resolveAllAttention(events, context) {
           if (events[open2][1].end.offset - events[open2][1].start.offset) {
             nextEvents = push(nextEvents, [["enter", events[open2][1], context], ["exit", events[open2][1], context]]);
           }
-          nextEvents = push(nextEvents, [["enter", group, context], ["enter", openingSequence, context], ["exit", openingSequence, context], ["enter", text3, context]]);
+          nextEvents = push(nextEvents, [["enter", group, context], ["enter", openingSequence, context], ["exit", openingSequence, context], ["enter", text4, context]]);
           nextEvents = push(nextEvents, resolveAll(context.parser.constructs.insideSpan.null, events.slice(open2 + 1, index2), context));
-          nextEvents = push(nextEvents, [["exit", text3, context], ["enter", closingSequence, context], ["exit", closingSequence, context], ["exit", group, context]]);
+          nextEvents = push(nextEvents, [["exit", text4, context], ["enter", closingSequence, context], ["exit", closingSequence, context], ["exit", group, context]]);
           if (events[index2][1].end.offset - events[index2][1].start.offset) {
             offset = 2;
             nextEvents = push(nextEvents, [["enter", events[index2][1], context], ["exit", events[index2][1], context]]);
@@ -12261,9 +12261,9 @@ function factoryTitle(effects, ok, nok, type, markerType, stringType) {
       return atBreak(code2);
     }
     effects.consume(code2);
-    return code2 === 92 ? escape : inside2;
+    return code2 === 92 ? escape2 : inside2;
   }
-  function escape(code2) {
+  function escape2(code2) {
     if (code2 === marker || code2 === 92) {
       effects.consume(code2);
       return inside2;
@@ -12433,7 +12433,7 @@ function resolveHeadingAtx(events, context) {
   let contentEnd = events.length - 2;
   let contentStart = 3;
   let content3;
-  let text3;
+  let text4;
   if (events[contentStart][1].type === "whitespace") {
     contentStart += 2;
   }
@@ -12449,13 +12449,13 @@ function resolveHeadingAtx(events, context) {
       start: events[contentStart][1].start,
       end: events[contentEnd][1].end
     };
-    text3 = {
+    text4 = {
       type: "chunkText",
       start: events[contentStart][1].start,
       end: events[contentEnd][1].end,
       contentType: "text"
     };
-    splice(events, contentStart, contentEnd - contentStart + 1, [["enter", content3, context], ["enter", text3, context], ["exit", text3, context], ["exit", content3, context]]);
+    splice(events, contentStart, contentEnd - contentStart + 1, [["enter", content3, context], ["enter", text4, context], ["exit", text4, context], ["exit", content3, context]]);
   }
   return events;
 }
@@ -13363,7 +13363,7 @@ function resolveToLabelEnd(events, context) {
       ...events[close][1].end
     }
   };
-  const text3 = {
+  const text4 = {
     type: "labelText",
     start: {
       ...events[open2 + offset + 2][1].end
@@ -13374,9 +13374,9 @@ function resolveToLabelEnd(events, context) {
   };
   media = [["enter", group, context], ["enter", label, context]];
   media = push(media, events.slice(open2 + 1, open2 + offset + 3));
-  media = push(media, [["enter", text3, context]]);
+  media = push(media, [["enter", text4, context]]);
   media = push(media, resolveAll(context.parser.constructs.insideSpan.null, events.slice(open2 + offset + 4, close - 3), context));
-  media = push(media, [["exit", text3, context], events[close - 2], events[close - 1], ["exit", label, context]]);
+  media = push(media, [["exit", text4, context], events[close - 2], events[close - 1], ["exit", label, context]]);
   media = push(media, events.slice(close + 1));
   media = push(media, [["exit", group, context]]);
   splice(events, open2, events.length, media);
@@ -13813,7 +13813,7 @@ var init_list = __esm({
 function resolveToSetextUnderline(events, context) {
   let index2 = events.length;
   let content3;
-  let text3;
+  let text4;
   let definition2;
   while (index2--) {
     if (events[index2][0] === "enter") {
@@ -13822,7 +13822,7 @@ function resolveToSetextUnderline(events, context) {
         break;
       }
       if (events[index2][1].type === "paragraph") {
-        text3 = index2;
+        text4 = index2;
       }
     } else {
       if (events[index2][1].type === "content") {
@@ -13842,9 +13842,9 @@ function resolveToSetextUnderline(events, context) {
       ...events[events.length - 1][1].end
     }
   };
-  events[text3][1].type = "setextHeadingText";
+  events[text4][1].type = "setextHeadingText";
   if (definition2) {
-    events.splice(text3, 0, ["enter", heading, context]);
+    events.splice(text4, 0, ["enter", heading, context]);
     events.splice(definition2 + 1, 0, ["exit", events[content3][1], context]);
     events[content3][1].end = {
       ...events[definition2][1].end
@@ -13990,10 +13990,10 @@ function initializeFactory(field) {
   function initializeText(effects) {
     const self = this;
     const constructs2 = this.parser.constructs[field];
-    const text3 = effects.attempt(constructs2, start, notText);
+    const text4 = effects.attempt(constructs2, start, notText);
     return start;
     function start(code2) {
-      return atBreak(code2) ? text3(code2) : notText(code2);
+      return atBreak(code2) ? text4(code2) : notText(code2);
     }
     function notText(code2) {
       if (code2 === null) {
@@ -14007,7 +14007,7 @@ function initializeFactory(field) {
     function data2(code2) {
       if (atBreak(code2)) {
         effects.exit("data");
-        return text3(code2);
+        return text4(code2);
       }
       effects.consume(code2);
       return data2;
@@ -15126,7 +15126,7 @@ function compiler(options) {
     const siblings = node2.children;
     let tail = siblings[siblings.length - 1];
     if (!tail || tail.type !== "text") {
-      tail = text3();
+      tail = text4();
       tail.position = {
         start: point2(token.start),
         // @ts-expect-error: we’ll add `end` later.
@@ -15371,7 +15371,7 @@ function compiler(options) {
       children: []
     };
   }
-  function text3() {
+  function text4() {
     return {
       type: "text",
       value: ""
@@ -15966,9 +15966,9 @@ async function readPinnedGitTextRange(root, gitArguments, options = {}) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve23, reject) => {
+  const completion = new Promise((resolve25, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve23(code2 ?? 1));
+    child.once("close", (code2) => resolve25(code2 ?? 1));
   });
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const selected = [];
@@ -15985,12 +15985,12 @@ async function readPinnedGitTextRange(root, gitArguments, options = {}) {
       selected.push(line);
     }
   };
-  const consumeText = (text3, final = false) => {
+  const consumeText = (text4, final = false) => {
     let cursor = 0;
-    while (cursor < text3.length) {
-      const newline = text3.indexOf("\n", cursor);
-      const end = newline === -1 ? text3.length : newline;
-      const segment = text3.slice(cursor, end);
+    while (cursor < text4.length) {
+      const newline = text4.indexOf("\n", cursor);
+      const end = newline === -1 ? text4.length : newline;
+      const segment = text4.slice(cursor, end);
       if (segment.length > 0) {
         pendingHasData = true;
         const currentLine = totalLines + 1;
@@ -16387,6 +16387,21 @@ function requiresApprovalReceipt(document3) {
     document3.metadata.workflow_version
   );
 }
+function resolveTodo(carried, edit) {
+  const base = edit?.set ?? [...carried];
+  const dropped = (edit?.drop ?? []).map((phrase) => phrase.trim().toLowerCase()).filter(Boolean);
+  const kept = dropped.length === 0 ? base : base.filter((entry) => !dropped.some((phrase) => entry.toLowerCase().includes(phrase)));
+  const seen = /* @__PURE__ */ new Set();
+  const result = [];
+  for (const entry of [...kept, ...edit?.add ?? []]) {
+    const trimmed = entry.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  }
+  return result;
+}
 function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -16430,7 +16445,7 @@ function reviewIssues(stage, review, requireReceipt, issues) {
 function isIsoDateTime(value) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && !Number.isNaN(Date.parse(value));
 }
-var SUPPORTED_CHANGE_VERSIONS, GATED_CHANGE_VERSIONS, APPROVAL_RECEIPT_CHANGE_VERSIONS, SUPPORTED_ISSUE_VERSIONS, SUPPORTED_MAP_VERSION, SUPPORTED_REVIEW_VERSION, APPROVAL_METHODS;
+var SUPPORTED_CHANGE_VERSIONS, GATED_CHANGE_VERSIONS, APPROVAL_RECEIPT_CHANGE_VERSIONS, SUPPORTED_ISSUE_VERSIONS, SUPPORTED_MAP_VERSION, SUPPORTED_REVIEW_VERSION, APPROVAL_METHODS, ATTESTED_APPROVAL_METHODS;
 var init_work_spec = __esm({
   "src/work-spec.ts"() {
     "use strict";
@@ -16442,7 +16457,8 @@ var init_work_spec = __esm({
     SUPPORTED_ISSUE_VERSIONS = [1, 2, 3];
     SUPPORTED_MAP_VERSION = 1;
     SUPPORTED_REVIEW_VERSION = 1;
-    APPROVAL_METHODS = ["interactive", "token"];
+    APPROVAL_METHODS = ["attested", "interactive", "token"];
+    ATTESTED_APPROVAL_METHODS = /* @__PURE__ */ new Set(["attested"]);
   }
 });
 
@@ -16941,6 +16957,7 @@ function sessionBasis(document3, related = []) {
 }
 function writeSessionCheckpoint(document3, input, basis) {
   const now = input.now ?? /* @__PURE__ */ new Date();
+  const carried = isRecord2(document3.metadata.checkpoint) ? stringArray3(document3.metadata.checkpoint.todo) : [];
   document3.metadata.checkpoint = {
     status: input.status,
     stage: requireText(input.stage, "stage"),
@@ -16949,6 +16966,7 @@ function writeSessionCheckpoint(document3, input, basis) {
     last_completed: requireText(input.lastCompleted, "last completed action"),
     next_action: requireText(input.nextAction, "next action"),
     blockers: uniqueStrings2(input.blockers ?? []),
+    todo: resolveTodo(carried, input.todo),
     updated_at: now.toISOString(),
     basis_sha256: basis
   };
@@ -16967,6 +16985,7 @@ function inspectSessionCheckpoint(document3, currentBasis, allowedStages, requir
   const lastCompleted = stringValue4(checkpoint.last_completed);
   const nextAction = stringValue4(checkpoint.next_action);
   const blockers = stringArray3(checkpoint.blockers);
+  const todo = stringArray3(checkpoint.todo);
   const updatedAt = stringValue4(checkpoint.updated_at);
   const basisSha256 = stringValue4(checkpoint.basis_sha256);
   if (!["active", "blocked", "complete"].includes(status)) {
@@ -16988,6 +17007,9 @@ function inspectSessionCheckpoint(document3, currentBasis, allowedStages, requir
   if (!Array.isArray(checkpoint.blockers) || blockers.length !== checkpoint.blockers.length) {
     issues.push("checkpoint.blockers must contain strings only");
   }
+  if (checkpoint.todo !== void 0 && (!Array.isArray(checkpoint.todo) || todo.length !== checkpoint.todo.length)) {
+    issues.push("checkpoint.todo must contain strings only");
+  }
   if (!isIsoDateTime2(updatedAt)) {
     issues.push("checkpoint.updated_at must be an ISO 8601 datetime");
   }
@@ -17004,6 +17026,7 @@ function inspectSessionCheckpoint(document3, currentBasis, allowedStages, requir
     lastCompleted,
     nextAction,
     blockers,
+    todo,
     updatedAt,
     basisSha256,
     currentBasisSha256: currentBasis,
@@ -17029,6 +17052,7 @@ function invalidCheckpoint(currentBasisSha256, issues) {
     lastCompleted: "",
     nextAction: "",
     blockers: [],
+    todo: [],
     updatedAt: "",
     basisSha256: "",
     currentBasisSha256,
@@ -17276,6 +17300,7 @@ async function updateIntakeCheckpoint(options) {
     lastCompleted: options.lastCompleted,
     nextAction: options.nextAction,
     blockers: options.blockers ?? [],
+    ...options.todo ? { todo: options.todo } : {},
     ...options.now ? { now: options.now } : {}
   };
   writeSessionCheckpoint(document3, checkpointInput, basis);
@@ -19621,9 +19646,9 @@ async function readGitTree2(root, commit) {
       stderr += chunk.slice(0, 64 * 1024 - stderr.length);
     }
   });
-  const completion = new Promise((resolve23, reject) => {
+  const completion = new Promise((resolve25, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve23(code2 ?? 1));
+    child.once("close", (code2) => resolve25(code2 ?? 1));
   });
   const entries = [];
   let pending = Buffer.alloc(0);
@@ -19813,9 +19838,9 @@ async function readPinnedBlob(root, objectId) {
   const child = spawn3("git", ["-C", root, "cat-file", "blob", objectId], {
     stdio: ["ignore", "pipe", "pipe"]
   });
-  const completion = new Promise((resolve23, reject) => {
+  const completion = new Promise((resolve25, reject) => {
     child.once("error", reject);
-    child.once("close", (code2) => resolve23(code2 ?? 1));
+    child.once("close", (code2) => resolve25(code2 ?? 1));
   });
   let content3 = "";
   child.stdout.setEncoding("utf8");
@@ -22365,6 +22390,7 @@ async function updateReconstructionCheckpoint(options) {
     lastCompleted: options.lastCompleted,
     nextAction: options.nextAction,
     blockers: options.blockers ?? [],
+    ...options.todo ? { todo: options.todo } : {},
     ...options.now ? { now: options.now } : {}
   };
   writeSessionCheckpoint(document3, checkpointInput, session.basis);
@@ -22843,12 +22869,12 @@ async function inspectProjectReconstructionReceipt(targetInput, id, lifecycle = 
       }
     }
   }
-  for (const text3 of inspectedTexts) {
-    if (containsLocalAbsolutePath(text3)) {
+  for (const text4 of inspectedTexts) {
+    if (containsLocalAbsolutePath(text4)) {
       issues.push("durable reconstruction records must not contain local absolute paths");
       break;
     }
-    if (binding?.repositories.some((entry) => text3.includes(entry.root))) {
+    if (binding?.repositories.some((entry) => text4.includes(entry.root))) {
       issues.push("durable reconstruction records leak a bound checkout path");
       break;
     }
@@ -24097,6 +24123,11 @@ async function updateBundleCheckpoint(options) {
     lastCompleted: options.lastCompleted ? requireCheckpointText(options.lastCompleted, "last completed action") : requireCheckpointText(previous2?.last_completed, "last completed action"),
     nextAction: requireCheckpointText(options.nextAction, "next action"),
     blockers: uniqueStrings5(options.blockers ?? []),
+    // Carried forward unless edited. A checkpoint written without mentioning the
+    // list must not silently empty it: every later checkpoint would then erase
+    // the small jobs an earlier one recorded, which is the exact loss the list
+    // exists to prevent.
+    todo: resolveTodo(stringArray7(previous2?.todo), options.todo),
     now
   });
   await writeFile8(path, serializeWorkSpec(document3), "utf8");
@@ -24192,9 +24223,9 @@ async function createWorkIssue(options) {
     throw new Error("Wayfinding issues resolve questions; they do not satisfy delivery acceptance IDs");
   }
   const knownAcceptance = new Set(acceptanceCriteria(change).map((entry) => entry.id));
-  for (const acceptance of satisfies) {
-    if (!knownAcceptance.has(acceptance)) {
-      throw new Error(`Unknown acceptance criterion: ${acceptance}`);
+  for (const acceptance2 of satisfies) {
+    if (!knownAcceptance.has(acceptance2)) {
+      throw new Error(`Unknown acceptance criterion: ${acceptance2}`);
     }
   }
   const knownRepositories = new Set(
@@ -24557,8 +24588,8 @@ async function finishWayfinder(bundleRoot, deliveryMode, now = /* @__PURE__ */ n
   if (wayfindingIssues.length === 0) {
     throw new Error("Wayfinder has no resolved route issues; use ordinary shaping instead");
   }
-  const acceptance = acceptanceCriteria(change);
-  if (acceptance.length === 0) {
+  const acceptance2 = acceptanceCriteria(change);
+  if (acceptance2.length === 0) {
     throw new Error("Synthesize the map into stable acceptance criteria before finishing Wayfinder");
   }
   const inspection = await inspectWorkBundle(bundleRoot, "review");
@@ -24726,9 +24757,9 @@ async function validateBundle(bundleRoot, change, parsedIssues) {
         issues.push(`${summary.id}: an issue cannot block itself`);
       }
     }
-    for (const acceptance of summary.satisfies) {
-      if (!criterionIds.has(acceptance)) {
-        issues.push(`${summary.id}: unknown acceptance criterion ${acceptance}`);
+    for (const acceptance2 of summary.satisfies) {
+      if (!criterionIds.has(acceptance2)) {
+        issues.push(`${summary.id}: unknown acceptance criterion ${acceptance2}`);
       }
     }
     for (const repository of summary.repositories) {
@@ -25225,6 +25256,7 @@ function normalizeActor(value) {
 }
 function writeCheckpoint(document3, input) {
   const blockers = uniqueStrings5(input.blockers ?? []);
+  const todo = uniqueStrings5(input.todo ?? []);
   if (input.status === "blocked" && blockers.length === 0) {
     throw new Error("A blocked checkpoint requires at least one blocker");
   }
@@ -25245,6 +25277,9 @@ function writeCheckpoint(document3, input) {
     last_completed: requireCheckpointText(input.lastCompleted, "last completed action"),
     next_action: requireCheckpointText(input.nextAction, "next action"),
     blockers,
+    // Small jobs that are neither the next action nor a blocker. They are the
+    // first thing a compaction loses and the last thing anyone writes down.
+    todo,
     updated_at: updatedAt,
     basis_sha256: ""
   };
@@ -25280,6 +25315,8 @@ function checkpointSummary(document3, path, owner, issue3, required) {
   const updatedAt = stringValue8(checkpoint?.updated_at).trim();
   const blockersValue = checkpoint?.blockers;
   const blockers = stringArray7(blockersValue).map((entry) => entry.trim()).filter(Boolean);
+  const todoValue = checkpoint?.todo;
+  const todo = stringArray7(todoValue).map((entry) => entry.trim()).filter(Boolean);
   if (!actor) issues.push(`${path}: checkpoint.actor is required`);
   if (!currentState) issues.push(`${path}: checkpoint.current_state is required`);
   if (!lastCompleted) issues.push(`${path}: checkpoint.last_completed is required`);
@@ -25289,6 +25326,9 @@ function checkpointSummary(document3, path, owner, issue3, required) {
   }
   if (!Array.isArray(blockersValue) || blockers.length !== blockersValue.length) {
     issues.push(`${path}: checkpoint.blockers must contain only non-empty strings`);
+  }
+  if (todoValue !== void 0 && (!Array.isArray(todoValue) || todo.length !== todoValue.length)) {
+    issues.push(`${path}: checkpoint.todo must contain only non-empty strings`);
   }
   if (statusValue === "blocked" && blockers.length === 0) {
     issues.push(`${path}: blocked checkpoint requires a blocker`);
@@ -25336,6 +25376,7 @@ function checkpointSummary(document3, path, owner, issue3, required) {
     lastCompleted,
     nextAction,
     blockers,
+    todo,
     updatedAt,
     valid: issues.length === 0,
     issues
@@ -26590,9 +26631,9 @@ function validateAreaIndex(path, body, errors, warnings) {
 }
 function validateRequiredSections(path, body, required, errors) {
   const headings = new Set(markdownHeadings(body).map((heading) => heading.toLowerCase()));
-  for (const section of required) {
-    if (!headings.has(section.toLowerCase())) {
-      errors.push({ path, message: `required section is missing: ${section}` });
+  for (const section2 of required) {
+    if (!headings.has(section2.toLowerCase())) {
+      errors.push({ path, message: `required section is missing: ${section2}` });
     }
   }
 }
@@ -26606,11 +26647,11 @@ function containsTechnicalIdentifiers(body) {
   return /\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/\S+|\b[A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|py|rs|go|java|kt|swift|sql|proto|json|ya?ml)\b|\b[a-z]+_[a-z0-9_]+\b/.test(body);
 }
 function validateLinkOnlySection(path, body, heading, errors) {
-  const section = markdownSection(body, heading);
-  if (section === void 0) {
+  const section2 = markdownSection(body, heading);
+  if (section2 === void 0) {
     return;
   }
-  const invalid = section.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).find(
+  const invalid = section2.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).find(
     (line) => !/^(?:[-*]\s+)?\[[^\]]+\]\([^)]+\)$/.test(line) && !/^(?:none|not applicable)\.?$/i.test(line)
   );
   if (invalid) {
@@ -26690,8 +26731,8 @@ function canonicalValue(value) {
   return value;
 }
 function decodeUtf8(content3) {
-  const text3 = new TextDecoder("utf-8", { fatal: true }).decode(content3);
-  return text3;
+  const text4 = new TextDecoder("utf-8", { fatal: true }).decode(content3);
+  return text4;
 }
 function portable2(path) {
   return path.split(sep7).join("/");
@@ -28015,20 +28056,20 @@ function parseArgumentsDefinition(argsDefinition, validate2 = true, all2) {
 }
 function dedent(str) {
   const lines = str.split(/\r?\n|\r/g);
-  let text3 = "";
+  let text4 = "";
   let indent = 0;
   for (const line of lines) {
-    if (text3 || line.trim()) {
-      if (!text3) {
-        text3 = line.trimStart();
-        indent = line.length - text3.length;
+    if (text4 || line.trim()) {
+      if (!text4) {
+        text4 = line.trimStart();
+        indent = line.length - text4.length;
       } else {
-        text3 += line.slice(indent);
+        text4 += line.slice(indent);
       }
-      text3 += "\n";
+      text4 += "\n";
     }
   }
-  return text3.trimEnd();
+  return text4.trimEnd();
 }
 function getDescription(description, short) {
   return short ? description.trim().split("\n", 1)[0].trim() : dedent(description);
@@ -28562,9 +28603,9 @@ var ansiRegexSource = (
   // deno-lint-ignore no-control-regex
   /\x1b\[(?:(?<_0>0)|(?<_22>1|2|22)|(?<_23>3|23)|(?<_24>4|24)|(?<_27>7|27)|(?<_28>8|28)|(?<_29>9|29)|(?<_39>30|31|32|33|34|35|36|37|38;2;\d+;\d+;\d+|38;5;\d+|39|90|91|92|93|94|95|96|97)|(?<_49>40|41|42|43|44|45|46|47|48;2;\d+;\d+;\d+|48;5;\d+|49|100|101|102|103|104|105|106|107))m/.source
 );
-function getUnclosedAnsiRuns(text3) {
+function getUnclosedAnsiRuns(text4) {
   const tokens = [];
-  for (const { groups } of text3.matchAll(new RegExp(ansiRegexSource, "g"))) {
+  for (const { groups } of text4.matchAll(new RegExp(ansiRegexSource, "g"))) {
     if (!groups) {
       continue;
     }
@@ -34658,9 +34699,9 @@ var Ora = class {
   #getFullSuffixText(suffixText = this.#suffixText, prefix = " ") {
     return this.#formatAffix(suffixText, prefix, true);
   }
-  #computeLineCountFrom(text3, columns) {
+  #computeLineCountFrom(text4, columns) {
     let count2 = 0;
-    for (const line of stripAnsi(text3).split("\n")) {
+    for (const line of stripAnsi(text4).split("\n")) {
       count2 += Math.max(1, Math.ceil(stringWidth(line) / columns));
     }
     return count2;
@@ -34745,9 +34786,9 @@ var Ora = class {
     this.#linesToClear = this.#computeLineCountFrom(frameContent, columns);
     return this;
   }
-  start(text3) {
-    if (text3) {
-      this.text = text3;
+  start(text4) {
+    if (text4) {
+      this.text = text4;
     }
     if (this.#isSilent) {
       return this;
@@ -34789,17 +34830,17 @@ var Ora = class {
     }
     return this;
   }
-  succeed(text3) {
-    return this.stopAndPersist({ symbol: browser_symbols_exports.success, text: text3 });
+  succeed(text4) {
+    return this.stopAndPersist({ symbol: browser_symbols_exports.success, text: text4 });
   }
-  fail(text3) {
-    return this.stopAndPersist({ symbol: browser_symbols_exports.error, text: text3 });
+  fail(text4) {
+    return this.stopAndPersist({ symbol: browser_symbols_exports.error, text: text4 });
   }
-  warn(text3) {
-    return this.stopAndPersist({ symbol: browser_symbols_exports.warning, text: text3 });
+  warn(text4) {
+    return this.stopAndPersist({ symbol: browser_symbols_exports.warning, text: text4 });
   }
-  info(text3) {
-    return this.stopAndPersist({ symbol: browser_symbols_exports.info, text: text3 });
+  info(text4) {
+    return this.stopAndPersist({ symbol: browser_symbols_exports.info, text: text4 });
   }
   stopAndPersist(options = {}) {
     if (this.#isSilent) {
@@ -34808,9 +34849,9 @@ var Ora = class {
     const prefixText = options.prefixText ?? this.#prefixText;
     const fullPrefixText = this.#getFullPrefixText(prefixText, " ");
     const symbolText = options.symbol ?? " ";
-    const text3 = options.text ?? this.text;
+    const text4 = options.text ?? this.text;
     const separatorText = symbolText ? " " : "";
-    const fullText = typeof text3 === "string" ? separatorText + text3 : "";
+    const fullText = typeof text4 === "string" ? separatorText + text4 : "";
     const suffixText = options.suffixText ?? this.#suffixText;
     const fullSuffixText = this.#getFullSuffixText(suffixText, " ");
     const textToWrite = fullPrefixText + symbolText + fullText + fullSuffixText + "\n";
@@ -34825,7 +34866,7 @@ function ora(options) {
 
 // src/cli.ts
 import { createInterface } from "node:readline/promises";
-import { resolve as resolve22 } from "node:path";
+import { resolve as resolve24 } from "node:path";
 
 // src/applier.ts
 init_planner();
@@ -35206,9 +35247,9 @@ function parsePendingCapture(content3, path) {
 async function normalizeDestinations(knowledgeRoot, inputs) {
   const destinations = [...new Set(inputs.map((input) => normalizeDestination(input)))];
   for (const destination of destinations) {
-    if (!destination.startsWith("knowledge/") && !destination.startsWith("changes/active/")) {
+    if (!destination.startsWith("knowledge/") && !destination.startsWith("changes/active/") && !destination.startsWith("trajectories/")) {
       throw new Error(
-        `Capture destination must be under knowledge/ or changes/active/: ${destination}`
+        "Capture destination must be under knowledge/, trajectories/ or changes/active/: " + destination
       );
     }
     if (!destination.endsWith(".md")) {
@@ -37377,6 +37418,273 @@ async function exists3(path) {
   }
 }
 
+// src/debts.ts
+init_config();
+import { readdir as readdir14, readFile as readFile21, writeFile as writeFile13 } from "node:fs/promises";
+import { join as join19, resolve as resolve20 } from "node:path";
+init_work_spec();
+async function collectDebts(targetInput) {
+  const target = resolve20(targetInput);
+  const compilation = await compileTrajectories(target);
+  const active = await bundleIds(join19(target, "changes/active"));
+  const archived = await bundleIds(join19(target, "changes/archive"));
+  const debts = [];
+  for (const record2 of compilation.graph.trajectories) {
+    const root = rootOf(record2, compilation.graph);
+    record2.gaps.forEach((gap, index2) => {
+      debts.push({
+        trajectory: record2.id,
+        subject: record2.subject,
+        area: record2.area,
+        position: index2 + 1,
+        kind: gap.kind,
+        statement: gap.statement,
+        status: gap.status,
+        work: gap.work,
+        workState: workState(gap.work, active, archived),
+        vision: record2.vision,
+        root
+      });
+    });
+  }
+  const rank = { open: 0, "to-close": 1, deferred: 2 };
+  debts.sort(
+    (left, right) => rank[left.status] - rank[right.status] || left.root.localeCompare(right.root) || left.trajectory.localeCompare(right.trajectory) || left.position - right.position
+  );
+  return {
+    debts,
+    settled: debts.filter((debt) => debt.workState === "archived"),
+    directionless: debts.filter((debt) => !debt.vision),
+    dangling: debts.filter((debt) => debt.workState === "missing")
+  };
+}
+async function scheduleDebt(options) {
+  const target = resolve20(options.target);
+  const compilation = await compileTrajectories(target);
+  if (compilation.errors.length > 0) {
+    throw new Error(
+      `Cannot schedule while ${compilation.errors.length} trajectory error(s) remain; run wfctl knowledge trajectory check`
+    );
+  }
+  const record2 = compilation.graph.trajectories.find(
+    (entry) => entry.id === options.trajectory
+  );
+  if (!record2) {
+    throw new Error(`No trajectory named ${options.trajectory}`);
+  }
+  const work = options.work.trim().replace(/^changes\/active\//, "").replace(/\/$/, "");
+  const active = await bundleIds(join19(target, "changes/active"));
+  if (!active.has(work)) {
+    const archived = await bundleIds(join19(target, "changes/archive"));
+    throw new Error(
+      archived.has(work) ? `${work} is already archived; a debt cannot be scheduled against finished work` : `No open change bundle named ${work}. Open one with wfctl work start, then schedule the debt against it.`
+    );
+  }
+  const index2 = resolveGapIndex(record2, options.gap);
+  const gap = record2.gaps[index2];
+  if (gap.status === "to-close" && gap.work && gap.work !== work) {
+    throw new Error(
+      `That debt is already being closed by ${gap.work}. Two bundles closing one debt means neither owns it; retire one before scheduling the other.`
+    );
+  }
+  const absolute = join19(target, record2.path);
+  const document3 = parseWorkSpec(await readFile21(absolute, "utf8"));
+  const gaps = document3.metadata.gaps;
+  if (!Array.isArray(gaps) || !isRecord6(gaps[index2])) {
+    throw new Error(`${record2.path}: gaps no longer match the compiled record; re-run check`);
+  }
+  const previousStatus = gap.status;
+  gaps[index2] = { ...gaps[index2], status: "to-close", work };
+  await writeFile13(absolute, serializeWorkSpec(document3), "utf8");
+  return {
+    trajectory: record2.id,
+    path: record2.path,
+    statement: gap.statement,
+    work,
+    previousStatus
+  };
+}
+function resolveGapIndex(record2, selector) {
+  const trimmed = selector.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const position2 = Number(trimmed);
+    if (position2 < 1 || position2 > record2.gaps.length) {
+      throw new Error(
+        `${record2.subject} has ${record2.gaps.length} debt(s); there is no debt ${position2}`
+      );
+    }
+    return position2 - 1;
+  }
+  const needle = trimmed.toLowerCase();
+  const matches = record2.gaps.map((gap, index2) => ({ gap, index: index2 })).filter((entry) => entry.gap.statement.toLowerCase().includes(needle));
+  if (matches.length === 0) {
+    throw new Error(`No debt of ${record2.subject} says anything matching "${trimmed}"`);
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `"${trimmed}" matches ${matches.length} debts of ${record2.subject}; name it by position instead`
+    );
+  }
+  return matches[0].index;
+}
+function workState(work, active, archived) {
+  if (!work) {
+    return "unscheduled";
+  }
+  const id = work.replace(/^changes\/active\//, "").replace(/\/$/, "");
+  if (active.has(id)) {
+    return "active";
+  }
+  return archived.has(id) ? "archived" : "missing";
+}
+function rootOf(record2, graph) {
+  const seen = /* @__PURE__ */ new Set();
+  let current = record2.id;
+  while (!seen.has(current)) {
+    seen.add(current);
+    const parent = graph.edges.find(
+      (edge) => edge.kind === "part-of" && edge.primary && edge.source === current
+    );
+    if (!parent) {
+      return current;
+    }
+    current = parent.target;
+  }
+  return current;
+}
+async function bundleIds(root) {
+  try {
+    const entries = await readdir14(root, { withFileTypes: true });
+    return new Set(
+      entries.filter((entry) => entry.isDirectory() && entry.name !== "captures").map((entry) => entry.name)
+    );
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return /* @__PURE__ */ new Set();
+    }
+    throw error2;
+  }
+}
+function isRecord6(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// src/work-ask.ts
+init_assets();
+init_work_spec();
+import { readFile as readFile22 } from "node:fs/promises";
+import { join as join20, resolve as resolve21 } from "node:path";
+async function readWorkGate(targetInput, id, options = {}) {
+  const stage = options.stage ?? "framing";
+  const target = resolve21(targetInput);
+  const path = join20(target, "changes/active", id, "change.md");
+  const document3 = parseWorkSpec(await readFile22(path, "utf8"));
+  const metadata = document3.metadata;
+  const review = isRecord2(metadata.maintainer_review) ? metadata.maintainer_review[stage] : void 0;
+  const boilerplate = await templateLines(options.distributionRoot);
+  return {
+    id,
+    title: text3(metadata.title) || id,
+    stage,
+    approved: isRecord2(review) && text3(review.status) === "approved",
+    doing: section(document3.body, "In", boilerplate),
+    notDoing: section(document3.body, "Out", boilerplate),
+    doneWhen: acceptance(metadata.acceptance),
+    order: section(document3.body, "Summary", boilerplate).join(" ").trim()
+  };
+}
+async function templateLines(distributionRoot) {
+  try {
+    const root = distributionRoot ?? await findDistributionRoot();
+    const template = await readFile22(
+      join20(root, "skills/manage-project-work/assets/work-spec.md"),
+      "utf8"
+    );
+    return new Set(
+      template.split(/\r?\n/).map((line) => line.replace(/^\s*[-*]\s+/, "").trim()).filter(Boolean)
+    );
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function renderWorkGate(gate) {
+  const lines = [];
+  lines.push(`# ${gate.title}`, "");
+  if (gate.approved) {
+    lines.push(`This framing is already approved. Nothing here is waiting on you.`, "");
+  }
+  if (gate.order) {
+    lines.push(gate.order, "");
+  }
+  lines.push("## What this does", "");
+  lines.push(...bullets(gate.doing, "The record does not say what is in scope."));
+  lines.push("", "## What this deliberately does not do", "");
+  lines.push(
+    ...bullets(
+      gate.notDoing,
+      "The record excludes nothing. A framing that excludes nothing has not been bounded, and approving it approves whatever the work turns out to touch."
+    )
+  );
+  lines.push("", "## What will make it finished", "");
+  lines.push(
+    ...bullets(
+      gate.doneWhen,
+      "The record sets no acceptance criteria, so there is no stated way to tell when this is done."
+    )
+  );
+  lines.push("");
+  lines.push(
+    "Approving this fixes the boundary: this gets touched, that does not, and here is how",
+    "we will know it is finished. It is not approval of an implementation \u2014 there is none",
+    "yet \u2014 and not agreement with how any of it is worded.",
+    "",
+    "Now is when changing the scope is cheap. After the work is cut into tasks it is not.",
+    ""
+  );
+  return lines.join("\n");
+}
+function bullets(items, whenEmpty) {
+  return items.length > 0 ? items.map((item) => `- ${item}`) : [whenEmpty];
+}
+function acceptance(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord2).map((entry) => text3(entry.criterion)).filter(Boolean);
+}
+function section(body, heading, boilerplate) {
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex(
+    (line) => new RegExp(`^#{1,6}\\s+${escape(heading)}\\s*$`, "i").test(line)
+  );
+  if (start < 0) {
+    return [];
+  }
+  const depth = (lines[start].match(/^#+/) ?? ["#"])[0].length;
+  const collected = [];
+  for (const line of lines.slice(start + 1)) {
+    const level2 = line.match(/^(#{1,6})\s/);
+    if (level2 && level2[1].length <= depth) {
+      break;
+    }
+    const trimmed = line.replace(/^\s*[-*]\s+/, "").trim();
+    if (!trimmed || trimmed.startsWith("#") || /^\{\{.*\}\}$/.test(trimmed)) {
+      continue;
+    }
+    if (boilerplate.has(trimmed)) {
+      continue;
+    }
+    collected.push(trimmed);
+  }
+  return collected;
+}
+function escape(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function text3(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 // src/cli.ts
 init_knowledge();
 init_knowledge_graph();
@@ -37391,29 +37699,30 @@ import { constants as constants7 } from "node:fs";
 import {
   access as access8,
   mkdir as mkdir14,
-  readFile as readFile22,
-  readdir as readdir14,
+  readFile as readFile24,
+  readdir as readdir15,
   realpath as realpath5,
   rename as rename10,
   rm as rm4,
-  writeFile as writeFile14
+  writeFile as writeFile15
 } from "node:fs/promises";
-import { dirname as dirname15, join as join20, resolve as resolve20, sep as sep9 } from "node:path";
+import { dirname as dirname15, join as join22, resolve as resolve22, sep as sep9 } from "node:path";
 
 // src/approval.ts
 init_config();
 init_work_spec();
 import { createHash as createHash12 } from "node:crypto";
-import { mkdir as mkdir13, readFile as readFile21, writeFile as writeFile13 } from "node:fs/promises";
-import { dirname as dirname14, join as join19 } from "node:path";
+import { mkdir as mkdir13, readFile as readFile23, writeFile as writeFile14 } from "node:fs/promises";
+import { dirname as dirname14, join as join21 } from "node:path";
 function approvalReceiptDigest(input) {
-  return createHash12("sha256").update(
-    [input.id, input.stage, input.by, input.at, input.method].join("\0"),
-    "utf8"
-  ).digest("hex");
+  const parts = [input.id, input.stage, input.by, input.at, input.method];
+  if (input.attested) {
+    parts.push(input.attested);
+  }
+  return createHash12("sha256").update(parts.join("\0"), "utf8").digest("hex");
 }
 function approvalRecordPath(knowledgeRoot, id, stage) {
-  return join19(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
+  return join21(knowledgeRoot, ".workflow/current/approvals", id, `${stage}.json`);
 }
 async function recordApproval(options) {
   if (!options.by.startsWith("human:") || options.by.trim().length <= "human:".length) {
@@ -37421,6 +37730,17 @@ async function recordApproval(options) {
   }
   if (!APPROVAL_METHODS.includes(options.method)) {
     throw new Error(`Unsupported approval method: ${options.method}`);
+  }
+  const attested = (options.attested ?? "").trim();
+  if (ATTESTED_APPROVAL_METHODS.has(options.method) && !attested) {
+    throw new Error(
+      "An attested approval requires the maintainer's own answer; without it there is nothing distinguishing a recorded decision from an invented one"
+    );
+  }
+  if (!ATTESTED_APPROVAL_METHODS.has(options.method) && attested) {
+    throw new Error(
+      `A ${options.method} approval carries its own proof; do not also record an attestation`
+    );
   }
   const at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
   const record2 = {
@@ -37431,24 +37751,26 @@ async function recordApproval(options) {
     at,
     method: options.method,
     note: (options.note ?? "").trim(),
+    ...attested ? { attested, session: (options.session ?? "").trim() } : {},
     receipt: approvalReceiptDigest({
       id: options.id,
       stage: options.stage,
       by: options.by.trim(),
       at,
-      method: options.method
+      method: options.method,
+      ...attested ? { attested } : {}
     })
   };
   const path = approvalRecordPath(options.knowledgeRoot, options.id, options.stage);
   await mkdir13(dirname14(path), { recursive: true });
-  await writeFile13(path, `${JSON.stringify(record2, null, 2)}
+  await writeFile14(path, `${JSON.stringify(record2, null, 2)}
 `, "utf8");
   return record2;
 }
 async function readApproval(knowledgeRoot, id, stage) {
   try {
     const raw = JSON.parse(
-      await readFile21(approvalRecordPath(knowledgeRoot, id, stage), "utf8")
+      await readFile23(approvalRecordPath(knowledgeRoot, id, stage), "utf8")
     );
     return isApprovalRecord(raw) ? raw : void 0;
   } catch (error2) {
@@ -37494,9 +37816,13 @@ async function approvalIssues(knowledgeRoot, id, document3) {
       stage,
       by: record2.by,
       at: record2.at,
-      method: record2.method
+      method: record2.method,
+      ...record2.attested ? { attested: record2.attested } : {}
     })) {
       issues.push(`${prefix}: the recorded approval digest is inconsistent`);
+    }
+    if (ATTESTED_APPROVAL_METHODS.has(record2.method) && !record2.attested?.trim()) {
+      issues.push(`${prefix}: an attested approval carries no record of what was said`);
     }
   }
   return issues;
@@ -37506,7 +37832,7 @@ function isApprovalRecord(value) {
     return false;
   }
   const record2 = value;
-  return record2.schemaVersion === 1 && typeof record2.id === "string" && (record2.stage === "framing" || record2.stage === "completion") && typeof record2.by === "string" && typeof record2.at === "string" && APPROVAL_METHODS.includes(record2.method) && typeof record2.note === "string" && typeof record2.receipt === "string";
+  return record2.schemaVersion === 1 && typeof record2.id === "string" && (record2.stage === "framing" || record2.stage === "completion") && typeof record2.by === "string" && typeof record2.at === "string" && APPROVAL_METHODS.includes(record2.method) && typeof record2.note === "string" && (record2.attested === void 0 || typeof record2.attested === "string") && (record2.session === void 0 || typeof record2.session === "string") && typeof record2.receipt === "string";
 }
 
 // src/work.ts
@@ -37518,7 +37844,7 @@ init_repository_registry();
 init_work_spec();
 init_work_bundle();
 async function beginWork(options) {
-  const target = await realpath5(resolve20(options.target));
+  const target = await realpath5(resolve22(options.target));
   const config = await readConfig(target);
   let knowledgeRoot;
   let codeRoots;
@@ -37564,17 +37890,17 @@ async function beginWork(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const date = now.toISOString().slice(0, 10);
   const id = await uniqueWorkId(
-    join20(knowledgeRoot, "changes/active"),
+    join22(knowledgeRoot, "changes/active"),
     `${date}-${normalizeSlug5(options.slug)}`
   );
   const distributionRoot = options.distributionRoot ?? await findDistributionRoot();
-  const template = parseWorkSpec(await readFile22(
-    join20(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
+  const template = parseWorkSpec(await readFile24(
+    join22(distributionRoot, "skills/manage-project-work/assets/work-spec.md"),
     "utf8"
   ));
   const createdAt = now.toISOString();
-  const activeDirectory = join20(knowledgeRoot, "changes/active", id);
-  const specPath = join20(activeDirectory, "change.md");
+  const activeDirectory = join22(knowledgeRoot, "changes/active", id);
+  const specPath = join22(activeDirectory, "change.md");
   const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
   const pointerPaths = boundRepositories.map(
     (entry) => leafPointerPath(entry.root, id)
@@ -37625,7 +37951,7 @@ async function beginWork(options) {
   };
   try {
     await mkdir14(activeDirectory, { recursive: false });
-    await writeFile14(specPath, serializeWorkSpec(template), {
+    await writeFile15(specPath, serializeWorkSpec(template), {
       encoding: "utf8",
       flag: "wx"
     });
@@ -37656,7 +37982,7 @@ async function beginWork(options) {
 }
 async function verifyWork(targetInput, id) {
   const context = await requireWorkContext(targetInput, id);
-  const document3 = parseWorkSpec(await readFile22(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile24(context.specPath, "utf8"));
   const issues = completionIssues(document3, false);
   issues.push(...await bundleCompletionIssues(dirname15(context.specPath), document3));
   issues.push(...repositoryVerificationIssues(document3, context.currentSources));
@@ -37676,9 +38002,11 @@ async function approveWork(options) {
     by: options.by,
     method: options.method,
     ...options.note ? { note: options.note } : {},
+    ...options.attested ? { attested: options.attested } : {},
+    ...options.session ? { session: options.session } : {},
     ...options.now ? { now: options.now } : {}
   });
-  const document3 = parseWorkSpec(await readFile22(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile24(context.specPath, "utf8"));
   const review = record_(document3.metadata.maintainer_review) ?? {};
   const previous2 = record_(review[options.stage]) ?? {};
   review[options.stage] = {
@@ -37688,11 +38016,16 @@ async function approveWork(options) {
     at: record2.at,
     method: record2.method,
     receipt: record2.receipt,
+    // The maintainer's own words live in the record they approved, not only in
+    // an ignored runtime file, so a reader months later can weigh the answer
+    // against the framing without reconstructing the session.
+    ...record2.attested ? { attested: record2.attested } : {},
+    ...record2.session ? { session: record2.session } : {},
     notes: uniqueNotes(previous2.notes, record2.note)
   };
   document3.metadata.maintainer_review = review;
   document3.metadata.updated_at = record2.at;
-  await writeFile14(context.specPath, serializeWorkSpec(document3), "utf8");
+  await writeFile15(context.specPath, serializeWorkSpec(document3), "utf8");
   return {
     id: context.id,
     stage: options.stage,
@@ -37713,7 +38046,7 @@ function uniqueNotes(existing, note) {
 async function closeWork(options) {
   const context = await requireWorkContext(options.target, options.id);
   const activeDirectory = dirname15(context.specPath);
-  const document3 = parseWorkSpec(await readFile22(context.specPath, "utf8"));
+  const document3 = parseWorkSpec(await readFile24(context.specPath, "utf8"));
   if (options.outcome === "completed") {
     const issues = [
       ...completionIssues(document3, true),
@@ -37737,7 +38070,7 @@ async function closeWork(options) {
       }
     }
   }
-  const archivePath = join20(context.knowledgeRoot, "changes/archive", options.id);
+  const archivePath = join22(context.knowledgeRoot, "changes/archive", options.id);
   await assertAbsent2(archivePath, "archive");
   const now = options.now ?? /* @__PURE__ */ new Date();
   document3.metadata.status = options.outcome;
@@ -37758,8 +38091,8 @@ async function closeWork(options) {
   await mkdir14(dirname15(archivePath), { recursive: true });
   await rename10(activeDirectory, archivePath);
   try {
-    await writeFile14(
-      join20(archivePath, "change.md"),
+    await writeFile15(
+      join22(archivePath, "change.md"),
       serializeWorkSpec(document3),
       "utf8"
     );
@@ -37794,6 +38127,7 @@ async function updateWorkCheckpoint(options) {
     ...options.lastCompleted ? { lastCompleted: options.lastCompleted } : {},
     nextAction: options.nextAction,
     blockers: options.blockers ?? [],
+    ...options.todo ? { todo: options.todo } : {},
     ...options.now ? { now: options.now } : {}
   });
 }
@@ -37815,7 +38149,7 @@ async function createWorkIssue2(input) {
   });
 }
 async function claimWorkIssue2(input) {
-  const target = await realpath5(resolve20(input.target));
+  const target = await realpath5(resolve22(input.target));
   const config = await readConfig(target);
   const context = await requireWorkContext(target, input.id);
   const source = config.profile === "leaf" ? context.currentSources.find((entry) => entry.root === target) : void 0;
@@ -37829,7 +38163,7 @@ async function claimWorkIssue2(input) {
   });
 }
 async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath5(resolve20(target));
+  const resolvedTarget = await realpath5(resolve22(target));
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await releaseWorkIssue(
@@ -37840,7 +38174,7 @@ async function releaseWorkIssue2(target, id, issueId, now = /* @__PURE__ */ new 
   );
 }
 async function completeWorkIssue(input) {
-  const target = await realpath5(resolve20(input.target));
+  const target = await realpath5(resolve22(input.target));
   const context = await requireWorkContext(target, input.id);
   const claimContext = await claimContextForTarget(target, context);
   return await resolveWorkIssue({
@@ -37853,7 +38187,7 @@ async function completeWorkIssue(input) {
   });
 }
 async function dropWorkIssue2(target, id, issueId, reason, now = /* @__PURE__ */ new Date()) {
-  const resolvedTarget = await realpath5(resolve20(target));
+  const resolvedTarget = await realpath5(resolve22(target));
   const context = await requireWorkContext(resolvedTarget, id);
   const claimContext = await claimContextForTarget(resolvedTarget, context);
   return await dropWorkIssue(
@@ -37883,7 +38217,7 @@ async function finishWayfinder2(target, id, mode, now = /* @__PURE__ */ new Date
   return await finishWayfinder(dirname15(context.specPath), mode, now);
 }
 async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
-  const target = await realpath5(resolve20(targetInput));
+  const target = await realpath5(resolve22(targetInput));
   const config = await readConfig(target);
   if (config.profile !== "leaf") {
     throw new Error("Work rebind must target the replacement leaf checkout");
@@ -37902,8 +38236,8 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   }
   const previous2 = binding.repositories[index2];
   binding.repositories[index2] = { root: target, source: current };
-  const specPath = resolve20(knowledgeRoot, binding.spec);
-  const document3 = parseWorkSpec(await readFile22(specPath, "utf8"));
+  const specPath = resolve22(knowledgeRoot, binding.spec);
+  const document3 = parseWorkSpec(await readFile24(specPath, "utf8"));
   const repositories = recordArray7(document3.metadata.repositories);
   const durableIndex = repositories.findIndex(
     (entry) => entry.repository === current.repository
@@ -37927,7 +38261,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   ];
   const previousPointer = leafPointerPath(previous2.root, id);
   const currentPointer = leafPointerPath(target, id);
-  await writeFile14(specPath, serializeWorkSpec(document3), "utf8");
+  await writeFile15(specPath, serializeWorkSpec(document3), "utf8");
   await writeBinding(bindingPath, binding, true);
   await writeBinding(currentPointer, binding, true);
   if (previousPointer !== currentPointer) {
@@ -37943,9 +38277,9 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   };
 }
 async function workStatus(targetInput, id) {
-  const target = await realpath5(resolve20(targetInput));
+  const target = await realpath5(resolve22(targetInput));
   const config = await readConfig(target);
-  const pointerRoot = config.profile === "knowledge" ? join20(target, ".workflow/current/work") : join20(target, ".workflow/current");
+  const pointerRoot = config.profile === "knowledge" ? join22(target, ".workflow/current/work") : join22(target, ".workflow/current");
   const ids = id ? [id] : await pointerIds(pointerRoot);
   const results = [];
   for (const workId of ids) {
@@ -38032,14 +38366,14 @@ async function inspectWorkContext(target, profile, id) {
       issues.push(`${entry.source.repository}: ${errorMessage(error2)}`);
     }
   }
-  const specPath = resolve20(knowledgeRoot, binding.spec);
-  const activeRoot = join20(knowledgeRoot, "changes/active");
+  const specPath = resolve22(knowledgeRoot, binding.spec);
+  const activeRoot = join22(knowledgeRoot, "changes/active");
   let title = id;
   if (!inside(activeRoot, specPath)) {
     issues.push(`spec path is outside the active work root: ${specPath}`);
   }
   try {
-    const document3 = parseWorkSpec(await readFile22(specPath, "utf8"));
+    const document3 = parseWorkSpec(await readFile24(specPath, "utf8"));
     title = typeof document3.metadata.title === "string" ? document3.metadata.title.trim() || id : id;
     if (document3.metadata.scope !== binding.scope) {
       issues.push("spec scope does not match the local binding");
@@ -38056,7 +38390,7 @@ async function inspectWorkContext(target, profile, id) {
         issues.push(`${entry.source.repository}: durable repository binding is inconsistent`);
       }
     }
-    const serialized = await readFile22(specPath, "utf8");
+    const serialized = await readFile24(specPath, "utf8");
     for (const entry of binding.repositories) {
       if (serialized.includes(entry.root)) {
         issues.push("durable work record leaks a local checkout path");
@@ -38141,15 +38475,15 @@ function durableRepository(source) {
 }
 async function assertKnowledgeRoot(root) {
   try {
-    await access8(join20(root, "knowledge/index.md"), constants7.R_OK);
+    await access8(join22(root, "knowledge/index.md"), constants7.R_OK);
   } catch {
     throw new Error(`Knowledge repository is not initialized: ${root}`);
   }
 }
 async function assertKnowledgeReference(root, reference) {
   const normalized = reference.replace(/^\/+/, "");
-  const absolute = resolve20(root, normalized);
-  const knowledgeRoot = join20(root, "knowledge");
+  const absolute = resolve22(root, normalized);
+  const knowledgeRoot = join22(root, "knowledge");
   if (!inside(knowledgeRoot, absolute) || !absolute.toLowerCase().endsWith(".md")) {
     throw new Error("Knowledge reference must identify a Markdown file under knowledge/");
   }
@@ -38161,49 +38495,49 @@ async function assertKnowledgeReference(root, reference) {
 }
 function knowledgeBindingPath(knowledgeRoot, id) {
   assertId(id);
-  return join20(knowledgeRoot, ".workflow/current/work", `${id}.json`);
+  return join22(knowledgeRoot, ".workflow/current/work", `${id}.json`);
 }
 function leafPointerPath(root, id) {
   assertId(id);
-  return join20(root, ".workflow/current", `${id}.json`);
+  return join22(root, ".workflow/current", `${id}.json`);
 }
 async function writeBinding(path, binding, replace = false) {
   await mkdir14(dirname15(path), { recursive: true });
-  await writeFile14(path, `${JSON.stringify(binding, null, 2)}
+  await writeFile15(path, `${JSON.stringify(binding, null, 2)}
 `, {
     encoding: "utf8",
     flag: replace ? "w" : "wx"
   });
 }
 async function readBinding2(path) {
-  const raw = JSON.parse(await readFile22(path, "utf8"));
-  if (!isRecord6(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
-    (entry) => isRecord6(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
+  const raw = JSON.parse(await readFile24(path, "utf8"));
+  if (!isRecord7(raw) || raw.schemaVersion !== 4 || typeof raw.id !== "string" || typeof raw.knowledgeRoot !== "string" || typeof raw.spec !== "string" || typeof raw.createdAt !== "string" || !["project", "leaf", "multi-repo"].includes(String(raw.scope)) || !Array.isArray(raw.repositories) || !raw.repositories.every(
+    (entry) => isRecord7(entry) && typeof entry.root === "string" && isRepositoryMetadata(entry.source)
   )) {
     throw new Error(`Unsupported or malformed active work binding: ${path}`);
   }
   return raw;
 }
 function isRepositoryMetadata(value) {
-  return isRecord6(value) && typeof value.repository === "string" && typeof value.root === "string" && typeof value.checkout === "string" && typeof value.branch === "string" && typeof value.commit === "string" && typeof value.remote === "string" && typeof value.dirty === "boolean" && typeof value.worktree === "boolean" && typeof value.worktreeId === "string";
+  return isRecord7(value) && typeof value.repository === "string" && typeof value.root === "string" && typeof value.checkout === "string" && typeof value.branch === "string" && typeof value.commit === "string" && typeof value.remote === "string" && typeof value.dirty === "boolean" && typeof value.worktree === "boolean" && typeof value.worktreeId === "string";
 }
-function isRecord6(value) {
+function isRecord7(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function pointerIds(root) {
   try {
     const ids = [];
-    for (const entry of await readdir14(root, { withFileTypes: true })) {
+    for (const entry of await readdir15(root, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.endsWith(".json")) {
         continue;
       }
       let parsed;
       try {
-        parsed = JSON.parse(await readFile22(join20(root, entry.name), "utf8"));
+        parsed = JSON.parse(await readFile24(join22(root, entry.name), "utf8"));
       } catch {
         continue;
       }
-      if (!isRecord6(parsed) || parsed.schemaVersion === void 0 || typeof parsed.spec !== "string" || typeof parsed.knowledgeRoot !== "string") {
+      if (!isRecord7(parsed) || parsed.schemaVersion === void 0 || typeof parsed.spec !== "string" || typeof parsed.knowledgeRoot !== "string") {
         continue;
       }
       ids.push(entry.name.slice(0, -5));
@@ -38221,8 +38555,8 @@ function relativeSpec(knowledgeRoot, specPath) {
   return value.split(sep9).join("/");
 }
 function inside(parent, child) {
-  const boundary = `${resolve20(parent)}${sep9}`;
-  return resolve20(child).startsWith(boundary);
+  const boundary = `${resolve22(parent)}${sep9}`;
+  return resolve22(child).startsWith(boundary);
 }
 function record(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : void 0;
@@ -38240,7 +38574,7 @@ async function uniqueWorkId(activeRoot, base) {
   for (let index2 = 1; index2 < 1e3; index2 += 1) {
     const candidate = index2 === 1 ? base : `${base}-${index2}`;
     try {
-      await access8(join20(activeRoot, candidate), constants7.F_OK);
+      await access8(join22(activeRoot, candidate), constants7.F_OK);
     } catch (error2) {
       if (isMissingFileError(error2)) {
         return candidate;
@@ -38288,11 +38622,11 @@ init_assets();
 
 // src/state.ts
 init_config();
-import { resolve as resolve21 } from "node:path";
+import { resolve as resolve23 } from "node:path";
 
 // src/state-collectors.ts
-import { readdir as readdir15, readFile as readFile23, stat as stat3 } from "node:fs/promises";
-import { join as join21 } from "node:path";
+import { readdir as readdir16, readFile as readFile25, stat as stat3 } from "node:fs/promises";
+import { join as join23 } from "node:path";
 init_config();
 init_dependencies();
 init_knowledge_session();
@@ -38415,7 +38749,7 @@ function corpusCollector() {
     id: "corpus",
     profiles: ["knowledge"],
     async collect(context) {
-      const graphPath = join21(context.knowledgeRoot, ".workflow/current/knowledge-graph.json");
+      const graphPath = join23(context.knowledgeRoot, ".workflow/current/knowledge-graph.json");
       const graph = await readJson(graphPath);
       if (!graph) {
         return [{
@@ -38471,7 +38805,7 @@ function corpusCollector() {
         });
       }
       const compiledAt = stringValue11(graph.generatedAt);
-      const newest = await newestModification(join21(context.knowledgeRoot, "knowledge"));
+      const newest = await newestModification(join23(context.knowledgeRoot, "knowledge"));
       if (compiledAt && newest && newest > Date.parse(compiledAt)) {
         signals2.push({
           id: "corpus.stale-compilation",
@@ -38516,7 +38850,7 @@ function reconstructionCollector() {
     id: "reconstruction",
     profiles: ["knowledge"],
     async collect(context) {
-      const root = join21(context.knowledgeRoot, "reconstruction/active");
+      const root = join23(context.knowledgeRoot, "reconstruction/active");
       const signals2 = [];
       for (const entry of await activeRecords(root)) {
         const metadata = entry.document.metadata;
@@ -38527,7 +38861,7 @@ function reconstructionCollector() {
           if (!relative9) {
             continue;
           }
-          const ledger = await readJson(join21(entry.root, relative9));
+          const ledger = await readJson(join23(entry.root, relative9));
           const manifest = recordValue11(ledger?.manifest);
           const graphify = recordValue11(ledger?.graphify);
           const files = Array.isArray(manifest?.files) ? manifest.files : [];
@@ -38595,7 +38929,7 @@ function intakeCollector() {
     id: "intake",
     profiles: ["knowledge"],
     async collect(context) {
-      const root = join21(context.knowledgeRoot, "intake/cases/active");
+      const root = join23(context.knowledgeRoot, "intake/cases/active");
       const signals2 = [];
       for (const entry of await activeRecords(root)) {
         const metadata = entry.document.metadata;
@@ -38669,7 +39003,7 @@ function rawCollector() {
     id: "raw",
     profiles: ["knowledge"],
     async collect(context) {
-      const files = await countFiles(join21(context.knowledgeRoot, "raw"));
+      const files = await countFiles(join23(context.knowledgeRoot, "raw"));
       if (files === 0) {
         return [{
           id: "raw.empty",
@@ -38679,7 +39013,7 @@ function rawCollector() {
           blocks: ["process-raw-intake"]
         }];
       }
-      const cases = (await activeRecords(join21(context.knowledgeRoot, "intake/cases/active"))).length + await directoryCount(join21(context.knowledgeRoot, "intake/cases/archive"));
+      const cases = (await activeRecords(join23(context.knowledgeRoot, "intake/cases/active"))).length + await directoryCount(join23(context.knowledgeRoot, "intake/cases/archive"));
       return [{
         id: cases === 0 ? "raw.unprocessed" : "raw.present",
         domain: "raw",
@@ -38695,16 +39029,22 @@ function workCollector() {
     id: "work",
     profiles: ["knowledge", "leaf"],
     async collect(context) {
-      const root = join21(context.knowledgeRoot, "changes/active");
+      const root = join23(context.knowledgeRoot, "changes/active");
       const signals2 = [];
       for (const entry of await activeRecords(root, "change.md")) {
         const metadata = entry.document.metadata;
-        const issues = await issueCounts(join21(entry.root, "issues"));
+        const issues = await issueCounts(join23(entry.root, "issues"));
+        const review = recordValue11(metadata.maintainer_review);
+        const outstanding = ["framing", "completion"].filter(
+          (stage) => stringValue11(recordValue11(review?.[stage])?.status) !== "approved"
+        );
+        const checkpoint = recordValue11(metadata.checkpoint);
+        const heldForMaintainer = outstanding.includes("framing") || stringValue11(checkpoint?.status) === "blocked" || Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0;
         signals2.push({
           id: "work.active",
           domain: "work",
           level: "attention",
-          summary: "A change bundle is open",
+          summary: heldForMaintainer ? "A change bundle is open and held for you" : "A change bundle is open",
           subject: entry.id,
           facts: {
             title: stringValue11(metadata.title) || entry.id,
@@ -38714,12 +39054,8 @@ function workCollector() {
             ...issues
           },
           ...stringValue11(metadata.updated_at) ? { since: stringValue11(metadata.updated_at) } : {},
-          awaits: "agent"
+          awaits: heldForMaintainer ? "maintainer" : "agent"
         });
-        const review = recordValue11(metadata.maintainer_review);
-        const outstanding = ["framing", "completion"].filter(
-          (stage) => stringValue11(recordValue11(review?.[stage])?.status) !== "approved"
-        );
         if (outstanding.length > 0) {
           signals2.push({
             id: "work.approvals-outstanding",
@@ -38729,7 +39065,7 @@ function workCollector() {
             subject: entry.id,
             facts: {
               stages: outstanding.join(","),
-              command: `wfctl work approve ${entry.id} --stage ${outstanding[0]}`
+              command: `wfctl work ask ${entry.id} --stage ${outstanding[0]}`
             },
             awaits: "maintainer",
             blocks: ["close-work"]
@@ -38742,7 +39078,9 @@ function workCollector() {
             level: "info",
             summary: "The bundle has not passed verification",
             subject: entry.id,
-            awaits: "agent",
+            // Nothing has been built until the framing is approved, so there is
+            // nothing to verify and this cannot be the agent's next action.
+            awaits: outstanding.includes("framing") ? "maintainer" : "agent",
             blocks: ["close-work"]
           });
         }
@@ -38811,7 +39149,7 @@ function inboxCollector() {
   };
 }
 async function workstreamSignals(entry) {
-  const packets = await markdownRecords(join21(entry.root, "workstreams"));
+  const packets = await markdownRecords(join23(entry.root, "workstreams"));
   const counts = { packets: packets.length, claimed: 0, submitted: 0, accepted: 0 };
   const stranded = [];
   for (const packet of packets) {
@@ -38906,14 +39244,30 @@ function checkpointSignals(domain, subject, metadata, currentBasis) {
       awaits: "maintainer"
     });
   }
+  const todo = Array.isArray(checkpoint.todo) ? checkpoint.todo : [];
+  if (todo.length > 0) {
+    signals2.push({
+      id: `${domain}.todo`,
+      domain,
+      level: "info",
+      summary: "The record carries small jobs from an earlier session",
+      subject,
+      facts: {
+        jobs: todo.length,
+        outstanding: nameThem(todo.map((entry) => stringValue11(entry)))
+      },
+      since: updatedAt,
+      awaits: "agent"
+    });
+  }
   return signals2;
 }
 async function activeRecords(root, file = "case.md") {
   const records = [];
   for (const name of await directoryNames(root)) {
-    const directory = join21(root, name);
+    const directory = join23(root, name);
     try {
-      const content3 = await readFile23(join21(directory, file), "utf8");
+      const content3 = await readFile25(join23(directory, file), "utf8");
       records.push({ id: name, root: directory, document: parseWorkSpec(content3) });
     } catch {
       records.push({ id: name, root: directory, document: { metadata: {}, body: "" } });
@@ -38924,7 +39278,7 @@ async function activeRecords(root, file = "case.md") {
 async function markdownRecords(root) {
   let names;
   try {
-    names = (await readdir15(root)).filter((name) => name.endsWith(".md")).sort();
+    names = (await readdir16(root)).filter((name) => name.endsWith(".md")).sort();
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -38933,12 +39287,12 @@ async function markdownRecords(root) {
   }
   const records = [];
   for (const name of names) {
-    const path = join21(root, name);
+    const path = join23(root, name);
     try {
       records.push({
         id: name.slice(0, -3),
         root: path,
-        document: parseWorkSpec(await readFile23(path, "utf8"))
+        document: parseWorkSpec(await readFile25(path, "utf8"))
       });
     } catch {
       records.push({ id: name.slice(0, -3), root: path, document: { metadata: {}, body: "" } });
@@ -38950,7 +39304,7 @@ async function issueCounts(root) {
   const counts = { issues: 0, issuesOpen: 0, issuesClaimed: 0 };
   let names;
   try {
-    names = (await readdir15(root)).filter((name) => name.endsWith(".md"));
+    names = (await readdir16(root)).filter((name) => name.endsWith(".md"));
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return counts;
@@ -38961,7 +39315,7 @@ async function issueCounts(root) {
     counts.issues += 1;
     try {
       const status = stringValue11(
-        parseWorkSpec(await readFile23(join21(root, name), "utf8")).metadata.status
+        parseWorkSpec(await readFile25(join23(root, name), "utf8")).metadata.status
       );
       if (status === "claimed") {
         counts.issuesClaimed += 1;
@@ -38977,7 +39331,7 @@ async function issueCounts(root) {
 }
 async function directoryNames(root) {
   try {
-    return (await readdir15(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    return (await readdir16(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return [];
@@ -38993,7 +39347,7 @@ async function countFiles(root, budget = { left: FILE_SCAN_LIMIT }) {
   let total = 0;
   let entries;
   try {
-    entries = await readdir15(root, { withFileTypes: true });
+    entries = await readdir16(root, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return 0;
@@ -39008,7 +39362,7 @@ async function countFiles(root, budget = { left: FILE_SCAN_LIMIT }) {
       continue;
     }
     if (entry.isDirectory()) {
-      total += await countFiles(join21(root, entry.name), budget);
+      total += await countFiles(join23(root, entry.name), budget);
     } else if (entry.isFile()) {
       budget.left -= 1;
       total += 1;
@@ -39020,7 +39374,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
   let newest;
   let entries;
   try {
-    entries = await readdir15(root, { withFileTypes: true });
+    entries = await readdir16(root, { withFileTypes: true });
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return void 0;
@@ -39031,7 +39385,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
     if (budget.left <= 0) {
       break;
     }
-    const path = join21(root, entry.name);
+    const path = join23(root, entry.name);
     if (entry.isDirectory()) {
       const nested = await newestModification(path, budget);
       if (nested !== void 0 && (newest === void 0 || nested > newest)) {
@@ -39049,7 +39403,7 @@ async function newestModification(root, budget = { left: FILE_SCAN_LIMIT }) {
 }
 async function readJson(path) {
   try {
-    const parsed = JSON.parse(await readFile23(path, "utf8"));
+    const parsed = JSON.parse(await readFile25(path, "utf8"));
     return recordValue11(parsed);
   } catch {
     return void 0;
@@ -39059,12 +39413,12 @@ function isPending(value) {
   return recordValue11(value)?.status === "pending";
 }
 function recordArray8(value) {
-  return Array.isArray(value) ? value.filter(isRecord7) : [];
+  return Array.isArray(value) ? value.filter(isRecord8) : [];
 }
 function recordValue11(value) {
-  return isRecord7(value) ? value : void 0;
+  return isRecord8(value) ? value : void 0;
 }
-function isRecord7(value) {
+function isRecord8(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function stringValue11(value) {
@@ -39121,7 +39475,7 @@ var CAPABILITIES = [
   }
 ];
 async function collectWorkflowState(targetInput, options = {}) {
-  const root = resolve21(targetInput);
+  const root = resolve23(targetInput);
   const now = options.now ?? /* @__PURE__ */ new Date();
   const capabilities = options.capabilities ?? CAPABILITIES;
   const base = {
@@ -39207,9 +39561,9 @@ function sortSignals(signals2) {
 
 // src/hooks.ts
 init_config();
-import { mkdir as mkdir15, readFile as readFile24, rename as rename11, writeFile as writeFile15 } from "node:fs/promises";
+import { mkdir as mkdir15, readFile as readFile26, rename as rename11, rm as rm5, writeFile as writeFile16 } from "node:fs/promises";
 import { randomUUID as randomUUID4 } from "node:crypto";
-import { dirname as dirname16, join as join22 } from "node:path";
+import { dirname as dirname16, join as join24 } from "node:path";
 var SESSION_BRIEF_COMMAND = "wfctl brief --hook";
 var SESSION_START_EVENT = "SessionStart";
 var BACKGROUND_GUARD_COMMAND = '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true';
@@ -39250,6 +39604,41 @@ function installBackgroundGuardHook(target) {
 }
 function installStopGuardHook(target) {
   return installHookEntry(target, STOP_EVENT, "*", STOP_GUARD_COMMAND);
+}
+function stopGuardHookInstalled(target) {
+  return hookEntryInstalled(target, STOP_EVENT, STOP_GUARD_COMMAND);
+}
+function stopGuardDisabledPath(target) {
+  return join24(target, ".workflow/current/hooks/stop-guard.disabled");
+}
+async function stopGuardEnabled(target) {
+  try {
+    await readFile26(stopGuardDisabledPath(target), "utf8");
+    return false;
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return true;
+    }
+    throw error2;
+  }
+}
+async function setStopGuardEnabled(target, enabled2, reason = "") {
+  const path = stopGuardDisabledPath(target);
+  const was = await stopGuardEnabled(target);
+  if (enabled2) {
+    if (!was) {
+      await rm5(path, { force: true });
+    }
+    return { path, enabled: true, changed: was !== true };
+  }
+  await mkdir15(dirname16(path), { recursive: true });
+  await writeFile16(
+    path,
+    `${JSON.stringify({ disabledAt: (/* @__PURE__ */ new Date()).toISOString(), reason }, null, 2)}
+`,
+    "utf8"
+  );
+  return { path, enabled: false, changed: was !== false };
 }
 async function removeHookEntry(target, eventName, command) {
   const path = settingsPath(target);
@@ -39307,12 +39696,12 @@ function sessionStartEnvelope(context) {
 `;
 }
 function settingsPath(target) {
-  return join22(target, ".claude/settings.json");
+  return join24(target, ".claude/settings.json");
 }
 async function readSettings(path) {
   let content3;
   try {
-    content3 = await readFile24(path, "utf8");
+    content3 = await readFile26(path, "utf8");
   } catch (error2) {
     if (isMissingFileError(error2)) {
       return {};
@@ -39331,8 +39720,8 @@ async function readSettings(path) {
 }
 async function writeSettings(path, settings) {
   await mkdir15(dirname16(path), { recursive: true });
-  const temporary = join22(dirname16(path), `.wfctl-${randomUUID4()}.tmp`);
-  await writeFile15(temporary, `${JSON.stringify(settings, null, 2)}
+  const temporary = join24(dirname16(path), `.wfctl-${randomUUID4()}.tmp`);
+  await writeFile16(temporary, `${JSON.stringify(settings, null, 2)}
 `, "utf8");
   await rename11(temporary, path);
 }
@@ -39343,12 +39732,12 @@ function runsCommand(matcher, command) {
   return (matcher.hooks ?? []).some((entry) => entry.command === command);
 }
 function asMatchers(value) {
-  return Array.isArray(value) ? value.filter(isRecord8) : [];
+  return Array.isArray(value) ? value.filter(isRecord9) : [];
 }
 function asRecord(value) {
-  return isRecord8(value) ? value : void 0;
+  return isRecord9(value) ? value : void 0;
 }
-function isRecord8(value) {
+function isRecord9(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -39377,17 +39766,17 @@ function initCommand() {
     "--init-git",
     "Initialize Git when creating a knowledge repository."
   ).option("-y, --yes", "Accept defaults and safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options, profileValue) => {
-    const target = resolve22(options.target);
+    const target = resolve24(options.target);
     const promptOptions = {
       yes: options.yes === true,
       json: options.json === true
     };
     const profile = await resolveProfile(profileValue, target, promptOptions);
-    let knowledge = options.knowledge ? resolve22(options.knowledge) : await installedKnowledgePath(target, profile);
+    let knowledge = options.knowledge ? resolve24(options.knowledge) : await installedKnowledgePath(target, profile);
     if (profile === "leaf" && !knowledge && !promptOptions.yes && !promptOptions.json && interactive()) {
       const answer = await ask("Knowledge repository path: ");
       if (answer) {
-        knowledge = resolve22(answer);
+        knowledge = resolve24(answer);
       }
     }
     if (options.printInstructions) {
@@ -39429,7 +39818,7 @@ function upgradeCommand() {
     "--maintainer <actor:string>",
     "Record who the maintainer is, as human:<id>, so nobody retypes their own name."
   ).option("--dry-run", "Preview files and dependency checks without applying them.").option("-y, --yes", "Accept safe changes without prompting.").option("--json", "Print machine-readable output; use with --dry-run or --yes.").action(async (options) => {
-    const target = resolve22(options.target);
+    const target = resolve24(options.target);
     const config = await readConfig(target);
     const scope = options.skills ? parseSkillScope(options.skills) : config.skills?.scope ?? "project";
     const agents = options.agents ? parseAgentTargets(options.agents) : config.skills?.agents ?? ["codex", "claude"];
@@ -39618,7 +40007,7 @@ async function installWorkflow(input) {
 ${green("\u2713")} ${bold("Workflow installed")}
   ${dim("Target")}  ${resolved.target}
   ${dim("Changes")} ${applied.changed}
-  ${dim("Guide")}   ${resolve22(resolved.target, "PROJECT_WORKFLOW.md")}
+  ${dim("Guide")}   ${resolve24(resolved.target, "PROJECT_WORKFLOW.md")}
 `
     );
     printChangedPaths(applied.changedPaths);
@@ -39784,7 +40173,7 @@ function hooksCommand() {
   ).command(
     "install",
     new Command().description(`Add a SessionStart hook that runs \`${SESSION_BRIEF_COMMAND}\`.`).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const result = await installSessionBriefHook(resolve22(options.target));
+      const result = await installSessionBriefHook(resolve24(options.target));
       if (options.json) {
         printJson(result);
       } else {
@@ -39799,7 +40188,7 @@ ${dim("Restart the agent session for the hook to take effect.")}
   ).command(
     "remove",
     new Command().description("Remove the session-start brief hook and leave every other setting intact.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const result = await removeSessionBriefHook(resolve22(options.target));
+      const result = await removeSessionBriefHook(resolve24(options.target));
       if (options.json) {
         printJson(result);
       } else {
@@ -39811,7 +40200,7 @@ ${dim(result.path)}
   ).command(
     "status",
     new Command().description("Report whether the session-start brief hook is installed.").option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options) => {
-      const target = resolve22(options.target);
+      const target = resolve24(options.target);
       const installed = await sessionBriefHookInstalled(target);
       if (options.json) {
         printJson({ target, installed, command: SESSION_BRIEF_COMMAND });
@@ -39822,7 +40211,46 @@ ${dim(result.path)}
         );
       }
     })
-  );
+  ).command("stop-guard", stopGuardCommand());
+}
+function stopGuardCommand() {
+  return new Command().description(
+    "Turn the stop guard on or off for this checkout, or report which it is.\nOff is remembered locally and survives upgrades; the settings entry stays installed."
+  ).option("-t, --target <path:string>", "Target repository.", { default: "." }).option("--off", "Stop re-entering the agent when a turn ends with work outstanding.").option("--on", "Resume re-entering.").option("--reason <reason:string>", "Why it was turned off, for whoever finds it off later.").option("--json", "Print machine-readable JSON.").action(async (options) => {
+    const target = resolve24(options.target);
+    if (options.off && options.on) {
+      throw new Error("Pass --on or --off, not both");
+    }
+    if (!options.off && !options.on) {
+      const enabled2 = await stopGuardEnabled(target);
+      const installed = await stopGuardHookInstalled(target);
+      if (options.json) {
+        printJson({ target, enabled: enabled2, installed });
+      } else {
+        process.stdout.write(
+          `${enabled2 ? green("on") : yellow("off")}  stop guard
+${dim(installed ? "hook installed" : "hook not installed")}
+`
+        );
+      }
+      return;
+    }
+    const result = await setStopGuardEnabled(
+      target,
+      Boolean(options.on),
+      options.reason ?? ""
+    );
+    if (options.json) {
+      printJson(result);
+      return;
+    }
+    process.stdout.write(
+      result.enabled ? `Stop guard on. A turn ending with agent-side work outstanding costs one more turn.
+` : `Stop guard off. Turns end where the agent ends them.
+${dim(result.path)}
+`
+    );
+  });
 }
 function printBrief(report) {
   const header = [
@@ -39926,7 +40354,7 @@ Bindings: ${result.pointerPaths.join(", ")}
         );
       }
     })
-  ).command("context", workContextCommand()).command("checkpoint", workCheckpointCommand()).command("approve", workApproveCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
+  ).command("context", workContextCommand()).command("checkpoint", workCheckpointCommand()).command("ask", workAskCommand()).command("approve", workApproveCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
     "status",
     new Command().description("Show and validate the code-root/bundle binding.").arguments("[id:string]").option("-t, --target <path:string>", "Leaf checkout.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
       const results = await workStatus(options.target, id);
@@ -40021,12 +40449,29 @@ Archive: ${result.archivePath}
     })
   );
 }
+function workAskCommand() {
+  return new Command().description(
+    "Render the framing a maintainer is being asked to approve, in four parts:\nwhat gets done, what deliberately does not, what will make it finished, and the order.\nEverything else in the record is bookkeeping the approval does not touch."
+  ).arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--stage <stage:string>", "framing or completion.", { default: "framing" }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+    const gate = await readWorkGate(options.target, id, {
+      stage: parseApprovalStage(options.stage)
+    });
+    if (options.json) {
+      printJson(gate);
+      return;
+    }
+    process.stdout.write(renderWorkGate(gate));
+  });
+}
 function workApproveCommand() {
   return new Command().description(
     "Record a maintainer framing or completion approval outside the agent's normal record edits."
   ).arguments("<id:string>").option("-t, --target <path:string>", "Bound checkout.", { default: "." }).option("--stage <stage:string>", "framing or completion.", { required: true }).option("--by <actor:string>", "Approving maintainer as human:<id>.", { required: true }).option("--note <note:string>", "What was approved, in project language.").option(
+    "--attested <answer:string>",
+    "The maintainer's own answer, word for word. Records their decision from the session they gave it in, without sending them to a second terminal."
+  ).option("--session <where:string>", "Where that answer was given, so it can be read back.").option(
     "--token <token:string>",
-    "Out-of-band approval token; required when no interactive terminal is available. Must equal WFCTL_APPROVAL_TOKEN."
+    "Out-of-band approval token, for a stronger record than an attestation. Must equal WFCTL_APPROVAL_TOKEN."
   ).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
     const stage = parseApprovalStage(options.stage);
     const method = await resolveApprovalMethod({
@@ -40034,6 +40479,7 @@ function workApproveCommand() {
       stage,
       by: options.by,
       ...options.note ? { note: options.note } : {},
+      ...options.attested ? { attested: options.attested } : {},
       ...options.token ? { token: options.token } : {}
     });
     const result = await approveWork({
@@ -40042,7 +40488,9 @@ function workApproveCommand() {
       stage,
       by: options.by,
       method,
-      ...options.note ? { note: options.note } : {}
+      ...options.note ? { note: options.note } : {},
+      ...options.attested ? { attested: options.attested } : {},
+      ...options.session ? { session: options.session } : {}
     });
     if (options.json) {
       printJson(result);
@@ -40066,6 +40514,14 @@ function parseApprovalStage(value) {
   throw new Error(`Approval stage must be framing or completion, not ${value}`);
 }
 async function resolveApprovalMethod(input) {
+  if (input.attested?.trim()) {
+    if (input.token) {
+      throw new Error(
+        "Pass either --attested or --token; a token carries its own proof and an attestation records an answer, and the record must say which one this was"
+      );
+    }
+    return "attested";
+  }
   const expected = process.env.WFCTL_APPROVAL_TOKEN?.trim();
   if (input.token) {
     if (!expected) {
@@ -40080,7 +40536,7 @@ async function resolveApprovalMethod(input) {
   }
   if (!interactive()) {
     throw new Error(
-      "Maintainer approval requires an interactive terminal, or --token with a matching WFCTL_APPROVAL_TOKEN. wfctl does not record approval from an unattended session."
+      `No approval was supplied. Record the maintainer's own answer with --attested "<what they said>" --session "<where they said it>", or supply --token with a matching WFCTL_APPROVAL_TOKEN. wfctl does not approve anything by itself.`
     );
   }
   process.stdout.write(
@@ -40142,7 +40598,7 @@ Pending capture: ${result.path}
           (capture) => capture.awaits === "maintainer"
         );
         const triage = result.captures.filter((capture) => capture.awaits !== "maintainer");
-        const section = (title, entries) => {
+        const section2 = (title, entries) => {
           if (entries.length === 0) {
             return;
           }
@@ -40157,8 +40613,8 @@ ${title}
             );
           }
         };
-        section(`Waiting for your decision (${decisions.length})`, decisions);
-        section(`Waiting for agent triage (${triage.length})`, triage);
+        section2(`Waiting for your decision (${decisions.length})`, decisions);
+        section2(`Waiting for agent triage (${triage.length})`, triage);
       }
     })
   ).command(
@@ -40220,7 +40676,17 @@ function workCheckpointCommand() {
     required: true
   }).option("--blocker <text:string>", "Current blocker; repeat as needed.", {
     collect: true
-  }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+  }).option(
+    "--todo <text:string>",
+    "Replace the carried list of small jobs; repeat as needed. Omitted, the list survives.",
+    { collect: true }
+  ).option("--todo-add <text:string>", "Append one small job; repeat as needed.", {
+    collect: true
+  }).option(
+    "--todo-drop <phrase:string>",
+    "Drop every carried job containing this phrase; repeat as needed.",
+    { collect: true }
+  ).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
     const result = await updateWorkCheckpoint({
       target: options.target,
       id,
@@ -40231,7 +40697,8 @@ function workCheckpointCommand() {
       currentState: options.state,
       ...options.last ? { lastCompleted: options.last } : {},
       nextAction: options.next,
-      blockers: collectedStrings(options.blocker)
+      blockers: collectedStrings(options.blocker),
+      ...todoEdit(options)
     });
     if (options.json) {
       printJson(result);
@@ -40242,6 +40709,7 @@ Status: ${result.status}; stage: ${result.stage}
 Current: ${result.currentState}
 Next: ${result.nextAction}
 Blockers: ${result.blockers.length > 0 ? result.blockers.join(", ") : "none"}
+Todo: ${result.todo.length > 0 ? result.todo.join("; ") : "none"}
 `
       );
     }
@@ -40831,7 +41299,7 @@ ${result.unclaimed.length} page(s) in this area are claimed by no trajectory:
       "--token <token:string>",
       "Out-of-band token for an unattended run. Must equal WFCTL_APPROVAL_TOKEN."
     ).option("--json", "Print machine-readable JSON.").action(async (options, trajectory) => {
-      const target = resolve22(options.target);
+      const target = resolve24(options.target);
       const by = options.by ?? (await readConfig(target)).maintainer;
       if (!by) {
         throw new Error(
@@ -40871,7 +41339,89 @@ The gap is recomputed from this; run trajectory check to see what it now costs.
         );
       }
     })
-  );
+  ).command("debts", knowledgeDebtsCommand()).command("schedule", knowledgeScheduleCommand());
+}
+function knowledgeDebtsCommand() {
+  return new Command().description(
+    "List what every subject still owes against its declared direction.\nOpen debts first, then the ones being closed, then the deferred.\nThis is a view: nothing here decides what is owed, and nothing here strikes one off."
+  ).option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--open", "Only debts nobody has scheduled.").option("--json", "Print machine-readable JSON.").action(async (options) => {
+    const ledger = await collectDebts(options.target);
+    const shown = options.open ? ledger.debts.filter((debt) => debt.status === "open") : ledger.debts;
+    if (options.json) {
+      printJson({ ...ledger, shown });
+      return;
+    }
+    if (shown.length === 0) {
+      process.stdout.write("Nothing is owed against any declared direction.\n");
+      return;
+    }
+    let subject = "";
+    for (const debt of shown) {
+      if (debt.subject !== subject) {
+        subject = debt.subject;
+        process.stdout.write(
+          `
+${subject}${debt.vision ? "" : "  (no direction declared yet)"}
+`
+        );
+      }
+      const owner = debt.work ? `  \u2192 ${debt.work}${debt.workState === "missing" ? " (which does not exist)" : ""}` : "";
+      process.stdout.write(
+        `  ${String(debt.position).padStart(2)}. [${debt.status}] ${debt.statement}${owner}
+`
+      );
+    }
+    process.stdout.write("\n");
+    if (ledger.settled.length > 0) {
+      process.stdout.write(
+        `${ledger.settled.length} debt(s) name work that has landed. A debt does not end by being
+marked done: re-read the subject at a new pin and it disappears if it is no longer true.
+`
+      );
+    }
+    if (ledger.dangling.length > 0) {
+      process.stdout.write(
+        `${ledger.dangling.length} debt(s) name a change bundle that exists nowhere; each reads as
+handled and is not.
+`
+      );
+    }
+    if (ledger.directionless.length > 0) {
+      process.stdout.write(
+        `${ledger.directionless.length} debt(s) sit on subjects with no declared direction, so what
+they are owed against is unstated. Run trajectory ask on those subjects first.
+`
+      );
+    }
+  });
+}
+function knowledgeScheduleCommand() {
+  return new Command().description(
+    "Name the change bundle that closes one debt, and mark the debt as being closed.\nRefuses a bundle that does not exist: a debt pointing at nothing reads as handled."
+  ).arguments("<trajectory:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option(
+    "--gap <selector:string>",
+    "Which debt: its position from `trajectory debts`, or a phrase from its statement.",
+    { required: true }
+  ).option("--work <id:string>", "The open change bundle that closes it.", { required: true }).option("--json", "Print machine-readable JSON.").action(async (options, trajectory) => {
+    const result = await scheduleDebt({
+      target: options.target,
+      trajectory,
+      gap: options.gap,
+      work: options.work
+    });
+    if (options.json) {
+      printJson(result);
+      return;
+    }
+    process.stdout.write(
+      `${result.trajectory}: a debt is now being closed by ${result.work}
+Debt: ${result.statement}
+Was:  ${result.previousStatus}
+Spec: ${result.path}
+The debt ends when the subject is re-read at a new pin, not when the bundle closes.
+`
+    );
+  });
 }
 async function resolveVisionMethod(input) {
   const expected = process.env.WFCTL_APPROVAL_TOKEN?.trim();
@@ -41005,6 +41555,7 @@ Synthesis: ${result.orchestration.synthesisStatus || "pending"}; independent rev
 Last: ${result.checkpoint.lastCompleted || "missing"}
 Next: ${result.checkpoint.nextAction || "missing"}
 Blockers: ${result.checkpoint.blockers.length > 0 ? result.checkpoint.blockers.join(", ") : "none"}
+Todo: ${result.checkpoint.todo.length > 0 ? result.checkpoint.todo.join("; ") : "none"}
 `
           );
         }
@@ -41050,7 +41601,17 @@ Blockers: ${result.checkpoint.blockers.length > 0 ? result.checkpoint.blockers.j
       "--stage <stage:string>",
       "setup, repository-analysis, reconciliation, promotion, or review.",
       { required: true }
-    ).option("--state <text:string>", "Concise current reconstruction state.", { required: true }).option("--last <text:string>", "Last material action completed.", { required: true }).option("--next <text:string>", "Exact next action for a fresh session.", { required: true }).option("--blocker <text:string>", "Current blocker; repeat as needed.", { collect: true }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+    ).option("--state <text:string>", "Concise current reconstruction state.", { required: true }).option("--last <text:string>", "Last material action completed.", { required: true }).option("--next <text:string>", "Exact next action for a fresh session.", { required: true }).option("--blocker <text:string>", "Current blocker; repeat as needed.", { collect: true }).option(
+      "--todo <text:string>",
+      "Replace the carried list of small jobs; repeat as needed. Omitted, the list survives.",
+      { collect: true }
+    ).option("--todo-add <text:string>", "Append one small job; repeat as needed.", {
+      collect: true
+    }).option(
+      "--todo-drop <phrase:string>",
+      "Drop every carried job containing this phrase; repeat as needed.",
+      { collect: true }
+    ).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
       const result = await updateReconstructionCheckpoint({
         target: options.target,
         id,
@@ -41060,7 +41621,8 @@ Blockers: ${result.checkpoint.blockers.length > 0 ? result.checkpoint.blockers.j
         currentState: options.state,
         lastCompleted: options.last,
         nextAction: options.next,
-        blockers: collectedStrings(options.blocker)
+        blockers: collectedStrings(options.blocker),
+        ...todoEdit(options)
       });
       if (options.json) {
         printJson(result);
@@ -41674,6 +42236,7 @@ Checkpoint: ${result.checkpoint ? `${result.checkpoint.valid ? "current" : "stal
 Last: ${result.checkpoint.lastCompleted || "missing"}
 Next: ${result.checkpoint.nextAction || "missing"}
 Blockers: ${result.checkpoint.blockers.length > 0 ? result.checkpoint.blockers.join(", ") : "none"}
+Todo: ${result.checkpoint.todo.length > 0 ? result.checkpoint.todo.join("; ") : "none"}
 `
           );
         }
@@ -41709,7 +42272,17 @@ Blockers: ${result.checkpoint.blockers.length > 0 ? result.checkpoint.blockers.j
       "--stage <stage:string>",
       "source-review, adjudication, promotion, omission-audit, or review.",
       { required: true }
-    ).option("--state <text:string>", "Concise current intake state.", { required: true }).option("--last <text:string>", "Last material action completed.", { required: true }).option("--next <text:string>", "Exact next action for a fresh session.", { required: true }).option("--blocker <text:string>", "Current blocker; repeat as needed.", { collect: true }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+    ).option("--state <text:string>", "Concise current intake state.", { required: true }).option("--last <text:string>", "Last material action completed.", { required: true }).option("--next <text:string>", "Exact next action for a fresh session.", { required: true }).option("--blocker <text:string>", "Current blocker; repeat as needed.", { collect: true }).option(
+      "--todo <text:string>",
+      "Replace the carried list of small jobs; repeat as needed. Omitted, the list survives.",
+      { collect: true }
+    ).option("--todo-add <text:string>", "Append one small job; repeat as needed.", {
+      collect: true
+    }).option(
+      "--todo-drop <phrase:string>",
+      "Drop every carried job containing this phrase; repeat as needed.",
+      { collect: true }
+    ).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
       const result = await updateIntakeCheckpoint({
         target: options.target,
         id,
@@ -41719,7 +42292,8 @@ Blockers: ${result.checkpoint.blockers.length > 0 ? result.checkpoint.blockers.j
         currentState: options.state,
         lastCompleted: options.last,
         nextAction: options.next,
-        blockers: collectedStrings(options.blocker)
+        blockers: collectedStrings(options.blocker),
+        ...todoEdit(options)
       });
       if (options.json) {
         printJson(result);
@@ -42136,6 +42710,19 @@ function collectedStrings(value) {
   }
   return value === void 0 ? [] : [value];
 }
+function todoEdit(options) {
+  const edit = {};
+  if (options.todo !== void 0) {
+    edit.set = collectedStrings(options.todo);
+  }
+  if (options.todoAdd !== void 0) {
+    edit.add = collectedStrings(options.todoAdd);
+  }
+  if (options.todoDrop !== void 0) {
+    edit.drop = collectedStrings(options.todoDrop);
+  }
+  return Object.keys(edit).length > 0 ? { todo: edit } : {};
+}
 function printCoverageSummary(summary, includeOutstanding = false) {
   process.stdout.write(
     `  ${summary.repository}@${summary.commit}
@@ -42251,11 +42838,11 @@ ${bold("Workflow health")}
   ${dim("Target")} ${report.target}
 `
   );
-  for (const section of checkSections(compactChecks(report.checks))) {
+  for (const section2 of checkSections(compactChecks(report.checks))) {
     process.stdout.write(`
-${cyan(bold(section.title))}
+${cyan(bold(section2.title))}
 `);
-    for (const check of section.checks) {
+    for (const check of section2.checks) {
       printCheckLine(check);
     }
   }
@@ -42265,7 +42852,7 @@ ${cyan(bold(section.title))}
 }
 async function recordedAgents(target) {
   try {
-    const config = await readConfig(resolve22(target));
+    const config = await readConfig(resolve24(target));
     const agents = config.skills?.agents ?? [];
     return agents.length > 0 ? agents : ["codex", "claude"];
   } catch {

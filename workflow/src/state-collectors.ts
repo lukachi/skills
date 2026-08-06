@@ -480,11 +480,32 @@ function workCollector(): StateCollector {
       for (const entry of await activeRecords(root, "change.md")) {
         const metadata = entry.document.metadata;
         const issues = await issueCounts(join(entry.root, "issues"));
+
+        // A bundle carries no status that says an approval became due, so report
+        // what closure still requires rather than guessing at a stage machine.
+        const review = recordValue(metadata.maintainer_review);
+        const outstanding = (["framing", "completion"] as const).filter((stage) =>
+          stringValue(recordValue(review?.[stage])?.status) !== "approved"
+        );
+        const checkpoint = recordValue(metadata.checkpoint);
+        const heldForMaintainer = outstanding.includes("framing")
+          || stringValue(checkpoint?.status) === "blocked"
+          || (Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0);
+
+        // Who a bundle waits on is inherited, never assumed. Reporting an open
+        // bundle as agent-side while its framing is unapproved armed the stop
+        // guard on a state only the maintainer could change: the agent was
+        // re-entered on every turn for as long as the approval took, each turn
+        // told to take an action it did not have. The same collector was already
+        // emitting the maintainer signal two lines down while contradicting it
+        // here, so the tool held both answers at once and published the wrong one.
         signals.push({
           id: "work.active",
           domain: "work",
           level: "attention",
-          summary: "A change bundle is open",
+          summary: heldForMaintainer
+            ? "A change bundle is open and held for you"
+            : "A change bundle is open",
           subject: entry.id,
           facts: {
             title: stringValue(metadata.title) || entry.id,
@@ -496,15 +517,8 @@ function workCollector(): StateCollector {
           ...(stringValue(metadata.updated_at)
             ? { since: stringValue(metadata.updated_at) }
             : {}),
-          awaits: "agent",
+          awaits: heldForMaintainer ? "maintainer" : "agent",
         });
-
-        // A bundle carries no status that says an approval became due, so report
-        // what closure still requires rather than guessing at a stage machine.
-        const review = recordValue(metadata.maintainer_review);
-        const outstanding = (["framing", "completion"] as const).filter((stage) =>
-          stringValue(recordValue(review?.[stage])?.status) !== "approved"
-        );
         if (outstanding.length > 0) {
           signals.push({
             id: "work.approvals-outstanding",
@@ -514,7 +528,7 @@ function workCollector(): StateCollector {
             subject: entry.id,
             facts: {
               stages: outstanding.join(","),
-              command: `wfctl work approve ${entry.id} --stage ${outstanding[0]}`,
+              command: `wfctl work ask ${entry.id} --stage ${outstanding[0]}`,
             },
             awaits: "maintainer",
             blocks: ["close-work"],
@@ -527,7 +541,9 @@ function workCollector(): StateCollector {
             level: "info",
             summary: "The bundle has not passed verification",
             subject: entry.id,
-            awaits: "agent",
+            // Nothing has been built until the framing is approved, so there is
+            // nothing to verify and this cannot be the agent's next action.
+            awaits: outstanding.includes("framing") ? "maintainer" : "agent",
             blocks: ["close-work"],
           });
         }
@@ -752,6 +768,26 @@ function checkpointSignals(
         blocking: nameThem(blockers.map((entry) => stringValue(entry))),
       },
       awaits: "maintainer",
+    });
+  }
+  // Small jobs carried across the session boundary. They are named rather than
+  // counted for the same reason blockers are: a list reported as a number is a
+  // list nobody opens, and these are the entries a fresh session has no other
+  // way to learn about.
+  const todo = Array.isArray(checkpoint.todo) ? checkpoint.todo : [];
+  if (todo.length > 0) {
+    signals.push({
+      id: `${domain}.todo`,
+      domain,
+      level: "info",
+      summary: "The record carries small jobs from an earlier session",
+      subject,
+      facts: {
+        jobs: todo.length,
+        outstanding: nameThem(todo.map((entry) => stringValue(entry))),
+      },
+      since: updatedAt,
+      awaits: "agent",
     });
   }
   return signals;
