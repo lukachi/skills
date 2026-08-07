@@ -117,6 +117,108 @@ export function framingIssues(document: WorkSpecDocument): string[] {
   return [...alignmentIssues(document), ...repositoryAccountingIssues(document)];
 }
 
+/**
+ * What a bundle decided, and where each decision went.
+ *
+ * A maintainer answers a product question once, in words, and the answer is
+ * recorded verbatim. Then the bundle closes and the answer archives with it.
+ * Nothing carried it into curated knowledge, because the completion gate counted
+ * promoted concepts and had no notion of a decision at all — so the road meant
+ * to hold them stayed empty while the archive filled up.
+ *
+ * That closes a loop rather than losing one record. With the decisions road
+ * empty, the next bundle's alignment searches curated knowledge, truthfully
+ * finds nothing, and asks the maintainer the same class of question again; that
+ * answer lands in a new bundle, which also archives it. Every cycle adds a
+ * decision to a place nobody reads and leaves the place everybody reads empty.
+ *
+ * So closure accounts for each: promoted to a decision of its own, folded into a
+ * concept that carries it, or judged not durable with a reason. Saying nothing
+ * is not an option, and neither is a bundle that decided nothing while its map
+ * records five answers.
+ *
+ * The list is the agent's judgement rather than a field, because how many
+ * durable decisions a bundle holds is not knowable in advance. Where a resolved
+ * Wayfinder map exists it is a checklist the gate holds the accounting against,
+ * so a recorded answer cannot be dropped silently.
+ */
+export function decisionAccountingIssues(document: WorkSpecDocument): string[] {
+  const issues: string[] = [];
+  const promotion = isRecord(document.metadata.knowledge_promotion)
+    ? document.metadata.knowledge_promotion
+    : undefined;
+  const decisions = Array.isArray(promotion?.decisions)
+    ? promotion.decisions.filter(isRecord)
+    : undefined;
+  if (!decisions) {
+    issues.push(
+      "knowledge_promotion.decisions must account for what this work decided, even if the answer is that it decided nothing durable",
+    );
+    return issues;
+  }
+  if (decisions.length === 0) {
+    // An empty list is a legitimate answer — a refactor can settle nothing that
+    // outlives it — but only when it is an answer. Left to be satisfied by an
+    // empty array alone it becomes the cheapest way through the gate, and the
+    // gate exists because the cheapest way through was silence.
+    if (!stringValue(promotion?.decisions_none).trim()) {
+      issues.push(
+        "knowledge_promotion.decisions is empty; say why this work settled nothing that outlives it",
+      );
+    }
+    return issues;
+  }
+  const dispositions = new Set(["promoted", "folded", "not-durable"]);
+  for (const entry of decisions) {
+    const what = stringValue(entry.what).trim();
+    const label = what || "(unnamed decision)";
+    if (!what) {
+      issues.push("a decision is recorded without saying what was decided");
+    }
+    if (!stringValue(entry.said).trim()) {
+      issues.push(`${label} does not say where the maintainer said it`);
+    }
+    const disposition = stringValue(entry.disposition);
+    if (!dispositions.has(disposition)) {
+      issues.push(
+        `${label} must be promoted, folded into a concept, or recorded as not-durable`,
+      );
+      continue;
+    }
+    if (disposition === "not-durable" && !stringValue(entry.reason).trim()) {
+      issues.push(`${label} is called not durable without a reason`);
+    }
+    if (disposition !== "not-durable" && !stringValue(entry.into).trim()) {
+      issues.push(`${label} does not name the concept that now carries it`);
+    }
+  }
+  return issues;
+}
+
+/**
+ * Every answer a resolved map recorded must appear in the accounting.
+ *
+ * The map is the only place a maintainer's answers are already enumerated, so
+ * where one exists it is checked against rather than trusted to be remembered.
+ * A bounded change has no map and no such list, which is why the accounting is
+ * required of every bundle and the checklist only of some.
+ */
+export function unaccountedMapAnswers(
+  document: WorkSpecDocument,
+  resolved: ReadonlyArray<Record<string, unknown>>,
+): string[] {
+  const promotion = isRecord(document.metadata.knowledge_promotion)
+    ? document.metadata.knowledge_promotion
+    : undefined;
+  const decisions = Array.isArray(promotion?.decisions)
+    ? promotion.decisions.filter(isRecord)
+    : [];
+  const said = decisions.map((entry) => stringValue(entry.said));
+  return resolved
+    .map((entry) => stringValue(entry.issue))
+    .filter((issue) => issue && !said.some((where) => where.includes(issue)));
+}
+
 export function parseWorkSpec(content: string): WorkSpecDocument {
   const lines = content.split(/\r?\n/);
   if (lines[0] !== "---") {
@@ -228,6 +330,7 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   ) {
     issues.push("knowledge_promotion.reason must explain why no current knowledge changed");
   }
+  issues.push(...decisionAccountingIssues(document));
   if (
     containsUntrustedIntakeReference(document.body)
     || containsUntrustedIntakeReference(JSON.stringify(document.metadata))

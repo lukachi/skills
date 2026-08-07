@@ -127,7 +127,9 @@ import {
   approveWork,
   accountWorkRepository,
   beginWork,
+  readWorkDecisions,
   readWorkRepositories,
+  recordWorkDecision,
   claimWorkIssue,
   closeWork,
   completeWorkIssue,
@@ -1074,6 +1076,7 @@ function workCommand() {
     )
     .command("context", workContextCommand())
     .command("repositories", workRepositoriesCommand())
+    .command("decisions", workDecisionsCommand())
     .command("checkpoint", workCheckpointCommand())
     .command("ask", workAskCommand())
     .command("approve", workApproveCommand())
@@ -1779,6 +1782,99 @@ function workRepositoriesCommand() {
             );
           }
         }
+      }
+    });
+}
+
+function workDecisionsCommand() {
+  return new Command()
+    .description(
+      "Account for what this work decided, and where each decision now lives.\n"
+        + "A maintainer answers a product question once and the answer is recorded verbatim;\n"
+        + "without this the bundle archives with it, curated knowledge stays empty of\n"
+        + "decisions, and the next bundle asks them the same question again. Nothing here\n"
+        + "asks them anything: it records where their answer went.",
+    )
+    .arguments("[id:string]")
+    .option("-t, --target <path:string>", "Knowledge repository or bound leaf.", { default: "." })
+    .option("--what <text:string>", "The decision, in the words the product uses.")
+    .option("--said <where:string>", "Where the maintainer said it: a map issue, or the framing.")
+    .option("--promoted <concept:string>", "It became this decision of its own.")
+    .option("--folded <concept:string>", "This concept now carries it.")
+    .option("--not-durable", "It outlives nothing beyond this work.")
+    .option("--none <why:string>", "This work settled nothing that outlives it, and why.")
+    .option("--reason <text:string>", "With --not-durable: why it outlives nothing.")
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      if (options.none) {
+        const result = await recordWorkDecision({
+          target: options.target,
+          ...(id ? { id } : {}),
+          none: options.none,
+          what: "",
+          said: "",
+          disposition: "none",
+        });
+        if (options.json) printJson(result);
+        else {
+          process.stdout.write(
+            "Recorded: this work settled nothing that outlives it.\n",
+          );
+        }
+        return;
+      }
+      if (options.what) {
+        const disposition = options.promoted
+          ? "promoted"
+          : options.folded
+          ? "folded"
+          : "not-durable";
+        const result = await recordWorkDecision({
+          target: options.target,
+          ...(id ? { id } : {}),
+          what: options.what,
+          said: options.said ?? "",
+          disposition,
+          ...(options.promoted ? { into: options.promoted } : {}),
+          ...(options.folded ? { into: options.folded } : {}),
+          ...(options.reason ? { reason: options.reason } : {}),
+        });
+        if (options.json) printJson(result);
+        else process.stdout.write(`Recorded as ${result.disposition}: ${result.what}\n`);
+        return;
+      }
+
+      const result = await readWorkDecisions(options.target, id);
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      if (result.recorded.length === 0) {
+        process.stdout.write("Nothing is accounted for yet.\n");
+      }
+      for (const entry of result.recorded) {
+        process.stdout.write(
+          `\n${String(entry.what)}\n  said: ${String(entry.said)}\n  ${String(entry.disposition)}`
+            + `${entry.into ? `: ${String(entry.into)}` : ""}`
+            + `${entry.reason ? ` — ${String(entry.reason)}` : ""}\n`,
+        );
+      }
+      if (result.unaccounted.length > 0) {
+        process.stdout.write(
+          `\n${result.unaccounted.length} answer(s) the map recorded reach nothing yet:\n`,
+        );
+        for (const entry of result.unaccounted) {
+          process.stdout.write(`\n  ${entry.issue} — ${entry.title}\n    ${entry.summary}\n`);
+        }
+        process.stdout.write(
+          "\nThese are already the maintainer's words. Deciding where each belongs is yours;\n"
+            + "asking them again is not.\n",
+        );
+      }
+      if (result.issues.length > 0) {
+        process.stdout.write("\nClosure is blocked by:\n");
+        for (const issue of result.issues) process.stdout.write(`  - ${issue}\n`);
+        process.exitCode = 2;
       }
     });
 }

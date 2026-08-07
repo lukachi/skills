@@ -24,7 +24,9 @@ import { validateKnowledge } from "./knowledge.js";
 import { resolveReconstructionLeaves } from "./repository-registry.js";
 import {
   completionIssues,
+  decisionAccountingIssues,
   framingIssues,
+  unaccountedMapAnswers,
   parseWorkSpec,
   serializeWorkSpec,
   type ApprovalMethod,
@@ -480,6 +482,158 @@ export async function readWorkRepositories(
   };
 }
 
+export interface RecordDecisionOptions {
+  target: string;
+  id?: string;
+  /** Declare that this work settled nothing durable, and why. */
+  none?: string;
+  /** The decision itself, in the words the product uses. */
+  what: string;
+  /** Where the maintainer said it: a map issue, or the framing they attested. */
+  said: string;
+  disposition: "promoted" | "folded" | "not-durable" | "none";
+  /** The concept that now carries it. Required unless it is not durable. */
+  into?: string;
+  /** Why it outlives nothing. Required when it is not durable. */
+  reason?: string;
+  now?: Date;
+}
+
+export interface WorkDecisionsView {
+  id: string;
+  specPath: string;
+  recorded: Array<Record<string, unknown>>;
+  /** Answers a resolved map holds that the accounting has not reached. */
+  unaccounted: Array<{ issue: string; title: string; summary: string }>;
+  issues: string[];
+}
+
+/**
+ * What this bundle decided, what is already accounted for, and what a resolved
+ * map recorded that the accounting has not reached yet.
+ */
+export async function readWorkDecisions(
+  target: string,
+  id?: string,
+): Promise<WorkDecisionsView> {
+  const context = await requireWorkContext(target, id);
+  const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
+  const promotion = record_(document.metadata.knowledge_promotion);
+  const recorded = recordArray_(promotion?.decisions);
+  const resolved = await resolvedMapAnswers(context.bundleRoot);
+  const missing = new Set(unaccountedMapAnswers(document, resolved));
+  return {
+    id: context.id,
+    specPath: context.specPath,
+    recorded,
+    unaccounted: resolved
+      .filter((entry) => missing.has(String(entry.issue ?? "")))
+      .map((entry) => ({
+        issue: String(entry.issue ?? ""),
+        title: String(entry.title ?? ""),
+        summary: String(entry.summary ?? ""),
+      })),
+    issues: decisionAccountingIssues(document),
+  };
+}
+
+/**
+ * Record one decision and where it went.
+ *
+ * The maintainer already answered; nothing here asks them again. What is being
+ * written is where their answer now lives, so a later session finds it in
+ * curated knowledge rather than by opening an archived bundle nobody named.
+ */
+export async function recordWorkDecision(
+  options: RecordDecisionOptions,
+): Promise<{ id: string; what: string; disposition: string; specPath: string }> {
+  const context = await requireWorkContext(options.target, options.id);
+  const none = (options.none ?? "").trim();
+  if (none) {
+    const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
+    const promotion = record_(document.metadata.knowledge_promotion) ?? {};
+    if (recordArray_(promotion.decisions).length > 0) {
+      throw new Error(
+        "This work already accounts for decisions; it cannot also declare it settled none",
+      );
+    }
+    promotion.decisions = [];
+    promotion.decisions_none = none;
+    document.metadata.knowledge_promotion = promotion;
+    document.metadata.updated_at = (options.now ?? new Date()).toISOString();
+    await writeFile(context.specPath, serializeWorkSpec(document), "utf8");
+    return {
+      id: context.id,
+      what: "",
+      disposition: "none",
+      specPath: context.specPath,
+    };
+  }
+  const what = options.what.trim();
+  const said = options.said.trim();
+  if (!what) {
+    throw new Error("Say what was decided, in the words the product uses");
+  }
+  if (!said) {
+    throw new Error(
+      "Say where the maintainer said it; a decision with no origin cannot be weighed later",
+    );
+  }
+  if (options.disposition === "not-durable" && !(options.reason ?? "").trim()) {
+    throw new Error("A decision called not durable needs the reason it outlives nothing");
+  }
+  if (options.disposition !== "not-durable" && !(options.into ?? "").trim()) {
+    throw new Error("Name the concept that now carries this decision");
+  }
+
+  const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
+  const promotion = record_(document.metadata.knowledge_promotion) ?? {};
+  const decisions = recordArray_(promotion.decisions);
+  const entry: Record<string, unknown> = {
+    what,
+    said,
+    disposition: options.disposition,
+    ...(options.into?.trim() ? { into: options.into.trim() } : {}),
+    ...(options.reason?.trim() ? { reason: options.reason.trim() } : {}),
+  };
+  const existing = decisions.findIndex((item) => stringValue_(item.what) === what);
+  if (existing >= 0) {
+    decisions[existing] = entry;
+  } else {
+    decisions.push(entry);
+  }
+  promotion.decisions = decisions;
+  document.metadata.knowledge_promotion = promotion;
+  document.metadata.updated_at = (options.now ?? new Date()).toISOString();
+  await writeFile(context.specPath, serializeWorkSpec(document), "utf8");
+  return {
+    id: context.id,
+    what,
+    disposition: options.disposition,
+    specPath: context.specPath,
+  };
+}
+
+async function resolvedMapAnswers(
+  bundleRoot: string,
+): Promise<Array<Record<string, unknown>>> {
+  try {
+    const map = parseWorkSpec(await readFile(join(bundleRoot, "map.md"), "utf8"));
+    return recordArray_(map.metadata.resolved);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      // A bounded change has no map, and therefore no list of answers to hold
+      // the accounting against. The accounting is still required of it.
+      return [];
+    }
+    throw error;
+  }
+}
+
+function stringValue_(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export interface AccountRepositoryOptions {
   target: string;
   id?: string;
@@ -563,6 +717,23 @@ export async function approveWork(
   options: ApproveWorkOptions,
 ): Promise<ApproveWorkResult> {
   const context = await requireWorkContext(options.target, options.id);
+  if (options.stage === "completion") {
+    // The map is the only place a maintainer's answers are already enumerated.
+    // Where one exists, closure is held against it so an answer cannot archive
+    // unaccounted for while the accounting looks complete.
+    const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
+    const missing = unaccountedMapAnswers(
+      document,
+      await resolvedMapAnswers(context.bundleRoot),
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Completion is blocked until every answer the map recorded is accounted for: ${
+          missing.join(", ")
+        }`,
+      );
+    }
+  }
   const identity = approvalIdentityIssue(
     options.by,
     options.method,

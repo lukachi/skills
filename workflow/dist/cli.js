@@ -16324,6 +16324,56 @@ function alignmentIssues(document3) {
 function framingIssues(document3) {
   return [...alignmentIssues(document3), ...repositoryAccountingIssues(document3)];
 }
+function decisionAccountingIssues(document3) {
+  const issues = [];
+  const promotion = isRecord2(document3.metadata.knowledge_promotion) ? document3.metadata.knowledge_promotion : void 0;
+  const decisions = Array.isArray(promotion?.decisions) ? promotion.decisions.filter(isRecord2) : void 0;
+  if (!decisions) {
+    issues.push(
+      "knowledge_promotion.decisions must account for what this work decided, even if the answer is that it decided nothing durable"
+    );
+    return issues;
+  }
+  if (decisions.length === 0) {
+    if (!stringValue2(promotion?.decisions_none).trim()) {
+      issues.push(
+        "knowledge_promotion.decisions is empty; say why this work settled nothing that outlives it"
+      );
+    }
+    return issues;
+  }
+  const dispositions = /* @__PURE__ */ new Set(["promoted", "folded", "not-durable"]);
+  for (const entry of decisions) {
+    const what = stringValue2(entry.what).trim();
+    const label = what || "(unnamed decision)";
+    if (!what) {
+      issues.push("a decision is recorded without saying what was decided");
+    }
+    if (!stringValue2(entry.said).trim()) {
+      issues.push(`${label} does not say where the maintainer said it`);
+    }
+    const disposition = stringValue2(entry.disposition);
+    if (!dispositions.has(disposition)) {
+      issues.push(
+        `${label} must be promoted, folded into a concept, or recorded as not-durable`
+      );
+      continue;
+    }
+    if (disposition === "not-durable" && !stringValue2(entry.reason).trim()) {
+      issues.push(`${label} is called not durable without a reason`);
+    }
+    if (disposition !== "not-durable" && !stringValue2(entry.into).trim()) {
+      issues.push(`${label} does not name the concept that now carries it`);
+    }
+  }
+  return issues;
+}
+function unaccountedMapAnswers(document3, resolved) {
+  const promotion = isRecord2(document3.metadata.knowledge_promotion) ? document3.metadata.knowledge_promotion : void 0;
+  const decisions = Array.isArray(promotion?.decisions) ? promotion.decisions.filter(isRecord2) : [];
+  const said = decisions.map((entry) => stringValue2(entry.said));
+  return resolved.map((entry) => stringValue2(entry.issue)).filter((issue3) => issue3 && !said.some((where) => where.includes(issue3)));
+}
 function parseWorkSpec(content3) {
   const lines = content3.split(/\r?\n/);
   if (lines[0] !== "---") {
@@ -16417,6 +16467,7 @@ function completionIssues(document3, requireCompleted) {
   } else if (promotion.status === "not-needed" && !stringValue2(promotion.reason).trim()) {
     issues.push("knowledge_promotion.reason must explain why no current knowledge changed");
   }
+  issues.push(...decisionAccountingIssues(document3));
   if (containsUntrustedIntakeReference(document3.body) || containsUntrustedIntakeReference(JSON.stringify(document3.metadata))) {
     issues.push("project change records must not cite raw/ or intake/ paths");
   }
@@ -39863,6 +39914,105 @@ async function readWorkRepositories(target, id) {
     })
   };
 }
+async function readWorkDecisions(target, id) {
+  const context = await requireWorkContext(target, id);
+  const document3 = parseWorkSpec(await readFile28(context.specPath, "utf8"));
+  const promotion = record_(document3.metadata.knowledge_promotion);
+  const recorded = recordArray_(promotion?.decisions);
+  const resolved = await resolvedMapAnswers(context.bundleRoot);
+  const missing = new Set(unaccountedMapAnswers(document3, resolved));
+  return {
+    id: context.id,
+    specPath: context.specPath,
+    recorded,
+    unaccounted: resolved.filter((entry) => missing.has(String(entry.issue ?? ""))).map((entry) => ({
+      issue: String(entry.issue ?? ""),
+      title: String(entry.title ?? ""),
+      summary: String(entry.summary ?? "")
+    })),
+    issues: decisionAccountingIssues(document3)
+  };
+}
+async function recordWorkDecision(options) {
+  const context = await requireWorkContext(options.target, options.id);
+  const none = (options.none ?? "").trim();
+  if (none) {
+    const document4 = parseWorkSpec(await readFile28(context.specPath, "utf8"));
+    const promotion2 = record_(document4.metadata.knowledge_promotion) ?? {};
+    if (recordArray_(promotion2.decisions).length > 0) {
+      throw new Error(
+        "This work already accounts for decisions; it cannot also declare it settled none"
+      );
+    }
+    promotion2.decisions = [];
+    promotion2.decisions_none = none;
+    document4.metadata.knowledge_promotion = promotion2;
+    document4.metadata.updated_at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+    await writeFile16(context.specPath, serializeWorkSpec(document4), "utf8");
+    return {
+      id: context.id,
+      what: "",
+      disposition: "none",
+      specPath: context.specPath
+    };
+  }
+  const what = options.what.trim();
+  const said = options.said.trim();
+  if (!what) {
+    throw new Error("Say what was decided, in the words the product uses");
+  }
+  if (!said) {
+    throw new Error(
+      "Say where the maintainer said it; a decision with no origin cannot be weighed later"
+    );
+  }
+  if (options.disposition === "not-durable" && !(options.reason ?? "").trim()) {
+    throw new Error("A decision called not durable needs the reason it outlives nothing");
+  }
+  if (options.disposition !== "not-durable" && !(options.into ?? "").trim()) {
+    throw new Error("Name the concept that now carries this decision");
+  }
+  const document3 = parseWorkSpec(await readFile28(context.specPath, "utf8"));
+  const promotion = record_(document3.metadata.knowledge_promotion) ?? {};
+  const decisions = recordArray_(promotion.decisions);
+  const entry = {
+    what,
+    said,
+    disposition: options.disposition,
+    ...options.into?.trim() ? { into: options.into.trim() } : {},
+    ...options.reason?.trim() ? { reason: options.reason.trim() } : {}
+  };
+  const existing = decisions.findIndex((item) => stringValue_(item.what) === what);
+  if (existing >= 0) {
+    decisions[existing] = entry;
+  } else {
+    decisions.push(entry);
+  }
+  promotion.decisions = decisions;
+  document3.metadata.knowledge_promotion = promotion;
+  document3.metadata.updated_at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+  await writeFile16(context.specPath, serializeWorkSpec(document3), "utf8");
+  return {
+    id: context.id,
+    what,
+    disposition: options.disposition,
+    specPath: context.specPath
+  };
+}
+async function resolvedMapAnswers(bundleRoot) {
+  try {
+    const map2 = parseWorkSpec(await readFile28(join26(bundleRoot, "map.md"), "utf8"));
+    return recordArray_(map2.metadata.resolved);
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return [];
+    }
+    throw error2;
+  }
+}
+function stringValue_(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
 async function accountWorkRepository(options) {
   const context = await requireWorkContext(options.target, options.id);
   const source = context.currentSources.find(
@@ -39917,6 +40067,18 @@ async function accountWorkRepository(options) {
 }
 async function approveWork(options) {
   const context = await requireWorkContext(options.target, options.id);
+  if (options.stage === "completion") {
+    const document4 = parseWorkSpec(await readFile28(context.specPath, "utf8"));
+    const missing = unaccountedMapAnswers(
+      document4,
+      await resolvedMapAnswers(context.bundleRoot)
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Completion is blocked until every answer the map recorded is accounted for: ${missing.join(", ")}`
+      );
+    }
+  }
   const identity = approvalIdentityIssue(
     options.by,
     options.method,
@@ -41443,7 +41605,7 @@ Bindings: ${result.pointerPaths.join(", ")}
         );
       }
     })
-  ).command("context", workContextCommand()).command("repositories", workRepositoriesCommand()).command("checkpoint", workCheckpointCommand()).command("ask", workAskCommand()).command("approve", workApproveCommand()).command("park", workParkCommand()).command("release", workReleaseCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
+  ).command("context", workContextCommand()).command("repositories", workRepositoriesCommand()).command("decisions", workDecisionsCommand()).command("checkpoint", workCheckpointCommand()).command("ask", workAskCommand()).command("approve", workApproveCommand()).command("park", workParkCommand()).command("release", workReleaseCommand()).command("issue", workIssueCommand()).command("map", workMapCommand()).command("review", workReviewCommand()).command(
     "status",
     new Command().description("Show and validate the code-root/bundle binding.").arguments("[id:string]").option("-t, --target <path:string>", "Leaf checkout.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
       const results = await workStatus(options.target, id);
@@ -41999,6 +42161,85 @@ Read: ${entry.accounted.note}
           );
         }
       }
+    }
+  });
+}
+function workDecisionsCommand() {
+  return new Command().description(
+    "Account for what this work decided, and where each decision now lives.\nA maintainer answers a product question once and the answer is recorded verbatim;\nwithout this the bundle archives with it, curated knowledge stays empty of\ndecisions, and the next bundle asks them the same question again. Nothing here\nasks them anything: it records where their answer went."
+  ).arguments("[id:string]").option("-t, --target <path:string>", "Knowledge repository or bound leaf.", { default: "." }).option("--what <text:string>", "The decision, in the words the product uses.").option("--said <where:string>", "Where the maintainer said it: a map issue, or the framing.").option("--promoted <concept:string>", "It became this decision of its own.").option("--folded <concept:string>", "This concept now carries it.").option("--not-durable", "It outlives nothing beyond this work.").option("--none <why:string>", "This work settled nothing that outlives it, and why.").option("--reason <text:string>", "With --not-durable: why it outlives nothing.").option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+    if (options.none) {
+      const result2 = await recordWorkDecision({
+        target: options.target,
+        ...id ? { id } : {},
+        none: options.none,
+        what: "",
+        said: "",
+        disposition: "none"
+      });
+      if (options.json) printJson(result2);
+      else {
+        process.stdout.write(
+          "Recorded: this work settled nothing that outlives it.\n"
+        );
+      }
+      return;
+    }
+    if (options.what) {
+      const disposition = options.promoted ? "promoted" : options.folded ? "folded" : "not-durable";
+      const result2 = await recordWorkDecision({
+        target: options.target,
+        ...id ? { id } : {},
+        what: options.what,
+        said: options.said ?? "",
+        disposition,
+        ...options.promoted ? { into: options.promoted } : {},
+        ...options.folded ? { into: options.folded } : {},
+        ...options.reason ? { reason: options.reason } : {}
+      });
+      if (options.json) printJson(result2);
+      else process.stdout.write(`Recorded as ${result2.disposition}: ${result2.what}
+`);
+      return;
+    }
+    const result = await readWorkDecisions(options.target, id);
+    if (options.json) {
+      printJson(result);
+      return;
+    }
+    if (result.recorded.length === 0) {
+      process.stdout.write("Nothing is accounted for yet.\n");
+    }
+    for (const entry of result.recorded) {
+      process.stdout.write(
+        `
+${String(entry.what)}
+  said: ${String(entry.said)}
+  ${String(entry.disposition)}${entry.into ? `: ${String(entry.into)}` : ""}${entry.reason ? ` \u2014 ${String(entry.reason)}` : ""}
+`
+      );
+    }
+    if (result.unaccounted.length > 0) {
+      process.stdout.write(
+        `
+${result.unaccounted.length} answer(s) the map recorded reach nothing yet:
+`
+      );
+      for (const entry of result.unaccounted) {
+        process.stdout.write(`
+  ${entry.issue} \u2014 ${entry.title}
+    ${entry.summary}
+`);
+      }
+      process.stdout.write(
+        "\nThese are already the maintainer's words. Deciding where each belongs is yours;\nasking them again is not.\n"
+      );
+    }
+    if (result.issues.length > 0) {
+      process.stdout.write("\nClosure is blocked by:\n");
+      for (const issue3 of result.issues) process.stdout.write(`  - ${issue3}
+`);
+      process.exitCode = 2;
     }
   });
 }

@@ -14,8 +14,14 @@ import {
   approveWork,
   beginWork,
   readWorkRepositories,
+  recordWorkDecision,
 } from "../src/work.js";
-import { framingIssues, parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
+import {
+  decisionAccountingIssues,
+  framingIssues,
+  parseWorkSpec,
+  serializeWorkSpec,
+} from "../src/work-spec.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -248,3 +254,104 @@ async function installPair(): Promise<{ knowledge: string; leaf: string }> {
   await addLeafRepository(knowledge, leaf);
   return { knowledge, leaf };
 }
+
+test("a bundle cannot archive its decisions unaccounted for", async () => {
+  const { leaf } = await installPair();
+  const started = await beginWork({
+    target: leaf,
+    slug: "decides-something",
+    title: "Decides something",
+    mode: "full",
+    distributionRoot,
+  });
+
+  const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  assert.equal(
+    decisionAccountingIssues(document).some((issue) =>
+      /must account for what this work decided/.test(issue)
+    ),
+    true,
+    "silence is what let five recorded answers archive into a place nobody reads",
+  );
+
+  await recordWorkDecision({
+    target: leaf,
+    id: started.id,
+    what: "An effect belongs to the thing that bears it.",
+    said: "map.md#ISSUE-001",
+    disposition: "promoted",
+    into: "knowledge/decisions/effects-belong-to-what-bears-them.md",
+  });
+  assert.deepEqual(
+    decisionAccountingIssues(parseWorkSpec(await readFile(started.specPath, "utf8"))),
+    [],
+  );
+});
+
+test("settling nothing durable is an answer, and an empty list alone is not", async () => {
+  const { leaf } = await installPair();
+  const started = await beginWork({
+    target: leaf,
+    slug: "settles-nothing",
+    title: "Settles nothing",
+    mode: "full",
+    distributionRoot,
+  });
+
+  // Written by hand, which is the only way an empty list reaches the record
+  // without a reason: the command refuses to produce one.
+  const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  (document.metadata.knowledge_promotion as Record<string, unknown>).decisions = [];
+  await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  assert.equal(
+    decisionAccountingIssues(parseWorkSpec(await readFile(started.specPath, "utf8")))
+      .some((issue) => /say why this work settled nothing/.test(issue)),
+    true,
+  );
+
+  await recordWorkDecision({
+    target: leaf,
+    id: started.id,
+    none: "A rename with no behaviour change settles no question.",
+    what: "",
+    said: "",
+    disposition: "none",
+  });
+  assert.deepEqual(
+    decisionAccountingIssues(parseWorkSpec(await readFile(started.specPath, "utf8"))),
+    [],
+  );
+});
+
+test("a decision recorded without saying where it was said is refused", async () => {
+  const { leaf } = await installPair();
+  const started = await beginWork({
+    target: leaf,
+    slug: "no-origin",
+    title: "No origin",
+    mode: "full",
+    distributionRoot,
+  });
+
+  await assert.rejects(
+    recordWorkDecision({
+      target: leaf,
+      id: started.id,
+      what: "Something was decided.",
+      said: "  ",
+      disposition: "promoted",
+      into: "knowledge/decisions/x.md",
+    }),
+    /a decision with no origin cannot be weighed later/,
+  );
+  await assert.rejects(
+    recordWorkDecision({
+      target: leaf,
+      id: started.id,
+      what: "Something was decided.",
+      said: "maintainer_review.framing",
+      disposition: "promoted",
+    }),
+    /Name the concept that now carries this decision/,
+  );
+});

@@ -4206,6 +4206,8 @@ knowledge_promotion:
   status: not-needed
   concepts: []
   reason: The reviewed decision is already represented by the promoted concept.
+  decisions: []
+  decisions_none: The decision this cites is already a page; nothing further outlives the change.
 maintainer_review:
   framing:
     status: approved

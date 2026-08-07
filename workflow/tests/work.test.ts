@@ -177,6 +177,12 @@ test("runs the completed central work lifecycle", async () => {
     status: "applied",
     concepts: ["knowledge/decisions/world-loop.md"],
     reason: "",
+    decisions: [{
+      what: "The world loop follows the reviewed authority model.",
+      said: "maintainer_review.framing",
+      disposition: "promoted",
+      into: "knowledge/decisions/world-loop.md",
+    }],
   };
   document.metadata.knowledge_alignment = {
     reviewed: ["knowledge/index.md"],
@@ -1250,6 +1256,8 @@ async function completeWorkDocument(
     status: "not-needed",
     concepts: [],
     reason: "The reviewed work changes no durable project meaning.",
+    decisions: [],
+    decisions_none: "Nothing here settles a question that outlives the change.",
   };
   document.metadata.verification = {
     result: "passed",
