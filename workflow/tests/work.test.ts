@@ -805,9 +805,15 @@ test("clean-session context discovers only an unambiguous active binding", async
     mode: "full",
     distributionRoot,
   });
+  // The refusal names both candidates and, for each, the fact that decides it.
+  // Neither has a claim, so the choice really is the maintainer's and it says
+  // so — rather than saying so on every ambiguity regardless.
   await assert.rejects(
     workBundleContext(leaf, undefined, "resume"),
-    new RegExp(`Multiple active work records.*${first.id}.*${second.id}.*do not guess`),
+    new RegExp(
+      `Multiple active work records[\\s\\S]*${first.id}[\\s\\S]*${second.id}`
+        + `[\\s\\S]*No record has work in flight`,
+    ),
   );
   assert.equal((await workBundleContext(leaf, second.id, "resume")).id, second.id);
 });
@@ -1576,3 +1582,90 @@ async function prepareFraming(specPath: string): Promise<void> {
   accountEveryRepository(document);
   await writeFile(specPath, serializeWorkSpec(document), "utf8");
 }
+
+test("an ambiguous resume hands over the fact that decides it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-resume-inflight-"));
+  const knowledge = join(root, "knowledge-repo");
+  const leaf = join(root, "leaf-repo");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  initializeGit(knowledge);
+  initializeGit(leaf);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+  commitAll(leaf, "initialize workflow");
+
+  const held = await beginWork({
+    target: leaf,
+    slug: "held-record",
+    title: "Held record",
+    mode: "full",
+    distributionRoot,
+  });
+  const inFlight = await beginWork({
+    target: leaf,
+    slug: "in-flight",
+    title: "In flight record",
+    mode: "wayfinder",
+    distributionRoot,
+  });
+
+  // Neither carries a claim, so which outcome to resume really is the
+  // maintainer's. Refusing here was never the defect; refusing the same way
+  // once the records answered was.
+  await assert.rejects(
+    workBundleContext(leaf, undefined, "resume"),
+    /No record has work in flight, so which outcome to resume is the maintainer's/,
+  );
+
+  const issue = await createWorkIssue({
+    target: leaf,
+    id: inFlight.id,
+    slug: "first-slice",
+    title: "First slice",
+    phase: "wayfinding",
+    type: "task",
+    distributionRoot,
+  });
+  // The claim gate has its own tests; this one is about what the refusal says
+  // once a claim exists, so the state is written rather than earned.
+  const issuePath = join(
+    dirname(inFlight.specPath),
+    "issues",
+    `${issue.id.toLowerCase()}-first-slice.md`,
+  );
+  const parsed = parseWorkSpec(await readFile(issuePath, "utf8"));
+  parsed.metadata.status = "claimed";
+  parsed.metadata.claim = {
+    actor: "agent:test-session",
+    repository: "project",
+    checkout: "knowledge",
+    branch: "",
+    commit: "",
+    worktree_id: "knowledge",
+    claimed_at: "2026-08-07T10:00:00.000Z",
+  };
+  await writeFile(issuePath, serializeWorkSpec(parsed), "utf8");
+
+  // A claim is an explicit act by an actor at a time, not a state that drifts.
+  // One of them, and the answer is already in the records.
+  const message = await workBundleContext(leaf, undefined, "resume").then(
+    () => "",
+    (error: unknown) => (error instanceof Error ? error.message : String(error)),
+  );
+  assert.match(
+    message,
+    new RegExp(`One record has work in flight: ${inFlight.id}\\. Resume that one rather than asking`),
+  );
+  assert.match(message, new RegExp(`${held.id}[\\s\\S]*nothing claimed`));
+  assert.match(message, new RegExp(`${issue.id} claimed by agent:test-session`));
+});

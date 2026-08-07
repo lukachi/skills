@@ -978,11 +978,7 @@ async function requireWorkContext(
     throw new Error("No active work records are bound to this checkout");
   }
   if (!id && results.length > 1) {
-    throw new Error(
-      `Multiple active work records are bound to this checkout: ${
-        results.map((entry) => `${entry.id} (${entry.title})`).join(", ")
-      }. Run wfctl work status, inspect the candidates, and ask the maintainer which outcome to resume; do not guess`,
-    );
+    throw new Error(await ambiguousResumeMessage(results));
   }
   const context = results[0];
   if (!context) {
@@ -992,6 +988,51 @@ async function requireWorkContext(
     throw new Error(`Work context mismatch for ${context.id}: ${context.issues.join("; ")}`);
   }
   return context;
+}
+
+/**
+ * Refuse to choose, and hand over what decides it.
+ *
+ * A refusal that lists six titles and says "ask the maintainer" sends them a
+ * question the records have already answered. The agent then either obeys and
+ * wastes their turn, or overrides the tool and is right by luck — and nothing
+ * separates the session where overriding was right from the one where it was
+ * not. Making obedience the wrong move is worse than a wrong answer, because it
+ * teaches that the tool's instructions are advisory.
+ *
+ * There is no invariant that picks a record here, which is why this still does
+ * not pick one. What there is, per candidate, is a fact recorded by an explicit
+ * act: an issue claimed by an actor at a time, against a commit. One record
+ * holding a claim and the rest waiting on the maintainer is not ambiguous, and
+ * saying so costs nothing. Two claims, or none, and the choice is genuinely
+ * theirs — which is what the last line says, rather than assuming it.
+ */
+async function ambiguousResumeMessage(results: WorkStatusResult[]): Promise<string> {
+  const lines: string[] = [];
+  const inFlight: string[] = [];
+  for (const entry of results) {
+    let claim = "";
+    try {
+      const inspection = await inspectBundle(entry.bundleRoot, "resume");
+      const claimed = inspection.issues.find((issue) => issue.claimed);
+      if (claimed) {
+        claim = `${claimed.id} claimed by ${claimed.claimedBy || "an unnamed actor"}`;
+        inFlight.push(entry.id);
+      }
+    } catch {
+      claim = "cannot be inspected right now";
+    }
+    lines.push(
+      `- ${entry.id} — ${entry.title}\n  ${claim || "nothing claimed; waiting on the maintainer"}`,
+    );
+  }
+  const verdict = inFlight.length === 1
+    ? `\nOne record has work in flight: ${inFlight[0]}. Resume that one rather than asking.`
+    : inFlight.length === 0
+    ? "\nNo record has work in flight, so which outcome to resume is the maintainer's to say."
+    : `\n${inFlight.length} records have work in flight, so which one to resume is the maintainer's to say.`;
+  return `Multiple active work records are bound to this checkout; do not guess which one owns `
+    + `this session:\n${lines.join("\n")}\n${verdict}`;
 }
 
 async function claimContextForTarget(

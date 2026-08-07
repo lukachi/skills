@@ -252,9 +252,36 @@ export function resolveCapabilities(
     });
 }
 
+/**
+ * Who owes the next action, before how bad the state is.
+ *
+ * The reader of a session brief is the agent, and level answers a different
+ * question than the one it opens with. Sorting worst-first put five records the
+ * maintainer alone can move at the top of a brief and the one thing the agent
+ * could do at position thirteen — correct as severity, useless as an opening.
+ *
+ * That was survivable until the brief outgrew what reaches a session whole. A
+ * twenty-one kilobyte brief is delivered as a two-kilobyte preview and a pointer
+ * to the rest, and the preview is the first bytes, whatever they happen to be.
+ * Ordering does not shrink anything, and it is not meant to: it decides what
+ * survives the cut. Shrinking the brief would only move the same failure to a
+ * larger number of records.
+ *
+ * Level still decides within each group, so a blocked thing the agent owns
+ * outranks an ordinary one it owns. Nothing here authorizes an action — a brief
+ * never starts work — it only stops the answerable part from being the part
+ * that gets truncated away.
+ */
+const AWAITS_ORDER = ["agent", "maintainer", undefined] as const;
+
 export function sortSignals(signals: readonly StateSignal[]): StateSignal[] {
+  const owes = (signal: StateSignal): number => {
+    const index = AWAITS_ORDER.indexOf(signal.awaits as (typeof AWAITS_ORDER)[number]);
+    return index < 0 ? AWAITS_ORDER.length : index;
+  };
   return [...signals].sort((left, right) =>
-    STATE_LEVELS.indexOf(right.level) - STATE_LEVELS.indexOf(left.level)
+    owes(left) - owes(right)
+    || STATE_LEVELS.indexOf(right.level) - STATE_LEVELS.indexOf(left.level)
     || STATE_DOMAINS.indexOf(left.domain) - STATE_DOMAINS.indexOf(right.domain)
     || left.id.localeCompare(right.id)
     || (left.subject ?? "").localeCompare(right.subject ?? "")

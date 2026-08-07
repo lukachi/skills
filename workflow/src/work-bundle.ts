@@ -74,6 +74,13 @@ export interface WorkIssueSummary {
   repositories: string[];
   artifacts: string[];
   claimed: boolean;
+  /**
+   * The actor recorded in the claim itself, not in the checkpoint beside it.
+   * A checkpoint is rewritten by whoever refreshes it; the claim is written
+   * once, by the actor taking the work, and is the only durable answer to who
+   * holds it.
+   */
+  claimedBy: string;
   unblocked: boolean;
   frontier: boolean;
 }
@@ -1402,6 +1409,7 @@ async function parseIssueFile(bundleRoot: string, relativeFile: string): Promise
       repositories: uniqueStrings(stringArray(document.metadata.repositories)),
       artifacts: uniqueStrings(stringArray(document.metadata.artifacts)).map(normalizeArtifactPath),
       claimed: status === "claimed",
+      claimedBy: stringValue(recordValue(document.metadata.claim)?.actor),
       unblocked: false,
       frontier: false,
     },

@@ -25217,6 +25217,7 @@ async function parseIssueFile(bundleRoot, relativeFile) {
       repositories: uniqueStrings5(stringArray7(document3.metadata.repositories)),
       artifacts: uniqueStrings5(stringArray7(document3.metadata.artifacts)).map(normalizeArtifactPath),
       claimed: status === "claimed",
+      claimedBy: stringValue8(recordValue8(document3.metadata.claim)?.actor),
       unblocked: false,
       frontier: false
     }
@@ -39291,9 +39292,14 @@ function resolveCapabilities(definitions, signals2, profile) {
     };
   });
 }
+var AWAITS_ORDER = ["agent", "maintainer", void 0];
 function sortSignals(signals2) {
+  const owes = (signal) => {
+    const index2 = AWAITS_ORDER.indexOf(signal.awaits);
+    return index2 < 0 ? AWAITS_ORDER.length : index2;
+  };
   return [...signals2].sort(
-    (left, right) => STATE_LEVELS.indexOf(right.level) - STATE_LEVELS.indexOf(left.level) || STATE_DOMAINS.indexOf(left.domain) - STATE_DOMAINS.indexOf(right.domain) || left.id.localeCompare(right.id) || (left.subject ?? "").localeCompare(right.subject ?? "")
+    (left, right) => owes(left) - owes(right) || STATE_LEVELS.indexOf(right.level) - STATE_LEVELS.indexOf(left.level) || STATE_DOMAINS.indexOf(left.domain) - STATE_DOMAINS.indexOf(right.domain) || left.id.localeCompare(right.id) || (left.subject ?? "").localeCompare(right.subject ?? "")
   );
 }
 
@@ -40231,9 +40237,7 @@ async function requireWorkContext(targetInput, id) {
     throw new Error("No active work records are bound to this checkout");
   }
   if (!id && results.length > 1) {
-    throw new Error(
-      `Multiple active work records are bound to this checkout: ${results.map((entry) => `${entry.id} (${entry.title})`).join(", ")}. Run wfctl work status, inspect the candidates, and ask the maintainer which outcome to resume; do not guess`
-    );
+    throw new Error(await ambiguousResumeMessage(results));
   }
   const context = results[0];
   if (!context) {
@@ -40243,6 +40247,33 @@ async function requireWorkContext(targetInput, id) {
     throw new Error(`Work context mismatch for ${context.id}: ${context.issues.join("; ")}`);
   }
   return context;
+}
+async function ambiguousResumeMessage(results) {
+  const lines = [];
+  const inFlight = [];
+  for (const entry of results) {
+    let claim = "";
+    try {
+      const inspection = await inspectWorkBundle(entry.bundleRoot, "resume");
+      const claimed = inspection.issues.find((issue3) => issue3.claimed);
+      if (claimed) {
+        claim = `${claimed.id} claimed by ${claimed.claimedBy || "an unnamed actor"}`;
+        inFlight.push(entry.id);
+      }
+    } catch {
+      claim = "cannot be inspected right now";
+    }
+    lines.push(
+      `- ${entry.id} \u2014 ${entry.title}
+  ${claim || "nothing claimed; waiting on the maintainer"}`
+    );
+  }
+  const verdict = inFlight.length === 1 ? `
+One record has work in flight: ${inFlight[0]}. Resume that one rather than asking.` : inFlight.length === 0 ? "\nNo record has work in flight, so which outcome to resume is the maintainer's to say." : `
+${inFlight.length} records have work in flight, so which one to resume is the maintainer's to say.`;
+  return `Multiple active work records are bound to this checkout; do not guess which one owns this session:
+${lines.join("\n")}
+${verdict}`;
 }
 async function claimContextForTarget(target, context) {
   const config = await readConfig(target);

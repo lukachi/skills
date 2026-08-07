@@ -612,3 +612,68 @@ async function prepareFraming(specPath: string): Promise<void> {
   }
   await writeFile(specPath, serializeWorkSpec(document), "utf8");
 }
+
+test("the brief opens with what the agent can act on, not with the worst level", async () => {
+  const ordered = sortSignals([
+    { id: "work.blocked", domain: "work", level: "blocked", summary: "b", awaits: "maintainer" },
+    { id: "raw.present", domain: "raw", level: "info", summary: "r" },
+    { id: "work.active", domain: "work", level: "attention", summary: "a", awaits: "agent" },
+    { id: "trajectory.debts-unscheduled", domain: "trajectory", level: "attention", summary: "d", awaits: "maintainer" },
+    { id: "corpus.not-compiled", domain: "corpus", level: "blocked", summary: "c", awaits: "agent" },
+  ]);
+
+  // A brief is delivered truncated once it outgrows a session, as a preview of
+  // its first bytes. Level answers how bad a thing is; a session opens on what
+  // it may do about it, and severity still decides inside each group.
+  assert.deepEqual(ordered.map((signal) => signal.id), [
+    "corpus.not-compiled",
+    "work.active",
+    "work.blocked",
+    "trajectory.debts-unscheduled",
+    "raw.present",
+  ]);
+});
+
+test("a truncated brief cannot bury the one thing the agent owns", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  // Five records nobody but the maintainer can move, and one the agent can.
+  for (const slug of ["one", "two", "three", "four", "five"]) {
+    const started = await beginWork({
+      target: leaf,
+      slug,
+      title: `Held ${slug}`,
+      mode: "full",
+      distributionRoot,
+    });
+    const document = parseWorkSpec(await readFile(started.specPath, "utf8"));
+    const checkpoint = document.metadata.checkpoint as Record<string, unknown>;
+    checkpoint.blockers = ["Waiting on the maintainer."];
+    await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
+  }
+  const mine = await beginWork({
+    target: leaf,
+    slug: "mine",
+    title: "The one in play",
+    mode: "full",
+    distributionRoot,
+  });
+  await prepareFraming(mine.specPath);
+  await approveWork({
+    target: leaf,
+    id: mine.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "interactive",
+  });
+
+  const report = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  const first = report.signals.find((signal) => signal.subject !== undefined);
+  assert.equal(
+    first?.subject,
+    mine.id,
+    `the first record-bearing signal must be the one the agent owns: ${
+      JSON.stringify(report.signals.slice(0, 3).map((s) => [s.id, s.subject, s.awaits]))
+    }`,
+  );
+  assert.equal(first?.awaits, "agent");
+});
