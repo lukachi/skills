@@ -149,3 +149,18 @@ assert.equal(garbage.status, 0);
 assert.equal(garbage.stdout.trim(), "");
 
 process.stdout.write("idle-guard: reports silence, judges nothing, watches every shell command\n");
+
+// The threshold has to stay under whatever the host allows a foreground command
+// before it moves it to the background. At the same number the watch can never
+// speak first: the command is taken away in the second the report would have
+// arrived, which is what happened to a Rust suite twice in one session.
+{
+  const wrapped = askHook({ tool_name: "Bash", tool_input: { command: "cargo test" } });
+  const idle = /IDLE=(\d+)/.exec(wrapped.hookSpecificOutput.updatedInput.command);
+  assert.ok(idle, "the wrapper must pass a threshold");
+  assert.ok(
+    Number(idle[1]) < 600,
+    `idle threshold ${idle[1]} must stay under the host's foreground limit`,
+  );
+}
+console.log("idle-guard: threshold stays under the host's foreground limit");
