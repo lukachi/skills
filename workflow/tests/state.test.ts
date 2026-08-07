@@ -19,7 +19,13 @@ import {
 import { STATE_COLLECTORS } from "../src/state-collectors.js";
 import { parseWorkSpec, serializeWorkSpec } from "../src/work-spec.js";
 import { beginIntakeCase, intakeContext, updateIntakeCheckpoint } from "../src/intake.js";
-import { approveWork, beginWork, updateWorkCheckpoint } from "../src/work.js";
+import {
+  approveWork,
+  beginWork,
+  createWorkIssue,
+  dropWorkIssue,
+  updateWorkCheckpoint,
+} from "../src/work.js";
 import { assessResumability } from "../src/resumability.js";
 
 const distributionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -676,4 +682,105 @@ test("a truncated brief cannot bury the one thing the agent owns", async () => {
     }`,
   );
   assert.equal(first?.awaits, "agent");
+});
+
+test("verification is the agent's only once the route is finished", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "still-building",
+    title: "Still building",
+    mode: "full",
+    distributionRoot,
+  });
+  await prepareFraming(started.specPath);
+  await approveWork({
+    target: leaf,
+    id: started.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "interactive",
+  });
+  const change = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  const bound = (change.metadata.repositories as Array<Record<string, unknown>>)[0];
+  await createWorkIssue({
+    target: leaf,
+    id: started.id,
+    slug: "one-slice",
+    title: "One slice",
+    phase: "delivery",
+    type: "task",
+    repositories: [String(bound?.repository ?? "")],
+    distributionRoot,
+  });
+
+  // An open issue means the work is not done, so there is nothing to verify and
+  // nobody owes an action. Claiming the agent here armed the stop guard on a
+  // bundle whose agent was waiting for a person to look at a page: nine
+  // re-entries in one turn, each finding real side work that moved the state
+  // fingerprint and so defeated the guard's own release.
+  const building = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  const pending = building.signals.find((signal) =>
+    signal.id === "work.verification-pending" && signal.subject === started.id
+  );
+  assert.equal(pending !== undefined, true);
+  assert.equal(pending?.awaits, undefined, "nothing is verifiable while a slice is open");
+  assert.deepEqual(pending?.blocks, ["close-work"], "closure still requires it");
+
+  await dropWorkIssue(leaf, started.id, "ISSUE-001", "Folded into the change itself.");
+
+  const finished = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    finished.signals.find((signal) =>
+      signal.id === "work.verification-pending" && signal.subject === started.id
+    )?.awaits,
+    "agent",
+    "with nothing open, verifying is exactly what the agent does next",
+  );
+});
+
+test("a checkpoint blocker takes the bundle off the agent", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "waiting-on-a-person",
+    title: "Waiting on a person",
+    mode: "full",
+    distributionRoot,
+  });
+  await prepareFraming(started.specPath);
+  await approveWork({
+    target: leaf,
+    id: started.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "interactive",
+  });
+  assert.equal(
+    (await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS })).signals
+      .find((signal) => signal.id === "work.verification-pending")?.awaits,
+    "agent",
+  );
+
+  // The release the guard's message now names. An agent blocked on a person
+  // wrote what it needed in nine consecutive messages; prose is not state, and
+  // this is the line that changes what the repository reports.
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test-session",
+    status: "blocked",
+    currentState: "The page is built and needs a person to look at it.",
+    nextAction: "Nothing until he looks.",
+    blockers: ["He has to open the page before anything can be verified."],
+  });
+
+  const held = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  for (const signal of held.signals.filter((entry) => entry.subject === started.id)) {
+    assert.notEqual(
+      signal.awaits,
+      "agent",
+      `${signal.id} still claims the agent while the record names a blocker`,
+    );
+  }
 });

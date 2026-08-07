@@ -38830,18 +38830,20 @@ function workCollector() {
           });
         }
         if (stringValue11(recordValue11(metadata.verification)?.result) !== "passed") {
+          const routeFinished = issues.issuesOpen === 0 && issues.issuesClaimed === 0;
           signals2.push({
             id: "work.verification-pending",
             domain: "work",
             level: "info",
             summary: "The bundle has not passed verification",
             subject: entry.id,
-            // Nothing has been built until the framing is approved, and nothing
-            // may be built while the bundle is parked, so in neither case can
-            // verification be the agent's next action. Reporting it as one is
-            // what let a stop guard push a parked bundle into three source
-            // repositories, one re-entry at a time.
-            awaits: park || outstanding.includes("framing") ? "maintainer" : "agent",
+            // Held for the maintainer means held, whichever way the record says
+            // so — parked, framing unapproved, or a checkpoint naming a blocker.
+            // The blocker was missing from this condition while the stop guard's
+            // own message told agents that recording one is what quiets it, so
+            // the one documented escape from a re-entry loop did not work on the
+            // signal most likely to have caused it.
+            ...heldForMaintainer ? { awaits: "maintainer" } : routeFinished ? { awaits: "agent" } : {},
             blocks: ["close-work"]
           });
         }
@@ -41150,6 +41152,7 @@ async function installWorkflow(input) {
   const repositoryCheckout = input.profile === "knowledge" ? (await ensureRepositoryRegistry(input.target), void 0) : await addLeafRepository(input.knowledge, input.target);
   const backgroundGuard = await installBackgroundGuardHook(input.target);
   const stopGuard = await installStopGuardHook(input.target);
+  const sessionBrief = await installSessionBriefHook(input.target);
   const graphifyUpdate = input.profile === "leaf" ? await refreshGraphifyGraph(input.target, input.json) : void 0;
   if (input.profile === "knowledge") {
     const validation = await validateKnowledge(input.target);
@@ -41164,6 +41167,11 @@ async function installWorkflow(input) {
     name: "background-guard",
     status: "pass",
     message: backgroundGuard.outcome === "already-installed" ? "Background shell commands are already watched for silence" : `Background shell commands are now watched for silence (${backgroundGuard.path})`
+  });
+  report.checks.push({
+    name: "session-brief",
+    status: "pass",
+    message: sessionBrief.outcome === "already-installed" ? "A session already opens with the current state of this repository" : `A session now opens with the current state of this repository (${sessionBrief.path})`
   });
   report.checks.push({
     name: "stop-guard",

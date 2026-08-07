@@ -512,6 +512,12 @@ async function installWorkflow(input: {
   // Same reason, the other half of the same loss: a turn that ends on a stated
   // next action leaves the work parked with nothing reported as wrong.
   const stopGuard = await installStopGuardHook(input.target);
+  // The brief is the state every rule in this workflow tells an agent to open
+  // with, and it was reachable only through a command nobody was told to run.
+  // One repository had it because somebody installed it by hand and another did
+  // not, so half the work ran against a state its agent had never read — while
+  // the stop guard, which reads exactly the same state, was installed in both.
+  const sessionBrief = await installSessionBriefHook(input.target);
   const graphifyUpdate = input.profile === "leaf"
     ? await refreshGraphifyGraph(input.target, input.json)
     : undefined;
@@ -532,6 +538,13 @@ async function installWorkflow(input: {
     message: backgroundGuard.outcome === "already-installed"
       ? "Background shell commands are already watched for silence"
       : `Background shell commands are now watched for silence (${backgroundGuard.path})`,
+  });
+  report.checks.push({
+    name: "session-brief",
+    status: "pass",
+    message: sessionBrief.outcome === "already-installed"
+      ? "A session already opens with the current state of this repository"
+      : `A session now opens with the current state of this repository (${sessionBrief.path})`,
   });
   report.checks.push({
     name: "stop-guard",

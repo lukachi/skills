@@ -769,18 +769,34 @@ function workCollector(): StateCollector {
           });
         }
         if (stringValue(recordValue(metadata.verification)?.result) !== "passed") {
+          // Verification is what happens after the route is finished, so it is
+          // the agent's next action only once nothing is left open or claimed.
+          //
+          // Claiming it earlier armed the stop guard on a bundle whose agent was
+          // waiting for a person to look at a page. It was returned nine times
+          // in one turn, and each time it found real side work — tests, a
+          // refactor, two commits — which changed the state fingerprint and so
+          // defeated the guard's own release. A blocked agent that keeps busy is
+          // indistinguishable from a productive one, which is why the condition
+          // has to be what is left to do rather than how recently something moved.
+          const routeFinished = issues.issuesOpen === 0 && issues.issuesClaimed === 0;
           signals.push({
             id: "work.verification-pending",
             domain: "work",
             level: "info",
             summary: "The bundle has not passed verification",
             subject: entry.id,
-            // Nothing has been built until the framing is approved, and nothing
-            // may be built while the bundle is parked, so in neither case can
-            // verification be the agent's next action. Reporting it as one is
-            // what let a stop guard push a parked bundle into three source
-            // repositories, one re-entry at a time.
-            awaits: park || outstanding.includes("framing") ? "maintainer" : "agent",
+            // Held for the maintainer means held, whichever way the record says
+            // so — parked, framing unapproved, or a checkpoint naming a blocker.
+            // The blocker was missing from this condition while the stop guard's
+            // own message told agents that recording one is what quiets it, so
+            // the one documented escape from a re-entry loop did not work on the
+            // signal most likely to have caused it.
+            ...(heldForMaintainer
+              ? { awaits: "maintainer" as const }
+              : routeFinished
+              ? { awaits: "agent" as const }
+              : {}),
             blocks: ["close-work"],
           });
         }
