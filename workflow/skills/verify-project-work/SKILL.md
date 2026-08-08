@@ -86,13 +86,18 @@ it rather than treat it as already settled. Promote it anyway: knowledge grown
 from real work is better than none, and the cost of the shortcut is only hidden
 when nobody writes it down.
 
-Present acceptance results, engineering findings, checks, deviations, risks,
-and knowledge delta as one completion review packet. It is maintainer-facing:
-the reader test in `maintainer-review` applies, so acceptance is named by what
-was asked for rather than by criterion id, and a deviation by what changed for
-the product rather than by which file moved. Record the maintainer's
-explicit decision through the approval command; never write the receipt by
-hand:
+Present the completion decision as one packet, written for someone who was not
+watching: what the work now does that it did not before, what you are asking
+them to accept, and what happens if they decline. Acceptance results,
+engineering findings, checks, deviations, risks, and the knowledge delta belong
+to the record. One reaches the message only when it changes that decision — a
+deviation the product can feel, a risk they will carry, an acceptance criterion
+nothing delivers. A packet that presents all six as sections is a status report,
+and a status report gets acknowledged rather than decided. The report shape in
+`maintainer-review` governs it: acceptance is named by what was asked for rather
+than by criterion id, and a deviation by what changed for the product rather
+than by which file moved. Record the maintainer's explicit decision through the
+approval command; never write the receipt by hand:
 
 ```sh
 wfctl work approve <id> --stage completion \

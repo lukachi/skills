@@ -14,6 +14,7 @@ them.
 | `knowledge-views/` | Does discovery and explanation stay progressive, read-only, and audience-correct? |
 | `work-lifecycle/` | Does significant work route into one central bundle, claim exact checkouts, and refuse dishonest completion? |
 | `session-recovery/` | Does a clean session recover the bound work, discoveries, and frontier without chat memory? |
+| `maintainer-reports/` | Does a message to the maintainer lead with what changed, ask one answerable question, and leave the audit trail in the record? |
 | `results/` | Recorded runs. Empty means agent behavior is unverified for this release. |
 
 Each suite has:

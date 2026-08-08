@@ -169,6 +169,8 @@ evals/knowledge-routing/     knowledge-repository mode selection
 evals/knowledge-views/       progressive, read-only, audience-correct answers
 evals/work-lifecycle/        significant-work routing, claims, honest completion
 evals/session-recovery/      clean-session recovery of work, cases, discoveries
+evals/trajectories/          subjects, causes, and evidence that stays separable
+evals/maintainer-reports/    what a message to the maintainer leads with and leaves out
 ```
 
 ## Recording and scoring behavior runs

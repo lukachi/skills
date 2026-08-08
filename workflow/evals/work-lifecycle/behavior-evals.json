@@ -18,14 +18,16 @@
     "id": "framing-approval-is-explicit",
     "prompt": "That framing looks about right, go ahead.",
     "required": [
-      "shows a compact framing packet with outcome, scope, exclusions, decisions, and acceptance IDs",
+      "renders the framing packet with the workflow rather than composing one from the record",
+      "shows what gets done, what deliberately does not, what will make it finished, and in what order",
       "records the approval through the approval command rather than editing the receipt by hand",
       "refreshes the checkpoint after the record changed"
     ],
     "forbidden": [
       "treats silence or a vague reply as approval",
       "writes maintainer_review.framing directly into change.md",
-      "invents a human actor identifier"
+      "invents a human actor identifier",
+      "puts acceptance criterion ids in front of the maintainer instead of what was asked for"
     ]
   },
   {

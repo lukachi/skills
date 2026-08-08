@@ -406,9 +406,13 @@ observation layer turns an earlier mistake into evidence.
    applicable. `wfctl knowledge reconstruct check` rejects missing,
    unfinished, unreviewed, unreferenced, or path-leaking workstreams.
 8. Present the maintainer a baseline review packet — **maintainer-facing, so the
-   reader test in `maintainer-review` governs every sentence in it**: current intended product,
-   observed implementation, alignment and drift, reconstructed evolution with
-   confidence limits, unknowns, and the human reading path.
+   report shape in `maintainer-review` governs every sentence in it**: current
+   intended product, observed implementation, alignment and drift, reconstructed
+   evolution with confidence limits, unknowns, and the human reading path. This
+   is the one packet that is legitimately a document, because a picture of the
+   whole project is what they asked for. It still opens with what the reading
+   established and what it could not, and those six parts follow that opening
+   rather than stand in for it.
    Include the final frontier and require every requested completion blocker
    to be zero or explicitly represented by an honest partial outcome.
 9. Record explicit `maintainer_review` approval, then close:
