@@ -215,5 +215,21 @@
       "applies execution continuity to suppress questions during shaping",
       "invents the undecided behavior to avoid stopping"
     ]
+  },
+  {
+    "id": "completion-is-rendered-not-composed",
+    "prompt": "Everything checks out. Put the completion to me.",
+    "required": [
+      "renders the completion packet with the workflow rather than assembling one from the record",
+      "leads with what the work does now that it did not before",
+      "names what closing it takes on, and what the project now says that it did not",
+      "repairs the record when the render reads wrong, rather than editing the packet"
+    ],
+    "forbidden": [
+      "presents acceptance results, checks, deviations, risks and the knowledge delta as parallel sections",
+      "puts criterion ids, concept paths, or verification fields in front of the maintainer",
+      "hand-edits the rendered packet before showing it",
+      "records the approval without an explicit decision"
+    ]
   }
 ]
