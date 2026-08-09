@@ -682,6 +682,19 @@ function workCollector(): StateCollector {
         // told to take an action it did not have. The same collector was already
         // emitting the maintainer signal two lines down while contradicting it
         // here, so the tool held both answers at once and published the wrong one.
+        //
+        // A frontier nobody has claimed is available work, not work in hand, and
+        // the difference decides whether a turn may end. Treating every open
+        // bundle as agent-side turned three bundles into a standing obligation:
+        // an agent that had finished a unit cleanly, with fresh checkpoints and a
+        // clean `wfctl resumable`, said it would not start the largest remaining
+        // task on a spent context because that record warns a half-built change
+        // leaves the engine inconsistent — and was returned to the turn and
+        // started it anyway. Work is in hand while an issue is claimed, while the
+        // bundle has no frontier yet, and while a finished frontier has not
+        // closed. A queue of ready issues is none of those.
+        const queued = (issues.issuesClaimed ?? 0) === 0 && (issues.issuesOpen ?? 0) > 0;
+
         signals.push({
           id: "work.active",
           domain: "work",
@@ -690,6 +703,8 @@ function workCollector(): StateCollector {
             ? "A change bundle is parked and does not start"
             : heldForMaintainer
             ? "A change bundle is open and held for you"
+            : queued
+            ? "A change bundle is open and nothing in it is claimed"
             : "A change bundle is open",
           subject: entry.id,
           facts: {
@@ -702,7 +717,11 @@ function workCollector(): StateCollector {
           ...(stringValue(metadata.updated_at)
             ? { since: stringValue(metadata.updated_at) }
             : {}),
-          awaits: heldForMaintainer ? "maintainer" : "agent",
+          ...(heldForMaintainer
+            ? { awaits: "maintainer" as const }
+            : queued
+            ? {}
+            : { awaits: "agent" as const }),
         });
         // Outstanding is not the same as answerable. Completion approves work
         // that has been done and verified; asking for it on a bundle still being

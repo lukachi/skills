@@ -1873,10 +1873,15 @@ async function requireApprovedFraming(bundleRoot: string, issueId: string): Prom
     return;
   }
   const id = stringValue(change.metadata.id) || basename(bundleRoot);
+  // Never "have them record it in their own terminal", which this said for as
+  // long as the gate existed while the rule it enforces said the opposite:
+  // retyping a generated id, a stage name and their own identity relocates an
+  // answer they already gave, and records nothing the attestation does not.
   throw new Error(
     `Work issue ${issueId} implements this change, and its framing is not approved. `
-      + "Present the framing decision, then have the maintainer record it in their own "
-      + `terminal: wfctl work approve ${id} --stage framing --by human:<maintainer-id>`,
+      + `Render it with wfctl work ask ${id}, put it to the maintainer, and record what `
+      + `they answered: wfctl work approve ${id} --stage framing --by human:<maintainer-id> `
+      + `--attested "<their answer, word for word>" --session "<where they said it>"`,
   );
 }
 

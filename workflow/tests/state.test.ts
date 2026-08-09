@@ -22,8 +22,10 @@ import { beginIntakeCase, intakeContext, updateIntakeCheckpoint } from "../src/i
 import {
   approveWork,
   beginWork,
+  claimWorkIssue,
   createWorkIssue,
   dropWorkIssue,
+  reviewWorkBundleFile,
   updateWorkCheckpoint,
 } from "../src/work.js";
 import { assessResumability } from "../src/resumability.js";
@@ -736,6 +738,89 @@ test("verification is the agent's only once the route is finished", async () => 
     )?.awaits,
     "agent",
     "with nothing open, verifying is exactly what the agent does next",
+  );
+});
+
+test("a frontier nobody has claimed is a backlog, and does not arm the stop guard", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "three-of-these",
+    title: "Three of these",
+    mode: "full",
+    distributionRoot,
+  });
+  await prepareFraming(started.specPath);
+  await approveWork({
+    target: leaf,
+    id: started.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "interactive",
+  });
+
+  // Approved and cut into nothing yet: building the frontier is the next action
+  // and it is the agent's, so a turn that ends here ends mid-task.
+  const empty = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    empty.signals.find((signal) => signal.id === "work.active")?.awaits,
+    "agent",
+  );
+
+  const change = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  const bound = (change.metadata.repositories as Array<Record<string, unknown>>)[0];
+  const repository = String(bound?.repository ?? "");
+  await createWorkIssue({
+    target: leaf,
+    id: started.id,
+    slug: "the-largest-one",
+    title: "The largest one",
+    phase: "delivery",
+    type: "task",
+    repositories: [repository],
+    distributionRoot,
+  });
+
+  // A ready issue is available work, not work in hand. An agent that finished a
+  // unit, checkpointed it and found stopping safe owes this bundle nothing, and
+  // saying otherwise made three open bundles into a standing obligation: the
+  // agent argued against starting the largest task on a spent context, was
+  // returned to the turn, and started it anyway.
+  const queued = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  const idle = queued.signals.find((signal) => signal.id === "work.active");
+  assert.equal(idle?.awaits, undefined, "a queue nobody is holding may be left where it is");
+  assert.match(String(idle?.summary), /nothing in it is claimed/);
+  assert.equal(idle?.level, "attention", "it still reaches the brief; it just owes nobody");
+
+  // Approving and cutting the frontier both edited the record, so the claim gate
+  // refuses until the checkpoint describes what is there now.
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test",
+    status: "active",
+    currentState: "The framing is approved and the frontier holds one delivery task.",
+    lastCompleted: "Cut the largest remaining task out of the approved scope.",
+    nextAction: "Claim it and change the record shape behind it.",
+  });
+
+  for (const path of ["change.md", "issues/ISSUE-001-the-largest-one.md"]) {
+    await reviewWorkBundleFile(leaf, started.id, path, "reviewed", "Read before claiming.");
+  }
+
+  await claimWorkIssue({
+    target: leaf,
+    id: started.id,
+    issueId: "ISSUE-001",
+    actor: "agent:test",
+  });
+
+  // Claimed is the state the guard exists for: something is in the agent's
+  // hands, and ending the turn parks it.
+  const inHand = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    inHand.signals.find((signal) => signal.id === "work.active")?.awaits,
+    "agent",
   );
 });
 

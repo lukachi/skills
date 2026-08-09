@@ -25644,7 +25644,7 @@ async function requireApprovedFraming(bundleRoot, issueId) {
   }
   const id = stringValue8(change.metadata.id) || basename3(bundleRoot);
   throw new Error(
-    `Work issue ${issueId} implements this change, and its framing is not approved. Present the framing decision, then have the maintainer record it in their own terminal: wfctl work approve ${id} --stage framing --by human:<maintainer-id>`
+    `Work issue ${issueId} implements this change, and its framing is not approved. Render it with wfctl work ask ${id}, put it to the maintainer, and record what they answered: wfctl work approve ${id} --stage framing --by human:<maintainer-id> --attested "<their answer, word for word>" --session "<where they said it>"`
   );
 }
 function workCheckpointBasis(document3) {
@@ -38764,11 +38764,12 @@ function workCollector() {
         const checkpoint = recordValue11(metadata.checkpoint);
         const park = readPark(metadata);
         const heldForMaintainer = Boolean(park) || outstanding.includes("framing") || stringValue11(checkpoint?.status) === "blocked" || Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0;
+        const queued = (issues.issuesClaimed ?? 0) === 0 && (issues.issuesOpen ?? 0) > 0;
         signals2.push({
           id: "work.active",
           domain: "work",
           level: "attention",
-          summary: park ? "A change bundle is parked and does not start" : heldForMaintainer ? "A change bundle is open and held for you" : "A change bundle is open",
+          summary: park ? "A change bundle is parked and does not start" : heldForMaintainer ? "A change bundle is open and held for you" : queued ? "A change bundle is open and nothing in it is claimed" : "A change bundle is open",
           subject: entry.id,
           facts: {
             title: stringValue11(metadata.title) || entry.id,
@@ -38778,7 +38779,7 @@ function workCollector() {
             ...issues
           },
           ...stringValue11(metadata.updated_at) ? { since: stringValue11(metadata.updated_at) } : {},
-          awaits: heldForMaintainer ? "maintainer" : "agent"
+          ...heldForMaintainer ? { awaits: "maintainer" } : queued ? {} : { awaits: "agent" }
         });
         const unaccounted = recordArray7(metadata.repositories).filter((entry2) => {
           const status = stringValue11(recordValue11(entry2.accounted)?.status);
