@@ -23,9 +23,14 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   a different question, and never from the reconstruction or blocker that held
   it having since cleared: the condition ending is not the same as being told to
   go.
-- Put a framing to the maintainer with `wfctl work ask`, which renders the four
-  things approval fixes — what gets done, what deliberately does not, what makes
-  it finished, in what order — and nothing else from a record written for you.
+- Put both gates to the maintainer with `wfctl work ask`, which renders the four
+  things each decision fixes and nothing else from a record written for you. A
+  framing: what gets done, what deliberately does not, what makes it finished, in
+  what order. A completion, with `--stage completion`: what the work does now,
+  what it still does not do, what closing it takes on, what the project now says
+  that it did not. When a render reads wrong, repair the record it read; a packet
+  edited by hand is composed again, and composed is what put file paths and
+  criterion ids in front of them.
 - Record framing and completion approvals with `wfctl work approve`, never by
   editing `maintainer_review`; a hand-written receipt fails verification. Pass
   `--attested "<their answer, word for word>" --session "<where they said it>"`

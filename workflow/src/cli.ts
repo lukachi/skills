@@ -1280,9 +1280,11 @@ function workReleaseCommand() {
 function workAskCommand() {
   return new Command()
     .description(
-      "Render the framing a maintainer is being asked to approve, in four parts:\n"
-        + "what gets done, what deliberately does not, what will make it finished, and the order.\n"
-        + "Everything else in the record is bookkeeping the approval does not touch.",
+      "Render the decision a maintainer is being asked for, in four parts.\n"
+        + "A framing: what gets done, what deliberately does not, what will make it\n"
+        + "finished, and the order. A completion: what it does now, what it still does\n"
+        + "not do, what closing it takes on, and what the project now says.\n"
+        + "Everything else in the record is the evidence behind those, and stays there.",
     )
     .arguments("<id:string>")
     .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })

@@ -355,7 +355,7 @@ var init_directives = __esm({
         return tag[0] === "!" ? tag : `!<${tag}>`;
       }
       toString(doc) {
-        const lines = this.yaml.explicit ? [`%YAML ${this.yaml.version || "1.2"}`] : [];
+        const lines2 = this.yaml.explicit ? [`%YAML ${this.yaml.version || "1.2"}`] : [];
         const tagEntries = Object.entries(this.tags);
         let tagNames;
         if (doc && tagEntries.length > 0 && isNode(doc.contents)) {
@@ -371,9 +371,9 @@ var init_directives = __esm({
           if (handle === "!!" && prefix === "tag:yaml.org,2002:")
             continue;
           if (!doc || tagNames.some((tn) => tn.startsWith(prefix)))
-            lines.push(`%TAG ${handle} ${prefix}`);
+            lines2.push(`%TAG ${handle} ${prefix}`);
         }
-        return lines.join("\n");
+        return lines2.join("\n");
       }
     };
     Directives.defaultYaml = { explicit: false, version: "1.2" };
@@ -1776,22 +1776,22 @@ function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, fl
   const { indent, options: { commentString } } = ctx;
   const itemCtx = Object.assign({}, ctx, { indent: itemIndent, type: null });
   let chompKeep = false;
-  const lines = [];
+  const lines2 = [];
   for (let i = 0; i < items.length; ++i) {
     const item = items[i];
     let comment2 = null;
     if (isNode(item)) {
       if (!chompKeep && item.spaceBefore)
-        lines.push("");
-      addCommentBefore(ctx, lines, item.commentBefore, chompKeep);
+        lines2.push("");
+      addCommentBefore(ctx, lines2, item.commentBefore, chompKeep);
       if (item.comment)
         comment2 = item.comment;
     } else if (isPair(item)) {
       const ik = isNode(item.key) ? item.key : null;
       if (ik) {
         if (!chompKeep && ik.spaceBefore)
-          lines.push("");
-        addCommentBefore(ctx, lines, ik.commentBefore, chompKeep);
+          lines2.push("");
+        addCommentBefore(ctx, lines2, ik.commentBefore, chompKeep);
       }
     }
     chompKeep = false;
@@ -1800,15 +1800,15 @@ function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, fl
       str2 += lineComment(str2, itemIndent, commentString(comment2));
     if (chompKeep && comment2)
       chompKeep = false;
-    lines.push(blockItemPrefix + str2);
+    lines2.push(blockItemPrefix + str2);
   }
   let str;
-  if (lines.length === 0) {
+  if (lines2.length === 0) {
     str = flowChars.start + flowChars.end;
   } else {
-    str = lines[0];
-    for (let i = 1; i < lines.length; ++i) {
-      const line = lines[i];
+    str = lines2[0];
+    for (let i = 1; i < lines2.length; ++i) {
+      const line = lines2[i];
       str += line ? `
 ${indent}${line}` : "\n";
     }
@@ -1831,22 +1831,22 @@ function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
   });
   let reqNewline = false;
   let linesAtValue = 0;
-  const lines = [];
+  const lines2 = [];
   for (let i = 0; i < items.length; ++i) {
     const item = items[i];
     let comment = null;
     if (isNode(item)) {
       if (item.spaceBefore)
-        lines.push("");
-      addCommentBefore(ctx, lines, item.commentBefore, false);
+        lines2.push("");
+      addCommentBefore(ctx, lines2, item.commentBefore, false);
       if (item.comment)
         comment = item.comment;
     } else if (isPair(item)) {
       const ik = isNode(item.key) ? item.key : null;
       if (ik) {
         if (ik.spaceBefore)
-          lines.push("");
-        addCommentBefore(ctx, lines, ik.commentBefore, false);
+          lines2.push("");
+        addCommentBefore(ctx, lines2, ik.commentBefore, false);
         if (ik.comment)
           reqNewline = true;
       }
@@ -1863,12 +1863,12 @@ function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
     if (comment)
       reqNewline = true;
     let str = stringify(item, itemCtx, () => comment = null);
-    reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
+    reqNewline || (reqNewline = lines2.length > linesAtValue || str.includes("\n"));
     if (i < items.length - 1) {
       str += ",";
     } else if (ctx.options.trailingComma) {
       if (ctx.options.lineWidth > 0) {
-        reqNewline || (reqNewline = lines.reduce((sum2, line) => sum2 + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
+        reqNewline || (reqNewline = lines2.reduce((sum2, line) => sum2 + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
       }
       if (reqNewline) {
         str += ",";
@@ -1876,35 +1876,35 @@ function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
     }
     if (comment)
       str += lineComment(str, itemIndent, commentString(comment));
-    lines.push(str);
-    linesAtValue = lines.length;
+    lines2.push(str);
+    linesAtValue = lines2.length;
   }
   const { start, end } = flowChars;
-  if (lines.length === 0) {
+  if (lines2.length === 0) {
     return start + end;
   } else {
     if (!reqNewline) {
-      const len = lines.reduce((sum2, line) => sum2 + line.length + 2, 2);
+      const len = lines2.reduce((sum2, line) => sum2 + line.length + 2, 2);
       reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
     }
     if (reqNewline) {
       let str = start;
-      for (const line of lines)
+      for (const line of lines2)
         str += line ? `
 ${indentStep}${indent}${line}` : "\n";
       return `${str}
 ${indent}${end}`;
     } else {
-      return `${start}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
+      return `${start}${fcPadding}${lines2.join(" ")}${fcPadding}${end}`;
     }
   }
 }
-function addCommentBefore({ indent, options: { commentString } }, lines, comment, chompKeep) {
+function addCommentBefore({ indent, options: { commentString } }, lines2, comment, chompKeep) {
   if (comment && chompKeep)
     comment = comment.replace(/^\n+/, "");
   if (comment) {
     const ic = indentComment(commentString(comment), indent);
-    lines.push(ic.trimStart());
+    lines2.push(ic.trimStart());
   }
 }
 var init_stringifyCollection = __esm({
@@ -2523,11 +2523,11 @@ var init_binary = __esm({
         if (type !== Scalar.QUOTE_DOUBLE) {
           const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
           const n = Math.ceil(str.length / lineWidth);
-          const lines = new Array(n);
+          const lines2 = new Array(n);
           for (let i = 0, o = 0; i < n; ++i, o += lineWidth) {
-            lines[i] = str.substr(o, lineWidth);
+            lines2[i] = str.substr(o, lineWidth);
           }
-          str = lines.join(type === Scalar.BLOCK_LITERAL ? "\n" : " ");
+          str = lines2.join(type === Scalar.BLOCK_LITERAL ? "\n" : " ");
         }
         return stringifyString({ comment, type, value: str }, ctx, onComment, onChompKeep);
       }
@@ -3177,35 +3177,35 @@ var init_Schema = __esm({
 
 // node_modules/yaml/browser/dist/stringify/stringifyDocument.js
 function stringifyDocument(doc, options) {
-  const lines = [];
+  const lines2 = [];
   let hasDirectives = options.directives === true;
   if (options.directives !== false && doc.directives) {
     const dir = doc.directives.toString(doc);
     if (dir) {
-      lines.push(dir);
+      lines2.push(dir);
       hasDirectives = true;
     } else if (doc.directives.docStart)
       hasDirectives = true;
   }
   if (hasDirectives)
-    lines.push("---");
+    lines2.push("---");
   const ctx = createStringifyContext(doc, options);
   const { commentString } = ctx.options;
   if (doc.commentBefore) {
-    if (lines.length !== 1)
-      lines.unshift("");
+    if (lines2.length !== 1)
+      lines2.unshift("");
     const cs = commentString(doc.commentBefore);
-    lines.unshift(indentComment(cs, ""));
+    lines2.unshift(indentComment(cs, ""));
   }
   let chompKeep = false;
   let contentComment = null;
   if (doc.contents) {
     if (isNode(doc.contents)) {
       if (doc.contents.spaceBefore && hasDirectives)
-        lines.push("");
+        lines2.push("");
       if (doc.contents.commentBefore) {
         const cs = commentString(doc.contents.commentBefore);
-        lines.push(indentComment(cs, ""));
+        lines2.push(indentComment(cs, ""));
       }
       ctx.forceBlockIndent = !!doc.comment;
       contentComment = doc.contents.comment;
@@ -3214,36 +3214,36 @@ function stringifyDocument(doc, options) {
     let body = stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
     if (contentComment)
       body += lineComment(body, "", commentString(contentComment));
-    if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
-      lines[lines.length - 1] = `--- ${body}`;
+    if ((body[0] === "|" || body[0] === ">") && lines2[lines2.length - 1] === "---") {
+      lines2[lines2.length - 1] = `--- ${body}`;
     } else
-      lines.push(body);
+      lines2.push(body);
   } else {
-    lines.push(stringify(doc.contents, ctx));
+    lines2.push(stringify(doc.contents, ctx));
   }
   if (doc.directives?.docEnd) {
     if (doc.comment) {
       const cs = commentString(doc.comment);
       if (cs.includes("\n")) {
-        lines.push("...");
-        lines.push(indentComment(cs, ""));
+        lines2.push("...");
+        lines2.push(indentComment(cs, ""));
       } else {
-        lines.push(`... ${cs}`);
+        lines2.push(`... ${cs}`);
       }
     } else {
-      lines.push("...");
+      lines2.push("...");
     }
   } else {
     let dc = doc.comment;
     if (dc && chompKeep)
       dc = dc.replace(/^\n+/, "");
     if (dc) {
-      if ((!chompKeep || contentComment) && lines[lines.length - 1] !== "")
-        lines.push("");
-      lines.push(indentComment(commentString(dc), ""));
+      if ((!chompKeep || contentComment) && lines2[lines2.length - 1] !== "")
+        lines2.push("");
+      lines2.push(indentComment(commentString(dc), ""));
     }
   }
-  return lines.join("\n") + "\n";
+  return lines2.join("\n") + "\n";
 }
 var init_stringifyDocument = __esm({
   "node_modules/yaml/browser/dist/stringify/stringifyDocument.js"() {
@@ -4284,17 +4284,17 @@ function resolveBlockScalar(ctx, scalar, onError) {
   if (!header)
     return { value: "", type: null, comment: "", range: [start, start, start] };
   const type = header.mode === ">" ? Scalar.BLOCK_FOLDED : Scalar.BLOCK_LITERAL;
-  const lines = scalar.source ? splitLines(scalar.source) : [];
-  let chompStart = lines.length;
-  for (let i = lines.length - 1; i >= 0; --i) {
-    const content3 = lines[i][1];
+  const lines2 = scalar.source ? splitLines(scalar.source) : [];
+  let chompStart = lines2.length;
+  for (let i = lines2.length - 1; i >= 0; --i) {
+    const content3 = lines2[i][1];
     if (content3 === "" || content3 === "\r")
       chompStart = i;
     else
       break;
   }
   if (chompStart === 0) {
-    const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+    const value2 = header.chomp === "+" && lines2.length > 0 ? "\n".repeat(Math.max(1, lines2.length - 1)) : "";
     let end2 = start + header.length;
     if (scalar.source)
       end2 += scalar.source.length;
@@ -4304,7 +4304,7 @@ function resolveBlockScalar(ctx, scalar, onError) {
   let offset = scalar.offset + header.length;
   let contentStart = 0;
   for (let i = 0; i < chompStart; ++i) {
-    const [indent, content3] = lines[i];
+    const [indent, content3] = lines2[i];
     if (content3 === "" || content3 === "\r") {
       if (header.indent === 0 && indent.length > trimIndent)
         trimIndent = indent.length;
@@ -4324,17 +4324,17 @@ function resolveBlockScalar(ctx, scalar, onError) {
     }
     offset += indent.length + content3.length + 1;
   }
-  for (let i = lines.length - 1; i >= chompStart; --i) {
-    if (lines[i][0].length > trimIndent)
+  for (let i = lines2.length - 1; i >= chompStart; --i) {
+    if (lines2[i][0].length > trimIndent)
       chompStart = i + 1;
   }
   let value = "";
   let sep10 = "";
   let prevMoreIndented = false;
   for (let i = 0; i < contentStart; ++i)
-    value += lines[i][0].slice(trimIndent) + "\n";
+    value += lines2[i][0].slice(trimIndent) + "\n";
   for (let i = contentStart; i < chompStart; ++i) {
-    let [indent, content3] = lines[i];
+    let [indent, content3] = lines2[i];
     offset += indent.length + content3.length + 1;
     const crlf = content3[content3.length - 1] === "\r";
     if (crlf)
@@ -4371,8 +4371,8 @@ function resolveBlockScalar(ctx, scalar, onError) {
     case "-":
       break;
     case "+":
-      for (let i = chompStart; i < lines.length; ++i)
-        value += "\n" + lines[i][0].slice(trimIndent);
+      for (let i = chompStart; i < lines2.length; ++i)
+        value += "\n" + lines2[i][0].slice(trimIndent);
       if (value[value.length - 1] !== "\n")
         value += "\n";
       break;
@@ -4447,10 +4447,10 @@ function splitLines(source) {
   const first = split[0];
   const m = first.match(/^( *)/);
   const line0 = m?.[1] ? [m[1], first.slice(m[1].length)] : ["", first];
-  const lines = [line0];
+  const lines2 = [line0];
   for (let i = 1; i < split.length; i += 2)
-    lines.push([split[i], split[i + 1]]);
-  return lines;
+    lines2.push([split[i], split[i + 1]]);
+  return lines2;
 }
 var init_resolve_block_scalar = __esm({
   "node_modules/yaml/browser/dist/compose/resolve-block-scalar.js"() {
@@ -15806,24 +15806,24 @@ function resolveKnowledgeLink(sourcePath, rawUrl, knownPaths, strict = false) {
   return markdownLike ? { kind: "missing" } : { kind: "outside" };
 }
 function parseFrontmatter(content3) {
-  const lines = content3.split(/\r?\n/);
-  if (lines[0] !== "---") {
+  const lines2 = content3.split(/\r?\n/);
+  if (lines2[0] !== "---") {
     return { body: content3, bodyLineOffset: 0 };
   }
-  const end = lines.indexOf("---", 1);
+  const end = lines2.indexOf("---", 1);
   if (end < 0) {
     return { body: content3, bodyLineOffset: 0 };
   }
   try {
-    const metadata = parse(lines.slice(1, end).join("\n"));
+    const metadata = parse(lines2.slice(1, end).join("\n"));
     return {
       ...isRecord(metadata) ? { metadata } : {},
-      body: lines.slice(end + 1).join("\n"),
+      body: lines2.slice(end + 1).join("\n"),
       bodyLineOffset: end + 1
     };
   } catch {
     return {
-      body: lines.slice(end + 1).join("\n"),
+      body: lines2.slice(end + 1).join("\n"),
       bodyLineOffset: end + 1
     };
   }
@@ -16327,14 +16327,14 @@ function framingIssues(document3) {
 function decisionAccountingIssues(document3) {
   const issues = [];
   const promotion = isRecord2(document3.metadata.knowledge_promotion) ? document3.metadata.knowledge_promotion : void 0;
-  const decisions = Array.isArray(promotion?.decisions) ? promotion.decisions.filter(isRecord2) : void 0;
-  if (!decisions) {
+  const decisions2 = Array.isArray(promotion?.decisions) ? promotion.decisions.filter(isRecord2) : void 0;
+  if (!decisions2) {
     issues.push(
       "knowledge_promotion.decisions must account for what this work decided, even if the answer is that it decided nothing durable"
     );
     return issues;
   }
-  if (decisions.length === 0) {
+  if (decisions2.length === 0) {
     if (!stringValue2(promotion?.decisions_none).trim()) {
       issues.push(
         "knowledge_promotion.decisions is empty; say why this work settled nothing that outlives it"
@@ -16343,7 +16343,7 @@ function decisionAccountingIssues(document3) {
     return issues;
   }
   const dispositions = /* @__PURE__ */ new Set(["promoted", "folded", "not-durable"]);
-  for (const entry of decisions) {
+  for (const entry of decisions2) {
     const what = stringValue2(entry.what).trim();
     const label = what || "(unnamed decision)";
     if (!what) {
@@ -16370,26 +16370,26 @@ function decisionAccountingIssues(document3) {
 }
 function unaccountedMapAnswers(document3, resolved) {
   const promotion = isRecord2(document3.metadata.knowledge_promotion) ? document3.metadata.knowledge_promotion : void 0;
-  const decisions = Array.isArray(promotion?.decisions) ? promotion.decisions.filter(isRecord2) : [];
-  const said = decisions.map((entry) => stringValue2(entry.said));
+  const decisions2 = Array.isArray(promotion?.decisions) ? promotion.decisions.filter(isRecord2) : [];
+  const said = decisions2.map((entry) => stringValue2(entry.said));
   return resolved.map((entry) => stringValue2(entry.issue)).filter((issue3) => issue3 && !said.some((where) => where.includes(issue3)));
 }
 function parseWorkSpec(content3) {
-  const lines = content3.split(/\r?\n/);
-  if (lines[0] !== "---") {
+  const lines2 = content3.split(/\r?\n/);
+  if (lines2[0] !== "---") {
     throw new Error("Work spec must start with YAML frontmatter");
   }
-  const end = lines.indexOf("---", 1);
+  const end = lines2.indexOf("---", 1);
   if (end < 0) {
     throw new Error("Work spec frontmatter is not closed");
   }
-  const metadata = parse(lines.slice(1, end).join("\n"));
+  const metadata = parse(lines2.slice(1, end).join("\n"));
   if (!isRecord2(metadata)) {
     throw new Error("Work spec frontmatter must be a mapping");
   }
   return {
     metadata,
-    body: lines.slice(end + 1).join("\n").replace(/^\n/, "")
+    body: lines2.slice(end + 1).join("\n").replace(/^\n/, "")
   };
 }
 function serializeWorkSpec(document3) {
@@ -18709,20 +18709,20 @@ async function requireKnowledgeRepository2(targetInput) {
   return target;
 }
 function parseCase(content3) {
-  const lines = content3.split(/\r?\n/);
-  if (lines[0] !== "---") {
+  const lines2 = content3.split(/\r?\n/);
+  if (lines2[0] !== "---") {
     throw new Error("Intake case must start with YAML frontmatter");
   }
-  const end = lines.indexOf("---", 1);
+  const end = lines2.indexOf("---", 1);
   if (end < 0) {
     throw new Error("Intake case frontmatter is not closed");
   }
   try {
-    const metadata = parse(lines.slice(1, end).join("\n"));
+    const metadata = parse(lines2.slice(1, end).join("\n"));
     if (!isRecord3(metadata)) {
       throw new Error("Intake case frontmatter must be a mapping");
     }
-    return { metadata, body: lines.slice(end + 1).join("\n").replace(/^\n/, "") };
+    return { metadata, body: lines2.slice(end + 1).join("\n").replace(/^\n/, "") };
   } catch (error2) {
     throw new Error(`Invalid intake case frontmatter: ${errorMessage(error2)}`);
   }
@@ -25842,8 +25842,8 @@ async function validateKnowledge(targetInput, conceptPaths) {
       warnings
     );
   }
-  const decisions = await readDecisionNodes(target, knowledgeRoot, inventory.markdown);
-  validateDecisionLineage(decisions, errors);
+  const decisions2 = await readDecisionNodes(target, knowledgeRoot, inventory.markdown);
+  validateDecisionLineage(decisions2, errors);
   const graph = await compileKnowledgeGraph(
     target,
     conceptPaths ? {
@@ -26180,7 +26180,7 @@ function validateConcept(path, metadata, body, changeIndex, reconstructionIndex,
   }
 }
 async function readDecisionNodes(target, knowledgeRoot, markdown) {
-  const decisions = [];
+  const decisions2 = [];
   for (const relativePath2 of markdown) {
     if (/(?:^|\/)(?:index|log)\.md$/i.test(relativePath2)) {
       continue;
@@ -26191,7 +26191,7 @@ async function readDecisionNodes(target, knowledgeRoot, markdown) {
       if (!parsed.metadata || !stringArray8(parsed.metadata.authority).includes("decision")) {
         continue;
       }
-      decisions.push({
+      decisions2.push({
         path: portable2(relative7(target, absolute)),
         id: stringValue9(parsed.metadata.decision_id),
         effectiveAt: stringValue9(parsed.metadata.effective_at),
@@ -26204,12 +26204,12 @@ async function readDecisionNodes(target, knowledgeRoot, markdown) {
     } catch {
     }
   }
-  return decisions;
+  return decisions2;
 }
-function validateDecisionLineage(decisions, errors) {
-  const byPath = new Map(decisions.map((decision) => [decision.path, decision]));
+function validateDecisionLineage(decisions2, errors) {
+  const byPath = new Map(decisions2.map((decision) => [decision.path, decision]));
   const ids = /* @__PURE__ */ new Map();
-  for (const decision of decisions) {
+  for (const decision of decisions2) {
     if (!/^[a-z0-9][a-z0-9-]{0,95}$/.test(decision.id)) {
       errors.push({
         path: decision.path,
@@ -26267,7 +26267,7 @@ function validateDecisionLineage(decisions, errors) {
       }
     }
   }
-  for (const decision of decisions) {
+  for (const decision of decisions2) {
     for (const predecessorPath of decision.supersedes) {
       const predecessor = byPath.get(predecessorPath);
       if (predecessor && predecessor.supersededBy !== decision.path) {
@@ -26308,11 +26308,11 @@ function validateDecisionLineage(decisions, errors) {
     visiting.delete(decision.path);
     visited.add(decision.path);
   };
-  for (const decision of decisions) {
+  for (const decision of decisions2) {
     visit3(decision);
   }
   const seen = /* @__PURE__ */ new Set();
-  for (const decision of decisions) {
+  for (const decision of decisions2) {
     if (seen.has(decision.path)) {
       continue;
     }
@@ -26328,7 +26328,7 @@ function validateDecisionLineage(decisions, errors) {
       const linked = [
         ...current2.supersedes,
         current2.supersededBy,
-        ...decisions.filter(
+        ...decisions2.filter(
           (candidate) => candidate.supersedes.includes(current2.path) || candidate.supersededBy === current2.path
         ).map((candidate) => candidate.path)
       ].filter(Boolean);
@@ -26487,25 +26487,25 @@ async function requireKnowledgeRepository5(targetInput) {
   return target;
 }
 function parseFrontmatter2(content3, required) {
-  const lines = content3.split(/\r?\n/);
-  if (lines[0] !== "---") {
+  const lines2 = content3.split(/\r?\n/);
+  if (lines2[0] !== "---") {
     return {
       body: content3,
       ...required ? { error: "concept must start with YAML frontmatter" } : {}
     };
   }
-  const end = lines.indexOf("---", 1);
+  const end = lines2.indexOf("---", 1);
   if (end < 0) {
     return { body: content3, error: "frontmatter is not closed" };
   }
   try {
-    const metadata = parse(lines.slice(1, end).join("\n"));
+    const metadata = parse(lines2.slice(1, end).join("\n"));
     if (!isRecord5(metadata)) {
-      return { body: lines.slice(end + 1).join("\n"), error: "frontmatter must be a mapping" };
+      return { body: lines2.slice(end + 1).join("\n"), error: "frontmatter must be a mapping" };
     }
-    return { metadata, body: lines.slice(end + 1).join("\n") };
+    return { metadata, body: lines2.slice(end + 1).join("\n") };
   } catch (error2) {
-    return { body: lines.slice(end + 1).join("\n"), error: `invalid YAML: ${errorMessage(error2)}` };
+    return { body: lines2.slice(end + 1).join("\n"), error: `invalid YAML: ${errorMessage(error2)}` };
   }
 }
 function normalizeVerifications(value) {
@@ -26914,11 +26914,11 @@ function validateLinkOnlySection(path, body, heading, errors) {
   }
 }
 function markdownSection(body, heading) {
-  const lines = body.split(/\r?\n/);
+  const lines2 = body.split(/\r?\n/);
   const wanted = heading.toLowerCase();
   let start = -1;
   let level2 = 0;
-  for (const [index2, line] of lines.entries()) {
+  for (const [index2, line] of lines2.entries()) {
     const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
     if (match && match[2].trim().toLowerCase() === wanted) {
       start = index2 + 1;
@@ -26929,19 +26929,19 @@ function markdownSection(body, heading) {
   if (start < 0) {
     return void 0;
   }
-  let end = lines.length;
-  for (let index2 = start; index2 < lines.length; index2 += 1) {
-    const match = /^(#{1,6})\s+/.exec(lines[index2]);
+  let end = lines2.length;
+  for (let index2 = start; index2 < lines2.length; index2 += 1) {
+    const match = /^(#{1,6})\s+/.exec(lines2[index2]);
     if (match && match[1].length <= level2) {
       end = index2;
       break;
     }
-    if (/^\[\^[A-Za-z0-9_-]+\]:/.test(lines[index2])) {
+    if (/^\[\^[A-Za-z0-9_-]+\]:/.test(lines2[index2])) {
       end = index2;
       break;
     }
   }
-  return lines.slice(start, end).join("\n");
+  return lines2.slice(start, end).join("\n");
 }
 function isActor(value) {
   return /^(?:human:[^\s:]+|process:[^\s:]+|[^/\s]+\/[^/\s]+)$/.test(value);
@@ -28307,10 +28307,10 @@ function parseArgumentsDefinition(argsDefinition, validate2 = true, all2) {
   return argumentDetails;
 }
 function dedent(str) {
-  const lines = str.split(/\r?\n|\r/g);
+  const lines2 = str.split(/\r?\n|\r/g);
   let text5 = "";
   let indent = 0;
-  for (const line of lines) {
+  for (const line of lines2) {
     if (text5 || line.trim()) {
       if (!text5) {
         text5 = line.trimStart();
@@ -35030,9 +35030,9 @@ var Ora = class {
     const actualLineCount = this.#computeLineCountFrom(frameContent, columns);
     const consoleHeight = this.#stream.rows;
     if (consoleHeight && consoleHeight > 1 && actualLineCount > consoleHeight) {
-      const lines = frameContent.split("\n");
+      const lines2 = frameContent.split("\n");
       const maxLines = consoleHeight - 1;
-      frameContent = [...lines.slice(0, maxLines), "... (content truncated to fit terminal)"].join("\n");
+      frameContent = [...lines2.slice(0, maxLines), "... (content truncated to fit terminal)"].join("\n");
     }
     this.#stream.write(frameContent);
     this.#linesToClear = this.#computeLineCountFrom(frameContent, columns);
@@ -36707,20 +36707,20 @@ function renderTrajectoryPacket(graph, trajectoryId) {
     throw new Error(`No trajectory named ${trajectoryId}`);
   }
   const children = graph.edges.filter((edge) => edge.kind === "part-of" && edge.target === record2.id).map((edge) => graph.trajectories.find((entry) => entry.id === edge.source)).filter((entry) => Boolean(entry));
-  const lines = [];
-  lines.push(`# ${record2.subject}`);
-  lines.push("");
-  lines.push("## How it was conceived");
-  lines.push("");
-  lines.push(record2.conceived.statement || "Not established.");
-  lines.push("");
-  lines.push("## What changed, and why");
-  lines.push("");
+  const lines2 = [];
+  lines2.push(`# ${record2.subject}`);
+  lines2.push("");
+  lines2.push("## How it was conceived");
+  lines2.push("");
+  lines2.push(record2.conceived.statement || "Not established.");
+  lines2.push("");
+  lines2.push("## What changed, and why");
+  lines2.push("");
   const findings = [record2, ...children].flatMap(
     (entry) => entry.findings.map((finding) => ({ finding, owner: entry }))
   );
   if (findings.length === 0) {
-    lines.push("Nothing recorded.");
+    lines2.push("Nothing recorded.");
   }
   const limitCounts = /* @__PURE__ */ new Map();
   for (const { finding } of findings) {
@@ -36733,53 +36733,53 @@ function renderTrajectoryPacket(graph, trajectoryId) {
   );
   for (const { finding, owner } of findings) {
     const where = owner.id === record2.id ? "" : ` \u2014 ${owner.subject}`;
-    lines.push(`- **${finding.situation}**${where}`);
-    lines.push(`  Why: ${CAUSE_IN_WORDS[finding.cause.kind] ?? "not established"}.${finding.cause.note ? ` ${finding.cause.note}` : ""}`);
+    lines2.push(`- **${finding.situation}**${where}`);
+    lines2.push(`  Why: ${CAUSE_IN_WORDS[finding.cause.kind] ?? "not established"}.${finding.cause.note ? ` ${finding.cause.note}` : ""}`);
     for (const limit of new Set(finding.scopeLimits)) {
       if (!shared.has(limit)) {
-        lines.push(`  Not established: ${limit}`);
+        lines2.push(`  Not established: ${limit}`);
       }
     }
   }
   if (shared.size > 0) {
-    lines.push("");
-    lines.push("Holding across the above:");
+    lines2.push("");
+    lines2.push("Holding across the above:");
     for (const limit of shared) {
-      lines.push(`- ${limit}`);
+      lines2.push(`- ${limit}`);
     }
   }
-  lines.push("");
-  lines.push("## What it does today");
-  lines.push("");
-  lines.push(record2.now.state || "Not established.");
+  lines2.push("");
+  lines2.push("## What it does today");
+  lines2.push("");
+  lines2.push(record2.now.state || "Not established.");
   for (const child of children) {
-    lines.push("");
-    lines.push(`**${child.subject}.** ${child.now.state}`);
+    lines2.push("");
+    lines2.push(`**${child.subject}.** ${child.now.state}`);
   }
-  lines.push("");
-  lines.push("## What is open");
-  lines.push("");
+  lines2.push("");
+  lines2.push("## What is open");
+  lines2.push("");
   const gaps = [record2, ...children].flatMap(
     (entry) => entry.gaps.map((gap) => ({ gap, owner: entry }))
   );
   if (gaps.length === 0) {
-    lines.push("Nothing.");
+    lines2.push("Nothing.");
   }
   for (const { gap, owner } of gaps) {
     const where = owner.id === record2.id ? "" : ` \u2014 ${owner.subject}`;
-    lines.push(
+    lines2.push(
       `- ${gap.statement}${where}
   ${GAP_IN_WORDS[gap.kind] ?? gap.kind}; ${GAP_STATUS_IN_WORDS[gap.status] ?? gap.status}`
     );
   }
-  lines.push("");
-  lines.push("## What is being asked");
-  lines.push("");
-  lines.push(
+  lines2.push("");
+  lines2.push("## What is being asked");
+  lines2.push("");
+  lines2.push(
     record2.vision ? "A direction is already recorded for this. Nothing is being asked." : "Where this should be going. Everything above is what it is; nothing above says what it should become."
   );
-  lines.push("");
-  return lines.join("\n");
+  lines2.push("");
+  return lines2.join("\n");
 }
 async function resolvePointers(target, pointers, errors, warnings) {
   const pinned = /* @__PURE__ */ new Map();
@@ -37043,16 +37043,16 @@ function validateVisionCycles(visions, byId, errors) {
   }
 }
 function visionStatement(body) {
-  const lines = [];
+  const lines2 = [];
   for (const line of body.split(/\r?\n/)) {
     if (line.startsWith("##")) {
       break;
     }
     if (!line.startsWith("#")) {
-      lines.push(line);
+      lines2.push(line);
     }
   }
-  return lines.join("\n").trim();
+  return lines2.join("\n").trim();
 }
 async function collectTrajectoryFiles(target) {
   const root = join18(target, TRAJECTORY_ROOT);
@@ -37557,15 +37557,15 @@ function keepAuthoredSections(previous2, generated) {
     preserved.push(heading);
   }
   const shifted = preserved.some((heading) => /\[\^\d+\]/.test(after.sections.get(heading) ?? "")) && before.footnotes !== after.footnotes;
-  const lines = [after.head];
+  const lines2 = [after.head];
   for (const heading of after.order) {
-    lines.push(`## ${heading}`, "", after.sections.get(heading) ?? "");
+    lines2.push(`## ${heading}`, "", after.sections.get(heading) ?? "");
   }
   if (after.footnotes) {
-    lines.push(after.footnotes);
+    lines2.push(after.footnotes);
   }
   return {
-    body: `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}
+    body: `${lines2.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}
 `,
     preserved,
     citationsMayHaveShifted: shifted
@@ -37656,90 +37656,90 @@ function renderBody(record2, graph, vision, sources) {
   const children = graph.edges.filter((edge) => edge.kind === "part-of" && edge.target === record2.id).map((edge) => graph.trajectories.find((entry) => entry.id === edge.source)).filter((entry) => Boolean(entry));
   const closed = record2.findings.filter((finding) => finding.period.to);
   const limits = [...new Set(record2.findings.flatMap((finding) => finding.scopeLimits))];
-  const lines = [];
-  lines.push(`# ${record2.subject}`, "");
-  lines.push("## What this provides", "", record2.now.state, "");
-  lines.push("## Who it serves", "");
-  lines.push(author("name the audiences; no record in this pipeline carries them"), "");
-  lines.push("## Domain language", "");
-  lines.push(author("define the terms this subject owns, as the product uses them"), "");
-  lines.push("## Current behavior", "", record2.now.state, "");
+  const lines2 = [];
+  lines2.push(`# ${record2.subject}`, "");
+  lines2.push("## What this provides", "", record2.now.state, "");
+  lines2.push("## Who it serves", "");
+  lines2.push(author("name the audiences; no record in this pipeline carries them"), "");
+  lines2.push("## Domain language", "");
+  lines2.push(author("define the terms this subject owns, as the product uses them"), "");
+  lines2.push("## Current behavior", "", record2.now.state, "");
   for (const child of children) {
-    lines.push(`**${child.subject}.** ${child.now.state}`, "");
+    lines2.push(`**${child.subject}.** ${child.now.state}`, "");
   }
   const pinned = sources.filter((source) => source.kind === "source-code");
   if (pinned.length > 0) {
-    lines.push("Established at the pinned revision:", "");
+    lines2.push("Established at the pinned revision:", "");
     for (const source of pinned) {
-      lines.push(`- ${String(source.claim)}[^${String(source.id)}]`);
+      lines2.push(`- ${String(source.claim)}[^${String(source.id)}]`);
     }
-    lines.push("");
+    lines2.push("");
   }
-  lines.push("## Where this is going", "");
+  lines2.push("## Where this is going", "");
   if (vision) {
-    lines.push(`${vision.statement}[^1]`, "");
+    lines2.push(`${vision.statement}[^1]`, "");
     if (record2.gaps.length > 0) {
-      lines.push("Outstanding against it:", "");
+      lines2.push("Outstanding against it:", "");
       for (const gap of record2.gaps) {
-        lines.push(`- ${gap.statement}`);
+        lines2.push(`- ${gap.statement}`);
       }
-      lines.push("");
+      lines2.push("");
     }
   } else {
-    lines.push(
+    lines2.push(
       "No direction has been declared for this subject, so nothing here states where it should go. What this page holds is what the source shows at the pinned revision.",
       ""
     );
     if (record2.gaps.length > 0) {
-      lines.push("Recorded as outstanding on the subject itself:", "");
+      lines2.push("Recorded as outstanding on the subject itself:", "");
       for (const gap of record2.gaps) {
-        lines.push(`- ${gap.statement}`);
+        lines2.push(`- ${gap.statement}`);
       }
-      lines.push("");
+      lines2.push("");
     }
   }
-  lines.push("## Rules and outcomes", "");
-  lines.push(author("state the rules a reader can rely on, or link them"), "");
-  lines.push("## Boundaries and exceptions", "");
+  lines2.push("## Rules and outcomes", "");
+  lines2.push(author("state the rules a reader can rely on, or link them"), "");
+  lines2.push("## Boundaries and exceptions", "");
   if (limits.length > 0) {
-    lines.push("Established with these limits:", "");
+    lines2.push("Established with these limits:", "");
     for (const limit of limits) {
-      lines.push(`- ${limit}`);
+      lines2.push(`- ${limit}`);
     }
-    lines.push("");
+    lines2.push("");
   }
-  lines.push(author("state what this subject does not cover"), "");
-  lines.push("## Delivery", "");
+  lines2.push(author("state what this subject does not cover"), "");
+  lines2.push("## Delivery", "");
   if (vision) {
-    lines.push(
+    lines2.push(
       record2.gaps.length === 0 ? "Intent accepted and delivered." : `Intent accepted, delivery partial. ${record2.gaps.length} outstanding.`,
       ""
     );
   } else {
-    lines.push(
+    lines2.push(
       record2.gaps.length === 0 ? "No intent is accepted for this subject. What is described is what the pinned revision delivers." : `No intent is accepted for this subject. What is described is what the pinned revision delivers, and ${record2.gaps.length} item(s) stand open on it.`,
       ""
     );
   }
-  lines.push("**Unproven:** read from the pinned revision; nothing was built or run.", "");
-  lines.push("## Examples", "");
-  lines.push(author("one concrete example a person would recognise"), "");
-  lines.push("## Evolution", "");
+  lines2.push("**Unproven:** read from the pinned revision; nothing was built or run.", "");
+  lines2.push("## Examples", "");
+  lines2.push(author("one concrete example a person would recognise"), "");
+  lines2.push("## Evolution", "");
   if (closed.length > 0) {
     for (const finding of closed) {
-      lines.push(`- ${finding.situation}${finding.cause.note ? ` ${finding.cause.note}` : ""}`);
+      lines2.push(`- ${finding.situation}${finding.cause.note ? ` ${finding.cause.note}` : ""}`);
     }
   } else {
-    lines.push("No closed change is recorded for this subject yet.");
+    lines2.push("No closed change is recorded for this subject yet.");
   }
-  lines.push("");
-  lines.push("## Related knowledge", "", `- [${areaTitle(record2.area)}](index.md)`, "");
-  lines.push("## Engineering details", "", "Not applicable.", "");
+  lines2.push("");
+  lines2.push("## Related knowledge", "", `- [${areaTitle(record2.area)}](index.md)`, "");
+  lines2.push("## Engineering details", "", "Not applicable.", "");
   for (const source of sources) {
-    lines.push(`[^${String(source.id)}]: ${String(source.claim)}`);
+    lines2.push(`[^${String(source.id)}]: ${String(source.claim)}`);
   }
-  lines.push("");
-  return lines.join("\n");
+  lines2.push("");
+  return lines2.join("\n");
 }
 function author(instruction) {
   return `${AUTHOR_MARK}${instruction} -->`;
@@ -37854,9 +37854,9 @@ function renderDebtPacket(ledger) {
   const ordered = [...groups.entries()].sort(
     (left, right) => Math.max(...right[1].map((debt) => debt.weight)) - Math.max(...left[1].map((debt) => debt.weight)) || left[0].localeCompare(right[0])
   );
-  const lines = [];
-  lines.push("# What the project owes", "");
-  lines.push(
+  const lines2 = [];
+  lines2.push("# What the project owes", "");
+  lines2.push(
     `${open2.length} thing(s) the reconstruction found undone, across ${ordered.length} subject(s).`,
     "Ordered by how much else stops working without each subject and how much its own",
     "line owes. That is a proposal from what the graph knows, not a judgement about the",
@@ -37864,7 +37864,7 @@ function renderDebtPacket(ledger) {
     ""
   );
   for (const [subject, debts] of ordered) {
-    lines.push(`## ${subject}`, "");
+    lines2.push(`## ${subject}`, "");
     const dependents = Math.max(...debts.map((debt) => debt.dependents));
     const notes = [];
     if (dependents > 0) {
@@ -37879,31 +37879,31 @@ function renderDebtPacket(ledger) {
       notes.push("Nothing was established here; these are questions rather than jobs.");
     }
     if (notes.length > 0) {
-      lines.push(notes.join(" "), "");
+      lines2.push(notes.join(" "), "");
     }
     for (const debt of debts) {
-      lines.push(`- ${debt.statement}`);
+      lines2.push(`- ${debt.statement}`);
     }
-    lines.push("");
+    lines2.push("");
   }
   const deferred = ledger.debts.filter((debt) => debt.status === "deferred");
   const scheduled = ledger.debts.filter((debt) => debt.status === "to-close");
   if (scheduled.length > 0 || deferred.length > 0) {
-    lines.push("## Already settled", "");
+    lines2.push("## Already settled", "");
     if (scheduled.length > 0) {
-      lines.push(`${scheduled.length} being closed by work already open.`);
+      lines2.push(`${scheduled.length} being closed by work already open.`);
     }
     if (deferred.length > 0) {
-      lines.push(`${deferred.length} deliberately not now.`);
+      lines2.push(`${deferred.length} deliberately not now.`);
     }
-    lines.push("");
+    lines2.push("");
   }
-  lines.push(
+  lines2.push(
     "For each group: is it next, is it deliberately not now, or is it something else",
     "you would rather see first. Nothing here is scheduled without your answer.",
     ""
   );
-  return lines.join("\n");
+  return lines2.join("\n");
 }
 async function deferDebt(options) {
   const target = resolve21(options.target);
@@ -38096,16 +38096,43 @@ async function readWorkGate(targetInput, id, options = {}) {
   const metadata = document3.metadata;
   const review = isRecord2(metadata.maintainer_review) ? metadata.maintainer_review[stage] : void 0;
   const boilerplate = await templateLines(options.distributionRoot);
+  const promotion = isRecord2(metadata.knowledge_promotion) ? metadata.knowledge_promotion : {};
+  const verification = isRecord2(metadata.verification) ? metadata.verification : {};
   return {
     id,
     title: text4(metadata.title) || id,
     stage,
     approved: isRecord2(review) && text4(review.status) === "approved",
+    order: section(document3.body, "Summary", boilerplate).join(" ").trim(),
     doing: section(document3.body, "In", boilerplate),
     notDoing: section(document3.body, "Out", boilerplate),
     doneWhen: acceptance(metadata.acceptance),
-    order: section(document3.body, "Summary", boilerplate).join(" ").trim()
+    delivered: acceptance(metadata.acceptance, "verified"),
+    undelivered: acceptance(metadata.acceptance, "pending"),
+    carried: [
+      ...lines(verification.unresolved),
+      ...section(document3.body, "Uncertainty and fog", boilerplate)
+    ],
+    learned: decisions(promotion.decisions),
+    learnedNothingBecause: text4(promotion.decisions_none)
   };
+}
+function decisions(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord2).filter((entry) => text4(entry.disposition) !== "not-durable").map((entry) => text4(entry.what)).filter(Boolean);
+}
+function lines(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => {
+    if (typeof entry === "string") {
+      return entry.trim();
+    }
+    return isRecord2(entry) ? text4(entry.note) || text4(entry.what) || text4(entry.summary) : "";
+  }).filter(Boolean);
 }
 async function templateLines(distributionRoot) {
   try {
@@ -38122,32 +38149,87 @@ async function templateLines(distributionRoot) {
   }
 }
 function renderWorkGate(gate) {
-  const lines = [];
-  lines.push(`# ${gate.title}`, "");
+  return gate.stage === "completion" ? renderCompletion(gate) : renderFraming(gate);
+}
+function renderCompletion(gate) {
+  const lines2 = [];
+  lines2.push(`# ${gate.title}`, "");
   if (gate.approved) {
-    lines.push(`This framing is already approved. Nothing here is waiting on you.`, "");
+    lines2.push("This work is already accepted. Nothing here is waiting on you.", "");
   }
   if (gate.order) {
-    lines.push(gate.order, "");
+    lines2.push(gate.order, "");
   }
-  lines.push("## What this does", "");
-  lines.push(...bullets(gate.doing, "The record does not say what is in scope."));
-  lines.push("", "## What this deliberately does not do", "");
-  lines.push(
+  lines2.push("## What it does now", "");
+  lines2.push(
+    ...bullets(
+      gate.delivered,
+      "Nothing is recorded as verified. Accepting this accepts work whose own record does not yet say it was checked."
+    )
+  );
+  lines2.push("", "## What it still does not do", "");
+  lines2.push(
+    ...bullets(
+      gate.undelivered,
+      "Everything that was asked for is recorded as verified."
+    )
+  );
+  lines2.push("", "## What you take on by closing it", "");
+  lines2.push(
+    ...bullets(
+      gate.carried,
+      "The record names no unresolved risk. That is a claim about this work, not a guarantee about the product."
+    )
+  );
+  lines2.push("", "## What the project now says that it did not", "");
+  if (gate.learned.length > 0) {
+    lines2.push(...gate.learned.map((entry) => `- ${entry}`));
+  } else if (gate.learnedNothingBecause) {
+    lines2.push(gate.learnedNothingBecause);
+  } else {
+    lines2.push(
+      "The record does not account for what this work decided. Closing it puts any answer you gave into an archive rather than onto a page."
+    );
+  }
+  lines2.push("");
+  lines2.push(
+    "Accepting this closes the work: the record becomes history, its issues stop being",
+    "claimable, and what is listed above becomes what the project claims. Declining",
+    "keeps it open \u2014 nothing is undone by saying no.",
+    "",
+    "This is drafted from your own answers and the record's own results. The question",
+    "is whether it is faithful, not whether each line is news.",
+    ""
+  );
+  return lines2.join("\n");
+}
+function renderFraming(gate) {
+  const lines2 = [];
+  lines2.push(`# ${gate.title}`, "");
+  if (gate.approved) {
+    lines2.push(`This framing is already approved. Nothing here is waiting on you.`, "");
+  }
+  if (gate.order) {
+    lines2.push(gate.order, "");
+  }
+  lines2.push("## What this does", "");
+  lines2.push(...bullets(gate.doing, "The record does not say what is in scope."));
+  lines2.push("", "## What this deliberately does not do", "");
+  lines2.push(
     ...bullets(
       gate.notDoing,
       "The record excludes nothing. A framing that excludes nothing has not been bounded, and approving it approves whatever the work turns out to touch."
     )
   );
-  lines.push("", "## What will make it finished", "");
-  lines.push(
+  lines2.push("", "## What will make it finished", "");
+  lines2.push(
     ...bullets(
       gate.doneWhen,
       "The record sets no acceptance criteria, so there is no stated way to tell when this is done."
     )
   );
-  lines.push("");
-  lines.push(
+  lines2.push("");
+  lines2.push(
     "Approving this fixes the boundary: this gets touched, that does not, and here is how",
     "we will know it is finished. It is not approval of an implementation \u2014 there is none",
     "yet \u2014 and not agreement with how any of it is worded.",
@@ -38155,28 +38237,28 @@ function renderWorkGate(gate) {
     "Now is when changing the scope is cheap. After the work is cut into tasks it is not.",
     ""
   );
-  return lines.join("\n");
+  return lines2.join("\n");
 }
 function bullets(items, whenEmpty) {
   return items.length > 0 ? items.map((item) => `- ${item}`) : [whenEmpty];
 }
-function acceptance(value) {
+function acceptance(value, status) {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.filter(isRecord2).map((entry) => text4(entry.criterion)).filter(Boolean);
+  return value.filter(isRecord2).filter((entry) => status === void 0 || text4(entry.status) === status).map((entry) => text4(entry.criterion)).filter(Boolean);
 }
 function section(body, heading, boilerplate) {
-  const lines = body.split(/\r?\n/);
-  const start = lines.findIndex(
+  const lines2 = body.split(/\r?\n/);
+  const start = lines2.findIndex(
     (line) => new RegExp(`^#{1,6}\\s+${escape(heading)}\\s*$`, "i").test(line)
   );
   if (start < 0) {
     return [];
   }
-  const depth = (lines[start].match(/^#+/) ?? ["#"])[0].length;
+  const depth = (lines2[start].match(/^#+/) ?? ["#"])[0].length;
   const collected = [];
-  for (const line of lines.slice(start + 1)) {
+  for (const line of lines2.slice(start + 1)) {
     const level2 = line.match(/^(#{1,6})\s/);
     if (level2 && level2[1].length <= depth) {
       break;
@@ -38483,13 +38565,13 @@ function reconstructionCollector() {
           totals.communities += communities.length;
           totals.pendingCommunities += communities.filter(isPending).length;
         }
-        const decisions = pendingDecisions(metadata);
+        const decisions2 = pendingDecisions(metadata);
         const frontierClear = totals.pendingFiles === 0 && totals.files > 0;
         signals2.push({
-          id: frontierClear && decisions > 0 ? "reconstruction.awaiting-decision" : "reconstruction.active",
+          id: frontierClear && decisions2 > 0 ? "reconstruction.awaiting-decision" : "reconstruction.active",
           domain: "reconstruction",
           level: "attention",
-          summary: frontierClear && decisions > 0 ? "A reconstruction has read its frontier and is waiting on a maintainer decision" : "A reconstruction is in progress",
+          summary: frontierClear && decisions2 > 0 ? "A reconstruction has read its frontier and is waiting on a maintainer decision" : "A reconstruction is in progress",
           subject: entry.id,
           facts: {
             title: stringValue11(metadata.title) || entry.id,
@@ -38499,10 +38581,10 @@ function reconstructionCollector() {
             files: totals.files,
             communitiesReviewed: totals.communities - totals.pendingCommunities,
             communities: totals.communities,
-            ...decisions > 0 ? { decisions } : {}
+            ...decisions2 > 0 ? { decisions: decisions2 } : {}
           },
           ...stringValue11(metadata.updated_at) ? { since: stringValue11(metadata.updated_at) } : {},
-          awaits: frontierClear && decisions > 0 ? "maintainer" : "agent"
+          awaits: frontierClear && decisions2 > 0 ? "maintainer" : "agent"
         });
         signals2.push(...checkpointSignals(
           "reconstruction",
@@ -38552,13 +38634,13 @@ function intakeCollector() {
         const blocked = sources.filter(
           (source) => source.status === "needs-maintainer" || source.status === "unreadable"
         ).length;
-        const decisions = pendingDecisions(metadata);
+        const decisions2 = pendingDecisions(metadata);
         const readingDone = reviewed === sources.length && sources.length > 0;
         const checkpoint = recordValue11(metadata.checkpoint);
         const heldForMaintainer = stringValue11(checkpoint?.status) === "blocked" || Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0;
         const since = stringValue11(metadata.updated_at) ? { since: stringValue11(metadata.updated_at) } : {};
         signals2.push(
-          readingDone && (decisions > 0 || heldForMaintainer) ? {
+          readingDone && (decisions2 > 0 || heldForMaintainer) ? {
             id: "intake.awaiting-decision",
             domain: "intake",
             level: "attention",
@@ -38567,7 +38649,7 @@ function intakeCollector() {
             facts: {
               title: stringValue11(metadata.title) || entry.id,
               sources: sources.length,
-              decisions,
+              decisions: decisions2,
               ...heldForMaintainer ? { blocked: true } : {}
             },
             ...since,
@@ -38582,7 +38664,7 @@ function intakeCollector() {
               title: stringValue11(metadata.title) || entry.id,
               reviewed,
               sources: sources.length,
-              ...decisions > 0 ? { decisions } : {}
+              ...decisions2 > 0 ? { decisions: decisions2 } : {}
             },
             ...since,
             awaits: "agent"
@@ -38873,20 +38955,20 @@ function inboxCollector() {
         return [];
       }
       const since = (entries) => entries.map((capture) => capture.createdAt).filter(Boolean).sort()[0];
-      const decisions = captures.captures.filter((capture) => capture.awaits === "maintainer");
+      const decisions2 = captures.captures.filter((capture) => capture.awaits === "maintainer");
       const triage = captures.captures.filter((capture) => capture.awaits !== "maintainer");
       const signals2 = [];
-      if (decisions.length > 0) {
-        const oldest = since(decisions);
+      if (decisions2.length > 0) {
+        const oldest = since(decisions2);
         signals2.push({
           id: "inbox.awaiting-decision",
           domain: "inbox",
           level: "attention",
           summary: "Captures are waiting for a maintainer decision",
           facts: {
-            captures: decisions.length,
+            captures: decisions2.length,
             command: "wfctl work capture list",
-            waiting: nameThem(decisions.map((capture) => capture.id))
+            waiting: nameThem(decisions2.map((capture) => capture.id))
           },
           ...oldest ? { since: oldest } : {},
           awaits: "maintainer"
@@ -39977,7 +40059,7 @@ async function recordWorkDecision(options) {
   }
   const document3 = parseWorkSpec(await readFile28(context.specPath, "utf8"));
   const promotion = record_(document3.metadata.knowledge_promotion) ?? {};
-  const decisions = recordArray_(promotion.decisions);
+  const decisions2 = recordArray_(promotion.decisions);
   const entry = {
     what,
     said,
@@ -39985,13 +40067,13 @@ async function recordWorkDecision(options) {
     ...options.into?.trim() ? { into: options.into.trim() } : {},
     ...options.reason?.trim() ? { reason: options.reason.trim() } : {}
   };
-  const existing = decisions.findIndex((item) => stringValue_(item.what) === what);
+  const existing = decisions2.findIndex((item) => stringValue_(item.what) === what);
   if (existing >= 0) {
-    decisions[existing] = entry;
+    decisions2[existing] = entry;
   } else {
-    decisions.push(entry);
+    decisions2.push(entry);
   }
-  promotion.decisions = decisions;
+  promotion.decisions = decisions2;
   document3.metadata.knowledge_promotion = promotion;
   document3.metadata.updated_at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
   await writeFile16(context.specPath, serializeWorkSpec(document3), "utf8");
@@ -40414,7 +40496,7 @@ async function requireWorkContext(targetInput, id) {
   return context;
 }
 async function ambiguousResumeMessage(results) {
-  const lines = [];
+  const lines2 = [];
   const inFlight = [];
   for (const entry of results) {
     let claim = "";
@@ -40428,7 +40510,7 @@ async function ambiguousResumeMessage(results) {
     } catch {
       claim = "cannot be inspected right now";
     }
-    lines.push(
+    lines2.push(
       `- ${entry.id} \u2014 ${entry.title}
   ${claim || "nothing claimed; waiting on the maintainer"}`
     );
@@ -40437,7 +40519,7 @@ async function ambiguousResumeMessage(results) {
 One record has work in flight: ${inFlight[0]}. Resume that one rather than asking.` : inFlight.length === 0 ? "\nNo record has work in flight, so which outcome to resume is the maintainer's to say." : `
 ${inFlight.length} records have work in flight, so which one to resume is the maintainer's to say.`;
   return `Multiple active work records are bound to this checkout; do not guess which one owns this session:
-${lines.join("\n")}
+${lines2.join("\n")}
 ${verdict}`;
 }
 async function claimContextForTarget(target, context) {
@@ -41758,7 +41840,7 @@ It was held because: ${result.reason}
 }
 function workAskCommand() {
   return new Command().description(
-    "Render the framing a maintainer is being asked to approve, in four parts:\nwhat gets done, what deliberately does not, what will make it finished, and the order.\nEverything else in the record is bookkeeping the approval does not touch."
+    "Render the decision a maintainer is being asked for, in four parts.\nA framing: what gets done, what deliberately does not, what will make it\nfinished, and the order. A completion: what it does now, what it still does\nnot do, what closing it takes on, and what the project now says.\nEverything else in the record is the evidence behind those, and stays there."
   ).arguments("<id:string>").option("-t, --target <path:string>", "Knowledge repository.", { default: "." }).option("--stage <stage:string>", "framing or completion.", { default: "framing" }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
     const gate = await readWorkGate(options.target, id, {
       stage: parseApprovalStage(options.stage)
@@ -41912,7 +41994,7 @@ Pending capture: ${result.path}
       } else {
         process.stdout.write(`Pending captures in ${result.knowledgeRoot}:
 `);
-        const decisions = result.captures.filter(
+        const decisions2 = result.captures.filter(
           (capture) => capture.awaits === "maintainer"
         );
         const triage = result.captures.filter((capture) => capture.awaits !== "maintainer");
@@ -41931,7 +42013,7 @@ ${title}
             );
           }
         };
-        section2(`Waiting for your decision (${decisions.length})`, decisions);
+        section2(`Waiting for your decision (${decisions2.length})`, decisions2);
         section2(`Waiting for agent triage (${triage.length})`, triage);
       }
     })

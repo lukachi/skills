@@ -29,10 +29,18 @@ export interface WorkGate {
   stage: MaintainerReviewStage;
   /** Already approved, in which case there is nothing to ask. */
   approved: boolean;
+  order: string;
+  /** Framing: the four things approving one fixes. */
   doing: string[];
   notDoing: string[];
   doneWhen: string[];
-  order: string;
+  /** Completion: the four things accepting one fixes. */
+  delivered: string[];
+  undelivered: string[];
+  carried: string[];
+  learned: string[];
+  /** Completion settled nothing durable, and said why. */
+  learnedNothingBecause: string;
 }
 
 export interface ReadWorkGateOptions {
@@ -55,16 +63,60 @@ export async function readWorkGate(
     : undefined;
   const boilerplate = await templateLines(options.distributionRoot);
 
+  const promotion = isRecord(metadata.knowledge_promotion) ? metadata.knowledge_promotion : {};
+  const verification = isRecord(metadata.verification) ? metadata.verification : {};
+
   return {
     id,
     title: text(metadata.title) || id,
     stage,
     approved: isRecord(review) && text(review.status) === "approved",
+    order: section(document.body, "Summary", boilerplate).join(" ").trim(),
     doing: section(document.body, "In", boilerplate),
     notDoing: section(document.body, "Out", boilerplate),
     doneWhen: acceptance(metadata.acceptance),
-    order: section(document.body, "Summary", boilerplate).join(" ").trim(),
+    delivered: acceptance(metadata.acceptance, "verified"),
+    undelivered: acceptance(metadata.acceptance, "pending"),
+    carried: [
+      ...lines(verification.unresolved),
+      ...section(document.body, "Uncertainty and fog", boilerplate),
+    ],
+    learned: decisions(promotion.decisions),
+    learnedNothingBecause: text(promotion.decisions_none),
   };
+}
+
+/**
+ * What the project now says that it did not, in the maintainer's own words.
+ *
+ * Their answer is what the decision record already holds; the concept it was
+ * promoted into is a path, and a path is something to look up rather than
+ * something to read. So the page is where the answer lives and never what gets
+ * shown for it.
+ */
+function decisions(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter(isRecord)
+    .filter((entry) => text(entry.disposition) !== "not-durable")
+    .map((entry) => text(entry.what))
+    .filter(Boolean);
+}
+
+function lines(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return entry.trim();
+      }
+      return isRecord(entry) ? text(entry.note) || text(entry.what) || text(entry.summary) : "";
+    })
+    .filter(Boolean);
 }
 
 /**
@@ -97,6 +149,86 @@ async function templateLines(distributionRoot?: string): Promise<Set<string>> {
 }
 
 export function renderWorkGate(gate: WorkGate): string {
+  return gate.stage === "completion" ? renderCompletion(gate) : renderFraming(gate);
+}
+
+/**
+ * The completion gate, rendered for the person who has to accept it.
+ *
+ * The skill asked for acceptance results, engineering findings, checks,
+ * deviations, risks and the knowledge delta in one packet, and got what it asked
+ * for: six sections, a table apiece, and a decision somewhere inside. Measured
+ * over four hundred of these, sixty-three per cent carried a table and twelve
+ * per cent ended in a question.
+ *
+ * Accepting a completion fixes four things, which is what this prints. Every
+ * other field in the record is the evidence behind them, and it stays in the
+ * record where an audit can reach it. Generated for the same reason the framing
+ * is: a renderer that never reads a path cannot print one, and the decision the
+ * maintainer is being asked for was never about paths.
+ */
+function renderCompletion(gate: WorkGate): string {
+  const lines: string[] = [];
+  lines.push(`# ${gate.title}`, "");
+  if (gate.approved) {
+    lines.push("This work is already accepted. Nothing here is waiting on you.", "");
+  }
+  if (gate.order) {
+    lines.push(gate.order, "");
+  }
+
+  lines.push("## What it does now", "");
+  lines.push(
+    ...bullets(
+      gate.delivered,
+      "Nothing is recorded as verified. Accepting this accepts work whose own record "
+        + "does not yet say it was checked.",
+    ),
+  );
+
+  lines.push("", "## What it still does not do", "");
+  lines.push(
+    ...bullets(
+      gate.undelivered,
+      "Everything that was asked for is recorded as verified.",
+    ),
+  );
+
+  lines.push("", "## What you take on by closing it", "");
+  lines.push(
+    ...bullets(
+      gate.carried,
+      "The record names no unresolved risk. That is a claim about this work, not a "
+        + "guarantee about the product.",
+    ),
+  );
+
+  lines.push("", "## What the project now says that it did not", "");
+  if (gate.learned.length > 0) {
+    lines.push(...gate.learned.map((entry) => `- ${entry}`));
+  } else if (gate.learnedNothingBecause) {
+    lines.push(gate.learnedNothingBecause);
+  } else {
+    lines.push(
+      "The record does not account for what this work decided. Closing it puts any "
+        + "answer you gave into an archive rather than onto a page.",
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    "Accepting this closes the work: the record becomes history, its issues stop being",
+    "claimable, and what is listed above becomes what the project claims. Declining",
+    "keeps it open — nothing is undone by saying no.",
+    "",
+    "This is drafted from your own answers and the record's own results. The question",
+    "is whether it is faithful, not whether each line is news.",
+    "",
+  );
+  return lines.join("\n");
+}
+
+function renderFraming(gate: WorkGate): string {
   const lines: string[] = [];
   lines.push(`# ${gate.title}`, "");
   if (gate.approved) {
@@ -139,12 +271,13 @@ function bullets(items: string[], whenEmpty: string): string[] {
   return items.length > 0 ? items.map((item) => `- ${item}`) : [whenEmpty];
 }
 
-function acceptance(value: unknown): string[] {
+function acceptance(value: unknown, status?: string): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
   return value
     .filter(isRecord)
+    .filter((entry) => status === undefined || text(entry.status) === status)
     .map((entry) => text(entry.criterion))
     .filter(Boolean);
 }

@@ -193,11 +193,15 @@ it, and a release is never inferred: not from a truthful answer to an unrelated
 question, and not from the condition that held it having cleared. The last time
 one was inferred, six commits landed in three source repositories.
 
-Render the framing with `wfctl work ask <id>` rather than composing one. It
-carries the four things approval fixes — what gets done, what deliberately does
-not, what will make it finished, and in what order — and nothing else from a
-record written for an agent. A section still holding the shipped template's own
-words is reported as unwritten rather than read out as scope.
+Render both gates with `wfctl work ask <id> [--stage completion]` rather than
+composing one. Each carries the four things its decision fixes — a framing:
+what gets done, what deliberately does not, what will make it finished, and in
+what order; a completion: what the work does now, what it still does not do,
+what closing it takes on, and what the project now says that it did not — and
+nothing else from a record written for an agent. A section still holding the
+shipped template's own words is reported as unwritten rather than read out as
+scope. A render is only as honest as the record behind it: repair the record
+rather than the packet, because a packet edited by hand is composed again.
 
 For significant work, record framing and completion decisions with `wfctl work
 approve <id> --stage framing|completion --by human:<maintainer-id>`. It writes

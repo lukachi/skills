@@ -214,6 +214,124 @@ The licence statement goes in first, then the name moves where moving it is chea
   }
 });
 
+test("the completion gate carries the four things accepting one fixes", async () => {
+  const { readWorkGate, renderWorkGate } = await import("../src/work-ask.js");
+  const root = await mkdtemp(join(tmpdir(), "wfctl-gate-done-"));
+  await writeBundle(
+    root,
+    "2026-08-09-legendary-offer",
+    `---
+workflow_version: 5
+id: "2026-08-09-legendary-offer"
+title: "A monster can act between turns"
+acceptance:
+  - id: AC-01
+    criterion: A player sees the offer and can decline it without ending their turn.
+    status: verified
+  - id: AC-02
+    criterion: The offer survives a reconnect mid-fight.
+    status: pending
+verification:
+  result: passed
+  unresolved:
+    - The showcase scene renders the banner; nothing exercises it against a live fight.
+knowledge_promotion:
+  status: complete
+  concepts:
+    - knowledge/areas/combat/legendary-actions.md
+  decisions:
+    - what: An effect belongs to the thing that bears it, not to the turn that made it.
+      said: map.md#ISSUE-001
+      disposition: promoted
+      into: knowledge/decisions/effects-belong-to-what-bears-them.md
+    - what: Renaming the field settles nothing beyond this work.
+      said: maintainer_review.completion
+      disposition: not-durable
+maintainer_review:
+  completion:
+    status: pending
+---
+
+# Summary
+
+The monster acts between turns, and the player can say no.
+
+# Uncertainty and fog
+
+- Reconnect during an open offer is untested against a real client.
+`,
+  );
+
+  const gate = await readWorkGate(root, "2026-08-09-legendary-offer", {
+    stage: "completion",
+    distributionRoot: distributionRoot(),
+  });
+  assert.deepEqual(gate.delivered.length, 1);
+  assert.deepEqual(gate.undelivered.length, 1);
+  assert.equal(gate.carried.length, 2, "the structured risk and the authored one both count");
+  // A decision that settles nothing beyond this work is accounted for and is not
+  // news: printing it would put the maintainer's own bookkeeping back in front
+  // of them.
+  assert.deepEqual(gate.learned, [
+    "An effect belongs to the thing that bears it, not to the turn that made it.",
+  ]);
+
+  const rendered = renderWorkGate(gate);
+  assert.match(rendered, /A player sees the offer and can decline it/);
+  assert.match(rendered, /survives a reconnect/);
+  assert.match(rendered, /nothing is undone by saying no/);
+  // The evidence stays in the record. The decision was never about a path, an
+  // identifier, or a schema value, so the render has no way to print one.
+  for (const token of ["AC-01", "AC-02", "knowledge/", ".md", "verification", "status:"]) {
+    assert.doesNotMatch(rendered, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), token);
+  }
+});
+
+test("a completion that settled nothing durable says so, and silence does not", async () => {
+  const { readWorkGate, renderWorkGate } = await import("../src/work-ask.js");
+  const root = await mkdtemp(join(tmpdir(), "wfctl-gate-nothing-"));
+  const head = `---
+workflow_version: 5
+id: "2026-08-09-rename"
+title: "Rename the field"
+acceptance: []
+knowledge_promotion:
+  decisions: []`;
+  const tail = `
+maintainer_review:
+  completion:
+    status: pending
+---
+
+# Summary
+
+A rename, and nothing else.
+`;
+
+  await writeBundle(root, "2026-08-09-rename", `${head}${tail}`);
+  const silent = renderWorkGate(
+    await readWorkGate(root, "2026-08-09-rename", {
+      stage: "completion",
+      distributionRoot: distributionRoot(),
+    }),
+  );
+  assert.match(silent, /does not account for what this work decided/);
+
+  await writeBundle(
+    root,
+    "2026-08-09-rename",
+    `${head}\n  decisions_none: "A rename with no behaviour change settles no question."${tail}`,
+  );
+  const answered = renderWorkGate(
+    await readWorkGate(root, "2026-08-09-rename", {
+      stage: "completion",
+      distributionRoot: distributionRoot(),
+    }),
+  );
+  assert.match(answered, /settles no question/);
+  assert.doesNotMatch(answered, /does not account for/);
+});
+
 function distributionRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "..");
 }
