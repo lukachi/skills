@@ -39326,7 +39326,7 @@ function inboxCollector() {
           facts: {
             captures: decisions2.length,
             command: "wfctl work capture list",
-            waiting: nameThem(decisions2.map((capture) => capture.id))
+            waiting: nameThem(decisions2.map((capture) => capture.title || capture.id))
           },
           ...oldest ? { since: oldest } : {},
           awaits: "maintainer"
@@ -39342,7 +39342,7 @@ function inboxCollector() {
           facts: {
             captures: triage.length,
             command: "wfctl work capture list",
-            waiting: nameThem(triage.map((capture) => capture.id))
+            waiting: nameThem(triage.map((capture) => capture.title || capture.id))
           },
           ...oldest ? { since: oldest } : {},
           awaits: "agent"

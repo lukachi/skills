@@ -866,6 +866,15 @@ function inboxCollector(): StateCollector {
       const decisions = captures.captures.filter((capture) => capture.awaits === "maintainer");
       const triage = captures.captures.filter((capture) => capture.awaits !== "maintainer");
       const signals: StateSignal[] = [];
+      // Titles rather than ids. The rule the agent works under forbids putting a
+      // generated identifier in front of the maintainer and requires each waiting
+      // decision to be named by its subject — and the only material the brief
+      // offered was a comma-separated list of slugs, so naming them meant opening
+      // eighteen files or reporting the count the same rule forbids.
+      //
+      // The age stays a fact rather than a phrasing: `since` already carries the
+      // oldest, and a threshold that flipped the wording on a clock would make
+      // the same queue read two ways on two mornings.
       if (decisions.length > 0) {
         const oldest = since(decisions);
         signals.push({
@@ -876,7 +885,7 @@ function inboxCollector(): StateCollector {
           facts: {
             captures: decisions.length,
             command: "wfctl work capture list",
-            waiting: nameThem(decisions.map((capture) => capture.id)),
+            waiting: nameThem(decisions.map((capture) => capture.title || capture.id)),
           },
           ...(oldest ? { since: oldest } : {}),
           awaits: "maintainer",
@@ -892,7 +901,7 @@ function inboxCollector(): StateCollector {
           facts: {
             captures: triage.length,
             command: "wfctl work capture list",
-            waiting: nameThem(triage.map((capture) => capture.id)),
+            waiting: nameThem(triage.map((capture) => capture.title || capture.id)),
           },
           ...(oldest ? { since: oldest } : {}),
           awaits: "agent",
