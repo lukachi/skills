@@ -82,6 +82,26 @@ Say plainly that "I do not know" is an answer you can record. A recorded gap is
 worth more than a preference guessed from a polite reply and then treated as
 settled.
 
+## Find their answer before asking for it again
+
+Run `wfctl knowledge decided "<subject>"` before putting anything to them. It
+reads the four places an answer lands — a promoted decision page, the bundle that
+asked the question, a resolved Wayfinder map, and a capture — and reports what it
+finds with the date, their own words, and whether a curated page carries it. On a
+bundle, `--record <id>` writes the result into the framing, and the framing gate
+holds until it has.
+
+Their answer is usually not on a page. Twenty-two of twenty-six recorded
+decisions in one project had never been promoted, so a search of curated
+knowledge truthfully found nothing and read exactly like a question nobody had
+answered. Work already delivered counts the same way: a completed issue that
+recorded a consequence as theirs to settle has answered the question once
+already, and asking again spends their turn on their own bookkeeping.
+
+Cite the page when there is one and the record when there is not, and say which.
+A decision reachable only through an archive is one the corpus has not been
+taught, and saying so is what eventually teaches it.
+
 ## Re-establish the subject before asking about it
 
 A claim is the unit of record. It is not the unit of a question. Recorded

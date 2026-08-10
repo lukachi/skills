@@ -192,6 +192,7 @@ test("an empty knowledge base is a legal answer, and silence is not", async () =
     conflicts: [],
     covered: false,
     basis: "No curated concept covers this Area; the contract rests on the pinned source.",
+    decided: settled(),
   };
   await writeFile(started.specPath, serializeWorkSpec(document), "utf8");
   const reread = parseWorkSpec(await readFile(started.specPath, "utf8"));
@@ -214,8 +215,18 @@ async function alignKnowledge(specPath: string): Promise<void> {
   document.metadata.knowledge_alignment = {
     reviewed: ["knowledge/index.md"],
     conflicts: [],
+    decided: settled(),
   };
   await writeFile(specPath, serializeWorkSpec(document), "utf8");
+}
+
+/** What `wfctl knowledge decided --record` writes once it has run. */
+function settled(): Record<string, unknown> {
+  return {
+    checked: "the shared contract between the client and the api",
+    found: [],
+    none: "Nothing recorded touches this contract; the decisions road is empty.",
+  };
 }
 
 async function writeSkill(root: string, name: string, description: string): Promise<void> {

@@ -53,6 +53,7 @@ import {
 } from "./trajectory.js";
 import { promoteTrajectory } from "./promotion.js";
 import { collectDebts, deferDebt, renderDebtPacket, scheduleDebt } from "./debts.js";
+import { findDecisions, recordDecided, renderDecisions } from "./decided.js";
 import { readWorkGate, renderWorkGate } from "./work-ask.js";
 import { assessResumability, type StopRisk } from "./resumability.js";
 import { parkWork, releaseWork } from "./park.js";
@@ -2293,6 +2294,7 @@ function knowledgeCommand() {
     .command("sources", knowledgeSourcesCommand())
     .command("reconstruct", knowledgeReconstructCommand())
     .command("trajectory", knowledgeTrajectoryCommand())
+    .command("decided", knowledgeDecidedCommand())
     .command(
       "hash",
       new Command()
@@ -2660,6 +2662,58 @@ function knowledgeTrajectoryCommand() {
     .command("debts", knowledgeDebtsCommand())
     .command("schedule", knowledgeScheduleCommand())
     .command("defer", knowledgeDeferCommand());
+}
+
+/**
+ * One door to every answer the maintainer already gave.
+ *
+ * The corpus required checking, in one skill, reachable from three of six
+ * routes. Even where it was required it cost three exact guesses — that a
+ * `changes` collection exists, the flag that selects it, and the maintainer's
+ * own wording — so a session that asked thirty-one questions ran zero searches
+ * and asked twice about matters already settled. A check nobody can afford is a
+ * check nobody runs.
+ */
+function knowledgeDecidedCommand() {
+  return new Command()
+    .description(
+      "Report what has already been decided about a subject, before asking anyone again.\n"
+        + "Reads promoted decision pages, the bundles that asked the questions, resolved\n"
+        + "Wayfinder maps, and captures — the four places an answer actually lands.",
+    )
+    .arguments("<subject:string>")
+    .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
+    .option("--limit <count:number>", "How many to report.", { default: 10 })
+    .option("--record <id:string>", "Write the result into this change bundle's alignment.")
+    .option(
+      "--none <why:string>",
+      "With --record and no result: why nothing already recorded bears on this work.",
+    )
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, subject) => {
+      if (options.record) {
+        const recorded = await recordDecided({
+          target: options.target,
+          id: options.record,
+          subject,
+          ...(options.none ? { none: options.none } : {}),
+          limit: options.limit,
+        });
+        if (options.json) {
+          printJson(recorded.result);
+          return;
+        }
+        process.stdout.write(renderDecisions(recorded.result));
+        process.stdout.write(`Recorded in ${options.record}.\n`);
+        return;
+      }
+      const result = await findDecisions(options.target, subject, options.limit);
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(renderDecisions(result));
+    });
 }
 
 /**

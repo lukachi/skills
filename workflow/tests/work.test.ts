@@ -187,6 +187,12 @@ test("runs the completed central work lifecycle", async () => {
   document.metadata.knowledge_alignment = {
     reviewed: ["knowledge/index.md"],
     conflicts: [],
+    // What `wfctl knowledge decided --record` writes once the search has run.
+    decided: {
+      checked: "the outcome this bundle is for",
+      found: [],
+      none: "Nothing already recorded bears on it; the decisions road is empty.",
+    },
   };
   accountEveryRepository(document);
   document.metadata.graph_evidence = {
@@ -1247,6 +1253,12 @@ async function completeWorkDocument(
   document.metadata.knowledge_alignment = {
     reviewed: ["knowledge/index.md"],
     conflicts: [],
+    // What `wfctl knowledge decided --record` writes once the search has run.
+    decided: {
+      checked: "the outcome this bundle is for",
+      found: [],
+      none: "Nothing already recorded bears on it; the decisions road is empty.",
+    },
   };
   accountEveryRepository(document);
   document.metadata.graph_evidence = {
@@ -1407,6 +1419,12 @@ test("enforces the bundle completion gate on the current schema", async () => {
   document.metadata.knowledge_alignment = {
     reviewed: ["knowledge/index.md"],
     conflicts: [],
+    // What `wfctl knowledge decided --record` writes once the search has run.
+    decided: {
+      checked: "the outcome this bundle is for",
+      found: [],
+      none: "Nothing already recorded bears on it; the decisions road is empty.",
+    },
   };
   accountEveryRepository(document);
   document.metadata.graph_evidence = { queries: ["Trace the gate"] };
@@ -1586,6 +1604,12 @@ async function prepareFraming(specPath: string): Promise<void> {
   document.metadata.knowledge_alignment = {
     reviewed: ["knowledge/index.md"],
     conflicts: [],
+    // What `wfctl knowledge decided --record` writes once the search has run.
+    decided: {
+      checked: "the outcome this bundle is for",
+      found: [],
+      none: "Nothing already recorded bears on it; the decisions road is empty.",
+    },
   };
   accountEveryRepository(document);
   await writeFile(specPath, serializeWorkSpec(document), "utf8");
@@ -1676,4 +1700,45 @@ test("an ambiguous resume hands over the fact that decides it", async () => {
   );
   assert.match(message, new RegExp(`${held.id}[\\s\\S]*nothing claimed`));
   assert.match(message, new RegExp(`${issue.id} claimed by agent:test-session`));
+});
+
+test("a discovery entry written as paragraphs is told its shape, not that its fields are missing", async () => {
+  const { discoveryLedgerIssues } = await import("../src/discovery-ledger.js");
+  const entry = (fields: string) => `# Discovery ledger\n\n## DISC-001 — The scan reads list items\n\n${fields}\n`;
+
+  // The shape that cost five rewrites: every field written, none of them found,
+  // and five refusals each naming a field the author had just written.
+  const asParagraphs = discoveryLedgerIssues(
+    entry(
+      "**Observation:** The validator collects list items only.\n\n"
+        + "**Evidence:** collectMarkdownNodes(entryNode, \"listItem\").\n\n"
+        + "**Implication:** A paragraph entry has no fields at all.\n\n"
+        + "**Scope:** Every record carrying a ledger.\n\n"
+        + "**Disposition:** Reported here.",
+    ),
+    "case.md",
+    true,
+  );
+  assert.equal(asParagraphs.length, 1, "one shape problem, not five content ones");
+  assert.match(asParagraphs[0]!, /writes 5 of its fields as paragraphs/);
+  assert.match(asParagraphs[0]!, /must be its own list item/);
+
+  // An entry with nothing in it is a different message, and still one.
+  const empty = discoveryLedgerIssues(entry("Some prose that names no field."), "case.md", true);
+  assert.equal(empty.length, 1);
+  assert.match(empty[0]!, /has none of its fields/);
+
+  // The strict shape still passes, and a genuinely missing field is still
+  // reported per field, because there the field is what is wrong.
+  const listed = (disposition: string) =>
+    entry(
+      "- **Observation:** The validator collects list items only.\n"
+        + "- **Evidence:** collectMarkdownNodes with listItem.\n"
+        + "- **Implication:** A paragraph entry has no fields.\n"
+        + "- **Scope:** Every record carrying a ledger.\n"
+        + disposition,
+    );
+  assert.deepEqual(discoveryLedgerIssues(listed("- **Disposition:** Reported."), "case.md", true), []);
+  const partial = discoveryLedgerIssues(listed("- **Disposition:**"), "case.md", true);
+  assert.deepEqual(partial, ["case.md: DISC-001 requires a non-empty Disposition field"]);
 });

@@ -38,6 +38,13 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   to a second terminal: retyping a generated bundle id, a stage name and their
   own identity records no decision the attestation does not. A typed confirmation
   or `--token` remains available and is theirs to ask for, never your default.
+- Run `wfctl knowledge decided "<subject>"` before putting any question to the
+  maintainer, whatever route you are on. It reads the four places an answer lands
+  — a promoted page, the bundle that asked, a resolved map, a capture — plus work
+  already delivered, and reports the date and their own words. Most answers are
+  not on a page, so a search of curated knowledge alone finds nothing and reads
+  like a question nobody has answered. On a bundle, `--record <id>` writes the
+  result into the framing, which the framing gate requires.
 - Ask one material question at a time, include a recommendation, and update
   the durable record before continuing.
 - Write to a maintainer who was not watching. They did not see the tool calls,

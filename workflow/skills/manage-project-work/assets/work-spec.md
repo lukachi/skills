@@ -27,6 +27,9 @@ direction:
 knowledge_alignment:
   reviewed: []
   conflicts: []
+  # Written by `wfctl knowledge decided "<subject>" --record <id>`, never by hand:
+  # a check the record claims is one the command actually ran.
+  decided: null
   # Set covered: false with a basis when no curated concept covers this work.
   # An empty knowledge base is a supported state; an invented concept path is not.
 graph_evidence:

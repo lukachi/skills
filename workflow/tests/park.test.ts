@@ -316,6 +316,12 @@ async function prepareFraming(specPath: string): Promise<void> {
   document.metadata.knowledge_alignment = {
     reviewed: ["knowledge/index.md"],
     conflicts: [],
+    // What `wfctl knowledge decided --record` writes once the search has run.
+    decided: {
+      checked: "the outcome this bundle is for",
+      found: [],
+      none: "Nothing already recorded bears on it; the decisions road is empty.",
+    },
   };
   for (const entry of Array.isArray(document.metadata.repositories) ? document.metadata.repositories : []) {
     if (entry && typeof entry === "object") {

@@ -112,9 +112,58 @@ export function alignmentIssues(document: WorkSpecDocument): string[] {
   return issues;
 }
 
+/**
+ * Whether anyone looked for the answer before going back to ask for it again.
+ *
+ * The corpus required this in one skill, reached by three of six routes, and
+ * even there it cost three exact guesses: that a `changes` collection exists,
+ * the flag that selects it, and the maintainer's own wording. An audit put
+ * thirty-one questions to him having run no search at all, and two of them were
+ * settled — a direction he had attested six days earlier with a receipt, and a
+ * consequence the project's own completed work had recorded as his to settle.
+ *
+ * `wfctl knowledge decided` answers it in one call and writes this field from
+ * what it found, so the check and its receipt are the same act. Finding nothing
+ * is a legitimate answer and the only one that needs a sentence: an empty result
+ * says the corpus holds no record, which is different from nobody having decided.
+ *
+ * A framing precondition and never a completion one. Checking whether an answer
+ * exists is worth something before the question is put and nothing after the
+ * work is done, and hanging it off closure applied it to every bundle already
+ * archived — which invalidated the curated pages citing them, because a page
+ * cites a completed change and a completed change had suddenly stopped being one.
+ */
+export function decidedIssues(alignment: Record<string, unknown> | undefined): string[] {
+  const decided = isRecord(alignment?.decided) ? alignment.decided : undefined;
+  if (!decided) {
+    return [
+      "knowledge_alignment.decided must record what was already settled about this work; "
+        + "run wfctl knowledge decided \"<subject>\" --record <id>",
+    ];
+  }
+  const issues: string[] = [];
+  if (!stringValue(decided.checked).trim()) {
+    issues.push("knowledge_alignment.decided.checked must name the subject that was searched");
+  }
+  const found = Array.isArray(decided.found) ? decided.found : [];
+  if (found.length === 0 && !stringValue(decided.none).trim()) {
+    issues.push(
+      "knowledge_alignment.decided found nothing; say why nothing already recorded bears on this work",
+    );
+  }
+  return issues;
+}
+
 /** Everything that must hold before a maintainer is asked to approve a framing. */
 export function framingIssues(document: WorkSpecDocument): string[] {
-  return [...alignmentIssues(document), ...repositoryAccountingIssues(document)];
+  const alignment = isRecord(document.metadata.knowledge_alignment)
+    ? document.metadata.knowledge_alignment
+    : undefined;
+  return [
+    ...alignmentIssues(document),
+    ...decidedIssues(alignment),
+    ...repositoryAccountingIssues(document),
+  ];
 }
 
 /**

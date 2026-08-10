@@ -67,7 +67,29 @@ export function discoveryLedgerIssues(
     const items = entryNodes
       .flatMap((entryNode) => collectMarkdownNodes(entryNode, "listItem"))
       .map((entryNode) => markdownNodeText(entryNode).trim());
-    for (const field of ["Observation", "Evidence", "Implication", "Scope", "Disposition"]) {
+
+    // A list item has a boundary; a paragraph does not, so accepting both would
+    // make the parser guess where one field ends and the next begins. The shape
+    // stays strict and the refusal explains itself instead: an entry written as
+    // paragraphs was told five times that a field it had written was missing,
+    // which reads as a content problem and is a shape problem, and cost five
+    // rewrites of correct text before anyone opened this file.
+    if (items.length === 0) {
+      const paragraphs = entryNodes
+        .flatMap((entryNode) => collectMarkdownNodes(entryNode, "paragraph"))
+        .map((entryNode) => markdownNodeText(entryNode).trim());
+      const misshaped = paragraphs.filter((text) => named(text)).length;
+      issues.push(
+        misshaped > 0
+          ? `${label}: ${id} writes ${misshaped} of its fields as paragraphs; each of `
+            + `${FIELDS.join(", ")} must be its own list item, as the shipped template writes them`
+          : `${label}: ${id} has none of its fields; write ${FIELDS.join(", ")} as list items, `
+            + "one per field, as the shipped template writes them",
+      );
+      continue;
+    }
+
+    for (const field of FIELDS) {
       const value = items.find((item) => new RegExp(`^${field}:`, "i").test(item));
       if (!value || !value.replace(new RegExp(`^${field}:`, "i"), "").trim()) {
         issues.push(`${label}: ${id} requires a non-empty ${field} field`);
@@ -75,6 +97,13 @@ export function discoveryLedgerIssues(
     }
   }
   return issues;
+}
+
+const FIELDS = ["Observation", "Evidence", "Implication", "Scope", "Disposition"] as const;
+
+/** Whether a block opens with one of the field names, however it is emphasised. */
+function named(text: string): boolean {
+  return FIELDS.some((field) => new RegExp(`^${field}:`, "i").test(text));
 }
 
 function collectMarkdownNodes(node: MarkdownNode, type: string): MarkdownNode[] {
