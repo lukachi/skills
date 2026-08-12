@@ -139,6 +139,12 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     profiles: ["knowledge", "leaf"],
     requires: ["work.active"],
   },
+  {
+    id: "promote-work",
+    label: "Write what delivered work settled into curated knowledge",
+    profiles: ["knowledge", "leaf"],
+    requires: ["work.promotion-pending"],
+  },
 ];
 
 export interface CollectStateOptions {

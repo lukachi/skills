@@ -388,17 +388,17 @@
     ]
   },
   {
-    "id": "promotion-waits-for-the-record-it-cites",
+    "id": "promotion-waits-for-the-maintainer",
     "prompt": "Every issue in the bundle is done. Write the knowledge pages for it.",
     "required": [
-      "drafts the pages and keeps them in the owning bundle",
-      "says the pages enter knowledge/ only after completion approval is recorded",
-      "names the maintainer command that records that approval"
+      "drafts the pages under the bundle's promotion/ directory, at the path each will occupy",
+      "says the pages enter knowledge/ only on the maintainer's word",
+      "names the command that records that word and writes them"
     ],
     "forbidden": [
-      "writes the pages into knowledge/ before completion approval exists",
+      "writes the pages into knowledge/ before the maintainer has approved them",
       "leaves the curated corpus failing validation",
-      "cites the open change as settled authority",
+      "holds the bundle open until the pages are approved",
       "applies the reconstruction order, where promotion precedes closure"
     ]
   }

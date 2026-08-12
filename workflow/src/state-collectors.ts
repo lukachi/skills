@@ -12,6 +12,7 @@ import { listRepositoryConnections } from "./repository-registry.js";
 import type { StateCollector, StateContext, StateSignal } from "./state.js";
 import { WORKFLOW_VERSION } from "./types.js";
 import { workCheckpointBasis } from "./work-bundle.js";
+import { pendingPromotions } from "./work-promotion.js";
 import { parseWorkSpec } from "./work-spec.js";
 
 /**
@@ -664,8 +665,12 @@ function workCollector(): StateCollector {
 
         // A bundle carries no status that says an approval became due, so report
         // what closure still requires rather than guessing at a stage machine.
+        //
+        // Only the framing. Completion stopped being asked of every bundle when
+        // closure became mechanical; it returns only where delivery drifted, and
+        // that is reported by the gate that can see the issues, not guessed here.
         const review = recordValue(metadata.maintainer_review);
-        const outstanding = (["framing", "completion"] as const).filter((stage) =>
+        const outstanding = (["framing"] as const).filter((stage) =>
           stringValue(recordValue(review?.[stage])?.status) !== "approved"
         );
         const checkpoint = recordValue(metadata.checkpoint);
@@ -757,33 +762,18 @@ function workCollector(): StateCollector {
             awaits: "agent",
           });
         }
-        const verified = stringValue(recordValue(metadata.verification)?.result) === "passed";
-        const answerable = outstanding.filter((stage) => stage === "framing" || verified);
-        if (answerable.length > 0) {
+        if (outstanding.length > 0) {
           signals.push({
             id: "work.approvals-outstanding",
             domain: "work",
             level: "attention",
-            summary: "Closure still requires your recorded approval",
+            summary: "This work cannot start until you settle what it is",
             subject: entry.id,
             facts: {
-              stages: answerable.join(","),
-              command: `wfctl work ask ${entry.id} --stage ${answerable[0]}`,
+              stages: outstanding.join(","),
+              command: `wfctl work ask ${entry.id} --stage ${outstanding[0]}`,
             },
             awaits: "maintainer",
-            blocks: ["close-work"],
-          });
-        } else if (outstanding.length > 0) {
-          signals.push({
-            id: "work.approvals-later",
-            domain: "work",
-            level: "info",
-            summary: "Approval will be needed at closure, and cannot be given yet",
-            subject: entry.id,
-            facts: { stages: outstanding.join(",") },
-            // Nobody owes an action. The maintainer cannot approve work that has
-            // not been done, and the agent has nothing to do about a future
-            // approval — so claiming either would arm the stop guard on a fact.
             blocks: ["close-work"],
           });
         }
@@ -825,6 +815,33 @@ function workCollector(): StateCollector {
           metadata,
           workCheckpointBasis(entry.document),
         ));
+      }
+      // Work that shipped and has not been taught. It blocks nothing that is
+      // running — the code landed, the bundle closed — which is exactly why it
+      // needs saying: an unread queue that blocks nothing is how nineteen
+      // captures reached a week old. One signal per bundle, naming the pages, so
+      // it can never be answered as a count.
+      for (const pending of await pendingPromotions(context.knowledgeRoot)) {
+        signals.push({
+          id: "work.promotion-pending",
+          domain: "work",
+          level: "attention",
+          summary: "Work is delivered and the project has not learned it yet",
+          subject: pending.id,
+          facts: {
+            title: stringValue(pending.document.metadata.title) || pending.id,
+            pages: nameThem(pending.titles),
+            command: `wfctl work ask ${pending.id} --stage promotion`,
+          },
+          ...(stringValue(pending.document.metadata.closed_at)
+            ? { since: stringValue(pending.document.metadata.closed_at) }
+            : {}),
+          awaits: "maintainer",
+          // No `blocks`. What this actually holds is the next framing approval in
+          // the same Area, which is finer than any capability here can express,
+          // and it is enforced where that decision is made. Declaring a coarse
+          // block would report every unrelated framing as held.
+        });
       }
       return signals;
     },

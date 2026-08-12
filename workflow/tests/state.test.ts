@@ -505,7 +505,7 @@ test("a session is unsafe to stop while work sits outside every checkpoint", asy
   );
 });
 
-test("completion approval is not demanded of a bundle that has not been done", async () => {
+test("an approved framing leaves nothing in the maintainer's queue", async () => {
   const { knowledge, leaf } = await installKnowledge();
   const started = await beginWork({
     target: leaf,
@@ -524,20 +524,22 @@ test("completion approval is not demanded of a bundle that has not been done", a
   });
 
   const report = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
-  // Nothing is left for the maintainer to answer, so nothing sits in their
-  // queue. Closure still requires the approval, and the capability still says so.
+  // The framing is settled, and closure no longer waits on a second word from
+  // them. Nothing about this bundle belongs in their queue until it has pages.
+  for (const id of ["work.approvals-outstanding", "work.approvals-later"]) {
+    assert.equal(
+      report.signals.some((signal) => signal.id === id),
+      false,
+      JSON.stringify(report.signals.map((signal) => signal.id)),
+    );
+  }
   assert.equal(
-    report.signals.some((signal) => signal.id === "work.approvals-outstanding"),
+    report.signals.some((signal) =>
+      signal.domain === "work" && signal.awaits === "maintainer"
+    ),
     false,
-    JSON.stringify(report.signals.map((signal) => signal.id)),
+    JSON.stringify(report.signals.filter((signal) => signal.awaits === "maintainer")),
   );
-  const later = report.signals.find((signal) => signal.id === "work.approvals-later");
-  assert.equal(later?.facts?.stages, "completion");
-  // Neither party owes an action on a future approval, so it claims neither and
-  // the stop guard is not armed by a fact.
-  assert.equal(later?.awaits, undefined);
-  const close = report.capabilities.find((entry) => entry.id === "close-work");
-  assert.equal(close?.available, false);
 });
 
 test("a corpus with no engineering page says so once repositories are registered", async () => {

@@ -282,9 +282,13 @@ try {
     /Repository kind: knowledge \(central knowledge base\) or leaf/,
   );
 
+  // Against an empty directory, and never the default target. Run from the
+  // workflow repository's own root this asserted nothing: the cwd is already an
+  // installed leaf, so `init` read its profile from the config, reached the
+  // confirmation prompt, and failed non-interactively with an unrelated message.
   const missingProfile = spawnSync(
     "node",
-    [join(packaged, "dist/cli.js"), "init"],
+    [join(packaged, "dist/cli.js"), "init", "--target", target],
     { encoding: "utf8" },
   );
   assert.equal(missingProfile.status, 1, missingProfile.stderr || missingProfile.stdout);

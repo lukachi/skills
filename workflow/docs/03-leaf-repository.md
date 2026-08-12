@@ -61,18 +61,23 @@ you    → wfctl work approve <id> --stage framing --by human:<you>
 agent  → splits into issues if the work spans sessions
 agent  → claims one issue, implements it, records evidence
        ── repeat per issue
-agent  → verifies the whole thing, shows acceptance results and deviations
-you    → wfctl work approve <id> --stage completion --by human:<you>
-agent  → archives the real outcome and promotes what durably changed
+agent  → verifies the whole thing, drafts the pages it would write, and closes
+agent  → shows you those pages, in full
+you    → wfctl work promote <id> --by human:<you>
+agent  → writes them into knowledge/ and archives the bundle
 ```
+
+You are not asked whether finished work is finished. The agent comes back at the
+end only when what it delivered no longer matches the framing you approved.
 
 Correct the framing the moment something looks wrong. It is far cheaper before
 implementation than after.
 
-### The two approvals are yours to type
+### The two decisions are yours
 
-Framing and completion approvals are recorded by a command that asks for a typed
-confirmation in your terminal:
+A framing settles what the work is. A promotion settles what the project now says
+about itself. Ordinarily the agent records the answer you gave in conversation,
+word for word; you can ask for a typed confirmation instead:
 
 ```sh
 wfctl work approve <change-id> --stage framing --by human:<your-id> \

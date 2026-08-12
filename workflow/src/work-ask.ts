@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { findDistributionRoot } from "./assets.js";
+import { draftTitle, readPromotionDrafts } from "./work-promotion.js";
 import { isRecord, parseWorkSpec, type MaintainerReviewStage } from "./work-spec.js";
 
 /**
@@ -41,6 +42,17 @@ export interface WorkGate {
   learned: string[];
   /** Completion settled nothing durable, and said why. */
   learnedNothingBecause: string;
+  /** Promotion: the pages waiting, and what each of them will claim. */
+  pages: PromotionPage[];
+}
+
+export interface PromotionPage {
+  /** What the page is called, in its own words. */
+  title: string;
+  /** What it will say, taken from the page itself. */
+  says: string[];
+  /** Whether a page already stands where this one will land. */
+  replaces: boolean;
 }
 
 export interface ReadWorkGateOptions {
@@ -55,7 +67,11 @@ export async function readWorkGate(
 ): Promise<WorkGate> {
   const stage = options.stage ?? "framing";
   const target = resolve(targetInput);
-  const path = join(target, "changes/active", id, "change.md");
+  // A promotion is asked about a bundle that has already closed, so it is read
+  // from wherever the bundle now is rather than from the one place open work
+  // lives. Closure is what moved it, and the question survives the move.
+  const bundleRoot = await locateBundle(target, id);
+  const path = join(bundleRoot, "change.md");
   const document = parseWorkSpec(await readFile(path, "utf8"));
   const metadata = document.metadata;
   const review = isRecord(metadata.maintainer_review)
@@ -83,7 +99,73 @@ export async function readWorkGate(
     ],
     learned: decisions(promotion.decisions),
     learnedNothingBecause: text(promotion.decisions_none),
+    pages: stage === "promotion" ? await readPages(target, bundleRoot, boilerplate) : [],
   };
+}
+
+/**
+ * The pages themselves, because the pages are the decision.
+ *
+ * Nothing stands in for them: a list of paths asks the maintainer to go and open
+ * files, and a summary of a page written for readers is a second author between
+ * them and the text they are approving. What is shown is what will land, and the
+ * only editing is dropping the machine-facing frontmatter that is not addressed
+ * to them.
+ */
+async function readPages(
+  target: string,
+  bundleRoot: string,
+  boilerplate: Set<string>,
+): Promise<PromotionPage[]> {
+  const pages: PromotionPage[] = [];
+  for (const draft of await readPromotionDrafts(bundleRoot)) {
+    const content = await readFile(join(bundleRoot, draft.source), "utf8");
+    const body = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+    pages.push({
+      title: draftTitle(content) || draft.destination,
+      says: prose(body, boilerplate),
+      replaces: await exists(join(target, "knowledge", draft.destination)),
+    });
+  }
+  return pages;
+}
+
+/** A page's own sentences, its headings and its machine-facing rows removed. */
+function prose(body: string, boilerplate: Set<string>): string[] {
+  const collected: string[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    const trimmed = line.replace(/^\s*[-*]\s+/, "").trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("|")) {
+      continue;
+    }
+    if (/^\{\{.*\}\}$/.test(trimmed) || boilerplate.has(trimmed)) {
+      continue;
+    }
+    collected.push(trimmed);
+  }
+  return collected;
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await readFile(path, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function locateBundle(target: string, id: string): Promise<string> {
+  for (const location of ["changes/active", "changes/promotion", "changes/archive"]) {
+    const candidate = join(target, location, id);
+    try {
+      await readFile(join(candidate, "change.md"), "utf8");
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return join(target, "changes/active", id);
 }
 
 /**
@@ -149,7 +231,71 @@ async function templateLines(distributionRoot?: string): Promise<Set<string>> {
 }
 
 export function renderWorkGate(gate: WorkGate): string {
+  if (gate.stage === "promotion") {
+    return renderPromotion(gate);
+  }
   return gate.stage === "completion" ? renderCompletion(gate) : renderFraming(gate);
+}
+
+/**
+ * The promotion gate, which is now the one a maintainer is asked every time.
+ *
+ * It replaced a completion approval that asked whether the work was done — a
+ * question the receipts had already answered, and one that cost an unattended
+ * night its second half because nobody was awake to say yes. This asks the
+ * question nothing in the repository can answer: whether this is what the
+ * project should now say about itself.
+ *
+ * It is also the only decision here that compounds. An approval receipt is read
+ * by an auditor, once, if ever. A page is read by every session that touches this
+ * part of the project, and it is what the next framing will be aligned against.
+ */
+function renderPromotion(gate: WorkGate): string {
+  const lines: string[] = [];
+  lines.push(`# ${gate.title}`, "");
+  if (gate.approved) {
+    lines.push("These pages are already promoted. Nothing here is waiting on you.", "");
+  }
+
+  lines.push("## What this work settled", "");
+  if (gate.learned.length > 0) {
+    lines.push(...gate.learned.map((entry) => `- ${entry}`));
+  } else if (gate.learnedNothingBecause) {
+    lines.push(gate.learnedNothingBecause);
+  } else {
+    lines.push("The record does not account for what this work decided.");
+  }
+
+  lines.push("", "## What the project will say");
+  if (gate.pages.length === 0) {
+    lines.push(
+      "",
+      "No page is waiting. Nothing this work did changes what the project says about itself, "
+        + "or nobody has written the pages yet.",
+    );
+  }
+  for (const page of gate.pages) {
+    lines.push("", `### ${page.title}`, "");
+    lines.push(
+      page.replaces
+        ? "This replaces what the project says today."
+        : "The project has said nothing about this until now.",
+      "",
+    );
+    lines.push(...bullets(page.says, "The page is empty."));
+  }
+
+  lines.push("");
+  lines.push(
+    "Approving this writes these pages into the project's own knowledge. From then on they",
+    "are what the project says, what a new session reads first, and what the next piece of",
+    "work is checked against. Declining changes nothing that was built — the work is done",
+    "and closed either way. What is being decided is whether the project has learned it.",
+    "",
+    "Say so if a page is wrong, and it gets rewritten rather than argued for.",
+    "",
+  );
+  return lines.join("\n");
 }
 
 /**

@@ -219,22 +219,26 @@ and link product meaning instead of claiming it from code.
 Run `wfctl knowledge validate` and `wfctl knowledge build` after promotion. A
 failed validation or build blocks a completed knowledge update.
 
-## Promotion order runs opposite ways, and the source decides which
+## A page enters `knowledge/` on the maintainer's word, and never before it
 
-A curated page cites the record that gives it authority, and the two kinds of
-record become citable at opposite moments.
+A curated page cites the record that gives it authority, and it may enter the
+corpus only once that record is closed and the maintainer has approved the page
+itself.
 
 | Source | When its pages may enter `knowledge/` |
 | --- | --- |
-| Change bundle | **After** completion approval is recorded. The citation resolves only from a receipt-ready change, and receipt-readiness requires that approval. |
+| Change bundle | **After** the bundle closes and `wfctl work promote` records their word. Closure needs nobody; the page does. |
 | Reconstruction | **Before** the case closes. The case's own promotion is what closure is waiting for, so the gate exempts it while promoting. |
 
-Reading one and applying it to the other is a natural mistake and produces a
-wall rather than a hint: pages get written, `wfctl knowledge validate` reports
-that the decision cannot cite an unfinished change, and the corpus is invalid
-until they are removed again.
+This used to be a genuine deadlock for a change bundle, and it was paid for with
+a broken corpus. A page could cite only a change the maintainer had already
+accepted, while accepting the change required the pages to have been written —
+so the way through was to write them, leave `knowledge/` invalid, and wait. Now a
+closed change is citable on its own evidence, and the pages wait in the bundle
+until their moment rather than in the corpus.
 
-Drafting either kind early is free and often right — the understanding is
-freshest while the work is. Keep the drafts in the owning bundle or case until
-their moment, and say plainly that they are drafts rather than leaving them
-somewhere the validator has to reject.
+Draft either kind early. The understanding is freshest while the work is, and a
+draft under a bundle's `promotion/` directory costs nothing and blocks nothing.
+Write each one at the path it will occupy inside `knowledge/`, because that is
+the path it will be copied to, and record them with `wfctl work promotion <id>`
+so what the maintainer is shown and what lands are the same list.

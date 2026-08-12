@@ -199,10 +199,25 @@ distributed bundle template.
 
 ## Maintainer approval
 
-Framing and completion approvals are recorded by `wfctl work approve`, not by
-editing `maintainer_review`. The command requires an interactive terminal, or an
-out-of-band token supplied through `WFCTL_APPROVAL_TOKEN`, and writes both the
-receipt in `change.md` and a durable approval record under ignored runtime
+A maintainer decides three things, and only two of them on every bundle.
+`framing` settles what the work is and is recorded by `wfctl work approve`.
+`promotion` settles what the project now says about itself and is recorded by
+`wfctl work promote`, which writes the pages into `knowledge/` in the same act.
+`completion` is asked only where delivery no longer matches the approved framing
+— the acceptance criteria were reworded since the approval, or an issue was
+dropped from the route — and is recorded by `wfctl work approve --stage
+completion`.
+
+Closure itself needs nobody. Every part of "is this done" is something the
+completion gate already checks, and a maintainer asked to confirm it signs
+arithmetic they cannot check better than the tool. The framing approval therefore
+also digests the acceptance criteria it settled, which is what later distinguishes
+a reworded contract from the one that was agreed to.
+
+None of these are recorded by editing `maintainer_review`. Each command records
+the maintainer's own answer through `--attested`, or takes a typed confirmation
+or an out-of-band token supplied through `WFCTL_APPROVAL_TOKEN`, and writes both
+the receipt in `change.md` and a durable approval record under ignored runtime
 state. Verification and completed closure reject a receipt whose approval record
 is missing or inconsistent.
 
@@ -242,8 +257,11 @@ wayfinder/charting -> ready-for-spec -> shaping -> active -> completed
 - An issue moves `draft -> ready -> claimed -> completed`; it may be dropped
   with a recorded reason.
 - A completed change closes only after semantic verification, clean exact
-  source revisions, complete bundle review, maintainer completion approval,
-  and knowledge promotion or a concrete no-update reason.
+  source revisions, complete bundle review, and a recorded promotion state:
+  pages drafted and pending, already applied, or a concrete no-update reason.
+- A change closed with pending pages waits in `changes/promotion/` rather than
+  `changes/archive/`, and moves on only when `wfctl work promote` writes its
+  pages. A curated page may cite a change in either location; both are closed.
 
 `wfctl` enforces structure and exact identities. It does not declare product
 meaning correct, approve decisions, or promote a bundle into truth by itself.

@@ -13,6 +13,7 @@ import type { RepositoryMetadata, WorkMode, WorkSpecDocument } from "./types.js"
 import { discoveryLedgerIssues } from "./discovery-ledger.js";
 import { readPark } from "./park.js";
 import {
+  acceptanceDrift,
   GATED_CHANGE_VERSIONS,
   includesVersion,
   isRecord,
@@ -87,7 +88,7 @@ export interface WorkIssueSummary {
 
 export interface BundleInventoryEntry {
   path: string;
-  role: "change" | "map" | "issue" | "artifact" | "review" | "unknown";
+  role: "change" | "map" | "issue" | "artifact" | "review" | "promotion" | "unknown";
   sha256: string;
   bytes: number;
   accounting: "reviewed" | "irrelevant" | "unseen" | "changed-after-review" | "invalid";
@@ -1033,6 +1034,7 @@ export async function bundleCompletionIssues(
       }
     }
   }
+  issues.push(...driftIssues(change, parsedIssues));
   const inspection = await inspectWorkBundle(bundleRoot, "review");
   for (const checkpoint of inspection.checkpoints) {
     issues.push(...checkpoint.issues);
@@ -1046,6 +1048,52 @@ export async function bundleCompletionIssues(
     }
   }
   return [...new Set(issues)];
+}
+
+/**
+ * Delivery that no longer matches the framing, and the one thing at closure that
+ * is still the maintainer's to decide.
+ *
+ * Closing is otherwise arithmetic: the criteria are verified, the receipts carry
+ * evidence, the revisions are pinned, every issue is terminal. None of that needs
+ * a person, and putting one in front of it cost an unattended night half its
+ * work. What does need a person is the case where the arithmetic passes against
+ * criteria that are not the ones they agreed to — reworded since, or delivered
+ * with a piece of the route dropped. Then the gate reopens, and the same
+ * completion approval that used to be routine becomes the exception it should
+ * always have been.
+ *
+ * A dropped issue counts whatever the criteria say, because dropping is scope
+ * leaving the route by the agent's own hand. The last bundle to do it dropped the
+ * issue that proved the refusal and reported the bundle as delivered.
+ */
+export function driftIssues(
+  change: WorkSpecDocument,
+  parsedIssues: readonly ParsedIssue[],
+): string[] {
+  const dropped = parsedIssues
+    .filter((entry) => entry.summary.status === "dropped")
+    .map((entry) => entry.summary.title || entry.summary.id);
+  const reasons = [
+    ...acceptanceDrift(change),
+    ...(dropped.length > 0
+      ? [`work was dropped from the route rather than delivered: ${dropped.join("; ")}`]
+      : []),
+  ];
+  if (reasons.length === 0) {
+    return [];
+  }
+  const review = recordValue(change.metadata.maintainer_review);
+  if (stringValue(recordValue(review?.completion)?.status) === "approved") {
+    return [];
+  }
+  return [
+    `delivery no longer matches the approved framing (${
+      reasons.join("; ")
+    }), so closing it is the maintainer's decision again: render it with wfctl work ask `
+    + "<id> --stage completion, put it to them, and record their answer with wfctl work "
+    + "approve <id> --stage completion",
+  ];
 }
 
 async function validateBundle(
@@ -1597,6 +1645,10 @@ function roleForPath(path: string): BundleInventoryEntry["role"] {
   if (path === "review.md") return "review";
   if (ISSUE_PATH.test(path)) return "issue";
   if (/^artifacts\/.+/.test(path)) return "artifact";
+  // A curated page written but not yet promoted. It lives in the bundle so that
+  // drafting can finish without a person, and so that the corpus never holds a
+  // page whose authority is a change nobody has accepted.
+  if (/^promotion\/.+\.md$/.test(path)) return "promotion";
   return "unknown";
 }
 

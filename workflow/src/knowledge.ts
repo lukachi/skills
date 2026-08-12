@@ -840,10 +840,27 @@ async function collectKnowledgeTree(root: string): Promise<{
   };
 }
 
+/**
+ * A closed bundle waiting to be promoted is history, and cites like it.
+ *
+ * The promotion queue holds bundles that passed every completion gate and now
+ * hold pages nobody has approved. They are closed: the code shipped, the issues
+ * are terminal, the receipts are written. A page produced by that very promotion
+ * cites the change that authorises it, so the citation has to resolve while the
+ * bundle is still in the queue — the promotion writes the page and archives the
+ * bundle in one act, and validation runs between the two.
+ *
+ * They join the archive rather than the active side because the distinction that
+ * matters to a citation is closed versus open, not which directory holds it.
+ */
 async function readProjectChangeIndex(target: string): Promise<ProjectChangeIndex> {
+  const archive = await projectChangeRecords(join(target, "changes/archive"));
+  for (const [id, record] of await projectChangeRecords(join(target, "changes/promotion"))) {
+    archive.set(id, record);
+  }
   return {
     active: await projectChangeRecords(join(target, "changes/active")),
-    archive: await projectChangeRecords(join(target, "changes/archive")),
+    archive,
   };
 }
 
@@ -936,7 +953,7 @@ async function projectChangeRecords(
               && bundleIssues.length === 0
               && document.metadata.status === "completed"
               && (
-                !root.endsWith(`${sep}archive`)
+                root.endsWith(`${sep}active`)
                 || document.metadata.outcome === "completed"
               ),
           });

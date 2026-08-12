@@ -24,7 +24,7 @@ in [`vendor/mattpocock/upstream.json`](vendor/mattpocock/upstream.json).
 | `to-spec` | `specify-project-change` | Synthesize earned context instead of restarting the interview; define product outcome, exclusions, technical and testing decisions | Canonical `change.md`; stable acceptance IDs; Graphify and knowledge alignment; maintainer framing review; resolved-map synthesis |
 | `to-tickets` | `split-project-change` | Tracer-bullet issues, explicit blockers, complete descriptions, and user-reviewed granularity | Bundle-local issue graph; acceptance coverage; exact repository scope; cycle validation; no competing leaf or external tracker |
 | `implement` and `tdd` | `implement-work-item` | Implement from an approved spec or ticket, use behavior-first test cycles, run focused and broad checks, then review | Exact leaf/worktree claim; Graphify-first inspection; hash-bound checkpoints; evidence-backed issue resolution; no automatic commit |
-| `code-review` | `verify-project-work` | Separate contract/spec and engineering/standards review axes | Every bundle file accounted at a current hash; stable acceptance matrix; exact revision receipts; knowledge promotion; maintainer completion gate |
+| `code-review` | `verify-project-work` | Separate contract/spec and engineering/standards review axes | Every bundle file accounted at a current hash; stable acceptance matrix; exact revision receipts; drafted knowledge pages; maintainer promotion gate |
 
 ## Embedded influences
 

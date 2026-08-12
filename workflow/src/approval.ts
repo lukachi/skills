@@ -204,12 +204,15 @@ export async function approvalIssues(
     return [];
   }
   const issues: string[] = [];
-  for (const stage of ["framing", "completion"] as const) {
+  for (const stage of ["framing", "completion", "promotion"] as const) {
     const entry = maintainerReviewEntry(document, stage);
     const prefix = `maintainer_review.${stage}`;
     const receipt = typeof entry?.receipt === "string" ? entry.receipt : "";
     if (!receipt) {
-      continue; // completionIssues already reports the missing receipt.
+      // A stage nobody has answered is not a broken receipt. Whether its absence
+      // blocks anything is decided by the gate that needs it — the framing gate,
+      // the promotion gate, or a drift check — and reported in those terms.
+      continue;
     }
     const record = await readApproval(knowledgeRoot, id, stage);
     if (!record) {
@@ -259,7 +262,8 @@ function isApprovalRecord(value: unknown): value is ApprovalRecord {
   const record = value as Record<string, unknown>;
   return record.schemaVersion === 1
     && typeof record.id === "string"
-    && (record.stage === "framing" || record.stage === "completion")
+    && (record.stage === "framing" || record.stage === "completion"
+      || record.stage === "promotion")
     && typeof record.by === "string"
     && typeof record.at === "string"
     && APPROVAL_METHODS.includes(record.method as ApprovalMethod)

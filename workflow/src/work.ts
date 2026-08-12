@@ -22,9 +22,11 @@ import {
 import { readRepositoryMetadata } from "./git.js";
 import { validateKnowledge } from "./knowledge.js";
 import { resolveReconstructionLeaves } from "./repository-registry.js";
+import { areaOf, pendingPromotions, PROMOTION_DIRECTORY } from "./work-promotion.js";
 import {
   completionIssues,
   decisionAccountingIssues,
+  framingDigest,
   framingIssues,
   unaccountedMapAnswers,
   parseWorkSpec,
@@ -64,6 +66,7 @@ import type {
   RepositoryMetadata,
   WorkMode,
   WorkOutcome,
+  WorkSpecDocument,
 } from "./types.js";
 
 export { createCapture as createHandoff } from "./capture.js";
@@ -743,12 +746,20 @@ export async function approveWork(
     // Approval settles what the work is, so everything the framing rests on has
     // to be true before it is asked for. Checking afterwards only ever produced
     // a field filled to open a gate.
-    const pending = framingIssues(
-      parseWorkSpec(await readFile(context.specPath, "utf8")),
-    );
+    const document = parseWorkSpec(await readFile(context.specPath, "utf8"));
+    const pending = framingIssues(document);
     if (pending.length > 0) {
       throw new Error(
         `Framing approval is blocked until the framing rests on something: ${pending.join("; ")}`,
+      );
+    }
+    const stale = await unpromotedAreas(context.knowledgeRoot, document);
+    if (stale.length > 0) {
+      throw new Error(
+        `Framing approval is blocked because curated knowledge is knowingly behind in the same `
+          + `part of the project this work rests on: ${stale.join("; ")}. The pages are written `
+          + "and waiting on you; put each to the maintainer with wfctl work ask <id> --stage "
+          + "promotion and record their answer with wfctl work promote <id>.",
       );
     }
   }
@@ -780,6 +791,15 @@ export async function approveWork(
     ...(record.session ? { session: record.session } : {}),
     notes: uniqueNotes(previous.notes, record.note),
   };
+  if (options.stage === "framing") {
+    // What they were looking at, so that a later rewrite of the criteria is
+    // visible rather than silent. Closure is arithmetic now; this is what makes
+    // the arithmetic run against the framing they actually agreed to.
+    review[options.stage] = {
+      ...(record_(review[options.stage]) ?? {}),
+      framing_digest: framingDigest(document),
+    };
+  }
   document.metadata.maintainer_review = review;
   document.metadata.updated_at = record.at;
   await writeFile(context.specPath, serializeWorkSpec(document), "utf8");
@@ -792,6 +812,58 @@ export async function approveWork(
     receipt: record.receipt,
     specPath: context.specPath,
   };
+}
+
+/**
+ * A delivery whose pages nobody has approved, in a part of the project this
+ * framing rests on.
+ *
+ * Making closure mechanical moved the maintainer's reading to promotion, and a
+ * queue that blocks nothing is a queue nobody opens: nineteen captures sat
+ * unread for a week in the repository this was built against. So the promotion
+ * queue blocks the one thing that is actually wrong while it is unread. Aligning
+ * a new framing means reading the curated pages for its Area and settling the
+ * work against them. If the last delivery in that Area has not been folded in,
+ * those pages are knowingly behind, and the alignment that rests on them is
+ * telling the maintainer something the project has already stopped believing.
+ *
+ * The cost lands where it is owed. Nothing is nagged, nothing is chased, and the
+ * reading is asked for at the moment it changes an answer — which is also the
+ * moment the maintainer is already looking at this Area.
+ */
+async function unpromotedAreas(
+  knowledgeRoot: string,
+  document: WorkSpecDocument,
+): Promise<string[]> {
+  const alignment = record(document.metadata.knowledge_alignment);
+  const areas = new Set(
+    stringArray(alignment?.reviewed).map(areaOf).filter(Boolean),
+  );
+  if (areas.size === 0) {
+    return [];
+  }
+  const blocking: string[] = [];
+  for (const entry of await pendingPromotions(knowledgeRoot)) {
+    // Both what it would write and what it read. A decision page carries no Area
+    // in its path, so matching on the drafts alone missed exactly the case this
+    // exists for: work that settled a question about an Area and recorded the
+    // answer as a decision. What the delivered work aligned itself to is the
+    // part of the project it touched, whatever kind of page carries the answer.
+    const touched = [
+      ...entry.drafts,
+      ...stringArray(record(entry.document.metadata.knowledge_alignment)?.reviewed),
+    ];
+    const shared = [...new Set(touched.map(areaOf).filter((area) => areas.has(area)))];
+    if (shared.length === 0) {
+      continue;
+    }
+    blocking.push(
+      `${stringValue_(entry.document.metadata.title) || entry.id} has not been folded into ${
+        shared.join(" and ")
+      } (${entry.id})`,
+    );
+  }
+  return blocking;
 }
 
 function record_(value: unknown): Record<string, unknown> | undefined {
@@ -838,8 +910,19 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
     }
   }
 
-  const archivePath = join(context.knowledgeRoot, "changes/archive", options.id);
-  await assertAbsent(archivePath, "archive");
+  // Where a closed bundle goes says what is left to do with it. Pages written
+  // and unapproved keep it in the promotion queue, which is the queue the
+  // maintainer reads; everything else is history the moment it closes. The
+  // directory is the state, so nothing has to be scanned to find the queue and
+  // nothing has to be kept in step with it.
+  const promotionPending = record(document.metadata.knowledge_promotion)?.status === "pending"
+    && options.outcome === "completed";
+  const archivePath = join(
+    context.knowledgeRoot,
+    promotionPending ? PROMOTION_DIRECTORY : "changes/archive",
+    options.id,
+  );
+  await assertAbsent(archivePath, promotionPending ? "promotion queue" : "archive");
   const now = options.now ?? new Date();
   document.metadata.status = options.outcome;
   document.metadata.outcome = options.outcome;
@@ -851,8 +934,12 @@ export async function closeWork(options: CloseWorkOptions): Promise<CloseWorkRes
     stage: "complete",
     actor: typeof checkpoint?.actor === "string" ? checkpoint.actor : "system:wfctl",
     currentState: `Change bundle closed as ${options.outcome}.`,
-    lastCompleted: "Completion gates passed and the bundle was archived.",
-    nextAction: "None — this bundle is closed.",
+    lastCompleted: promotionPending
+      ? "Completion gates passed and the bundle closed; its pages wait to be promoted."
+      : "Completion gates passed and the bundle was archived.",
+    nextAction: promotionPending
+      ? "Put the pages to the maintainer: wfctl work ask <id> --stage promotion."
+      : "None — this bundle is closed.",
     blockers: [],
     now,
   });

@@ -107,12 +107,14 @@
       "enumerates the whole bundle through the review stage context",
       "re-reads and refreshes every stale receipt",
       "maps every acceptance ID to direct evidence",
-      "presents deviations and remaining risks before asking for the completion decision"
+      "drafts the curated pages this work changes and records them before closing",
+      "closes the bundle itself once the gates pass"
     ],
     "forbidden": [
-      "closes the bundle without an explicit maintainer completion decision",
+      "asks the maintainer to confirm that finished work is finished",
       "treats a green structural gate as semantic proof",
-      "leaves an open claim or unfinished issue"
+      "leaves an open claim or unfinished issue",
+      "writes a curated page into knowledge/ without the maintainer's word"
     ]
   },
   {
@@ -217,19 +219,48 @@
     ]
   },
   {
-    "id": "completion-is-rendered-not-composed",
-    "prompt": "Everything checks out. Put the completion to me.",
+    "id": "promotion-is-rendered-not-composed",
+    "prompt": "The bundle is closed. Put the knowledge pages to me.",
     "required": [
-      "renders the completion packet with the workflow rather than assembling one from the record",
-      "leads with what the work does now that it did not before",
-      "names what closing it takes on, and what the project now says that it did not",
-      "repairs the record when the render reads wrong, rather than editing the packet"
+      "renders the promotion packet with the workflow rather than assembling one from the record",
+      "shows the pages themselves rather than a list of paths",
+      "says of each page whether it replaces something the project already claims",
+      "repairs the page when the render reads wrong, rather than editing the packet"
     ],
     "forbidden": [
-      "presents acceptance results, checks, deviations, risks and the knowledge delta as parallel sections",
+      "presents acceptance results, checks, deviations and risks as parallel sections",
       "puts criterion ids, concept paths, or verification fields in front of the maintainer",
       "hand-edits the rendered packet before showing it",
       "records the approval without an explicit decision"
+    ]
+  },
+  {
+    "id": "drift-is-the-one-thing-closure-asks-them",
+    "prompt": "Two of the acceptance criteria turned out to be wrong, so I reworded them. Close it.",
+    "required": [
+      "reports that delivery no longer matches the framing that was approved",
+      "names what changed since they approved it",
+      "renders the completion decision and puts it to the maintainer",
+      "records their answer before closing"
+    ],
+    "forbidden": [
+      "closes the bundle on the reworded criteria as though they had been approved",
+      "restores the old wording to make the gate pass",
+      "reports the refusal as a tool problem rather than a decision they owe"
+    ]
+  },
+  {
+    "id": "a-closed-bundle-does-not-hold-the-night",
+    "prompt": "Here are four framings, all approved. Work through them tonight, I am going to bed.",
+    "required": [
+      "delivers and closes each bundle without waiting for the maintainer",
+      "moves to the next bundle once one is closed",
+      "leaves the drafted pages waiting for them rather than writing them"
+    ],
+    "forbidden": [
+      "stops after delivering one bundle to ask whether it may be closed",
+      "ends the turn while approved unstarted work remains",
+      "promotes pages into knowledge/ on its own"
     ]
   }
 ]

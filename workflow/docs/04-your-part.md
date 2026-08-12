@@ -38,12 +38,21 @@ Two decisions are recorded by you rather than for you:
 
 ```sh
 wfctl work approve <change-id> --stage framing --by human:<your-id>
-wfctl work approve <change-id> --stage completion --by human:<your-id>
+wfctl work promote <change-id> --by human:<your-id>
 ```
 
-Both wait for you to type `approve` in your terminal. Automation can substitute
-a token you set out of band. The agent cannot answer that prompt, and a
-hand-written approval fails verification.
+The first settles what a piece of work is, before it starts. The second settles
+what the project says about itself, after the work has shipped and closed — and
+it writes the pages in the same act.
+
+Whether finished work is finished is not one of them. The agent closes that
+itself, because the record already answers it. It comes back to you at the end
+only when delivery no longer matches the framing you approved.
+
+Ordinarily the agent records the answer you gave in conversation, word for word.
+Ask for a typed confirmation, or set a token out of band for automation, if you
+want a receipt the agent could not have written. A hand-written approval fails
+verification either way.
 
 ## Do not accept "done" without
 

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { parse, stringify } from "yaml";
 import type { WorkSpecDocument } from "./types.js";
 import { containsUntrustedIntakeReference } from "./untrusted-paths.js";
@@ -29,7 +30,32 @@ export type ApprovalMethod = (typeof APPROVAL_METHODS)[number];
 
 /** Methods whose authority rests on a recorded answer rather than a channel. */
 export const ATTESTED_APPROVAL_METHODS = new Set<ApprovalMethod>(["attested"]);
-export type MaintainerReviewStage = "framing" | "completion";
+
+/**
+ * The three decisions a maintainer actually makes, and when each is due.
+ *
+ * `framing` settles what the work is, and it is asked before the first claim.
+ *
+ * `promotion` settles what the project now says about itself, and it is asked
+ * before curated pages are written. It is the one that compounds: a page is what
+ * the next session reads, where an approval receipt is read by nobody.
+ *
+ * `completion` used to sit between them and be asked every time, on every
+ * bundle, as the price of closing. It asked whether the work was done — which is
+ * a fact the receipts already carry, and one the maintainer cannot check better
+ * than the tool can. So it now goes out only when delivery no longer matches the
+ * framing that was approved: the criteria were reworded, or a piece of the route
+ * was dropped. That is the only case at closure where there is something left to
+ * decide, because it is the only case where what was approved is not what was
+ * built.
+ *
+ * The cost of the old shape was measured. Four bundles were framed and approved
+ * for one unattended night; two were delivered in sixty-two minutes and then
+ * stopped dead at a gate only a sleeping person could open. The remaining two
+ * were never started. Seven hours and fifty-four minutes of an autonomous night
+ * went to a question whose answer was already written in the record.
+ */
+export type MaintainerReviewStage = "framing" | "completion" | "promotion";
 
 export function includesVersion(allowed: readonly number[], value: unknown): boolean {
   return allowed.includes(Number(value));
@@ -163,6 +189,53 @@ export function framingIssues(document: WorkSpecDocument): string[] {
     ...alignmentIssues(document),
     ...decidedIssues(alignment),
     ...repositoryAccountingIssues(document),
+  ];
+}
+
+/**
+ * What the maintainer was actually looking at when they said yes.
+ *
+ * The approval receipt digests who approved, when, and by what means. It says
+ * nothing about what was approved, so the record could be rewritten afterwards
+ * and every gate would still read as satisfied. That was tolerable while a second
+ * human gate stood at closure. It is not tolerable now that closure is
+ * mechanical, because the framing approval became the one place a person looks.
+ *
+ * Acceptance criteria are what is digested, and only them. They are the third of
+ * the four things the framing packet renders — what will make it finished — and
+ * the only one held as structured fields rather than prose. Digesting the body
+ * too would make every discovery-ledger entry read as a scope change, which
+ * trains the reader to wave the alarm through.
+ */
+export function framingDigest(document: WorkSpecDocument): string {
+  const criteria = Array.isArray(document.metadata.acceptance)
+    ? document.metadata.acceptance.filter(isRecord)
+    : [];
+  const parts = criteria
+    .map((entry) => `${stringValue(entry.id).trim()}\0${stringValue(entry.criterion).trim()}`)
+    .sort();
+  return createHash("sha256").update(parts.join("\n"), "utf8").digest("hex");
+}
+
+/**
+ * Delivery that no longer matches the framing that was approved.
+ *
+ * Returns the reasons in the maintainer's own terms, or nothing when the work
+ * landed inside what they agreed to. A bundle approved before this digest existed
+ * carries no baseline, so the criteria half stays silent rather than inventing a
+ * violation; a dropped issue is visible either way.
+ */
+export function acceptanceDrift(document: WorkSpecDocument): string[] {
+  const entry = maintainerReviewEntry(document, "framing");
+  const approved = stringValue(entry?.framing_digest).trim();
+  if (!approved) {
+    return [];
+  }
+  if (approved === framingDigest(document)) {
+    return [];
+  }
+  return [
+    "what will make this finished has been reworded, added to, or cut since it was approved",
   ];
 }
 
@@ -359,26 +432,12 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
     APPROVAL_RECEIPT_CHANGE_VERSIONS,
     metadata.workflow_version,
   );
+  // The framing receipt, and no completion receipt. Whether the work is done is
+  // a question these very checks answer; asking a person to confirm their answer
+  // is not a decision, it is a signature on arithmetic. Drift is the exception
+  // and it is raised by `bundleCompletionIssues`, which can see the issues.
   reviewIssues("framing", maintainerReview, requiresApprovalReceipt, issues);
-  reviewIssues("completion", maintainerReview, requiresApprovalReceipt, issues);
-  if (promotion?.status !== "applied" && promotion?.status !== "not-needed") {
-    issues.push("knowledge_promotion.status must be applied or not-needed");
-  } else if (
-    promotion.status === "applied"
-    && !nonEmptyStringArray(promotion.concepts)
-  ) {
-    issues.push("knowledge_promotion.concepts must list every updated concept");
-  } else if (
-    promotion.status === "applied"
-    && (promotion.concepts as string[]).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))
-  ) {
-    issues.push("knowledge_promotion.concepts must list concept files, not index.md or log.md");
-  } else if (
-    promotion.status === "not-needed"
-    && !stringValue(promotion.reason).trim()
-  ) {
-    issues.push("knowledge_promotion.reason must explain why no current knowledge changed");
-  }
+  issues.push(...promotionIssues(promotion));
   issues.push(...decisionAccountingIssues(document));
   if (
     containsUntrustedIntakeReference(document.body)
@@ -388,6 +447,71 @@ export function completionIssues(document: WorkSpecDocument, requireCompleted: b
   }
 
   return issues;
+}
+
+/**
+ * Where the curated pages are, and which of three answers this bundle gave.
+ *
+ * `applied` — they are in `knowledge/`, and the maintainer's word put them there.
+ * `not-needed` — nothing this work did changes what the project says, with the
+ * reason readable.
+ * `pending` — they are written, they are sitting in the bundle, and the only
+ * thing between them and the corpus is a person. That third answer is what makes
+ * closure mechanical: the drafting is the agent's whole job, and it can be
+ * finished at three in the morning against a maintainer who is asleep.
+ *
+ * A draft path is where the page will land, relative to `knowledge/`. It is
+ * recorded rather than derived at apply time so that what the maintainer is shown
+ * and what gets written are the same list.
+ */
+export function promotionIssues(promotion: Record<string, unknown> | undefined): string[] {
+  const issues: string[] = [];
+  const status = stringValue(promotion?.status);
+  if (status !== "applied" && status !== "not-needed" && status !== "pending") {
+    issues.push(
+      "knowledge_promotion.status must say where the pages this work would write are: "
+        + "draft them under the bundle's promotion/ directory and run wfctl work promotion "
+        + "<id>, or record that none are needed with --none \"<why>\"",
+    );
+    return issues;
+  }
+  if (status === "applied") {
+    if (!nonEmptyStringArray(promotion?.concepts)) {
+      issues.push("knowledge_promotion.concepts must list every updated concept");
+    } else if (
+      (promotion!.concepts as string[]).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))
+    ) {
+      issues.push("knowledge_promotion.concepts must list concept files, not index.md or log.md");
+    }
+  }
+  if (status === "pending") {
+    if (!nonEmptyStringArray(promotion?.drafts)) {
+      issues.push(
+        "knowledge_promotion.drafts must name the pages this work would write; "
+          + "run wfctl work promotion <id> after drafting them under the bundle's promotion/ directory",
+      );
+    } else if (
+      (promotion!.drafts as string[]).some((path) => /(?:^|\/)(?:index|log)\.md$/i.test(path))
+    ) {
+      issues.push("knowledge_promotion.drafts must name concept files, not index.md or log.md");
+    }
+  }
+  if (status === "not-needed" && !stringValue(promotion?.reason).trim()) {
+    issues.push("knowledge_promotion.reason must explain why no current knowledge changed");
+  }
+  return issues;
+}
+
+/** Everything that must hold before the promotion is put to the maintainer. */
+export function promotionGateIssues(document: WorkSpecDocument): string[] {
+  const promotion = recordValue(document.metadata.knowledge_promotion);
+  if (stringValue(promotion?.status) !== "pending") {
+    return [
+      "this bundle has no pages waiting: draft them under its promotion/ directory and "
+        + "run wfctl work promotion <id>, or record that none are needed with --none \"<reason>\"",
+    ];
+  }
+  return [...promotionIssues(promotion), ...decisionAccountingIssues(document)];
 }
 
 export function maintainerReviewEntry(

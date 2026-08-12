@@ -124,6 +124,7 @@ import type {
   WorkOutcome,
 } from "./types.js";
 import { WORKFLOW_VERSION } from "./types.js";
+import { applyPromotion, stagePromotion } from "./work-promotion.js";
 import {
   approveWork,
   accountWorkRepository,
@@ -1094,6 +1095,8 @@ function workCommand() {
     .command("checkpoint", workCheckpointCommand())
     .command("ask", workAskCommand())
     .command("approve", workApproveCommand())
+    .command("promotion", workPromotionCommand())
+    .command("promote", workPromoteCommand())
     .command("park", workParkCommand())
     .command("release", workReleaseCommand())
     .command("issue", workIssueCommand())
@@ -1281,15 +1284,16 @@ function workReleaseCommand() {
 function workAskCommand() {
   return new Command()
     .description(
-      "Render the decision a maintainer is being asked for, in four parts.\n"
+      "Render the decision a maintainer is being asked for.\n"
         + "A framing: what gets done, what deliberately does not, what will make it\n"
-        + "finished, and the order. A completion: what it does now, what it still does\n"
-        + "not do, what closing it takes on, and what the project now says.\n"
+        + "finished, and the order. A promotion: the pages this work would write into\n"
+        + "curated knowledge, in full, and what each of them replaces. A completion is\n"
+        + "asked only when delivery no longer matches the framing that was approved.\n"
         + "Everything else in the record is the evidence behind those, and stays there.",
     )
     .arguments("<id:string>")
     .option("-t, --target <path:string>", "Knowledge repository.", { default: "." })
-    .option("--stage <stage:string>", "framing or completion.", { default: "framing" })
+    .option("--stage <stage:string>", "framing, promotion, or completion.", { default: "framing" })
     .option("--json", "Print machine-readable JSON.")
     .action(async (options, id) => {
       const gate = await readWorkGate(options.target, id, {
@@ -1306,7 +1310,10 @@ function workAskCommand() {
 function workApproveCommand() {
   return new Command()
     .description(
-      "Record a maintainer framing or completion approval outside the agent's normal record edits.",
+      "Record a maintainer approval outside the agent's normal record edits.\n"
+        + "framing settles what the work is. completion is needed only when delivery\n"
+        + "drifted from it. A promotion is recorded by wfctl work promote, which writes\n"
+        + "the pages in the same act.",
     )
     .arguments("<id:string>")
     .option("-t, --target <path:string>", "Bound checkout.", { default: "." })
@@ -1379,11 +1386,102 @@ function workApproveCommand() {
     });
 }
 
+/**
+ * Two commands, because promotion is two acts by two parties.
+ *
+ * `work promotion` is the agent's: it reads the pages already drafted in the
+ * bundle and records that they are waiting. `work promote` is the maintainer's
+ * answer, and it writes them. Splitting them is what lets a bundle close at
+ * three in the morning with its pages finished and nobody awake.
+ */
+function workPromotionCommand() {
+  return new Command()
+    .description(
+      "Record the curated pages this work would write, from what is drafted under the\n"
+        + "bundle's promotion/ directory. A closed bundle holding pending pages waits in\n"
+        + "the promotion queue instead of archiving, and the maintainer is asked there.",
+    )
+    .arguments("<id:string>")
+    .option("-t, --target <path:string>", "Bound checkout.", { default: "." })
+    .option(
+      "--none <reason:string>",
+      "Nothing this work did changes what the project says about itself, and why.",
+    )
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      const result = await stagePromotion({
+        target: options.target,
+        id,
+        ...(options.none ? { none: options.none } : {}),
+      });
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(
+        result.status === "not-needed"
+          ? `${result.id}: nothing to promote, and the reason is recorded.\n`
+          : `${result.id}: ${result.drafts.length} page(s) wait on the maintainer.\n`
+            + `${result.drafts.map((path) => `  ${path}`).join("\n")}\n`
+            + `Put them to the maintainer: wfctl work ask ${result.id} --stage promotion\n`,
+      );
+    });
+}
+
+function workPromoteCommand() {
+  return new Command()
+    .description(
+      "Write the drafted pages into curated knowledge on the maintainer's word, validate\n"
+        + "them, and archive the bundle. Nothing is written unless every page validates.",
+    )
+    .arguments("<id:string>")
+    .option("-t, --target <path:string>", "Bound checkout.", { default: "." })
+    .option("--by <actor:string>", "Approving maintainer as human:<id>.", { required: true })
+    .option("--note <note:string>", "What was approved, in project language.")
+    .option(
+      "--attested <answer:string>",
+      "The maintainer's own answer, word for word.",
+    )
+    .option("--session <where:string>", "Where that answer was given, so it can be read back.")
+    .option(
+      "--token <token:string>",
+      "Out-of-band approval token. Must equal WFCTL_APPROVAL_TOKEN.",
+    )
+    .option("--json", "Print machine-readable JSON.")
+    .action(async (options, id) => {
+      const method = await resolveApprovalMethod({
+        id,
+        stage: "promotion",
+        by: options.by,
+        ...(options.note ? { note: options.note } : {}),
+        ...(options.attested ? { attested: options.attested } : {}),
+        ...(options.token ? { token: options.token } : {}),
+      });
+      const result = await applyPromotion({
+        target: options.target,
+        id,
+        by: options.by,
+        method,
+        ...(options.note ? { note: options.note } : {}),
+        ...(options.attested ? { attested: options.attested } : {}),
+        ...(options.session ? { session: options.session } : {}),
+      });
+      if (options.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(
+        `Promoted ${result.id}: ${result.concepts.length} page(s) are now what the project says.\n`
+          + `${result.concepts.map((path) => `  ${path}`).join("\n")}\n`,
+      );
+    });
+}
+
 function parseApprovalStage(value: string): MaintainerReviewStage {
-  if (value === "framing" || value === "completion") {
+  if (value === "framing" || value === "completion" || value === "promotion") {
     return value;
   }
-  throw new Error(`Approval stage must be framing or completion, not ${value}`);
+  throw new Error(`Approval stage must be framing, completion or promotion, not ${value}`);
 }
 
 /**

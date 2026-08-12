@@ -331,12 +331,22 @@ Installed agents own these commands.
   records require inspection and a maintainer choice.
 - `wfctl work checkpoint <id>` refreshes the one hash-bound resumable state
   owned by the change or a selected claimed issue after semantic edits.
+- `wfctl work ask <id> [--stage promotion|completion]` renders the decision the
+  maintainer is being asked for, generated from the record rather than composed.
 - `wfctl work approve <id> --stage framing|completion --by human:<id>` records a
-  maintainer decision. It requires an interactive terminal, or `--token`
-  matching `WFCTL_APPROVAL_TOKEN` for automation, and writes both the
-  `maintainer_review` receipt and an ignored durable approval record. This is a
-  maintainer-facing command an agent may prepare but must not satisfy on its
-  own; `verify` and completed `close` reject a receipt with no matching record.
+  maintainer decision. It takes the maintainer's own answer through `--attested`,
+  or a typed confirmation, or `--token` matching `WFCTL_APPROVAL_TOKEN` for
+  automation, and writes both the `maintainer_review` receipt and an ignored
+  durable approval record. This is a maintainer-facing command an agent may
+  prepare but must not satisfy on its own; `verify` and completed `close` reject
+  a receipt with no matching record. `--stage completion` is required only where
+  delivery drifted from the approved framing.
+- `wfctl work promotion <id> [--none <reason>]` records the curated pages this
+  work would write, read from the bundle's `promotion/` directory rather than
+  from a flag, so what the maintainer is shown and what lands are the same list.
+- `wfctl work promote <id> --by human:<id>` records the maintainer's word and
+  writes those pages into `knowledge/` in the same act, validates them, and
+  archives the bundle. Nothing is written unless every page validates.
 - `wfctl work issue create|list|show` operates the dependency graph and
   executable frontier inside the bundle.
 - `wfctl work issue block|unblock` updates dependency edges and rejects cycles.
@@ -363,14 +373,19 @@ wfctl work context <id> --stage shape
 wfctl work checkpoint <id> --actor "agent:session" --state "Framing is current" --last "Scope reviewed" --next "Request framing approval"
 wfctl work approve <id> --stage framing --by human:<maintainer-id> --note "Framing accepted"
 wfctl work issue list <id>
+wfctl work promotion <id>
 wfctl work verify <id>
 wfctl work close <id> --outcome completed
+wfctl work ask <id> --stage promotion
+wfctl work promote <id> --by human:<maintainer-id> --attested "<what they said>"
 ```
 
 Completed closure also requires a resolved map, terminal issue graph, stable
-acceptance coverage and evidence, complete current file accounting, explicit
-framing and completion decisions, clean bound source checkouts, one final
-receipt per repository, and a knowledge delta or explicit no-update reason.
+acceptance coverage and evidence, complete current file accounting, the explicit
+framing decision, clean bound source checkouts, one final receipt per repository,
+and a recorded promotion state: pages drafted and pending, already applied, or a
+concrete no-update reason. It does not require a completion decision unless
+delivery drifted from the framing that was approved.
 `wfctl` never commits automatically and never closes completed work into
 `raw/`.
 

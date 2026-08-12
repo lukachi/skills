@@ -96,11 +96,12 @@ Restart your coding agent. The repository you open determines its role:
 - **Leaf repository:** “Implement account recovery.” It writes code only in
   that exact checkout while using the central knowledge and work record.
 
-The agent owns routine `wfctl`, Graphify, QMD, and validation commands. You own
-product intent, corrections, approvals, and completion decisions. Framing and
-completion approvals are recorded by `wfctl work approve`, which needs your
-terminal confirmation, so the agent cannot record them for you. The shared
-knowledge remains directly readable without an agent.
+The agent owns routine `wfctl`, Graphify, QMD, and validation commands, and it
+closes finished work by itself. You own product intent, corrections, and two
+decisions: what a piece of work is before it starts, and what the project says
+about itself afterwards. Both are recorded from your own words, or from a typed
+confirmation if you prefer one. The shared knowledge remains directly readable
+without an agent.
 
 ## Read next
 
