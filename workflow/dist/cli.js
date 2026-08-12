@@ -24403,6 +24403,7 @@ async function updateBundleCheckpoint(options) {
     lastCompleted: options.lastCompleted ? requireCheckpointText(options.lastCompleted, "last completed action") : requireCheckpointText(previous2?.last_completed, "last completed action"),
     nextAction: requireCheckpointText(options.nextAction, "next action"),
     blockers: uniqueStrings5(options.blockers ?? []),
+    ...options.handoff ? { handoff: options.handoff } : {},
     // Carried forward unless edited. A checkpoint written without mentioning the
     // list must not silently empty it: every later checkpoint would then erase
     // the small jobs an earlier one recorded, which is the exact loss the list
@@ -25602,11 +25603,17 @@ function normalizeActor(value) {
 function writeCheckpoint(document3, input) {
   const blockers = uniqueStrings5(input.blockers ?? []);
   const todo = uniqueStrings5(input.todo ?? []);
+  const handoff = (input.handoff ?? "").trim();
   if (input.status === "blocked" && blockers.length === 0) {
     throw new Error("A blocked checkpoint requires at least one blocker");
   }
   if (input.status !== "blocked" && blockers.length > 0) {
     throw new Error("Checkpoint blockers require blocked status");
+  }
+  if (handoff && blockers.length > 0) {
+    throw new Error(
+      "A checkpoint records a blocker or a handoff, never both: a blocker says the maintainer is what the work is missing, and a handoff says nothing is missing except this session"
+    );
   }
   if (input.status === "complete" !== (input.stage === "complete")) {
     throw new Error("Complete checkpoint status and stage must be used together");
@@ -25622,6 +25629,11 @@ function writeCheckpoint(document3, input) {
     last_completed: requireCheckpointText(input.lastCompleted, "last completed action"),
     next_action: requireCheckpointText(input.nextAction, "next action"),
     blockers,
+    // Why this session stops while work remains, addressed to the next session
+    // rather than to the maintainer. Deliberately not carried forward: any later
+    // checkpoint clears it, so a handoff is a statement about the moment it was
+    // written and never a standing licence to stop.
+    ...handoff ? { handoff } : {},
     // Small jobs that are neither the next action nor a blocker. They are the
     // first thing a compaction loses and the last thing anyone writes down.
     todo,
@@ -25662,6 +25674,7 @@ function checkpointSummary(document3, path, owner, issue3, required) {
   const blockers = stringArray7(blockersValue).map((entry) => entry.trim()).filter(Boolean);
   const todoValue = checkpoint?.todo;
   const todo = stringArray7(todoValue).map((entry) => entry.trim()).filter(Boolean);
+  const handoff = stringValue8(checkpoint?.handoff).trim();
   if (!actor) issues.push(`${path}: checkpoint.actor is required`);
   if (!currentState) issues.push(`${path}: checkpoint.current_state is required`);
   if (!lastCompleted) issues.push(`${path}: checkpoint.last_completed is required`);
@@ -25721,6 +25734,7 @@ function checkpointSummary(document3, path, owner, issue3, required) {
     lastCompleted,
     nextAction,
     blockers,
+    handoff,
     todo,
     updatedAt,
     valid: issues.length === 0,
@@ -39787,12 +39801,13 @@ function workCollector() {
         const checkpoint = recordValue11(metadata.checkpoint);
         const park = readPark(metadata);
         const heldForMaintainer = Boolean(park) || outstanding.includes("framing") || stringValue11(checkpoint?.status) === "blocked" || Array.isArray(checkpoint?.blockers) && checkpoint.blockers.length > 0;
-        const queued = (issues.issuesClaimed ?? 0) === 0 && (issues.issuesOpen ?? 0) > 0;
+        const handoff = stringValue11(checkpoint?.handoff).trim();
+        const queued = (issues.issuesClaimed ?? 0) === 0 && (issues.issuesOpen ?? 0) > 0 && Boolean(handoff);
         signals2.push({
           id: "work.active",
           domain: "work",
           level: "attention",
-          summary: park ? "A change bundle is parked and does not start" : heldForMaintainer ? "A change bundle is open and held for you" : queued ? "A change bundle is open and nothing in it is claimed" : "A change bundle is open",
+          summary: park ? "A change bundle is parked and does not start" : heldForMaintainer ? "A change bundle is open and held for you" : queued ? "A change bundle is open, and the last session said why it stopped" : "A change bundle is open",
           subject: entry.id,
           facts: {
             title: stringValue11(metadata.title) || entry.id,
@@ -40032,6 +40047,18 @@ function checkpointSignals(domain, subject, metadata, currentBasis) {
       subject,
       since: updatedAt,
       awaits: "agent"
+    });
+  }
+  const handoff = stringValue11(checkpoint.handoff).trim();
+  if (handoff) {
+    signals2.push({
+      id: `${domain}.handed-off`,
+      domain,
+      level: "info",
+      summary: "The last session stopped with work available, and said why",
+      subject,
+      facts: { reason: handoff },
+      since: updatedAt
     });
   }
   const blockers = Array.isArray(checkpoint.blockers) ? checkpoint.blockers : [];
@@ -41158,6 +41185,7 @@ async function updateWorkCheckpoint(options) {
     actor: options.actor,
     status: options.status,
     ...options.stage ? { stage: options.stage } : {},
+    ...options.handoff ? { handoff: options.handoff } : {},
     currentState: options.currentState,
     ...options.lastCompleted ? { lastCompleted: options.lastCompleted } : {},
     nextAction: options.nextAction,
@@ -42988,6 +43016,9 @@ function workCheckpointCommand() {
   }).option("--blocker <text:string>", "Current blocker; repeat as needed.", {
     collect: true
   }).option(
+    "--handoff <text:string>",
+    "Why this session stops while work is available and nothing is blocked. Written for the next session, never for the maintainer, and cleared by the next checkpoint. A blocker and a handoff are different answers and cannot both be recorded."
+  ).option(
     "--todo <text:string>",
     "Replace the carried list of small jobs; repeat as needed. Omitted, the list survives.",
     { collect: true }
@@ -43009,6 +43040,7 @@ function workCheckpointCommand() {
       ...options.last ? { lastCompleted: options.last } : {},
       nextAction: options.next,
       blockers: collectedStrings(options.blocker),
+      ...options.handoff ? { handoff: options.handoff } : {},
       ...todoEdit(options)
     });
     if (options.json) {
@@ -43020,7 +43052,8 @@ Status: ${result.status}; stage: ${result.stage}
 Current: ${result.currentState}
 Next: ${result.nextAction}
 Blockers: ${result.blockers.length > 0 ? result.blockers.join(", ") : "none"}
-Todo: ${result.todo.length > 0 ? result.todo.join("; ") : "none"}
+` + (result.handoff ? `Handing off: ${result.handoff}
+` : "") + `Todo: ${result.todo.length > 0 ? result.todo.join("; ") : "none"}
 `
       );
     }

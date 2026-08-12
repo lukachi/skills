@@ -1712,6 +1712,12 @@ function workCheckpointCommand() {
       collect: true,
     })
     .option(
+      "--handoff <text:string>",
+      "Why this session stops while work is available and nothing is blocked. Written for "
+        + "the next session, never for the maintainer, and cleared by the next checkpoint. "
+        + "A blocker and a handoff are different answers and cannot both be recorded.",
+    )
+    .option(
       "--todo <text:string>",
       "Replace the carried list of small jobs; repeat as needed. Omitted, the list survives.",
       { collect: true },
@@ -1737,6 +1743,7 @@ function workCheckpointCommand() {
         ...(options.last ? { lastCompleted: options.last } : {}),
         nextAction: options.next,
         blockers: collectedStrings(options.blocker),
+        ...(options.handoff ? { handoff: options.handoff } : {}),
         ...todoEdit(options),
       });
       if (options.json) {
@@ -1748,6 +1755,7 @@ function workCheckpointCommand() {
             + `Current: ${result.currentState}\n`
             + `Next: ${result.nextAction}\n`
             + `Blockers: ${result.blockers.length > 0 ? result.blockers.join(", ") : "none"}\n`
+            + (result.handoff ? `Handing off: ${result.handoff}\n` : "")
             + `Todo: ${result.todo.length > 0 ? result.todo.join("; ") : "none"}\n`,
         );
       }

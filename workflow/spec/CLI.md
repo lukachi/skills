@@ -330,7 +330,10 @@ Installed agents own these commands.
   selects exactly one active binding; zero records fail explicitly and several
   records require inspection and a maintainer choice.
 - `wfctl work checkpoint <id>` refreshes the one hash-bound resumable state
-  owned by the change or a selected claimed issue after semantic edits.
+  owned by the change or a selected claimed issue after semantic edits. It takes
+  `--blocker` when the maintainer is what the work is missing, and `--handoff`
+  when nothing is missing except this session; the two are mutually exclusive,
+  and a handoff is cleared by the next checkpoint.
 - `wfctl work ask <id> [--stage promotion|completion]` renders the decision the
   maintainer is being asked for, generated from the record rather than composed.
 - `wfctl work approve <id> --stage framing|completion --by human:<id>` records a

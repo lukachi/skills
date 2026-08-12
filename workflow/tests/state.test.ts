@@ -749,7 +749,7 @@ test("verification is the agent's only once the route is finished", async () => 
   );
 });
 
-test("a frontier nobody has claimed is a backlog, and does not arm the stop guard", async () => {
+test("an unclaimed frontier is the agent's until it says why it stopped", async () => {
   const { knowledge, leaf } = await installKnowledge();
   const started = await beginWork({
     target: leaf,
@@ -789,16 +789,16 @@ test("a frontier nobody has claimed is a backlog, and does not arm the stop guar
     distributionRoot,
   });
 
-  // A ready issue is available work, not work in hand. An agent that finished a
-  // unit, checkpointed it and found stopping safe owes this bundle nothing, and
-  // saying otherwise made three open bundles into a standing obligation: the
-  // agent argued against starting the largest task on a spent context, was
-  // returned to the turn, and started it anyway.
+  // A ready issue is available work, and available work is the agent's. This
+  // once awaited nobody, to stop the guard forcing a spent context to start the
+  // largest remaining task — and that disarmed it on the shape every long run
+  // passes through, because completing an issue releases its claim and leaves
+  // exactly this state. The escape is now a recorded sentence rather than
+  // silence.
   const queued = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
   const idle = queued.signals.find((signal) => signal.id === "work.active");
-  assert.equal(idle?.awaits, undefined, "a queue nobody is holding may be left where it is");
-  assert.match(String(idle?.summary), /nothing in it is claimed/);
-  assert.equal(idle?.level, "attention", "it still reaches the brief; it just owes nobody");
+  assert.equal(idle?.awaits, "agent");
+  assert.equal(idle?.level, "attention");
 
   // Approving and cutting the frontier both edited the record, so the claim gate
   // refuses until the checkpoint describes what is there now.
@@ -876,4 +876,116 @@ test("a checkpoint blocker takes the bundle off the agent", async () => {
       `${signal.id} still claims the agent while the record names a blocker`,
     );
   }
+});
+
+/**
+ * The night this closes.
+ *
+ * A session completed an issue at 15:03, named the next one — "иду за это" —
+ * and ended. The stop guard ran, took five seconds, and allowed it: completing
+ * the issue released its claim, so the bundle held two ready issues and nothing
+ * claimed, and that state awaited nobody. The guard arms on `awaits: agent` and
+ * there was none, on the exact shape every long run passes through each time a
+ * unit finishes.
+ */
+test("a frontier nobody has claimed is still the agent's", async () => {
+  const { knowledge, leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "the-frontier-nobody-claimed",
+    title: "The frontier nobody claimed",
+    mode: "full",
+    distributionRoot,
+  });
+  await prepareFraming(started.specPath);
+  await approveWork({
+    target: leaf,
+    id: started.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "interactive",
+  });
+  const change = parseWorkSpec(await readFile(started.specPath, "utf8"));
+  await createWorkIssue({
+    target: leaf,
+    id: started.id,
+    slug: "the-next-unit",
+    title: "The next unit, ready and unclaimed",
+    phase: "delivery",
+    type: "delivery",
+    repositories: [
+      String((change.metadata.repositories as Array<Record<string, unknown>>)[0]?.repository ?? ""),
+    ],
+    distributionRoot,
+  });
+
+  const open = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    open.signals.find((signal) => signal.id === "work.active")?.awaits,
+    "agent",
+    JSON.stringify(open.signals.filter((signal) => signal.subject === started.id)),
+  );
+
+  // A sentence is the whole price of stopping, and it goes to the next session
+  // rather than into the maintainer's queue.
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test-session",
+    status: "active",
+    currentState: "One unit landed; the next needs a fresh context to hold it.",
+    nextAction: "Claim the next unit and implement it.",
+    handoff: "The remaining unit does not fit in what is left of this context.",
+  });
+
+  const handed = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  for (const signal of handed.signals.filter((entry) => entry.subject === started.id)) {
+    assert.notEqual(signal.awaits, "agent", `${signal.id} still claims the agent`);
+    assert.notEqual(signal.awaits, "maintainer", `${signal.id} sent a handoff to the maintainer`);
+  }
+  assert.match(
+    String(handed.signals.find((signal) => signal.id === "work.handed-off")?.facts?.reason),
+    /does not fit/,
+  );
+
+  // Cleared by the next checkpoint, so it explains one stop rather than every
+  // stop after it.
+  await updateWorkCheckpoint({
+    target: leaf,
+    id: started.id,
+    actor: "agent:test-session",
+    status: "active",
+    currentState: "Work resumed in a fresh session.",
+    nextAction: "Claim the next unit and implement it.",
+  });
+  const resumed = await collectWorkflowState(knowledge, { collectors: STATE_COLLECTORS });
+  assert.equal(
+    resumed.signals.find((signal) => signal.id === "work.active")?.awaits,
+    "agent",
+  );
+  assert.equal(resumed.signals.some((signal) => signal.id === "work.handed-off"), false);
+});
+
+test("a checkpoint answers with a blocker or a handoff, never both", async () => {
+  const { leaf } = await installKnowledge();
+  const started = await beginWork({
+    target: leaf,
+    slug: "two-answers-at-once",
+    title: "Two answers at once",
+    mode: "full",
+    distributionRoot,
+  });
+  await assert.rejects(
+    updateWorkCheckpoint({
+      target: leaf,
+      id: started.id,
+      actor: "agent:test-session",
+      status: "blocked",
+      currentState: "Stopped.",
+      nextAction: "Wait.",
+      blockers: ["He has to decide."],
+      handoff: "Also the context is spent.",
+    }),
+    /a blocker or a handoff, never both/,
+  );
 });

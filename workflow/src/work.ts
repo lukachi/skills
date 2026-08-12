@@ -184,6 +184,17 @@ export interface UpdateWorkCheckpointOptions {
   lastCompleted?: string;
   nextAction: string;
   blockers?: string[];
+  /**
+   * Why this session stops while work is available and nothing is blocked.
+   *
+   * A blocker says the maintainer is what the work is missing, and it reaches
+   * their queue. Nothing said the other thing — that the work is fine and this
+   * session is the thing that has run out — so the only way to end such a turn
+   * was to say nothing, and a turn that ends saying nothing is exactly what the
+   * stop guard exists to catch. Recorded here it is a statement to the next
+   * session, cleared by the next checkpoint, and never a question for anyone.
+   */
+  handoff?: string;
   /** How the carried list of small jobs changes. Omitted, it survives untouched. */
   todo?: TodoEdit;
   now?: Date;
@@ -988,6 +999,7 @@ export async function updateWorkCheckpoint(
     actor: options.actor,
     status: options.status,
     ...(options.stage ? { stage: options.stage } : {}),
+    ...(options.handoff ? { handoff: options.handoff } : {}),
     currentState: options.currentState,
     ...(options.lastCompleted ? { lastCompleted: options.lastCompleted } : {}),
     nextAction: options.nextAction,

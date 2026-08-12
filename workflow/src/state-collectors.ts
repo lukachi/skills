@@ -688,17 +688,30 @@ function workCollector(): StateCollector {
         // emitting the maintainer signal two lines down while contradicting it
         // here, so the tool held both answers at once and published the wrong one.
         //
-        // A frontier nobody has claimed is available work, not work in hand, and
-        // the difference decides whether a turn may end. Treating every open
-        // bundle as agent-side turned three bundles into a standing obligation:
-        // an agent that had finished a unit cleanly, with fresh checkpoints and a
-        // clean `wfctl resumable`, said it would not start the largest remaining
-        // task on a spent context because that record warns a half-built change
-        // leaves the engine inconsistent — and was returned to the turn and
-        // started it anyway. Work is in hand while an issue is claimed, while the
-        // bundle has no frontier yet, and while a finished frontier has not
-        // closed. A queue of ready issues is none of those.
-        const queued = (issues.issuesClaimed ?? 0) === 0 && (issues.issuesOpen ?? 0) > 0;
+        // An unclaimed frontier is available work, and it is the agent's unless
+        // the agent said why it is stopping.
+        //
+        // This was briefly nobody's. Treating every open bundle as agent-side had
+        // turned three into a standing obligation: an agent that finished a unit
+        // cleanly, on a spent context, refused to start the largest remaining
+        // task because the record warns a half-built change leaves the engine
+        // inconsistent — and was returned to the turn and started it anyway. So a
+        // queue of ready issues was made to await nobody.
+        //
+        // That disarmed the stop guard at the exact moment it is needed. The
+        // instant an issue completes, its claim is released and the bundle joins
+        // this branch, so a run ends with "I am going for it next" and an
+        // unclaimed frontier — the modal shape of an autonomous session, and the
+        // one that lost an evening to a completed issue and two ready ones.
+        //
+        // The distinguishing fact was never whether something is claimed. It is
+        // whether the agent has a reason it cannot continue, and the checkpoint
+        // now carries one. A handoff licenses the stop, costs a sentence, and is
+        // cleared by the next checkpoint; silence does not.
+        const handoff = stringValue(checkpoint?.handoff).trim();
+        const queued = (issues.issuesClaimed ?? 0) === 0
+          && (issues.issuesOpen ?? 0) > 0
+          && Boolean(handoff);
 
         signals.push({
           id: "work.active",
@@ -709,7 +722,7 @@ function workCollector(): StateCollector {
             : heldForMaintainer
             ? "A change bundle is open and held for you"
             : queued
-            ? "A change bundle is open and nothing in it is claimed"
+            ? "A change bundle is open, and the last session said why it stopped"
             : "A change bundle is open",
           subject: entry.id,
           facts: {
@@ -1070,6 +1083,22 @@ function checkpointSignals(
       subject,
       since: updatedAt,
       awaits: "agent",
+    });
+  }
+  // Why the last session stopped with work still available. It awaits nobody by
+  // construction: the maintainer is not what the work is missing, so putting it
+  // in their queue would be a lie, and arming the agent on it would re-enter the
+  // turn that just explained why it was ending.
+  const handoff = stringValue(checkpoint.handoff).trim();
+  if (handoff) {
+    signals.push({
+      id: `${domain}.handed-off`,
+      domain,
+      level: "info",
+      summary: "The last session stopped with work available, and said why",
+      subject,
+      facts: { reason: handoff },
+      since: updatedAt,
     });
   }
   const blockers = Array.isArray(checkpoint.blockers) ? checkpoint.blockers : [];

@@ -57,6 +57,8 @@ export interface WorkCheckpointSummary {
   lastCompleted: string;
   nextAction: string;
   blockers: string[];
+  /** Why this session stopped while work was available. Empty unless it said so. */
+  handoff: string;
   todo: string[];
   updatedAt: string;
   valid: boolean;
@@ -122,6 +124,17 @@ export interface UpdateWorkCheckpointOptions {
   lastCompleted?: string;
   nextAction: string;
   blockers?: string[];
+  /**
+   * Why this session stops while work is available and nothing is blocked.
+   *
+   * A blocker says the maintainer is what the work is missing, and it reaches
+   * their queue. Nothing said the other thing — that the work is fine and this
+   * session is the thing that has run out — so the only way to end such a turn
+   * was to say nothing, and a turn that ends saying nothing is exactly what the
+   * stop guard exists to catch. Recorded here it is a statement to the next
+   * session, cleared by the next checkpoint, and never a question for anyone.
+   */
+  handoff?: string;
   /** How the carried list of small jobs changes. Omitted, it survives untouched. */
   todo?: TodoEdit;
   now?: Date;
@@ -287,6 +300,7 @@ export async function updateBundleCheckpoint(
       : requireCheckpointText(previous?.last_completed, "last completed action"),
     nextAction: requireCheckpointText(options.nextAction, "next action"),
     blockers: uniqueStrings(options.blockers ?? []),
+    ...(options.handoff ? { handoff: options.handoff } : {}),
     // Carried forward unless edited. A checkpoint written without mentioning the
     // list must not silently empty it: every later checkpoint would then erase
     // the small jobs an earlier one recorded, which is the exact loss the list
@@ -1735,17 +1749,26 @@ function writeCheckpoint(
     lastCompleted: string;
     nextAction: string;
     blockers?: string[];
+    handoff?: string;
     todo?: string[];
     now: Date;
   },
 ): void {
   const blockers = uniqueStrings(input.blockers ?? []);
   const todo = uniqueStrings(input.todo ?? []);
+  const handoff = (input.handoff ?? "").trim();
   if (input.status === "blocked" && blockers.length === 0) {
     throw new Error("A blocked checkpoint requires at least one blocker");
   }
   if (input.status !== "blocked" && blockers.length > 0) {
     throw new Error("Checkpoint blockers require blocked status");
+  }
+  if (handoff && blockers.length > 0) {
+    throw new Error(
+      "A checkpoint records a blocker or a handoff, never both: a blocker says the "
+        + "maintainer is what the work is missing, and a handoff says nothing is missing "
+        + "except this session",
+    );
   }
   if ((input.status === "complete") !== (input.stage === "complete")) {
     throw new Error("Complete checkpoint status and stage must be used together");
@@ -1761,6 +1784,11 @@ function writeCheckpoint(
     last_completed: requireCheckpointText(input.lastCompleted, "last completed action"),
     next_action: requireCheckpointText(input.nextAction, "next action"),
     blockers,
+    // Why this session stops while work remains, addressed to the next session
+    // rather than to the maintainer. Deliberately not carried forward: any later
+    // checkpoint clears it, so a handoff is a statement about the moment it was
+    // written and never a standing licence to stop.
+    ...(handoff ? { handoff } : {}),
     // Small jobs that are neither the next action nor a blocker. They are the
     // first thing a compaction loses and the last thing anyone writes down.
     todo,
@@ -1808,6 +1836,7 @@ function checkpointSummary(
   const blockers = stringArray(blockersValue).map((entry) => entry.trim()).filter(Boolean);
   const todoValue = checkpoint?.todo;
   const todo = stringArray(todoValue).map((entry) => entry.trim()).filter(Boolean);
+  const handoff = stringValue(checkpoint?.handoff).trim();
   if (!actor) issues.push(`${path}: checkpoint.actor is required`);
   if (!currentState) issues.push(`${path}: checkpoint.current_state is required`);
   if (!lastCompleted) issues.push(`${path}: checkpoint.last_completed is required`);
@@ -1873,6 +1902,7 @@ function checkpointSummary(
     lastCompleted,
     nextAction,
     blockers,
+    handoff,
     todo,
     updatedAt,
     valid: issues.length === 0,

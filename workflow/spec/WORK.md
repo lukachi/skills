@@ -83,7 +83,12 @@ Every checkpoint records:
 - actor and update time;
 - current state and last completed action;
 - one exact next action;
-- explicit blockers;
+- explicit blockers, which move the record into the maintainer's queue;
+- an optional handoff: why this session stopped while work was still available
+  and nothing was blocked. It awaits nobody, is addressed to the next session,
+  and is cleared by the next checkpoint, so it explains one stop rather than
+  granting a standing licence to stop. A checkpoint carries a blocker or a
+  handoff, never both — they are answers to different questions;
 - a SHA-256 basis over the owning record excluding the checkpoint itself.
 
 The agent updates semantic content first and runs `wfctl work checkpoint` last.
