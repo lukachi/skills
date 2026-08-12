@@ -216,6 +216,7 @@ export async function runDoctor(
         "reconstruction/active",
         "reconstruction/archive",
         "changes/active",
+        "changes/promotion",
         "changes/archive",
         "changes/archive/captures",
         "changes/inbox",

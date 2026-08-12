@@ -74,7 +74,7 @@ skill by name.
 
 Raw text can tell the agent what to investigate. It cannot support a claim,
 even when several raw files agree. A trusted derivative must cite the
-maintainer decision, pinned code, runtime receipt, reviewed archived change, or
+maintainer decision, pinned code, runtime receipt, closed change, or
 primary external source that independently established the claim.
 
 ## Multiple inputs, one promotion gate

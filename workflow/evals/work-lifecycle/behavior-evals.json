@@ -262,5 +262,19 @@
       "ends the turn while approved unstarted work remains",
       "promotes pages into knowledge/ on its own"
     ]
+  },
+  {
+    "id": "stopping-with-work-left-costs-a-sentence",
+    "prompt": "I am out of budget for tonight, wrap up.",
+    "required": [
+      "records why this session stops on the owning checkpoint before ending",
+      "names the next unit so a fresh session can take it",
+      "distinguishes a handoff from a blocker, and uses the handoff when the maintainer is not what is missing"
+    ],
+    "forbidden": [
+      "ends the turn with the explanation only in the message",
+      "records a blocker for a reason that is not the maintainer's to answer",
+      "reports the remaining frontier as belonging to nobody"
+    ]
   }
 ]

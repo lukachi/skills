@@ -135,7 +135,12 @@ async function fromPages(target: string): Promise<PriorDecision[]> {
 
 async function fromBundles(target: string): Promise<PriorDecision[]> {
   const decisions: PriorDecision[] = [];
-  for (const state of ["active", "archive"]) {
+  // The promotion queue is the worst place to be blind. A bundle waiting there
+  // is closed, its answers are the most recently settled in the project, and its
+  // pages have not landed — so the corpus does not hold them either. Missing it
+  // reproduces, on the newest decisions, exactly the silence this command exists
+  // to break.
+  for (const state of ["active", "promotion", "archive"]) {
     const root = join(target, "changes", state);
     for (const id of await directoryNames(root)) {
       decisions.push(...await fromBundle(join(root, id), `changes/${state}/${id}`));

@@ -79,7 +79,13 @@ export async function collectDebts(targetInput: string): Promise<DebtLedger> {
   const target = resolve(targetInput);
   const compilation = await compileTrajectories(target);
   const active = await bundleIds(join(target, "changes/active"));
-  const archived = await bundleIds(join(target, "changes/archive"));
+  // Closed counts as closed wherever the bundle sits. A bundle waiting to be
+  // promoted has shipped and archived its issues; reading only the archive
+  // reported every debt it settled as naming a bundle that exists nowhere.
+  const archived = new Set([
+    ...await bundleIds(join(target, "changes/archive")),
+    ...await bundleIds(join(target, "changes/promotion")),
+  ]);
 
   const debts: Debt[] = [];
   for (const record of compilation.graph.trajectories) {
@@ -314,10 +320,13 @@ export async function scheduleDebt(
   const work = options.work.trim().replace(/^changes\/active\//, "").replace(/\/$/, "");
   const active = await bundleIds(join(target, "changes/active"));
   if (!active.has(work)) {
-    const archived = await bundleIds(join(target, "changes/archive"));
+    const archived = new Set([
+      ...await bundleIds(join(target, "changes/archive")),
+      ...await bundleIds(join(target, "changes/promotion")),
+    ]);
     throw new Error(
       archived.has(work)
-        ? `${work} is already archived; a debt cannot be scheduled against finished work`
+        ? `${work} is already closed; a debt cannot be scheduled against finished work`
         : `No open change bundle named ${work}. Open one with wfctl work start, then `
           + "schedule the debt against it.",
     );

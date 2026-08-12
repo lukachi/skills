@@ -7804,6 +7804,7 @@ var init_planner = __esm({
       "reconstruction/active",
       "reconstruction/archive",
       "changes/active",
+      "changes/promotion",
       "changes/archive",
       "changes/archive/captures",
       "changes/inbox"
@@ -26592,6 +26593,18 @@ async function projectChangeRecords(root) {
     throw error2;
   }
 }
+function isPromotionDraft(input) {
+  return /^changes\/[^/]+\/[^/]+\/promotion\/.+\.md$/.test(input.replace(/^\/+/, ""));
+}
+function resolveDraftPath(target, input) {
+  const normalized = input.replace(/^\/+/, "");
+  const absolute = resolve15(target, normalized);
+  const boundary = `${resolve15(target, "changes")}${sep7}`;
+  if (!absolute.startsWith(boundary)) {
+    throw new Error(`Promotion draft resolves outside the change bundles: ${input}`);
+  }
+  return absolute;
+}
 function resolveConceptPath(target, knowledgeRoot, input) {
   const normalized = input.replace(/^\/+/, "");
   const absolute = resolve15(target, normalized.startsWith("knowledge/") ? normalized : join13("knowledge", normalized));
@@ -27072,7 +27085,7 @@ function isActor(value) {
 async function hashKnowledgeConcept(targetInput, conceptPath) {
   const target = await requireKnowledgeRepository5(targetInput);
   const knowledgeRoot = join13(target, "knowledge");
-  const absolute = resolveConceptPath(target, knowledgeRoot, conceptPath);
+  const absolute = isPromotionDraft(conceptPath) ? resolveDraftPath(target, conceptPath) : resolveConceptPath(target, knowledgeRoot, conceptPath);
   const content3 = decodeUtf8(await readFile16(absolute));
   const parsed = parseFrontmatter2(content3, true);
   if (!parsed.metadata) {
@@ -36119,6 +36132,7 @@ async function runDoctor(targetInput, options = {}) {
       "reconstruction/active",
       "reconstruction/archive",
       "changes/active",
+      "changes/promotion",
       "changes/archive",
       "changes/archive/captures",
       "changes/inbox"
@@ -37925,7 +37939,10 @@ async function collectDebts(targetInput) {
   const target = resolve21(targetInput);
   const compilation = await compileTrajectories(target);
   const active = await bundleIds(join20(target, "changes/active"));
-  const archived = await bundleIds(join20(target, "changes/archive"));
+  const archived = /* @__PURE__ */ new Set([
+    ...await bundleIds(join20(target, "changes/archive")),
+    ...await bundleIds(join20(target, "changes/promotion"))
+  ]);
   const debts = [];
   for (const record2 of compilation.graph.trajectories) {
     const root = rootOf(record2, compilation.graph);
@@ -38087,9 +38104,12 @@ async function scheduleDebt(options) {
   const work = options.work.trim().replace(/^changes\/active\//, "").replace(/\/$/, "");
   const active = await bundleIds(join20(target, "changes/active"));
   if (!active.has(work)) {
-    const archived = await bundleIds(join20(target, "changes/archive"));
+    const archived = /* @__PURE__ */ new Set([
+      ...await bundleIds(join20(target, "changes/archive")),
+      ...await bundleIds(join20(target, "changes/promotion"))
+    ]);
     throw new Error(
-      archived.has(work) ? `${work} is already archived; a debt cannot be scheduled against finished work` : `No open change bundle named ${work}. Open one with wfctl work start, then schedule the debt against it.`
+      archived.has(work) ? `${work} is already closed; a debt cannot be scheduled against finished work` : `No open change bundle named ${work}. Open one with wfctl work start, then schedule the debt against it.`
     );
   }
   const index2 = resolveGapIndex(record2, options.gap);
@@ -38330,7 +38350,7 @@ async function fromPages(target) {
 }
 async function fromBundles(target) {
   const decisions2 = [];
-  for (const state of ["active", "archive"]) {
+  for (const state of ["active", "promotion", "archive"]) {
     const root = join21(target, "changes", state);
     for (const id of await directoryNames(root)) {
       decisions2.push(...await fromBundle(join21(root, id), `changes/${state}/${id}`));

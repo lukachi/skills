@@ -8,6 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { applyInstallPlan } from "../src/applier.js";
 import { readRepositoryMetadata } from "../src/git.js";
+import { findDecisions } from "../src/decided.js";
 import { hashKnowledgeConcept, validateKnowledge } from "../src/knowledge.js";
 import { buildInstallPlan } from "../src/planner.js";
 import { collectWorkflowState } from "../src/state.js";
@@ -248,6 +249,55 @@ test("a framing is not approved against pages the project has not been taught", 
     method: "attested",
     attested: "утверждаю",
   });
+});
+
+/**
+ * The chain, end to end.
+ *
+ * `verify-project-work` drafts the page, routes it to a curation skill, and that
+ * skill routes it to the quality gate, which seals it with a content hash. Every
+ * link in that chain resolved paths under `knowledge/`, so the moment drafts
+ * moved into the bundle the gate could not read the page it was sealing — the
+ * page landed unsealed, and an unsealed page cannot be stable.
+ */
+test("a page is sealed where it is drafted, and the seal survives the promotion", async () => {
+  const { knowledge, leaf, id } = await deliveredBundle();
+  const draft = `changes/active/${id}/promotion/decisions/world-loop.md`;
+
+  const sealed = await hashKnowledgeConcept(knowledge, draft);
+  assert.equal(sealed.path, draft);
+  assert.match(sealed.contentHash, /^[0-9a-f]{64}$/);
+
+  await stagePromotion({ target: leaf, id });
+  await settle(leaf, id);
+  await closeWork({ target: leaf, id, outcome: "completed" });
+  await applyPromotion({
+    target: leaf,
+    id,
+    by: "human:test-maintainer",
+    method: "attested",
+    attested: "да",
+  });
+
+  // The hash reads frontmatter and body, never location, and promotion copies
+  // byte for byte — so the seal taken on the draft is the seal the corpus holds.
+  const landed = await hashKnowledgeConcept(knowledge, "knowledge/decisions/world-loop.md");
+  assert.equal(landed.contentHash, sealed.contentHash);
+});
+
+test("a closed bundle waiting on the maintainer is still somewhere answers are found", async () => {
+  const { knowledge, leaf, id } = await deliveredBundle();
+  await stagePromotion({ target: leaf, id });
+  await settle(leaf, id);
+  await closeWork({ target: leaf, id, outcome: "completed" });
+
+  // The freshest decisions in the project live here, and their pages are exactly
+  // the ones the corpus does not hold yet. A search blind to this queue asks the
+  // maintainer again for what he settled most recently.
+  const found = await findDecisions(knowledge, "the world loop authority model");
+  assert.equal(found.decisions.length > 0, true);
+  assert.match(found.decisions[0]!.what, /authority model/);
+  assert.match(found.decisions[0]!.where, /changes\/promotion\//);
 });
 
 /**

@@ -973,6 +973,21 @@ async function projectChangeRecords(
   }
 }
 
+/** A page still in the bundle that will write it. */
+function isPromotionDraft(input: string): boolean {
+  return /^changes\/[^/]+\/[^/]+\/promotion\/.+\.md$/.test(input.replace(/^\/+/, ""));
+}
+
+function resolveDraftPath(target: string, input: string): string {
+  const normalized = input.replace(/^\/+/, "");
+  const absolute = resolve(target, normalized);
+  const boundary = `${resolve(target, "changes")}${sep}`;
+  if (!absolute.startsWith(boundary)) {
+    throw new Error(`Promotion draft resolves outside the change bundles: ${input}`);
+  }
+  return absolute;
+}
+
 function resolveConceptPath(target: string, knowledgeRoot: string, input: string): string {
   const normalized = input.replace(/^\/+/, "");
   const absolute = resolve(target, normalized.startsWith("knowledge/")
@@ -1638,13 +1653,26 @@ function isActor(value: string): boolean {
   return /^(?:human:[^\s:]+|process:[^\s:]+|[^/\s]+\/[^/\s]+)$/.test(value);
 }
 
+/**
+ * A page's content hash, wherever the page currently is.
+ *
+ * The hash is a function of frontmatter and body, never of location, and a page
+ * on its way into the corpus is written under a bundle's `promotion/` directory
+ * and copied byte for byte when the maintainer approves it. Resolving every
+ * input under `knowledge/` made that page unhashable, so the quality gate could
+ * not seal it, so it could not be `stable` when it landed — the whole curation
+ * chain assumed the page was already in the corpus, which is exactly what the
+ * promotion gate exists to prevent.
+ */
 export async function hashKnowledgeConcept(
   targetInput: string,
   conceptPath: string,
 ): Promise<KnowledgeConceptHashResult> {
   const target = await requireKnowledgeRepository(targetInput);
   const knowledgeRoot = join(target, "knowledge");
-  const absolute = resolveConceptPath(target, knowledgeRoot, conceptPath);
+  const absolute = isPromotionDraft(conceptPath)
+    ? resolveDraftPath(target, conceptPath)
+    : resolveConceptPath(target, knowledgeRoot, conceptPath);
   const content = decodeUtf8(await readFile(absolute));
   const parsed = parseFrontmatter(content, true);
   if (!parsed.metadata) {
