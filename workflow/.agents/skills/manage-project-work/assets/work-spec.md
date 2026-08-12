@@ -35,8 +35,12 @@ knowledge_alignment:
 graph_evidence:
   queries: []
 knowledge_promotion:
-  status: pending
+  # Written by `wfctl work promotion <id>`, from the pages drafted under this
+  # bundle's promotion/ directory. Draft each at the path it will occupy inside
+  # knowledge/; nothing enters the corpus until the maintainer approves it.
+  status: ""
   concepts: []
+  drafts: []
   reason: ""
 maintainer_review:
   framing:
@@ -44,7 +48,14 @@ maintainer_review:
     by: ""
     at: ""
     notes: []
+  # Asked only when delivery no longer matches the approved framing.
   completion:
+    status: pending
+    by: ""
+    at: ""
+    notes: []
+  # Written by `wfctl work promote <id>`, which writes the pages in the same act.
+  promotion:
     status: pending
     by: ""
     at: ""

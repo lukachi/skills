@@ -39,7 +39,7 @@
     "manage-project-work": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "33069c7172d1656e328181f2b50c9a8201fda9fa497a09a597257aab9a62bdb3"
+      "computedHash": "1f33177bfcb13423c56bc9b7a6a4b1dac8d28b653a776847d785183bca10e93d"
     },
     "qmd": {
       "source": "/Users/lukachisama/.bun/install/global/node_modules/@tobilu/qmd/skills/qmd",
@@ -74,7 +74,7 @@
     "verify-project-work": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "569e4109926873eaeecb16141f1f6ba0b947c8b9dafca0e63fc1abb7d0f540dd"
+      "computedHash": "335b19c9782d95f72ef5c6c07f66a4a8c814f9242c79f143cb0660f3685795a3"
     }
   }
 }
