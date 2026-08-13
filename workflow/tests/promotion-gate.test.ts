@@ -11,6 +11,7 @@ import { readRepositoryMetadata } from "../src/git.js";
 import { findDecisions } from "../src/decided.js";
 import { hashKnowledgeConcept, validateKnowledge } from "../src/knowledge.js";
 import { buildInstallPlan } from "../src/planner.js";
+import { reviewBundleFile } from "../src/work-bundle.js";
 import { collectWorkflowState } from "../src/state.js";
 import { STATE_COLLECTORS } from "../src/state-collectors.js";
 import { readWorkGate, renderWorkGate } from "../src/work-ask.js";
@@ -145,12 +146,121 @@ test("a page that does not validate is not written, and nothing is half-taught",
       method: "attested",
       attested: "да",
     }),
-    /nothing was written/,
+    /Nothing was written/,
   );
   await assert.rejects(access(join(knowledge, "knowledge/decisions/world-loop.md")));
   // Still in the queue, so the maintainer's answer is not lost and the corpus is
   // exactly as correct as it was before they gave it.
   await access(join(knowledge, "changes/promotion", id, "change.md"));
+});
+
+/**
+ * The first rollback that ever ran deleted four curated pages.
+ *
+ * A draft filed one directory deeper — `promotion/knowledge/...` rather than
+ * `promotion/...` — wrote to the right file and was validated against a doubled
+ * path, so validation failed on a file that was never there. The rollback then
+ * removed every destination it had touched, which meant removing the pages it
+ * had overwritten. They came back only because they happened to be committed.
+ */
+test("a refused promotion puts back the pages it had already overwritten", async () => {
+  const { knowledge, leaf, id } = await deliveredBundle();
+  const live = join(knowledge, "knowledge/decisions/world-loop.md");
+  await mkdir(dirname(live), { recursive: true });
+  await writeFile(live, "---\ntitle: What the project says today\n---\n\n# Today\n", "utf8");
+
+  // Break the citation so validation refuses after the page has been written.
+  const draft = join(knowledge, "changes/active", id, "promotion/decisions/world-loop.md");
+  await writeFile(
+    draft,
+    (await readFile(draft, "utf8")).replace(id, "2026-07-28-a-change-nobody-made"),
+    "utf8",
+  );
+  await stagePromotion({ target: leaf, id });
+  await settle(leaf, id);
+  await closeWork({ target: leaf, id, outcome: "completed" });
+
+  await assert.rejects(
+    applyPromotion({
+      target: leaf,
+      id,
+      by: "human:test-maintainer",
+      method: "attested",
+      attested: "да",
+    }),
+    /were restored/,
+  );
+  assert.match(await readFile(live, "utf8"), /What the project says today/);
+});
+
+/**
+ * Both spellings of "the path it will occupy inside knowledge/" are the same
+ * page. They were not: the packet resolved one and the write path the other, so
+ * a draft filed the second way overwrote a page while the packet called it new.
+ */
+test("a draft filed under promotion/knowledge/ is the same page as one filed under promotion/", async () => {
+  const { knowledge, leaf, id } = await deliveredBundle({ deep: true });
+
+  const staged = await stagePromotion({ target: leaf, id });
+  assert.deepEqual(staged.drafts, ["decisions/world-loop.md"]);
+  await settle(leaf, id);
+  await closeWork({ target: leaf, id, outcome: "completed" });
+
+  // A page already stands there, and the packet has to say so.
+  const live = join(knowledge, "knowledge/decisions/world-loop.md");
+  await mkdir(dirname(live), { recursive: true });
+  await writeFile(live, "---\ntitle: What the project says today\n---\n\n# Today\n", "utf8");
+  const gate = await readWorkGate(knowledge, id, { stage: "promotion", distributionRoot });
+  assert.equal(gate.pages[0]?.replaces, true);
+  assert.match(renderWorkGate(gate), /This replaces what the project says today/);
+
+  const applied = await applyPromotion({
+    target: leaf,
+    id,
+    by: "human:test-maintainer",
+    method: "attested",
+    attested: "да",
+  });
+  assert.deepEqual(applied.concepts, ["knowledge/decisions/world-loop.md"]);
+  await assert.rejects(access(join(knowledge, "knowledge/knowledge/decisions/world-loop.md")));
+});
+
+/**
+ * The packet ends on "say so if a page is wrong, and it gets rewritten rather
+ * than argued for". Staging read only `changes/active`, so a bundle already in
+ * the queue could not be re-staged and the sentence was a promise nothing kept.
+ */
+test("a page the maintainer sent back is rewritten and staged again", async () => {
+  const { knowledge, leaf, id } = await deliveredBundle();
+  await stagePromotion({ target: leaf, id });
+  await settle(leaf, id);
+  await closeWork({ target: leaf, id, outcome: "completed" });
+
+  const relative = "promotion/decisions/world-loop.md";
+  const bundleRoot = join(knowledge, "changes/promotion", id);
+  await writeFile(
+    join(bundleRoot, relative),
+    `${await readFile(join(bundleRoot, relative), "utf8")}\nAdded on the maintainer's word.\n`,
+    "utf8",
+  );
+  await sealConcept(knowledge, join("changes/promotion", id, relative));
+  await reviewBundleFile(bundleRoot, relative, "reviewed", "");
+
+  const restaged = await stagePromotion({ target: leaf, id });
+  assert.deepEqual(restaged.drafts, ["decisions/world-loop.md"]);
+
+  const applied = await applyPromotion({
+    target: leaf,
+    id,
+    by: "human:test-maintainer",
+    method: "attested",
+    attested: "теперь верно",
+  });
+  assert.deepEqual(applied.concepts, ["knowledge/decisions/world-loop.md"]);
+  assert.match(
+    await readFile(join(knowledge, "knowledge/decisions/world-loop.md"), "utf8"),
+    /Added on the maintainer's word\./,
+  );
 });
 
 test("scope that left the route by the agent's own hand reopens the maintainer's gate", async () => {
@@ -306,7 +416,7 @@ test("a closed bundle waiting on the maintainer is still somewhere answers are f
  * bundle, because a promoted page is copied byte for byte and its content hash
  * has to survive the move.
  */
-async function deliveredBundle(): Promise<
+async function deliveredBundle(options: { deep?: boolean } = {}): Promise<
   { knowledge: string; leaf: string; id: string; repository: string }
 > {
   const root = await mkdtemp(join(tmpdir(), "wfctl-promotion-"));
@@ -396,13 +506,13 @@ async function deliveredBundle(): Promise<
   staged.metadata.status = "completed";
   await writeFile(started.specPath, serializeWorkSpec(staged), "utf8");
 
-  await draftPage(knowledge, started.id);
+  await draftPage(knowledge, started.id, options.deep === true);
   await settle(leaf, started.id);
   return { knowledge, leaf, id: started.id, repository: source.repository };
 }
 
 /** Write the curated page, seal it at its destination, then move it into the bundle. */
-async function draftPage(knowledge: string, id: string): Promise<void> {
+async function draftPage(knowledge: string, id: string, deep = false): Promise<void> {
   const destination = "knowledge/decisions/world-loop.md";
   await writeFile(
     join(knowledge, destination),
@@ -441,7 +551,12 @@ The world loop follows the reviewed authority model.[^world-loop-decision]
   );
   await sealConcept(knowledge, destination);
   const sealed = await readFile(join(knowledge, destination), "utf8");
-  const draft = join(knowledge, "changes/active", id, "promotion/decisions/world-loop.md");
+  const draft = join(
+    knowledge,
+    "changes/active",
+    id,
+    deep ? "promotion/knowledge/decisions/world-loop.md" : "promotion/decisions/world-loop.md",
+  );
   await mkdir(dirname(draft), { recursive: true });
   await writeFile(draft, sealed, "utf8");
   await rm(join(knowledge, destination));

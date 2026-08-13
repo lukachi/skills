@@ -38,6 +38,7 @@ import {
 import {
   approveWork,
   beginWork,
+  bindWork,
   claimWorkIssue,
   closeWork,
   completeWorkIssue,
@@ -1748,4 +1749,132 @@ test("a discovery entry written as paragraphs is told its shape, not that its fi
   assert.deepEqual(discoveryLedgerIssues(listed("- **Disposition:** Reported."), "case.md", true), []);
   const partial = discoveryLedgerIssues(listed("- **Disposition:**"), "case.md", true);
   assert.deepEqual(partial, ["case.md: DISC-001 requires a non-empty Disposition field"]);
+});
+
+
+/**
+ * A task is created holding the template's placeholders, and writing them is the
+ * flow rather than a deviation from it. Hashing the body into the checkpoint
+ * basis meant that writing them made the task stale, and the only move that
+ * cleared the staleness refused because the task was not yet claimed. Nothing
+ * inside the tool broke the loop; the workaround in use was editing a field the
+ * tool owns by hand.
+ */
+test("a task given its wording after creation can still be started", async () => {
+  const knowledge = await mkdtemp(join(tmpdir(), "wfctl-stale-claim-"));
+  initializeGit(knowledge);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  const started = await beginWork({
+    target: knowledge,
+    slug: "write-the-body",
+    title: "Write the body",
+    mode: "full",
+    distributionRoot,
+    now: new Date("2026-08-13T10:00:00.000Z"),
+  });
+  const issue = await createWorkIssue({
+    target: knowledge,
+    id: started.id,
+    slug: "write-the-body",
+    title: "Write the body",
+    phase: "delivery",
+    type: "task",
+  });
+
+  const issuePath = join(dirname(started.specPath), issue.path);
+  await writeFile(
+    issuePath,
+    `${await readFile(issuePath, "utf8")}\nThe outcome, written after creation.\n`,
+    "utf8",
+  );
+  await prepareFraming(started.specPath);
+  await approveWork({
+    target: knowledge,
+    id: started.id,
+    stage: "framing",
+    by: "human:test-maintainer",
+    method: "attested",
+    attested: "утверждаю",
+  });
+  // Approving edits the change record, so its own checkpoint is refreshed the way
+  // the flow already says to. The issue's is not, and no longer has to be.
+  await updateWorkCheckpoint({
+    target: knowledge,
+    id: started.id,
+    actor: "agent:test",
+    status: "active",
+    stage: "implement",
+    currentState: "Framing is approved and the first task is written.",
+    nextAction: "Claim the first task.",
+  });
+  const context = await workBundleContext(knowledge, started.id, "implement", issue.id);
+  for (const file of context.requiredFiles) {
+    await reviewWorkBundleFile(knowledge, started.id, file.path, "reviewed", "");
+  }
+
+  const claimed = await claimWorkIssue({
+    target: knowledge,
+    id: started.id,
+    issueId: issue.id,
+    actor: "agent:test",
+  });
+  assert.equal(claimed.status, "claimed");
+  // The claim is what refreshed it, which is why its staleness was never a
+  // blocker. Every other record's staleness still is.
+  assert.deepEqual((await workStatus(knowledge, started.id))[0]?.issues, []);
+});
+
+/**
+ * A record created without a source repository could hold the work and never
+ * deliver it: creation was the only place a durable repository entry was born,
+ * and rebinding replaced an entry that had to already exist. Four records were
+ * rewritten from scratch over two days for want of this.
+ */
+test("a record started without a leaf is given one from that checkout", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-bind-"));
+  const knowledge = join(root, "knowledge");
+  const leaf = join(root, "leaf");
+  await mkdir(knowledge);
+  await mkdir(leaf);
+  initializeGit(knowledge);
+  initializeGit(leaf);
+  await applyInstallPlan(await buildInstallPlan({
+    target: knowledge,
+    profile: "knowledge",
+    distributionRoot,
+  }));
+  await applyInstallPlan(await buildInstallPlan({
+    target: leaf,
+    profile: "leaf",
+    knowledge,
+    distributionRoot,
+  }));
+  commitAll(leaf, "initialize workflow");
+
+  const started = await beginWork({
+    target: knowledge,
+    slug: "no-leaf",
+    title: "Started from the centre",
+    mode: "full",
+    distributionRoot,
+    now: new Date("2026-08-13T10:00:00.000Z"),
+  });
+  assert.equal(started.scope, "project");
+
+  // Rebinding is the wrong verb here, and says which is the right one.
+  await assert.rejects(rebindWork(leaf, started.id), /wfctl work bind/);
+
+  const bound = await bindWork(leaf, started.id);
+  assert.equal(bound.repository, readRepositoryMetadata(leaf).repository);
+  const status = (await workStatus(leaf, started.id))[0];
+  assert.equal(status?.scope, "leaf");
+  assert.deepEqual(status?.issues, []);
+  assert.deepEqual(status?.codeRoots, [await realpath(leaf)]);
+
+  // And binding is not how a binding already held gets moved.
+  await assert.rejects(bindWork(leaf, started.id), /already binds/);
 });

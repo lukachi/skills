@@ -183,6 +183,17 @@ export async function validateKnowledge(
 
     const reserved = basename(absolute) === "index.md" || basename(absolute) === "log.md";
     if (reserved) {
+      // An index or a log carries frontmatter that nothing here requires, so it
+      // was parsed with errors discarded — which made a broken one valid. A file
+      // whose frontmatter does not parse is not a file anything downstream can
+      // read: the same page was refused by the hash command in the same breath,
+      // so validation was reporting the corpus clean on a page the corpus could
+      // not use.
+      const opened = parseFrontmatter(content, false);
+      if (opened.error) {
+        errors.push({ path: displayPath, message: opened.error });
+        continue;
+      }
       if (basename(absolute) === "index.md" && dirname(absolute) === knowledgeRoot) {
         const parsed = parseFrontmatter(content, false);
         if (!parsed.metadata || parsed.metadata.okf_version !== "0.2") {

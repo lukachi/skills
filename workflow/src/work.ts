@@ -464,10 +464,15 @@ export async function readWorkRepositories(
       recorded.set(name, entry);
     }
   }
+  // The bound checkout, not the Git top level. They are the same thing almost
+  // always and different exactly when a leaf was installed into a subdirectory of
+  // a larger repository — in which case the top level holds no agent file and
+  // this reported that the repository declares nothing about itself, while the
+  // file that governs working there sat one directory down.
   const declarations = await readLeafDeclarations(
-    context.currentSources.map((source) => ({
+    context.sources.map((source, index) => ({
       repository: source.repository,
-      root: source.root,
+      root: context.codeRoots[index] ?? source.root,
     })),
   );
   return {
@@ -1154,6 +1159,73 @@ export async function finishWayfinder(
   return await finishBundleWayfinder(dirname(context.specPath), mode, now);
 }
 
+/**
+ * Give a record a source repository it does not have yet.
+ *
+ * A durable repository entry was born in exactly one place — record creation —
+ * and replaced in exactly one other, which required the entry to already exist.
+ * So a bundle started from the centre without naming a leaf could hold the work
+ * and never deliver it: no code root, no claim from a checkout, no delivery.
+ * Four records were rewritten from scratch over two days for want of this, and
+ * every refusal on the way pointed at the one command that could not help.
+ *
+ * Binding is not rebinding. Rebinding moves an answer the record already has to
+ * a different worktree; this adds one it never had. Sharing a verb would mean
+ * one refusal message having to describe both, which is how a command ends up
+ * unable to say what it wants.
+ */
+export async function bindWork(
+  targetInput: string,
+  id: string,
+  now = new Date(),
+): Promise<RebindWorkResult> {
+  const target = await realpath(resolve(targetInput));
+  const config = await readConfig(target);
+  if (config.profile !== "leaf") {
+    throw new Error(
+      "Work bind must be run from the source checkout being bound, which is a leaf",
+    );
+  }
+  const knowledgeRoot = await realpath(resolveKnowledgeRoot(target, config));
+  const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
+  const binding = await readBinding(bindingPath);
+  const current = readRepositoryMetadata(target);
+  if (binding.repositories.some((entry) => entry.source.repository === current.repository)) {
+    throw new Error(
+      `Work ${id} already binds ${current.repository}. Moving that binding to this worktree `
+        + "is wfctl work rebind.",
+    );
+  }
+  binding.repositories.push({ root: target, source: current });
+
+  const specPath = resolve(knowledgeRoot, binding.spec);
+  const document = parseWorkSpec(await readFile(specPath, "utf8"));
+  document.metadata.repositories = [
+    ...recordArray(document.metadata.repositories),
+    { ...durableRepository(current) },
+  ];
+  // A record that binds a source repository is no longer project-only, and the
+  // completion gate asks a different set of questions of each. Left as it was,
+  // the bundle would still be checked as if nothing outside the corpus had been
+  // touched. Scope is the count, exactly as it is at creation.
+  const scope: WorkScope = binding.repositories.length === 1 ? "leaf" : "multi-repo";
+  document.metadata.scope = scope;
+  binding.scope = scope;
+  document.metadata.updated_at = now.toISOString();
+  await writeFile(specPath, serializeWorkSpec(document), "utf8");
+  await writeBinding(bindingPath, binding, true);
+  await writeBinding(leafPointerPath(target, id), binding, true);
+
+  return {
+    id,
+    repository: current.repository,
+    previousRoot: "",
+    currentRoot: target,
+    branch: current.branch,
+    worktreeId: current.worktreeId,
+  };
+}
+
 export async function rebindWork(
   targetInput: string,
   id: string,
@@ -1173,7 +1245,8 @@ export async function rebindWork(
   );
   if (index < 0) {
     throw new Error(
-      `Work ${id} is not scoped to repository ${current.repository}`,
+      `Work ${id} does not bind ${current.repository}, so there is nothing here to move. `
+        + `Give it this repository with wfctl work bind ${id}.`,
     );
   }
   const previous = binding.repositories[index]!;
@@ -1347,7 +1420,16 @@ async function inspectWorkContext(
     issues.push("local work binding does not match this knowledge checkout");
   }
   if (profile === "leaf" && !preferredExists) {
-    issues.push("this checkout is not bound to the work; use wfctl work rebind explicitly");
+    // Two different situations reach here, and pointing both at rebind sent one
+    // of them to a command that refuses: a record that binds this repository
+    // somewhere else is rebound, and a record that binds it nowhere is bound.
+    issues.push(
+      binding.repositories.some((entry) =>
+          entry.source.repository === readRepositoryMetadata(target).repository
+        )
+        ? `this checkout is not bound to the work; use wfctl work rebind ${id} explicitly`
+        : `this work binds no checkout of this repository; use wfctl work bind ${id}`,
+    );
   }
   if (
     profile === "leaf"

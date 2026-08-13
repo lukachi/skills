@@ -336,6 +336,8 @@ Installed agents own these commands.
   and a handoff is cleared by the next checkpoint.
 - `wfctl work ask <id> [--stage promotion|completion]` renders the decision the
   maintainer is being asked for, generated from the record rather than composed.
+  It runs from the knowledge repository or from any leaf bound to it, because
+  delivery happens in a source checkout and that is where the question arises.
 - `wfctl work approve <id> --stage framing|completion --by human:<id>` records a
   maintainer decision. It takes the maintainer's own answer through `--attested`,
   or a typed confirmation, or `--token` matching `WFCTL_APPROVAL_TOKEN` for
@@ -347,9 +349,15 @@ Installed agents own these commands.
 - `wfctl work promotion <id> [--none <reason>]` records the curated pages this
   work would write, read from the bundle's `promotion/` directory rather than
   from a flag, so what the maintainer is shown and what lands are the same list.
+  A page is filed at the path it will occupy inside `knowledge/`, spelled with or
+  without a leading `knowledge/`; both name the same page. It also runs on a
+  bundle already waiting in the promotion queue, which is how a page the
+  maintainer sent back is corrected and put to them again.
 - `wfctl work promote <id> --by human:<id>` records the maintainer's word and
   writes those pages into `knowledge/` in the same act, validates them, and
-  archives the bundle. Nothing is written unless every page validates.
+  archives the bundle. Nothing is left written unless every page validates: a
+  refusal puts back whatever each destination held before, byte for byte, and
+  says which pages it restored.
 - `wfctl work issue create|list|show` operates the dependency graph and
   executable frontier inside the bundle.
 - `wfctl work issue block|unblock` updates dependency edges and rejects cycles.
@@ -360,8 +368,14 @@ Installed agents own these commands.
 - `wfctl work review status|file` accounts for every bundle file at its current
   SHA-256 content hash.
 - `wfctl work status [id]` shows and validates code/spec bindings.
-- `wfctl work rebind <id>` explicitly moves one repository binding and records
-  the transition.
+- `wfctl work bind <id>` gives a record a source repository it does not carry
+  yet, run from that repository's own checkout. A bundle started from the centre
+  without naming a leaf can hold the work and never deliver it; this is what
+  gives it somewhere to deliver into. It refuses a repository the record already
+  binds and names `rebind` instead.
+- `wfctl work rebind <id>` explicitly moves one repository binding the record
+  already carries, and records the transition. It refuses a repository the record
+  does not bind and names `bind` instead.
 - `wfctl work verify <id>` checks the structural completion gate without
   claiming semantic correctness.
 - `wfctl work close <id>` archives the real outcome after required gates pass.

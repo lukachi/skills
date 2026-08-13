@@ -129,6 +129,7 @@ import {
   approveWork,
   accountWorkRepository,
   beginWork,
+  bindWork,
   readWorkDecisions,
   readWorkRepositories,
   recordWorkDecision,
@@ -1144,6 +1145,30 @@ function workCommand() {
         }),
     )
     .command(
+      "bind",
+      new Command()
+        .description(
+          "Give a record a source repository it does not carry yet, from that checkout.\n"
+            + "A bundle started from the centre without naming a leaf can hold the work and\n"
+            + "never deliver it; this is what gives it somewhere to deliver into. Moving a\n"
+            + "binding the record already carries is wfctl work rebind.",
+        )
+        .arguments("<id:string>")
+        .option("-t, --target <path:string>", "Source checkout to bind.", { default: "." })
+        .option("--json", "Print machine-readable JSON.")
+        .action(async (options, id) => {
+          const result = await bindWork(options.target, id);
+          if (options.json) {
+            printJson(result);
+          } else {
+            process.stdout.write(
+              `Bound ${result.repository} to ${result.id}\n`
+                + `Checkout: ${result.currentRoot} (${result.worktreeId}, ${result.branch})\n`,
+            );
+          }
+        }),
+    )
+    .command(
       "rebind",
       new Command()
         .description(
@@ -1867,7 +1892,9 @@ function workRepositoriesCommand() {
       }
       if (result.repositories.length === 0) {
         process.stdout.write(
-          `${result.id} binds no source repository, so there is nothing here to account for.\n`,
+          `${result.id} binds no source repository, so there is nothing here to account for.\n`
+            + "If it should deliver code, run wfctl work bind "
+            + `${result.id} from that repository's checkout.\n`,
         );
         return;
       }

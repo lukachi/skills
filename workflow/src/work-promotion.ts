@@ -81,6 +81,23 @@ export interface ApplyPromotionResult {
   receipt: string;
 }
 
+/**
+ * Where a drafted page lands, from where it was filed.
+ *
+ * A page is drafted at the path it will occupy inside `knowledge/`, and that
+ * sentence has two readings: `promotion/areas/rests/rests.md`, and
+ * `promotion/knowledge/areas/rests/rests.md`. Both were accepted, and read
+ * differently by different callers — the write path stripped the leading
+ * `knowledge/` and the packet the maintainer reads did not. So the packet said a
+ * page was new while approving it overwrote one, and when validation then
+ * refused the doubled path, the rollback deleted four curated pages it had
+ * overwritten. Normalising once, here, is what makes the two readings the same
+ * page everywhere downstream.
+ */
+function normalizeDestination(destination: string): string {
+  return destination.replace(/^\/+/, "").replace(/^knowledge\//, "");
+}
+
 /** Every page drafted in a bundle, in the order they will be written. */
 export async function readPromotionDrafts(bundleRoot: string): Promise<PromotionDraft[]> {
   const root = join(bundleRoot, "promotion");
@@ -104,11 +121,24 @@ export async function readPromotionDrafts(bundleRoot: string): Promise<Promotion
       if (!entry.isFile() || !entry.name.endsWith(".md")) {
         continue;
       }
-      const destination = relative(root, path).split(sep).join("/");
-      found.push({ destination, source: `promotion/${destination}` });
+      const filed = relative(root, path).split(sep).join("/");
+      found.push({ destination: normalizeDestination(filed), source: `promotion/${filed}` });
     }
   };
   await walk(root);
+  const collisions = new Map<string, string[]>();
+  for (const draft of found) {
+    collisions.set(draft.destination, [...(collisions.get(draft.destination) ?? []), draft.source]);
+  }
+  for (const [destination, sources] of collisions) {
+    if (sources.length > 1) {
+      throw new Error(
+        `Two drafts in this bundle land on the same page (knowledge/${destination}): ${
+          sources.sort().join(", ")
+        }. Keep one.`,
+      );
+    }
+  }
   return found.sort((left, right) => left.destination.localeCompare(right.destination));
 }
 
@@ -125,7 +155,12 @@ export async function stagePromotion(
   options: StagePromotionOptions,
 ): Promise<StagePromotionResult> {
   const knowledgeRoot = await requireKnowledgeRoot(options.target);
-  const bundleRoot = join(knowledgeRoot, "changes/active", options.id);
+  // Also the promotion queue, because the packet the maintainer reads ends on
+  // "say so if a page is wrong, and it gets rewritten rather than argued for" —
+  // and rewriting one means re-staging a bundle that has already closed. Looking
+  // only in changes/active made that sentence a promise the tool could not keep.
+  const bundleRoot = await requirePromotionBundle(knowledgeRoot, options.id, true);
+  const closed = bundleRoot.startsWith(join(knowledgeRoot, PROMOTION_DIRECTORY));
   const specPath = join(bundleRoot, "change.md");
   const document = await readSpec(specPath, options.id);
   const at = (options.now ?? new Date()).toISOString();
@@ -166,7 +201,31 @@ export async function stagePromotion(
     staged_at: at,
   };
   document.metadata.updated_at = at;
+  // A closed bundle cannot repair itself afterwards: its checkpoint is complete,
+  // and the ordinary update refuses a complete status outside closure. So this
+  // call, which is the one that made the record stale, is the one that reseals
+  // it. An open bundle is left alone — its agent refreshes the checkpoint and the
+  // receipt as the next step of the turn it is already in.
+  if (closed) {
+    initializeDocumentCheckpoint(document, {
+      status: "complete",
+      stage: "complete",
+      actor: "system:wfctl",
+      currentState: none
+        ? "Closed, and nothing it did changes what the project says."
+        : `Closed, with ${drafts.length} page(s) waiting on the maintainer.`,
+      lastCompleted: "The pages this work would write were recorded again.",
+      nextAction: none
+        ? "None — this bundle is closed."
+        : "Put the pages to the maintainer with wfctl work ask.",
+      blockers: [],
+      now: new Date(at),
+    });
+  }
   await writeFile(specPath, serializeWorkSpec(document), "utf8");
+  if (closed) {
+    await reviewBundleFile(bundleRoot, "change.md", "reviewed", "", new Date(at));
+  }
   return {
     id: options.id,
     status: none ? "not-needed" : "pending",
@@ -223,14 +282,20 @@ export async function applyPromotion(
     ...(options.now ? { now: options.now } : {}),
   });
 
-  const written: string[] = [];
+  // What stood at each destination before this call touched it, so a refusal can
+  // put it back. A rollback that only removes is worse than none at all: the
+  // first time one ran it deleted four curated pages the promotion had
+  // overwritten, and they came back only because they happened to be committed.
+  const replaced = new Map<string, Buffer | undefined>();
   const concepts: string[] = [];
   try {
     for (const draft of drafts) {
       const destination = resolveInsideKnowledge(knowledgeRoot, draft.destination);
+      if (!replaced.has(destination)) {
+        replaced.set(destination, await readIfPresent(destination));
+      }
       await mkdir(dirname(destination), { recursive: true });
       await copyFile(join(bundleRoot, draft.source), destination);
-      written.push(destination);
       concepts.push(`knowledge/${draft.destination}`);
     }
     const validation = await validateKnowledge(knowledgeRoot, concepts);
@@ -242,10 +307,22 @@ export async function applyPromotion(
       );
     }
   } catch (error) {
-    for (const path of written) {
-      await rm(path, { force: true });
+    const restored: string[] = [];
+    for (const [path, previous] of replaced) {
+      if (previous === undefined) {
+        await rm(path, { force: true });
+      } else {
+        await writeFile(path, previous);
+        restored.push(portable(relative(knowledgeRoot, path)));
+      }
     }
-    throw new Error(`Promotion was not applied and nothing was written: ${message(error)}`);
+    throw new Error(
+      `Promotion was not applied: ${message(error)}${
+        restored.length > 0
+          ? `. The page(s) it had already overwritten were restored: ${restored.sort().join(", ")}`
+          : ". Nothing was written"
+      }`,
+    );
   }
 
   const review = isRecord(document.metadata.maintainer_review)
@@ -408,7 +485,11 @@ async function requireKnowledgeRoot(target: string): Promise<string> {
   return resolveKnowledgeRoot(target, await readConfig(target));
 }
 
-async function requirePromotionBundle(knowledgeRoot: string, id: string): Promise<string> {
+async function requirePromotionBundle(
+  knowledgeRoot: string,
+  id: string,
+  staging = false,
+): Promise<string> {
   for (const location of [PROMOTION_DIRECTORY, "changes/active"]) {
     const candidate = join(knowledgeRoot, location, id);
     try {
@@ -421,8 +502,11 @@ async function requirePromotionBundle(knowledgeRoot: string, id: string): Promis
     }
   }
   throw new Error(
-    `No bundle named ${id} is waiting to be promoted. A closed bundle whose pages are already `
-      + "in curated knowledge has been archived, and there is nothing left to approve.",
+    staging
+      ? `No open or waiting bundle named ${id}. An archived bundle has already been promoted, `
+        + "and a page in it is corrected by curating the page itself rather than by re-staging."
+      : `No bundle named ${id} is waiting to be promoted. A closed bundle whose pages are already `
+        + "in curated knowledge has been archived, and there is nothing left to approve.",
   );
 }
 
@@ -437,8 +521,24 @@ async function readSpec(specPath: string, id: string): Promise<WorkSpecDocument>
   }
 }
 
+/** The bytes standing at a path, or nothing when nothing stands there. */
+async function readIfPresent(path: string): Promise<Buffer | undefined> {
+  try {
+    return await readFile(path);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function portable(path: string): string {
+  return path.split(sep).join("/");
+}
+
 function resolveInsideKnowledge(knowledgeRoot: string, destination: string): string {
-  const normalized = destination.replace(/^\/+/, "").replace(/^knowledge\//, "");
+  const normalized = normalizeDestination(destination);
   const absolute = resolve(knowledgeRoot, "knowledge", normalized);
   const boundary = `${resolve(knowledgeRoot, "knowledge")}${sep}`;
   if (!absolute.startsWith(boundary)) {

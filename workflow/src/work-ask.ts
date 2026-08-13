@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { findDistributionRoot } from "./assets.js";
+import { readConfig, resolveKnowledgeRoot } from "./config.js";
 import { draftTitle, readPromotionDrafts } from "./work-promotion.js";
 import { isRecord, parseWorkSpec, type MaintainerReviewStage } from "./work-spec.js";
 
@@ -66,7 +67,11 @@ export async function readWorkGate(
   options: ReadWorkGateOptions = {},
 ): Promise<WorkGate> {
   const stage = options.stage ?? "framing";
-  const target = resolve(targetInput);
+  // From the knowledge repository or from any leaf bound to it. Delivery happens
+  // in a source checkout, so requiring the centre meant an agent working in a
+  // leaf could not show the maintainer the decision it was asking them for —
+  // and the refusal it got instead was a missing-file path from inside the tool.
+  const target = await resolveCentre(resolve(targetInput));
   // A promotion is asked about a bundle that has already closed, so it is read
   // from wherever the bundle now is rather than from the one place open work
   // lives. Closure is what moved it, and the question survives the move.
@@ -152,6 +157,22 @@ async function exists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * The knowledge repository, whether this is one or is bound to one.
+ *
+ * Rendering a packet reads a bundle and nothing else, so a directory that holds
+ * one but carries no installation is answered rather than refused — that is what
+ * a test fixture and a detached inspection both look like.
+ */
+async function resolveCentre(target: string): Promise<string> {
+  try {
+    const config = await readConfig(target);
+    return config.profile === "knowledge" ? target : resolveKnowledgeRoot(target, config);
+  } catch {
+    return target;
   }
 }
 

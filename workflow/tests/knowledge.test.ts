@@ -5,6 +5,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  rm,
   writeFile,
 } from "node:fs/promises";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -3915,6 +3916,32 @@ ${areaIndex("Combat", "Not applicable.\n")}`,
     false,
     JSON.stringify(result.errors),
   );
+});
+
+/**
+ * An index and a log carry frontmatter nothing here requires, so it was parsed
+ * with errors discarded — and a broken one validated clean. The same file was
+ * refused by `wfctl knowledge hash` in the same breath, which is what made the
+ * disagreement visible: validation was reporting the corpus healthy on a page
+ * nothing downstream could read.
+ */
+test("a reserved page whose frontmatter does not parse is refused, not skipped", async () => {
+  const target = await initializedKnowledgeRepository("wfctl-reserved-frontmatter-");
+  await mkdir(join(target, "knowledge/areas/combat"), { recursive: true });
+  const broken = `---\nokf_version: "0.2"\ntitle: Combat: the area\n---\n${
+    areaIndex("Combat", "Not applicable.\n")
+  }`;
+  for (const path of ["knowledge/areas/combat/index.md", "knowledge/areas/combat/log.md"]) {
+    await writeFile(join(target, path), broken, "utf8");
+    const result = await validateKnowledge(target, [path]);
+    assert.equal(
+      result.errors.some((issue) => issue.path === path && /invalid YAML/.test(issue.message)),
+      true,
+      `${path}: ${JSON.stringify(result.errors)}`,
+    );
+    await assert.rejects(hashKnowledgeConcept(target, path), /invalid YAML/);
+    await rm(join(target, path));
+  }
 });
 
 async function initializedKnowledgeRepository(prefix: string): Promise<string> {

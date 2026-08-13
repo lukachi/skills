@@ -512,7 +512,10 @@ export async function claimWorkIssue(
     throw new Error(`Work issue ${id} is blocked by unresolved dependencies`);
   }
   if (current.phase === "delivery" && !options.projectOnly && !options.source) {
-    throw new Error("A source-scoped delivery issue must be claimed from a bound leaf checkout");
+    throw new Error(
+      "A source-scoped delivery issue must be claimed from a bound leaf checkout. If this work "
+        + "binds no source repository yet, give it one from that checkout with wfctl work bind.",
+    );
   }
   if (current.phase === "delivery" && options.source && current.repositories.length > 0
     && !current.repositories.includes(options.source.repository)) {
@@ -525,8 +528,20 @@ export async function claimWorkIssue(
     current.phase === "wayfinding" ? "wayfind" : "implement",
     id,
   );
-  if (context.validationIssues.length > 0) {
-    throw new Error(`Claim is blocked by invalid bundle state: ${context.validationIssues.join("; ")}`);
+  // A stale checkpoint on the issue being claimed is not a blocker, because
+  // claiming is the act that refreshes it — the write a few lines down recomputes
+  // the basis over the whole record. Treating it as one closed a loop with no
+  // exit: an issue created and then given its wording was refused as stale, and
+  // the only move that would have cleared the staleness refused because the issue
+  // was not yet claimed. Writing the wording is the flow, not a deviation from
+  // it: every issue is created holding the template's placeholders. Staleness
+  // anywhere else in the bundle still refuses, and on a claimed issue it means
+  // what it always meant — a record changed under somebody who had started it.
+  const blocking = context.validationIssues.filter((issue) =>
+    !(issue.startsWith(`${current.path}: `) && issue.includes("checkpoint is stale"))
+  );
+  if (blocking.length > 0) {
+    throw new Error(`Claim is blocked by invalid bundle state: ${blocking.join("; ")}`);
   }
   const unread = context.requiredFiles.filter((entry) => entry.accounting !== "reviewed");
   if (unread.length > 0) {

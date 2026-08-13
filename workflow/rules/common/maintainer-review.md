@@ -239,6 +239,11 @@ terminal. What it does hold is the next framing approval in the same Area, on th
 ground that aligning new work against knowledge already known to be behind is the
 alignment telling them something the project has stopped believing.
 
+The packet ends by telling them a wrong page gets rewritten rather than argued
+for, and that is a working sentence: rewrite the draft where it sits in the
+queue, reseal it, refresh its review receipt, and run `wfctl work promotion <id>`
+again. Their answer is never lost by correcting what it was about.
+
 Approval and permission to start are different decisions and the record holds
 them separately. A maintainer who approves a framing and says the work is not to
 begin yet — including one approving only so the bundle stops cluttering their

@@ -24587,7 +24587,9 @@ async function claimWorkIssue(options) {
     throw new Error(`Work issue ${id} is blocked by unresolved dependencies`);
   }
   if (current.phase === "delivery" && !options.projectOnly && !options.source) {
-    throw new Error("A source-scoped delivery issue must be claimed from a bound leaf checkout");
+    throw new Error(
+      "A source-scoped delivery issue must be claimed from a bound leaf checkout. If this work binds no source repository yet, give it one from that checkout with wfctl work bind."
+    );
   }
   if (current.phase === "delivery" && options.source && current.repositories.length > 0 && !current.repositories.includes(options.source.repository)) {
     throw new Error(
@@ -24599,8 +24601,11 @@ async function claimWorkIssue(options) {
     current.phase === "wayfinding" ? "wayfind" : "implement",
     id
   );
-  if (context.validationIssues.length > 0) {
-    throw new Error(`Claim is blocked by invalid bundle state: ${context.validationIssues.join("; ")}`);
+  const blocking = context.validationIssues.filter(
+    (issue3) => !(issue3.startsWith(`${current.path}: `) && issue3.includes("checkpoint is stale"))
+  );
+  if (blocking.length > 0) {
+    throw new Error(`Claim is blocked by invalid bundle state: ${blocking.join("; ")}`);
   }
   const unread = context.requiredFiles.filter((entry) => entry.accounting !== "reviewed");
   if (unread.length > 0) {
@@ -25935,6 +25940,11 @@ async function validateKnowledge(targetInput, conceptPaths) {
     }
     const reserved = basename4(absolute) === "index.md" || basename4(absolute) === "log.md";
     if (reserved) {
+      const opened = parseFrontmatter2(content3, false);
+      if (opened.error) {
+        errors.push({ path: displayPath, message: opened.error });
+        continue;
+      }
       if (basename4(absolute) === "index.md" && dirname9(absolute) === knowledgeRoot) {
         const parsed2 = parseFrontmatter2(content3, false);
         if (!parsed2.metadata || parsed2.metadata.okf_version !== "0.2") {
@@ -38549,6 +38559,7 @@ function renderDecisions(result) {
 
 // src/work-ask.ts
 init_assets();
+init_config();
 import { readFile as readFile26 } from "node:fs/promises";
 import { join as join24, resolve as resolve24 } from "node:path";
 
@@ -38704,6 +38715,9 @@ function isApprovalRecord(value) {
 init_work_bundle();
 init_work_spec();
 var PROMOTION_DIRECTORY = "changes/promotion";
+function normalizeDestination2(destination) {
+  return destination.replace(/^\/+/, "").replace(/^knowledge\//, "");
+}
 async function readPromotionDrafts(bundleRoot) {
   const root = join23(bundleRoot, "promotion");
   const found = [];
@@ -38726,16 +38740,28 @@ async function readPromotionDrafts(bundleRoot) {
       if (!entry.isFile() || !entry.name.endsWith(".md")) {
         continue;
       }
-      const destination = relative9(root, path).split(sep9).join("/");
-      found.push({ destination, source: `promotion/${destination}` });
+      const filed = relative9(root, path).split(sep9).join("/");
+      found.push({ destination: normalizeDestination2(filed), source: `promotion/${filed}` });
     }
   };
   await walk(root);
+  const collisions = /* @__PURE__ */ new Map();
+  for (const draft of found) {
+    collisions.set(draft.destination, [...collisions.get(draft.destination) ?? [], draft.source]);
+  }
+  for (const [destination, sources] of collisions) {
+    if (sources.length > 1) {
+      throw new Error(
+        `Two drafts in this bundle land on the same page (knowledge/${destination}): ${sources.sort().join(", ")}. Keep one.`
+      );
+    }
+  }
   return found.sort((left, right) => left.destination.localeCompare(right.destination));
 }
 async function stagePromotion(options) {
   const knowledgeRoot = await requireKnowledgeRoot(options.target);
-  const bundleRoot = join23(knowledgeRoot, "changes/active", options.id);
+  const bundleRoot = await requirePromotionBundle(knowledgeRoot, options.id, true);
+  const closed = bundleRoot.startsWith(join23(knowledgeRoot, PROMOTION_DIRECTORY));
   const specPath = join23(bundleRoot, "change.md");
   const document3 = await readSpec(specPath, options.id);
   const at = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
@@ -38764,7 +38790,22 @@ async function stagePromotion(options) {
     staged_at: at
   };
   document3.metadata.updated_at = at;
+  if (closed) {
+    initializeDocumentCheckpoint(document3, {
+      status: "complete",
+      stage: "complete",
+      actor: "system:wfctl",
+      currentState: none ? "Closed, and nothing it did changes what the project says." : `Closed, with ${drafts.length} page(s) waiting on the maintainer.`,
+      lastCompleted: "The pages this work would write were recorded again.",
+      nextAction: none ? "None \u2014 this bundle is closed." : "Put the pages to the maintainer with wfctl work ask.",
+      blockers: [],
+      now: new Date(at)
+    });
+  }
   await writeFile17(specPath, serializeWorkSpec(document3), "utf8");
+  if (closed) {
+    await reviewBundleFile(bundleRoot, "change.md", "reviewed", "", new Date(at));
+  }
   return {
     id: options.id,
     status: none ? "not-needed" : "pending",
@@ -38803,14 +38844,16 @@ async function applyPromotion(options) {
     ...options.session ? { session: options.session } : {},
     ...options.now ? { now: options.now } : {}
   });
-  const written = [];
+  const replaced = /* @__PURE__ */ new Map();
   const concepts = [];
   try {
     for (const draft of drafts) {
       const destination = resolveInsideKnowledge(knowledgeRoot, draft.destination);
+      if (!replaced.has(destination)) {
+        replaced.set(destination, await readIfPresent(destination));
+      }
       await mkdir14(dirname15(destination), { recursive: true });
       await copyFile2(join23(bundleRoot, draft.source), destination);
-      written.push(destination);
       concepts.push(`knowledge/${draft.destination}`);
     }
     const validation = await validateKnowledge(knowledgeRoot, concepts);
@@ -38820,10 +38863,18 @@ async function applyPromotion(options) {
       );
     }
   } catch (error2) {
-    for (const path of written) {
-      await rm4(path, { force: true });
+    const restored = [];
+    for (const [path, previous2] of replaced) {
+      if (previous2 === void 0) {
+        await rm4(path, { force: true });
+      } else {
+        await writeFile17(path, previous2);
+        restored.push(portable3(relative9(knowledgeRoot, path)));
+      }
     }
-    throw new Error(`Promotion was not applied and nothing was written: ${message(error2)}`);
+    throw new Error(
+      `Promotion was not applied: ${message(error2)}${restored.length > 0 ? `. The page(s) it had already overwritten were restored: ${restored.sort().join(", ")}` : ". Nothing was written"}`
+    );
   }
   const review = isRecord2(document3.metadata.maintainer_review) ? document3.metadata.maintainer_review : {};
   review.promotion = {
@@ -38929,7 +38980,7 @@ function stringArray10(value) {
 async function requireKnowledgeRoot(target) {
   return resolveKnowledgeRoot(target, await readConfig(target));
 }
-async function requirePromotionBundle(knowledgeRoot, id) {
+async function requirePromotionBundle(knowledgeRoot, id, staging = false) {
   for (const location of [PROMOTION_DIRECTORY, "changes/active"]) {
     const candidate = join23(knowledgeRoot, location, id);
     try {
@@ -38942,7 +38993,7 @@ async function requirePromotionBundle(knowledgeRoot, id) {
     }
   }
   throw new Error(
-    `No bundle named ${id} is waiting to be promoted. A closed bundle whose pages are already in curated knowledge has been archived, and there is nothing left to approve.`
+    staging ? `No open or waiting bundle named ${id}. An archived bundle has already been promoted, and a page in it is corrected by curating the page itself rather than by re-staging.` : `No bundle named ${id} is waiting to be promoted. A closed bundle whose pages are already in curated knowledge has been archived, and there is nothing left to approve.`
   );
 }
 async function readSpec(specPath, id) {
@@ -38955,8 +39006,21 @@ async function readSpec(specPath, id) {
     throw error2;
   }
 }
+async function readIfPresent(path) {
+  try {
+    return await readFile25(path);
+  } catch (error2) {
+    if (isMissingFileError(error2)) {
+      return void 0;
+    }
+    throw error2;
+  }
+}
+function portable3(path) {
+  return path.split(sep9).join("/");
+}
 function resolveInsideKnowledge(knowledgeRoot, destination) {
-  const normalized = destination.replace(/^\/+/, "").replace(/^knowledge\//, "");
+  const normalized = normalizeDestination2(destination);
   const absolute = resolve23(knowledgeRoot, "knowledge", normalized);
   const boundary = `${resolve23(knowledgeRoot, "knowledge")}${sep9}`;
   if (!absolute.startsWith(boundary)) {
@@ -38972,7 +39036,7 @@ function message(error2) {
 init_work_spec();
 async function readWorkGate(targetInput, id, options = {}) {
   const stage = options.stage ?? "framing";
-  const target = resolve24(targetInput);
+  const target = await resolveCentre(resolve24(targetInput));
   const bundleRoot = await locateBundle(target, id);
   const path = join24(bundleRoot, "change.md");
   const document3 = parseWorkSpec(await readFile26(path, "utf8"));
@@ -39034,6 +39098,14 @@ async function exists4(path) {
     return true;
   } catch {
     return false;
+  }
+}
+async function resolveCentre(target) {
+  try {
+    const config = await readConfig(target);
+    return config.profile === "knowledge" ? target : resolveKnowledgeRoot(target, config);
+  } catch {
+    return target;
   }
 }
 async function locateBundle(target, id) {
@@ -40826,9 +40898,9 @@ async function readWorkRepositories(target, id) {
     }
   }
   const declarations = await readLeafDeclarations(
-    context.currentSources.map((source) => ({
+    context.sources.map((source, index2) => ({
       repository: source.repository,
-      root: source.root
+      root: context.codeRoots[index2] ?? source.root
     }))
   );
   return {
@@ -41303,6 +41375,46 @@ async function finishWayfinder2(target, id, mode, now = /* @__PURE__ */ new Date
   const context = await requireWorkContext(target, id);
   return await finishWayfinder(dirname16(context.specPath), mode, now);
 }
+async function bindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
+  const target = await realpath5(resolve27(targetInput));
+  const config = await readConfig(target);
+  if (config.profile !== "leaf") {
+    throw new Error(
+      "Work bind must be run from the source checkout being bound, which is a leaf"
+    );
+  }
+  const knowledgeRoot = await realpath5(resolveKnowledgeRoot(target, config));
+  const bindingPath = knowledgeBindingPath(knowledgeRoot, id);
+  const binding = await readBinding2(bindingPath);
+  const current = readRepositoryMetadata(target);
+  if (binding.repositories.some((entry) => entry.source.repository === current.repository)) {
+    throw new Error(
+      `Work ${id} already binds ${current.repository}. Moving that binding to this worktree is wfctl work rebind.`
+    );
+  }
+  binding.repositories.push({ root: target, source: current });
+  const specPath = resolve27(knowledgeRoot, binding.spec);
+  const document3 = parseWorkSpec(await readFile30(specPath, "utf8"));
+  document3.metadata.repositories = [
+    ...recordArray8(document3.metadata.repositories),
+    { ...durableRepository(current) }
+  ];
+  const scope = binding.repositories.length === 1 ? "leaf" : "multi-repo";
+  document3.metadata.scope = scope;
+  binding.scope = scope;
+  document3.metadata.updated_at = now.toISOString();
+  await writeFile18(specPath, serializeWorkSpec(document3), "utf8");
+  await writeBinding(bindingPath, binding, true);
+  await writeBinding(leafPointerPath(target, id), binding, true);
+  return {
+    id,
+    repository: current.repository,
+    previousRoot: "",
+    currentRoot: target,
+    branch: current.branch,
+    worktreeId: current.worktreeId
+  };
+}
 async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   const target = await realpath5(resolve27(targetInput));
   const config = await readConfig(target);
@@ -41318,7 +41430,7 @@ async function rebindWork(targetInput, id, now = /* @__PURE__ */ new Date()) {
   );
   if (index2 < 0) {
     throw new Error(
-      `Work ${id} is not scoped to repository ${current.repository}`
+      `Work ${id} does not bind ${current.repository}, so there is nothing here to move. Give it this repository with wfctl work bind ${id}.`
     );
   }
   const previous2 = binding.repositories[index2];
@@ -41446,7 +41558,11 @@ async function inspectWorkContext(target, profile, id) {
     issues.push("local work binding does not match this knowledge checkout");
   }
   if (profile === "leaf" && !preferredExists) {
-    issues.push("this checkout is not bound to the work; use wfctl work rebind explicitly");
+    issues.push(
+      binding.repositories.some(
+        (entry) => entry.source.repository === readRepositoryMetadata(target).repository
+      ) ? `this checkout is not bound to the work; use wfctl work rebind ${id} explicitly` : `this work binds no checkout of this repository; use wfctl work bind ${id}`
+    );
   }
   if (profile === "leaf" && !binding.repositories.some((entry) => entry.root === target)) {
     issues.push(`current checkout ${target} is outside the bound workspaces`);
@@ -42628,6 +42744,22 @@ Spec: ${result.specPath}
       }
     })
   ).command(
+    "bind",
+    new Command().description(
+      "Give a record a source repository it does not carry yet, from that checkout.\nA bundle started from the centre without naming a leaf can hold the work and\nnever deliver it; this is what gives it somewhere to deliver into. Moving a\nbinding the record already carries is wfctl work rebind."
+    ).arguments("<id:string>").option("-t, --target <path:string>", "Source checkout to bind.", { default: "." }).option("--json", "Print machine-readable JSON.").action(async (options, id) => {
+      const result = await bindWork(options.target, id);
+      if (options.json) {
+        printJson(result);
+      } else {
+        process.stdout.write(
+          `Bound ${result.repository} to ${result.id}
+Checkout: ${result.currentRoot} (${result.worktreeId}, ${result.branch})
+`
+        );
+      }
+    })
+  ).command(
     "rebind",
     new Command().description(
       "Explicitly move one repository binding to the current worktree or branch."
@@ -43166,6 +43298,7 @@ function workRepositoriesCommand() {
     if (result.repositories.length === 0) {
       process.stdout.write(
         `${result.id} binds no source repository, so there is nothing here to account for.
+If it should deliver code, run wfctl work bind ${result.id} from that repository's checkout.
 `
       );
       return;
