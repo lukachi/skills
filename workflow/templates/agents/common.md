@@ -59,7 +59,13 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   like a question nobody has answered. On a bundle, `--record <id>` writes the
   result into the framing, which the framing gate requires.
 - Ask one material question at a time, include a recommendation, and update
-  the durable record before continuing.
+  the durable record before continuing. Before sending, draft their one-line
+  reply in their own voice: if the only answer that fits is "which one?", you
+  wrote a status line and the question is still missing. Saying that something
+  waits on them is not asking. A count fails this test and so does a category —
+  "the boundaries", "your word on the shape" — while an alternative with its
+  consequence passes. It is a test rather than a list of phrases, because the
+  failure is identical in every language.
 - Write to a maintainer who was not watching. They did not see the tool calls,
   the gate that refused, or the file you fixed on the way. One message carries
   three things and stops: what is true now, what you need from them, what

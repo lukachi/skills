@@ -83,6 +83,26 @@ Say plainly that "I do not know" is an answer you can record. A recorded gap is
 worth more than a preference guessed from a polite reply and then treated as
 settled.
 
+**Write their reply before you send the message.** Draft the answer you expect,
+in their voice, one line. If nothing fits — if the only reply available is
+"which one?" or "what specifically?" — then what you wrote is a status line and
+the question is still missing.
+
+Saying that something waits is the common way to fail this, and it fails because
+it describes your queue rather than their decision. "Three records are ready and
+all three are waiting on you" passes every other rule here: it names no count
+alone, it can carry a table, it reads as brevity. It still leaves them to work
+out what they are being asked. So does a category — "the boundaries", "a decision
+about the deck", "your word on the shape" — which names the subject and withholds
+the question. What passes is an alternative with its consequence: "delete the
+twenty-two explanations, or give the row a note field; the note is my
+recommendation, and it costs one migration."
+
+This is a test rather than a list of phrases to avoid, because the failure is the
+same in every language and rewords faster than any list can be kept. Apply it to
+each sentence that puts something to them, including a blocker, a status line,
+and the last line of a report.
+
 ## Find their answer before asking for it again
 
 Run `wfctl knowledge decided "<subject>"` before putting anything to them. It

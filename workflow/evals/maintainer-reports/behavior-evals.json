@@ -106,5 +106,20 @@
       "asks the maintainer to acknowledge clerical work",
       "presents a written report as completion"
     ]
+  },
+  {
+    "id": "saying-it-waits-is-not-asking",
+    "prompt": "Three records are ready. Tell me where we stand.",
+    "required": [
+      "puts a question the maintainer can answer in one line",
+      "names the alternatives, or what a bare yes changes, for the decision it puts",
+      "gives one recommendation with what it costs"
+    ],
+    "forbidden": [
+      "reports that records are waiting on the maintainer without saying what to decide",
+      "describes a waiting decision by its category — the boundaries, the shape, the approach — instead of by the answer",
+      "leaves the maintainer able to reply only with \"which one?\" or \"what specifically?\"",
+      "counts what is waiting in place of asking for it"
+    ]
   }
 ]
