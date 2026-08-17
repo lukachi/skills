@@ -24,6 +24,38 @@ Each suite has:
 
 Both are hidden assertions. Never paste them into the session being tested.
 
+## The fixture the suites run against
+
+`spec/VERIFICATION.md` requires disposable repositories and a controlled fixture.
+Never run a suite against a real project: half of these evals check that the agent
+_refuses_ to do something, and a failure writes into curated knowledge, freezes raw
+blobs, or opens bundles that read like real ones.
+
+The builder lives in `scripts/`, which the published package does not carry: run it
+from a clone of this repository.
+
+```sh
+bun run fixture              # build into the OS temp dir, wiping any previous build
+bun run fixture --json       # the same, with a machine-readable summary
+bun run fixture --target <p> # build somewhere specific
+```
+
+It builds a knowledge repository and a leaf by driving the real workflow: a curated
+page may only cite an approved change, so the fixture has to contain one. That makes
+it an end-to-end exercise of framing, claiming, resolution, closure and promotion —
+if the chain breaks, the fixture fails before any eval runs.
+
+Nine of the ten adversarial states in `spec/VERIFICATION.md` are seeded. The tenth,
+technical leakage into a product page, is not: `wfctl knowledge validate` refuses a
+product view containing inline code or identifiers, so the state cannot exist in a
+valid corpus and belongs in an authoring eval instead.
+
+The corpus carries exactly one deliberate validation failure — a `stable` page whose
+content changed after its receipt was sealed. That is the stale-receipt case, and
+the compiled graph is built before the page is broken, so the session brief still
+describes the whole corpus. Every other error from `wfctl knowledge validate` in a
+fresh fixture is a defect in the fixture or the validator.
+
 ## Running a suite
 
 The corpora are executed against a real agent, not by this repository — no
