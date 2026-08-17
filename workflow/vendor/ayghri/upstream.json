@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "source": {
+    "repository": "https://github.com/ayghri/i-have-adhd.git",
+    "revision": "2ed064090711586e0c97a2fbbf15465fe8f1808b",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Ayoub Ghriss"
+  },
+  "reviewedAt": "2026-08-17",
+  "distribution": {
+    "strategy": "adapted-upstream-structure",
+    "installOriginalSuite": false,
+    "fetchMutableUpstreamAtInstall": false
+  },
+  "method": {
+    "rule": "Adapt the upstream text; do not paraphrase it. What is taken here is the structure, and it is taken whole: a model of the reader that the rules are derived from, numbered rules each carrying a Bad and a Good, a named list of overrides, a persistence clause, and a mechanical pre-send check. The rules themselves are this project's own, because the reader is a maintainer deciding about their product rather than a developer being handed a task. Upstream sentences are kept verbatim where they say the thing better than a rewrite would.",
+    "reviewNote": "The local rule held the same material in prose: rationale without examples, judgement without a checklist, and no statement that it still applies on the fortieth turn. Under the pressure of a fresh finding the judgement lost. This structure is the part that holds."
+  },
+  "derivations": [
+    {
+      "upstream": ["skills/i-have-adhd/SKILL.md"],
+      "local": [".claude/rules/maintainer-review.md"],
+      "relationship": "adapted-structure",
+      "retained": [
+        "a model of the reader stated first, from which the rules are derived",
+        "numbered rules, each with a Bad and a Good",
+        "lead with what the reader can act on, never with what you were doing",
+        "cap a list rather than letting it grow",
+        "matter-of-fact tone for failures: cause and fix, no alarm",
+        "no preamble, no recap, no closing pleasantries",
+        "a named list of overrides rather than an implied one",
+        "the override for a rule that fights the harness",
+        "the override for a rule that would delete the answer itself",
+        "persistence: the rules do not lapse when the topic changes, and if you are unsure whether they still apply, they do",
+        "a pre-send check that deletes named things and then verifies"
+      ],
+      "modified": [
+        "the reader is a maintainer deciding about their product, not a developer receiving a task, so the reader model states what they cannot see rather than what they cannot hold",
+        "time estimates are dropped: a gate has no human clock",
+        "restating state every turn is dropped as prose, because the checkpoint and wfctl brief already carry it durably and a second copy is a second thing to keep true",
+        "the ten rules are this project's own: the reader test, the substitution rule, one decision per packet, wfctl knowledge decided, re-establishing the subject, rendering rather than composing, never reporting by count, and keeping the blocker true"
+      ]
+    }
+  ],
+  "notInstalled": [
+    {
+      "upstream": "the skill as a skill",
+      "reason": "This is a standing rule rather than something the maintainer switches on. It is loaded before project work, not invoked."
+    }
+  ]
+}

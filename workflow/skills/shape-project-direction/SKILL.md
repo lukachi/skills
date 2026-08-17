@@ -57,6 +57,11 @@ The map body is the whole map at low resolution, loaded once per session:
 
 Open issues are not listed on the map. `wfctl work map status <id>` finds them.
 
+When you put the map to the maintainer — the route so far, what blocks what, where
+the fog still is — draw it with `show-project-work` rather than listing it. A route
+is a shape, and a maintainer can see a wrong edge in a tree where they cannot find
+one in a paragraph.
+
 Each issue's body is the question, sized to one fresh agent session. The answer is
 not part of the body; it is recorded on resolution.
 

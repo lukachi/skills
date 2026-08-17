@@ -29,10 +29,11 @@ which reads as a status report and gets answered as none of them. Keep the
 format: one numbered question per decision, each with its recommendation, and
 nothing else in the message.
 
-Every question is read by someone who was not watching, so the reader test in
-`maintainer-review` governs each one: they should not have to look anything up to
-answer it. Name the thing in the product's own language and put the identifier
-after it, if at all.
+Every question is read by someone who was not watching, so `maintainer-review`
+governs each one. Where a question is about a shape — how something flows, what
+sits where, what a change moves — draw it with `show-project-work` and ask
+underneath the drawing. A maintainer can point at a wrong node in a tree; they
+cannot point at a wrong clause in a paragraph.
 
 Each round of answers reshapes the tree: settled decisions push the frontier
 outward and unblock questions that depended on them. Recompute the frontier and

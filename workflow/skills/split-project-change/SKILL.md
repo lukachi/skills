@@ -52,13 +52,16 @@ issue; green is promised only there.
 
 ## 4. Quiz the maintainer
 
-Present the proposed breakdown as a numbered list. For each issue show:
+A breakdown is a graph, so draw it rather than describing it — a dependency tree
+through `show-project-work`, with each node named by what it delivers. For each
+issue show:
 
 - **Title** — a short descriptive name.
 - **Blocked by** — which other issues must complete first, by name.
 - **What it delivers** — the end-to-end behaviour this issue makes work.
 
-Then ask them:
+Then ask them, as one numbered round with your own answer on each rather than
+three turns:
 
 - Does the granularity feel right — too coarse, too fine?
 - Are the blocking edges correct: does each issue depend only on issues that

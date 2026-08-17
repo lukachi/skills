@@ -253,13 +253,13 @@ repository. Use Graphify to navigate relationships, then inspect the actual
 source and checks. Do not build or query a Graphify graph for raw Markdown.
 
 When chronology, intent, or authority remains ambiguous, show the maintainer a
-compact packet containing the candidate, supporting and conflicting
-observations, the missing fact, and a recommendation. The packet is
-maintainer-facing: the reader test in `maintainer-review` applies to every
-sentence, and the candidate is named by what it says rather than by its id. Record their explicit
-answer or keep the candidate unresolved outside `knowledge/`.
+compact packet containing the candidate, the missing fact, and a recommendation.
+It is maintainer-facing, so `maintainer-review` governs it. Record their explicit
+answer or keep the candidate unresolved outside `knowledge/`. Where the
+disagreement is about order or sequence, draw it with `show-project-work`: two
+chronologies compared in prose are two things nobody can hold at once.
 
-Re-establish the subject first, as `maintainer-review` requires, and rebuild it
+Re-establish the subject first, and rebuild it
 from the material rather than from the candidate row: re-read the frozen sources
 that mention it — every one, not only the source the candidate cites — and check
 the current implementation where one exists. Then gather every candidate about
@@ -339,10 +339,9 @@ turns out to answer, and record that it was answered.
 10. Run `wfctl knowledge raw inventory` again. A later change to the same raw
     path has a different blob ID and returns as `changed`; never mutate the
     earlier case or mark a path permanently processed.
-11. Refresh the human-readable intake frontier and state the next recommended
-    batch, blocker, or honest completion condition. Human-readable means the
-    reader test in `maintainer-review`: a batch is named by what it covers, not
-    by its case id, and a blocker by what is missing, not by which gate failed.
+11. Refresh the intake frontier and state the next recommended batch, blocker, or
+    honest completion condition. It is maintainer-facing, so `maintainer-review`
+    governs it.
 
 For a reconstruction snapshot, repeat bounded cases until the frozen-baseline
 inventory reports only `reviewed` or `no-relevant-claims` entries. Do not widen

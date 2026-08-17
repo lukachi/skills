@@ -14,7 +14,15 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
 - Use QMD from the knowledge repository for Markdown retrieval. Treat its
   index, ranking, and snippets as navigation only; verify by direct reading and
   authoritative sources.
-- Present bounded review packets and require explicit maintainer decisions at the gates defined by the workflow.
+- Two decisions are the maintainer's. What the work is, before it starts: render
+  it with `wfctl work ask <id>` and record it with `wfctl work approve <id>
+  --stage framing`. What the project says about itself afterwards: render the
+  pages with `--stage promotion` and write them with `wfctl work promote <id>`.
+  Closure is neither. `maintainer-review` owns how every message to them is
+  written — read it rather than restating it from memory.
+- When the answer is a structure — a flow, a layout, a sequence, or a change to
+  one — draw it with `show-project-work` rather than describing it. Shortening a
+  description loses the substance; replacing it with the shape keeps all of it.
 - Approving a framing settles what the work is, never that it begins. When the
   maintainer approves and says starting is premature — including approving only
   to clear their queue — record both: `wfctl work approve ... --park "<why>"`.
@@ -23,62 +31,24 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   a different question, and never from the reconstruction or blocker that held
   it having since cleared: the condition ending is not the same as being told to
   go.
-- Ask the maintainer two things, and closure is neither of them. A framing, with
-  `wfctl work ask <id>`: what gets done, what deliberately does not, what makes it
-  finished, in what order. A promotion, with `--stage promotion`: the pages this
-  work would write into curated knowledge, in full, and what each replaces. Both
-  are rendered from the record rather than composed; when a render reads wrong,
-  repair the record it read, because a packet edited by hand is composed again
-  and composed is what put file paths and criterion ids in front of them.
-- Close finished work yourself. Whether the criteria are met, the receipts carry
-  evidence and the revisions are pinned is what the gates already check, and
-  asking the maintainer to confirm arithmetic is not a decision. One night this
-  cost seven hours and fifty-four minutes: two of four approved bundles were
-  delivered in an hour, stopped at a gate only a sleeping person could open, and
-  the other two were never started. Closure returns to them in exactly one case,
-  and the tool names it: delivery no longer matches the framing they approved,
-  because the criteria were reworded or work was dropped from the route.
+- Close finished work yourself. The gates check whether the criteria are met, the
+  receipts carry evidence and the revisions are pinned, and asking the maintainer
+  to confirm arithmetic is not a decision. One night this cost seven hours and
+  fifty-four minutes. Closure returns to them in exactly one case, and the tool
+  names it: delivery no longer matches the framing they approved.
 - Draft the curated pages before closing, under the bundle's `promotion/`
   directory, at the path each will occupy inside `knowledge/`. Then run `wfctl
-  work promotion <id>`, which records them from what is on disk, or `--none
-  "<why>"` when this work changes nothing the project says about itself. A closed
-  bundle holding pages waits in the promotion queue rather than archiving, and
-  `wfctl work promote <id>` writes them on the maintainer's word.
-- Record approvals with the commands, never by editing `maintainer_review`; a
-  hand-written receipt fails verification. Pass `--attested "<their answer, word
-  for word>" --session "<where they said it>"` when they answered in the session,
-  which is the ordinary case. Do not send them to a second terminal: retyping a
-  generated bundle id, a stage name and their own identity records no decision
-  the attestation does not. A typed confirmation or `--token` remains available
-  and is theirs to ask for, never your default.
+  work promotion <id>`, or `--none "<why>"` when this work changes nothing the
+  project says about itself. A closed bundle holding pages waits in the promotion
+  queue rather than archiving.
+- Record what they answered where they answered it: `--attested "<their answer,
+  word for word>" --session "<where they said it>"`. A hand-written
+  `maintainer_review` receipt fails verification, and a second terminal records
+  nothing the attestation does not.
 - Run `wfctl knowledge decided "<subject>"` before putting any question to the
   maintainer, whatever route you are on. It reads the four places an answer lands
-  — a promoted page, the bundle that asked, a resolved map, a capture — plus work
-  already delivered, and reports the date and their own words. Most answers are
-  not on a page, so a search of curated knowledge alone finds nothing and reads
-  like a question nobody has answered. On a bundle, `--record <id>` writes the
-  result into the framing, which the framing gate requires.
-- Ask one material question at a time, include a recommendation, and update
-  the durable record before continuing. Before sending, draft their one-line
-  reply in their own voice: if the only answer that fits is "which one?", you
-  wrote a status line and the question is still missing. Saying that something
-  waits on them is not asking. A count fails this test and so does a category —
-  "the boundaries", "your word on the shape" — while an alternative with its
-  consequence passes. It is a test rather than a list of phrases, because the
-  failure is identical in every language.
-- Write to a maintainer who was not watching. They did not see the tool calls,
-  the gate that refused, or the file you fixed on the way. One message carries
-  three things and stops: what is true now, what you need from them, what
-  happens next without them. Proof that the work happened goes in the record —
-  discovery ledger, checkpoint, review receipts, blocker. Cut any remaining
-  sentence and ask whether it changes what they do next. A table is for an
-  answer that turns on a comparison, and is not the shape of a status report.
-  Keep every such message in the product's own language, a blocker and a status
-  line included. Identifiers the workflow generated mean nothing outside the
-  records that define them — acceptance criteria, issue and discovery numbers,
-  workstream and packet names, candidate ids, record slugs. Name the thing first
-  and attach the identifier after it, if at all: "the approval gate the tests
-  cannot open (AC-04)", never "blocked on AC-04".
+  and reports the date and their own words. On a bundle, `--record <id>` writes
+  the result into the framing, which the framing gate requires.
 - Preserve uncertainty and report missing evidence instead of guessing.
 - Execute required `wfctl` commands yourself when tool access permits. Do not
   delegate routine CLI operation, spec editing, or record maintenance to the

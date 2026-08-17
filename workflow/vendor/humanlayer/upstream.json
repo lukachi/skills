@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 2,
+  "source": {
+    "repository": "https://github.com/humanlayer/skills.git",
+    "revision": "3c2629142c5d437428269b1b722b08c0b87f574d",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 HumanLayer"
+  },
+  "reviewedAt": "2026-08-17",
+  "distribution": {
+    "strategy": "adapted-upstream-skills",
+    "installOriginalSuite": false,
+    "fetchMutableUpstreamAtInstall": false
+  },
+  "method": {
+    "rule": "Adapt the upstream text; do not paraphrase it. The formats and their worked examples are the skill: an example rewritten into this project's own nouns stops being an example of a format and becomes an example of this project, which is the failure mode that produced the corpus this replaces. Every example is kept as upstream wrote it, and only what the workflow changes is edited: where a generated artifact is written, and that a rendered gate packet is never replaced by a visual.",
+    "reviewNote": "Adopted because the local corpus taught one method of writing to the maintainer — subtraction — and named its own failure mode for it. `maintainer-review` documented `emptied prose` and offered no third option. A format is the third option, and no local skill carried one."
+  },
+  "derivations": [
+    {
+      "upstream": ["plugins/show-me/skills/show-me/SKILL.md"],
+      "local": ["skills/show-project-work/SKILL.md"],
+      "relationship": "adapted",
+      "verbatimExamples": true,
+      "retained": [
+        "skip the preamble and keep prose brief",
+        "pick the smallest view that makes the key point clear",
+        "pseudocode for logic and algorithms",
+        "call tree for runtime control flow",
+        "component tree with the state and module boundaries that matter",
+        "shallow file tree for responsibility and broad refactors",
+        "mermaid for interaction, control flow and data flow",
+        "diff when the point is what changes, matched to the topic",
+        "the four diff shapes: component, file layout, call tree, control flow",
+        "whole block when most of it is new or the reader needs a copyable target",
+        "one focused HTML file for what is too dense for mermaid",
+        "place each visual next to the short text it supports",
+        "keep only what answers the current question",
+        "you may use one, you may use several, it is unlikely you will use all"
+      ],
+      "modified": [
+        "a generated HTML artifact is written under the bundle's artifacts/ directory and linked from the owning record, rather than left loose",
+        "a packet rendered by wfctl work ask is never replaced by a visual; the visual goes beside it",
+        "the reader test in maintainer-review governs the prose that carries the visual"
+      ]
+    }
+  ],
+  "notInstalled": [
+    {
+      "upstream": "plugins/design-control-loop",
+      "reason": "Control-loop authoring is not a maintainer-communication concern."
+    },
+    {
+      "upstream": "plugins/build-iterated-agentic-loop",
+      "reason": "Agent-harness authoring, outside this workflow's scope."
+    },
+    {
+      "upstream": "plugins/improve-claude-md",
+      "reason": "wfctl owns its managed instruction block; a second editor of the same file would fight it."
+    },
+    {
+      "upstream": "plugins/narrow-react-prop-types",
+      "reason": "Language-specific refactor, unrelated."
+    }
+  ],
+  "relatedReading": [
+    {
+      "source": "https://github.com/humanlayer/advanced-context-engineering-for-coding-agents/blob/main/wsff.md#program-design",
+      "note": "The reasoning behind the formats: a call-stack tree, a file-tree diff and a signature sketch each settle a decision that would otherwise be made implicitly during review, which is the most expensive time to change your mind. This workflow's framing gate exists for the same reason."
+    }
+  ]
+}

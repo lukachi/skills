@@ -78,6 +78,12 @@ cleaned. **Do not merge or rerank the findings.** End with one line: total findi
 per axis, and the worst issue _within each axis_. Do not pick a single winner
 across axes — that is the reranking the separation exists to prevent.
 
+Where a finding is about structure rather than a line — a call path that now goes
+somewhere else, a responsibility that moved between files, a state machine that
+gained a branch — draw it through `show-project-work`. A diff of the shape is
+what makes a structural finding arguable; the same finding in prose gets agreed
+with and not understood.
+
 ### Why two axes
 
 A change can pass one and fail the other. Code that follows every standard and

@@ -192,20 +192,11 @@ Then add the two parts no record holds:
 
 ### The two parts you write obey the same line
 
-Apply the reader test from `maintainer-review` to every sentence you add:
-
-> Would the maintainer have to look something up to understand this?
-
-The rendered part cannot fail it, because the renderer never reads an address. The
-proposal and the cost are yours, composed freely, and that is exactly where the
-failure lands: a message written from your working context carries file names as
-evidence, record ids as subjects, and schema values as categories, while the
-records behind it were written in product language and are clean.
-
-Do not over-correct into emptiness. Dropping the substance along with the address
-produces a sentence nobody can decide on either. Say what the thing does for the
-product, with enough in it to be judged, and leave the pointer in the record where
-it is load bearing.
+The rendered part cannot fail `maintainer-review`, because the renderer never
+reads an address. The proposal and the cost are yours, composed freely, and that
+is exactly where the failure lands: a message written from your working context
+carries file names as evidence and record ids as subjects, while the records
+behind it are clean.
 
 If a sentence genuinely cannot be written without naming a file, that is a finding
 about the product having no name for the thing — record it as one.

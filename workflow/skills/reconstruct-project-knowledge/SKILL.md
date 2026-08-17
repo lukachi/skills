@@ -27,9 +27,8 @@ authority, review, or a source choice that cannot be resolved safely.
 ## Show the reconstruction frontier
 
 At start, resume, after each repository pass, and before maintainer review,
-present one compact frontier derived from the case and CLI coverage ledgers.
-This is read by the maintainer, so name subjects rather than case identifiers,
-and counts rather than record slugs:
+present one compact frontier derived from the case and CLI coverage ledgers. It
+is maintainer-facing, so `maintainer-review` governs it:
 
 - exact case mode and frozen repository revisions;
 - each repository's remaining files, Graphify communities, and runtime
@@ -257,15 +256,11 @@ before the first repository pass and whenever a disposition must be recorded.
    `rejected`, or run a normal decision/change workflow when the maintainer
    wants to adopt it.
 7. Ask the maintainer to adjudicate product meaning, rationale, ownership,
-   accepted architecture, and ambiguous chronology. Present claim, evidence,
-   conflicts, recommendation, and requested decision, written for the product
-   owner as `maintainer-review` requires: what the product does today in its own
-   language, what is in doubt as a product question, what each answer records,
-   the recommendation, then the evidence last. A reconstruction packet is the
-   worst offender here, because the investigation that produced the claim is
-   fresh and the temptation is to lead with it. Adjudication asks whether the
-   project meant this, and no amount of pinned evidence answers that question
-   for the maintainer.
+   accepted architecture, and ambiguous chronology. A reconstruction packet is
+   where `maintainer-review` is broken most often, because the investigation
+   that produced the claim is fresh and the pull is to lead with it. Adjudication
+   asks whether the project meant this, and no amount of pinned evidence answers
+   that question for them. The evidence stays in the case.
 
    Re-establish the subject before writing the packet, from the material rather
    than from the candidate record. Read the pinned source that implements it and
@@ -405,14 +400,16 @@ observation layer turns an earlier mistake into evidence.
    `separate-session`, or `maintainer`, plus the actual host run ID when
    applicable. `wfctl knowledge reconstruct check` rejects missing,
    unfinished, unreviewed, unreferenced, or path-leaking workstreams.
-8. Present the maintainer a baseline review packet — **maintainer-facing, so the
-   report shape in `maintainer-review` governs every sentence in it**: current
-   intended product, observed implementation, alignment and drift, reconstructed
-   evolution with confidence limits, unknowns, and the human reading path. This
-   is the one packet that is legitimately a document, because a picture of the
-   whole project is what they asked for. It still opens with what the reading
+8. Present the maintainer a baseline review packet: current intended product,
+   observed implementation, alignment and drift, reconstructed evolution with
+   confidence limits, unknowns, and the human reading path. This is the one
+   packet that is legitimately a document, because a picture of the whole project
+   is what they asked for — it is the first override in `maintainer-review`, and
+   the only one that lifts the length rule. It still opens with what the reading
    established and what it could not, and those six parts follow that opening
-   rather than stand in for it.
+   rather than stand in for it. A project map is a shape: draw the Areas, their
+   ownership and their delivery state through `show-project-work` rather than
+   listing them in prose.
    Include the final frontier and require every requested completion blocker
    to be zero or explicitly represented by an honest partial outcome.
 9. Record explicit `maintainer_review` approval, then close:

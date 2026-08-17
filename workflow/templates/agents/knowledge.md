@@ -107,8 +107,9 @@ the complete durable records before continuing.
 Use `shape-project-direction` for an explicitly selected broad initiative whose
 dependent decisions are not yet bounded enough for implementation planning.
 Keep one Wayfinder map and its question issues in the same central bundle later
-used for delivery. Ask one focused question at a time, synthesize the resolved
-map with `specify-project-change`, and do not edit source.
+used for delivery. Resolve one issue per session, interviewing through
+`grill-project-decisions` rather than asking one question per turn, then
+synthesize the resolved map with `specify-project-change`. Do not edit source.
 
 Use `research-project-context` for an explicit material external evidence gap.
 Prefer primary sources and retain the synthesis as a candidate until normal

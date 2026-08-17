@@ -63,7 +63,7 @@ starts here when one bundle must bind several explicit leaf worktrees.
 If the initiative is too broad to define honest acceptance criteria, the agent
 first uses Wayfinder in that same bundle. `map.md` keeps the destination, fog,
 resolved-route pointers, and out-of-scope boundaries; precise questions become
-claimable issues. It asks one question at a time and does not write source code.
+claimable issues. It interviews you a round at a time and writes no source code.
 Once the route is clear, the agent reads every resolution, synthesizes the
 normal specification, and only then continues through delivery.
 

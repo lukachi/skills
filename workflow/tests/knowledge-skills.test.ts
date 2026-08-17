@@ -635,3 +635,174 @@ test("verification guide separates natural discovery from authoring conformance"
   assert.match(guide, /wfctl work context --stage resume/);
   assert.match(guide, /bottom canaries/i);
 });
+
+test("the maintainer-review rule keeps the structure that survives a long session", async () => {
+  const rule = await readFile(join(root, ".claude/rules/maintainer-review.md"), "utf8");
+  // Prose assertions run against a whitespace-flattened copy so a reflowed
+  // paragraph does not read as a deleted rule.
+  const flat = rule.replace(/\s+/g, " ");
+
+  // The rules are derived from a reader, not asserted. Upstream's own ordering.
+  assert.match(flat, /## What the maintainer cannot see/);
+  assert.match(flat, /They did not watch/i);
+  assert.match(flat, /hold no identifier you generated/i);
+
+  // Ten numbered rules, and every one of them carries a worked pair. A rule
+  // without an example is the shape the corpus already failed in.
+  const sections = rule.split(/\n### /).slice(1);
+  const numbered = sections.filter((section) => /^\d+\. /.test(section));
+  assert.equal(numbered.length, 10, "maintainer-review must carry ten numbered rules");
+  for (const section of numbered) {
+    const title = section.split("\n")[0]!;
+    assert.match(section, /\bBad\b/, `rule "${title}" has no Bad example`);
+    assert.match(section, /\bGood\b/, `rule "${title}" has no Good example`);
+  }
+
+  // The reader test, and both ways of failing it.
+  assert.match(flat, /Would they have to look something up to understand this\?/);
+  assert.match(flat, /addressed prose/i);
+  assert.match(flat, /emptied prose/i);
+
+  // Substitution, which is what stops the reader test producing emptied prose.
+  assert.match(flat, /Show the shape rather than describe it/i);
+  assert.match(flat, /show-project-work/);
+
+  // A numbered interview round is not several packets stacked in one message.
+  assert.match(flat, /One decision per packet/i);
+  assert.match(flat, /A numbered round of questions is not this/i);
+
+  // Named overrides rather than implied ones.
+  assert.match(flat, /## When to break them/);
+  assert.match(flat, /They repeated the question/i);
+  assert.match(flat, /A rule would delete the answer/i);
+  assert.match(flat, /A rule fights a gate/i);
+
+  // The register switches itself off; it does not wait to be asked.
+  assert.match(flat, /## Auto-clarity/);
+  assert.match(flat, /irreversible action is being described/i);
+  assert.match(flat, /answered a packet with a question instead of a decision/i);
+  assert.match(flat, /Never announce the switch/i);
+
+  // A mechanical check, because judgement is what loses under pressure.
+  assert.match(flat, /## Before you send/);
+  assert.match(flat, /if they read only the first line and the last line/i);
+
+  // The clause that resolves drift on turn forty.
+  assert.match(flat, /## Persistence/);
+  assert.match(flat, /If you are unsure whether they still apply, they do/i);
+  assert.match(flat, /Write in the language the maintainer writes in/i);
+
+  // The gates, and the arithmetic that is not one.
+  assert.match(flat, /Closure is arithmetic, so close it/i);
+  assert.match(flat, /seven hours and fifty-four minutes/);
+  assert.match(flat, /Promotion is the gate that compounds/i);
+  assert.match(flat, /A release is never inferred/i);
+});
+
+test("show-project-work carries every format, not a description of them", async () => {
+  const skill = await readFile(join(root, "skills/show-project-work/SKILL.md"), "utf8");
+
+  // Each format is present as a worked example. An example rewritten into this
+  // project's nouns stops demonstrating a format, so these stay as upstream wrote
+  // them and the assertions name the example rather than the label.
+  assert.match(skill, /```text\non\(save\)/);
+  assert.match(skill, /```text\nsubmitForm\n  createSession/);
+  assert.match(skill, /```tsx\n<SessionPage>/);
+  assert.match(skill, /```text\nsrc\/\n├── commands\//);
+  assert.match(skill, /```mermaid\nsequenceDiagram/);
+  assert.match(skill, /```ts\nfunction expandSkill/);
+
+  // Four diff shapes, matched to the topic rather than one generic diff.
+  const diffs = skill.match(/```diff\n/g) ?? [];
+  assert.equal(diffs.length, 4, "the four diff shapes must all be present");
+  assert.match(skill, /For a component change/);
+  assert.match(skill, /For a file-layout change/);
+  assert.match(skill, /For a call-tree or call-stack change/);
+  assert.match(skill, /For a state or control-flow change/);
+
+  // Upstream's judgement clause, which is what stops this becoming decoration.
+  assert.match(skill, /Pick the smallest view that makes the key point clear/);
+  assert.match(skill, /it is unlikely you will use all of\s+them/);
+
+  // What this workflow changes, and nothing else.
+  assert.match(skill, /artifacts\//);
+  assert.match(skill, /A rendered packet is never replaced by a visual/i);
+  assert.match(skill, /wfctl work ask/);
+});
+
+test("the maintainer's own entry points persist rather than firing once", async () => {
+  const waitWhat = await readFile(join(root, "skills/wait-what/SKILL.md"), "utf8");
+  assert.match(waitWhat, /^disable-model-invocation:\s*true$/m);
+  assert.match(waitWhat, /ASD-STE100/);
+  assert.match(waitWhat, /Then stay in this register/i);
+  assert.match(waitWhat, /not for this message/i);
+  assert.match(waitWhat, /normal mode/);
+  assert.match(waitWhat, /show-project-work/);
+
+  const grillMe = await readFile(join(root, "skills/grill-me/SKILL.md"), "utf8");
+  assert.match(grillMe, /^disable-model-invocation:\s*true$/m);
+});
+
+test("nothing in the corpus still asks for one question per turn while shaping", async () => {
+  // The interview asks a whole numbered round. Four files used to contradict it,
+  // including the rule whose entire job is to license asking during shaping.
+  const shapingSurfaces = [
+    ".claude/rules/execution-continuity.md",
+    ".claude/rules/maintainer-review.md",
+    "templates/agents/common.md",
+    "templates/agents/knowledge.md",
+    "templates/guides/common.md",
+    "templates/guides/knowledge.md",
+    "skills/shape-project-direction/SKILL.md",
+    "skills/specify-project-change/SKILL.md",
+    "skills/split-project-change/SKILL.md",
+  ];
+  for (const path of shapingSurfaces) {
+    const content = await readFile(join(root, path), "utf8");
+    assert.doesNotMatch(
+      content,
+      /(ask|asks|asking) one (material |focused )?question(s)? at a time|asks one at a time/i,
+      `${path} still asks for one question at a time`,
+    );
+  }
+
+  const grill = await readFile(join(root, "skills/grill-project-decisions/SKILL.md"), "utf8");
+  assert.match(grill, /Ask the whole frontier in one round/i);
+
+  const continuity = await readFile(join(root, ".claude/rules/execution-continuity.md"), "utf8");
+  assert.match(continuity, /a whole\s+numbered round of them at once is correct/i);
+});
+
+test("every adapted upstream is pinned, licensed, and declared", async () => {
+  const upstreams = [
+    { dir: "mattpocock", copyright: /Matt Pocock/, marker: /mattpocock\/skills/ },
+    { dir: "humanlayer", copyright: /HumanLayer/, marker: /humanlayer\/skills/ },
+    { dir: "ayghri", copyright: /Ayoub Ghriss/, marker: /i-have-adhd/ },
+    { dir: "juliusbrussee", copyright: /Julius Brussee/, marker: /caveman/ },
+  ];
+  const thirdParty = await readFile(join(root, "THIRD_PARTY.md"), "utf8");
+  for (const upstream of upstreams) {
+    const manifest = JSON.parse(await readFile(
+      join(root, "vendor", upstream.dir, "upstream.json"),
+      "utf8",
+    )) as {
+      source: { revision: string; license: string };
+      method: { rule: string };
+      distribution: { installOriginalSuite: boolean; fetchMutableUpstreamAtInstall: boolean };
+      derivations: Array<{ upstream: string[]; local: string[]; relationship: string }>;
+    };
+    assert.match(manifest.source.revision, /^[0-9a-f]{40}$/, `${upstream.dir} is not pinned`);
+    assert.equal(manifest.distribution.installOriginalSuite, false);
+    assert.equal(manifest.distribution.fetchMutableUpstreamAtInstall, false);
+    assert.ok(manifest.derivations.length > 0, `${upstream.dir} declares no derivation`);
+    for (const derivation of manifest.derivations) {
+      assert.ok(derivation.upstream.length > 0);
+      assert.ok(derivation.local.length > 0);
+    }
+    // The rule that the last paraphrase was recorded as satisfying.
+    assert.match(manifest.method.rule, /paraphrase/i, `${upstream.dir} states no method`);
+    const license = await readFile(join(root, "vendor", upstream.dir, "LICENSE"), "utf8");
+    assert.match(license, upstream.copyright);
+    assert.match(thirdParty, upstream.marker);
+  }
+});

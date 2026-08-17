@@ -2,8 +2,10 @@
 
 This applies while executing accepted work: a claimed issue, an approved scope,
 a frozen frontier. It does not apply while shaping, specifying, or grilling a
-decision with the maintainer. There the question count should be high, one
-focused question at a time is correct, and stopping to ask is the work itself.
+decision with the maintainer. There the question count should be high, a whole
+numbered round of them at once is correct, and stopping to ask is the work
+itself. `grill-project-decisions` owns that mode; `maintainer-review` owns how
+any of it is written.
 
 Ending a turn is an act, not a default. The whole corpus says how to ask the
 maintainer and nothing says when not to, so an unowned pause reads as safe when

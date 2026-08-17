@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 2,
+  "source": {
+    "repository": "https://github.com/JuliusBrussee/caveman.git",
+    "revision": "766dce6b1394ebb56a3090748d5a0240a5aefb36",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Julius Brussee",
+    "licenseNote": "The repository is split-licensed. Only `skills/` and the adoption surfaces are MIT; the engine, proxy, cache engine, rewriter, browse, MCP server and shrink are BSL-1.1. Nothing under a BSL-1.1 path is read, derived from, or referenced here."
+  },
+  "reviewedAt": "2026-08-17",
+  "distribution": {
+    "strategy": "adapted-upstream-mechanisms",
+    "installOriginalSuite": false,
+    "fetchMutableUpstreamAtInstall": false
+  },
+  "method": {
+    "rule": "Adapt the upstream text; do not paraphrase it. Two mechanisms were taken and the compression they exist to serve was not. Upstream compresses to save tokens; this workflow has no such axis, and its records are all persisted, which upstream itself excludes from compression. What transfers is the shape of a style that knows when to switch itself off, and the discipline that a style may never grow its own output.",
+    "reviewNote": "The local corpus had contracts of silence — where not to speak — and no condition under which the register itself changes. `wait-what` was the only route back to plain language and it required the maintainer to notice and ask."
+  },
+  "derivations": [
+    {
+      "upstream": ["plugins/caveman/skills/caveman/SKILL.md"],
+      "local": [".claude/rules/maintainer-review.md", "skills/wait-what/SKILL.md"],
+      "relationship": "adapted-mechanisms",
+      "retained": [
+        "auto-clarity: named conditions under which the style stops and plain form resumes",
+        "a security warning, an irreversible action, and a multi-step sequence whose order could be misread each suspend the style",
+        "the style suspends when the reader asks to clarify or repeats the question",
+        "resume after the clear part is done",
+        "the style never grows its own output; it is a substitution, never an addition",
+        "false economy is named rather than assumed: a shortening that costs the reader more than it saves is not a shortening",
+        "never drop a negation to be shorter",
+        "boundaries: anything persisted outside the conversation is written in normal prose",
+        "reply in the language the reader writes in, whatever the examples are written in",
+        "no self-reference; never announce the style"
+      ],
+      "modified": [
+        "the axis is comprehension rather than tokens, so no intensity levels are carried: one register switch, held by wait-what",
+        "the persisted-outside-chat boundary is this workflow's record/message line, which it already draws; upstream's two sentences state the rule and the existing table states which side a thing is on",
+        "repeating the question becomes an automatic trigger rather than only a manual one"
+      ]
+    }
+  ],
+  "notInstalled": [
+    {
+      "upstream": "intensity levels (lite, full, ultra, wenyan-*)",
+      "reason": "Graded token compression. A promotion packet cut by 65% costs a decision that compounds."
+    },
+    {
+      "upstream": "skills/caveman-compress",
+      "reason": "It compresses memory files. Every record here is hash-bound, and rewriting one invalidates its receipt."
+    },
+    {
+      "upstream": "the proxy, engine, pixel mode, TOON, CCR",
+      "reason": "Input-token infrastructure, BSL-1.1, and unrelated to what the maintainer reads."
+    }
+  ]
+}

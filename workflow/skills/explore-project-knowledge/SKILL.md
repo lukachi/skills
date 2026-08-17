@@ -62,7 +62,9 @@ the narrowest honest level from ordinary language and continue naturally.
 1. Lead with the current product answer, not file structure or methodology.
 2. On discovery, present a compact project map rather than flattening every
    concept. Group a large corpus into a manageable set of recognizable
-   directions.
+   directions. A map is a shape: draw it with `show-project-work` — the
+   directions, what each owns, and how far each is delivered — rather than
+   narrating it. A newcomer reading prose about eleven Areas retains none of them.
 3. For every item, distinguish verified/current, partial, accepted but absent,
    retired, and unknown. Do not turn missing delivery into missing intent or
    vice versa. Proposed plans are outside current knowledge; route an explicit
