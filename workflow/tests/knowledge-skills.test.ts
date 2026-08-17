@@ -637,7 +637,7 @@ test("verification guide separates natural discovery from authoring conformance"
 });
 
 test("the maintainer-review rule keeps the structure that survives a long session", async () => {
-  const rule = await readFile(join(root, ".claude/rules/maintainer-review.md"), "utf8");
+  const rule = await readFile(join(root, "rules/common/maintainer-review.md"), "utf8");
   // Prose assertions run against a whitespace-flattened copy so a reflowed
   // paragraph does not read as a deleted rule.
   const flat = rule.replace(/\s+/g, " ");
@@ -691,6 +691,14 @@ test("the maintainer-review rule keeps the structure that survives a long sessio
   assert.match(flat, /## Persistence/);
   assert.match(flat, /If you are unsure whether they still apply, they do/i);
   assert.match(flat, /Write in the language the maintainer writes in/i);
+
+  // Recovered content. `.claude/rules/` is a generated copy of this file, and a
+  // rewrite based on a stale one silently dropped both of these once already.
+  assert.match(flat, /Write their reply before you send the message/i);
+  assert.match(flat, /Three records are ready and all three are waiting on you/);
+  assert.match(flat, /an alternative with its consequence/i);
+  assert.match(flat, /rewords faster than any list can be kept/);
+  assert.match(flat, /a wrong page gets rewritten rather than argued for/i);
 
   // The gates, and the arithmetic that is not one.
   assert.match(flat, /Closure is arithmetic, so close it/i);
@@ -747,8 +755,8 @@ test("nothing in the corpus still asks for one question per turn while shaping",
   // The interview asks a whole numbered round. Four files used to contradict it,
   // including the rule whose entire job is to license asking during shaping.
   const shapingSurfaces = [
-    ".claude/rules/execution-continuity.md",
-    ".claude/rules/maintainer-review.md",
+    "rules/common/execution-continuity.md",
+    "rules/common/maintainer-review.md",
     "templates/agents/common.md",
     "templates/agents/knowledge.md",
     "templates/guides/common.md",
@@ -769,7 +777,7 @@ test("nothing in the corpus still asks for one question per turn while shaping",
   const grill = await readFile(join(root, "skills/grill-project-decisions/SKILL.md"), "utf8");
   assert.match(grill, /Ask the whole frontier in one round/i);
 
-  const continuity = await readFile(join(root, ".claude/rules/execution-continuity.md"), "utf8");
+  const continuity = await readFile(join(root, "rules/common/execution-continuity.md"), "utf8");
   assert.match(continuity, /a whole\s+numbered round of them at once is correct/i);
 });
 
