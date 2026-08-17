@@ -5,12 +5,15 @@ description: Perform the mandatory two-axis semantic gate for curated workflow k
 
 # Verify Knowledge Quality
 
-Act as an adversarial review coordinator, not the author defending the draft.
-Truth and communication are different failure surfaces; neither may compensate
-for the other.
+Act as an adversarial review coordinator, not the author defending the draft. Truth
+and communication are different failure surfaces; neither may compensate for the
+other.
 
-Read [the quality rubric](references/quality-rubric.md) before the first review
-in a session.
+`wfctl knowledge validate` is the structural gate and it runs separately. It cannot
+tell whether a claim is true, whether an exception was dropped, or whether a
+stakeholder can act on the answer. That is what these two axes are for:
+[authority and truth](references/authority-review.md), and
+[reader communication](references/reader-communication-review.md).
 
 ## Freeze the review target
 
@@ -18,50 +21,43 @@ in a session.
 2. Read its parent Area index, every linked current product or engineering
    counterpart, every current decision that governs it, and every material
    authoritative source.
-3. For code-backed claims, invoke `analyze-with-graphify` in the exact pinned
-   leaf and directly inspect the cited source, tests, and necessary runtime
-   evidence.
-4. Run `wfctl knowledge validate --concept <path>` and distinguish structural
-   failures from semantic failures. Structural success is necessary but never
-   sufficient. A page still drafted under a bundle's `promotion/` directory has
-   no corpus position yet, so its structural validation runs when it is
-   promoted; a refusal there writes nothing and leaves the page where it is.
-5. Run `wfctl knowledge hash --concept <path>` and pin the candidate content
-   hash before semantic review. The path may be a draft: the hash reads
-   frontmatter and body, never location, and a promoted page is copied byte for
-   byte, so a seal bound to the draft still matches once it lands.
+3. For a code-backed claim, invoke `analyze-with-graphify` in the exact pinned leaf
+   and inspect the cited source, tests, and necessary runtime evidence directly.
+4. Run `wfctl knowledge validate --concept <path>`. Structural success is necessary
+   and never sufficient. A page still drafted under a bundle's `promotion/`
+   directory has no corpus position yet, so its structural validation runs when it
+   is promoted; a refusal there writes nothing and leaves the page where it is.
+5. Run `wfctl knowledge hash --concept <path>` and pin the candidate hash before
+   semantic review. The path may be a draft: the hash reads frontmatter and body,
+   never location, and a promoted page is copied byte for byte, so a seal bound to
+   the draft still matches once it lands.
 
 ## Run two independent axes
 
-1. Apply [the authority and truth review](references/authority-review.md).
-2. Separately apply
-   [the reader communication review](references/reader-communication-review.md)
-   for the declared view and audience.
-3. Use independent reviewer contexts when the runtime safely provides them.
-   Otherwise perform two explicitly separated passes from their own checklists
-   and evidence packets. Do not reuse the first pass's verdict as evidence for
-   the second.
-4. Search across both passes for omitted exceptions, unsupported present
-   tense, mixed audiences, hidden implementation detail, intent inferred from
-   code, history presented as current, and claims broader than evidence.
-5. Return one review packet with:
-   - result: passed or failed;
-   - separate authority-truth and reader-communication results;
-   - each failed, uncertain, unread, or blocked check;
-   - exact evidence and conflicting evidence;
-   - the smallest correction;
-   - authority needed from the maintainer, if any.
-6. Recompute the content hash. If it changed, discard both passes and rerun
-   them on the new revision.
-7. Do not write a passed receipt while any item is failed, uncertain, unread,
-   or blocked.
+1. Apply each axis from its own checklist and its own evidence packet. **Do not
+   reuse the first pass's verdict as evidence for the second** — a strong-evidence
+   page that nobody can read fails, and so does a clear page that claims more than
+   it can prove.
+2. Use independent reviewer contexts where the runtime safely provides them.
+   Otherwise perform two explicitly separated passes.
+3. Search across both for an omitted exception, unsupported present tense, mixed
+   audiences, hidden implementation detail, intent inferred from code, history
+   presented as current, and a claim broader than its evidence.
+4. Return one review packet: the overall result, each axis separately, every failed,
+   uncertain, unread, or blocked check with its evidence and any conflicting
+   evidence, the smallest correction, and the authority still needed from the
+   maintainer.
+5. Recompute the content hash. If it changed, discard both passes and rerun them
+   against the new revision.
+6. Do not write a passed receipt while any item is failed, uncertain, unread, or
+   blocked.
 
 ## Record a passed receipt
 
-After all substantive content is final:
-
-1. Run `wfctl knowledge hash --concept <path>`.
-2. Set:
+After all substantive content is final, run `wfctl knowledge hash --concept <path>`
+and record both axes against that one output. The validator checks every field
+here, including that each axis is `passed`, that both hashes match the current
+content, and that the checks list is complete:
 
 ```yaml
 x-wf:
@@ -81,19 +77,16 @@ x-wf:
         status: passed
         by: "<producer>/<version>"
         at: "<ISO-8601>"
-        content_hash: "<same wfctl knowledge hash output>"
+        content_hash: "<same output>"
       reader-communication:
         status: passed
         by: "<producer>/<version>"
         at: "<ISO-8601>"
-        content_hash: "<same wfctl knowledge hash output>"
+        content_hash: "<same output>"
 ```
 
-3. Use the same hash in the normal `verified` event after the applicable
-   machine or human authority review.
-4. Re-run `wfctl knowledge validate --concept <path>`. A material edit changes
-   the hash and invalidates both receipts.
+Use the same hash in the `verified` event after the applicable machine or human
+authority review, then re-run `wfctl knowledge validate --concept <path>`.
 
 The receipt proves that the declared review was performed against one exact
-document revision. It does not create authority and does not make an incorrect
-review true.
+revision. It creates no authority and does not make an incorrect review true.

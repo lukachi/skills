@@ -1,10 +1,16 @@
 # Product writing contract
 
+The validator already refuses fenced code, inline code, technical identifiers, a
+missing required section, an `Engineering details` section that is not links only,
+a product view without the stakeholder audience, and a realization state that its
+authority does not support. It names the file and the field. This is what it cannot
+check.
+
 ## Reader contract
 
 Write for a product manager, client, maintainer, or domain expert who wants to
-understand what the product does without learning how the software is built.
-The reader should be able to answer:
+understand what the product does without learning how the software is built. The
+reader should be able to answer:
 
 1. What does this provide and why does it matter?
 2. Who uses or depends on it?
@@ -21,67 +27,48 @@ verified product knowledge. Proposed behavior stays in active change records.
 
 - Lead with the current answer.
 - Prefer short concrete sentences and active voice.
-- Use domain language; define necessary terms on first use.
-- Reuse canonical Area terminology. Record aliases and discourage overloaded
-  names rather than silently switching vocabulary.
+- Use domain language and define a necessary term on first use.
+- Reuse canonical Area terminology. Record aliases and discourage an overloaded
+  name rather than silently switching vocabulary.
 - Describe outcomes, choices, state changes, and visible consequences.
 - Preserve conditions, exceptions, and non-goals.
-- Replace internal identifiers with human names.
-- Do not include code fences, inline code, API routes, source paths, data
-  schemas, class or function names, storage mechanisms, package names, or
-  protocol details.
-- Do not say "the system" when the specific product actor or capability is
-  known.
-- Do not call planned behavior current. Pair every present-tense delivery claim
-  with evidence and an explicit realization state.
-
-## Required sections
-
-- `What this provides`
-- `Who it serves`
-- `Domain language`
-- `Current behavior`
-- `Rules and outcomes`
-- `Boundaries and exceptions`
-- `Delivery`
-- `Examples`
-- `Evolution`
-- `Related knowledge`
-- `Engineering details`
+- Replace an internal identifier with the human name for the thing.
+- Name the product actor or capability rather than saying "the system".
+- Pair every present-tense delivery claim with its evidence and an explicit
+  realization state. Planned behavior is not current behavior.
 
 Use `Not applicable` with a short reason rather than deleting a section whose
-absence could hide an unexamined concern. `Engineering details` contains links
-only; it never summarizes implementation.
+absence could hide an unexamined concern.
 
 ## Abstraction test
 
-Fail the product view when any of these are true:
+This is the part no check can make. Fail the product view when any of these are
+true:
 
 - a stakeholder needs engineering knowledge to understand the main answer;
-- replacing an implementation would require rewriting product behavior even
+- replacing an implementation would require rewriting the product explanation even
   though the behavior did not change;
 - technical nouns outnumber product or domain nouns;
 - an important exception disappeared during simplification;
-- the text implies delivery that the realization state or evidence does not
+- the text implies delivery that the realization state or the evidence does not
   support;
 - history overwhelms the current answer;
-- a raw candidate or agent inference appears as authority.
+- a raw candidate or an agent inference appears as authority.
+
+The second one is the sharpest, and the only one a fluent page still fails
+regularly: a page that reads well and describes the implementation's shape rather
+than the product's behaviour passes every other test here.
 
 ## Method basis
 
-The contract combines established boundaries rather than inventing one prose
-style:
-
-- Diátaxis separates documentation by reader need:
-  https://diataxis.fr/
-- Spec Kit keeps product specification focused on what and why, with technical
-  how in a separate plan:
-  https://github.github.com/spec-kit/reference/agentic-sdd.html
-- GOV.UK Content Design starts from user need and plain language:
-  https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/plan-manage-content/understand-content-design/
-- W3C clear-content guidance requires understandable language and structure:
-  https://www.w3.org/WAI/WCAG2/supplemental/objectives/o3-clear-content/
-- Cucumber BDD uses concrete examples to align business and technical meaning:
-  https://cucumber.io/docs/bdd/
-- Domain Storytelling validates domain behavior with domain experts:
-  https://domainstorytelling.org/
+The contract combines established boundaries rather than inventing a prose style:
+[Diátaxis](https://diataxis.fr/) separates documentation by reader need;
+[Spec Kit](https://github.github.com/spec-kit/reference/agentic-sdd.html) keeps the
+what and why apart from the how;
+[GOV.UK Content Design](https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/plan-manage-content/understand-content-design/)
+starts from user need and plain language;
+[W3C clear content](https://www.w3.org/WAI/WCAG2/supplemental/objectives/o3-clear-content/)
+requires understandable language and structure;
+[BDD](https://cucumber.io/docs/bdd/) and
+[Domain Storytelling](https://domainstorytelling.org/) use concrete examples to
+align business and technical meaning.

@@ -8,54 +8,49 @@ description: Author or materially update engineering-facing current knowledge fr
 Write the technical realization of current project truth without duplicating or
 silently redefining product meaning.
 
-Read [the engineering writing contract](references/engineering-writing-contract.md)
-before first-time promotion. Use
+`wfctl knowledge validate` refuses the structural failures, including an
+engineering view that claims product authority rather than linking it. Read
+[the engineering writing contract](references/engineering-writing-contract.md) for
+the separation rules it cannot check. Use
 [the engineering concept template](assets/engineering-concept.md) for a new
 document.
 
 ## Establish the implementation
 
-1. Identify the owning Area, product concepts, repository, and exact clean
-   source revision.
+1. Identify the owning Area, its product concepts, the repository, and the exact
+   clean source revision.
 2. Invoke `analyze-with-graphify` for navigation and relationship coverage.
-3. Directly inspect source, tests, contracts, configuration, and runtime
-   evidence at the pinned revision.
-4. Distinguish implemented behavior, architectural rationale, ownership,
-   contract, policy, history, and external claims. Apply the authority required
-   by each class.
+3. Directly inspect source, tests, contracts, configuration, and runtime evidence
+   at the pinned revision.
+4. Distinguish implemented behavior, architectural rationale, ownership, contract,
+   policy, history, and external claims, and apply the authority each class
+   requires.
 5. Treat code as implementation authority only. Link accepted product meaning;
    never derive it from code.
 
 ## Author the engineering view
 
-1. Declare `view: engineering`, `purpose: technical-realization`, and include
-   `engineer` or `operator` in `audience`.
-2. Explain responsibility, current implementation, ownership boundaries, data
-   and control flow, contracts and invariants, failure behavior, operations,
-   and verification.
-3. Name exact code surfaces only when they help maintenance or verification.
-   Pin material claims to repository, commit, path, and optional symbol.
-4. Link the product concept that gives the implementation meaning. Keep
-   product behavior in that product document and describe only the technical
-   consequence here.
-5. Record partial, absent, accidental, retired, unknown, or drifted delivery
-   honestly. Do not repair intent by rewriting it to match code.
-6. Keep cross-Area architecture at `knowledge/architecture/`, repository
-   ownership at `knowledge/repositories/`, and Area-owned implementation at
-   `knowledge/areas/<area>/implementation/`.
+1. Name exact code surfaces only where they help maintenance or verification, and
+   pin a material claim to its repository, commit, path, and optional symbol.
+   Detail beyond that goes stale faster than anyone updates it.
+2. Record partial, absent, accidental, retired, unknown, or drifted delivery
+   honestly. **Do not repair intent by rewriting it to match the code** — that
+   erases the only record of what the project meant, which is the thing that made
+   the gap visible.
+3. Keep the product explanation in the product document and describe only the
+   technical consequence here.
 
-The path a page occupies is where it will live, whichever route it takes to get
-there. Work from a change bundle writes it under that bundle's `promotion/`
-directory at exactly that path, and the maintainer's word is what copies it into
-`knowledge/`. Work from a reconstruction or intake case writes it into
-`knowledge/` directly, because that promotion is what its closure waits for.
+An engineering page reaches `knowledge/` by whichever route produced it, and the
+gate differs per route:
+[the knowledge model](../curate-project-knowledge/references/knowledge-model.md)
+carries the four and what each one waits on.
 
 ## Verify before stable
 
-1. Invoke `verify-knowledge-quality` after the body and evidence are complete.
-2. Resolve gaps in source coverage, product linkage, failure behavior, and
-   claims that exceed their evidence.
-3. Run `wfctl knowledge hash --concept <path>` and bind the quality receipt and
-   normal verification to that hash.
-4. Run `wfctl knowledge validate`, `wfctl knowledge build`, and `qmd update`.
-5. Do not report completion while any gate fails.
+1. Invoke `verify-knowledge-quality` once the body and its evidence are complete,
+   and resolve gaps in source coverage, product linkage, failure behavior, and any
+   claim that exceeds its evidence.
+2. Run `wfctl knowledge hash --concept <path>` and bind the quality receipt and the
+   verification event to that one hash.
+3. Run `wfctl knowledge validate`, `wfctl knowledge build`, and `qmd update`. Do
+   not report completion while any gate fails.

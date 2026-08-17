@@ -63,7 +63,11 @@ test("knowledge view skills are complete and explicitly routed", async () => {
   const product = contents.get("curate-product-knowledge")!;
   assert.match(product, /Area, capability, use case, product flow/);
   assert.match(product, /client or product manager/);
-  assert.match(product, /never present planned or uncertain\s+behavior as currently available/i);
+  // Behaviour, not wording: planned behaviour may not read as available, and an
+  // exception may not be dropped to make a sentence read well.
+  const flatProduct = product.replace(/\s+/g, " ");
+  assert.match(flatProduct, /present tense only for behavior the declared delivery state supports/i);
+  assert.match(flatProduct, /simplify the wording and never the meaning/i);
 
   const engineering = contents.get("curate-engineering-knowledge")!;
   assert.match(engineering, /architecture, repository ownership/);
@@ -71,7 +75,12 @@ test("knowledge view skills are complete and explicitly routed", async () => {
 
   const quality = contents.get("verify-knowledge-quality")!;
   assert.match(quality, /mandatory two-axis semantic gate/);
-  assert.match(quality, /authority-truth and reader-communication/);
+  // The independence is the gate. A phrase can be reworded; this cannot be dropped
+  // without dropping the mechanism.
+  const flatQuality = quality.replace(/\s+/g, " ");
+  assert.match(flatQuality, /Do not reuse the first pass's verdict as evidence for the second/i);
+  assert.match(quality, /authority-truth/);
+  assert.match(quality, /reader-communication/);
   assert.match(quality, /bind both passes to one unchanged content hash/);
 });
 
@@ -813,4 +822,58 @@ test("every adapted upstream is pinned, licensed, and declared", async () => {
     assert.match(license, upstream.copyright);
     assert.match(thirdParty, upstream.marker);
   }
+});
+
+test("the curation cluster states the four routes and stops restating the validator", async () => {
+  const read = (path: string) => readFile(join(root, "skills", path), "utf8");
+  const model = await read("curate-project-knowledge/references/knowledge-model.md");
+  const flat = model.replace(/\s+/g, " ");
+
+  // The rule the corpus never stated, and the reason a maintainer could not work
+  // out why one route asks them and another does not.
+  assert.match(
+    flat,
+    /a route needs a maintainer gate exactly when it can become a cited authority/i,
+  );
+  for (const route of ["project-change:", "project-reconstruction:", "trajectory-vision:"]) {
+    assert.match(model, new RegExp(route.replace(/[:]/g, "\\$&")));
+  }
+  // An intake case is the one route that gates nothing, because it can authorize
+  // nothing: no source kind names it and curated knowledge may not cite its paths.
+  assert.match(flat, /An intake case becomes nothing/i);
+  assert.match(flat, /cannot be the authority for anything it promotes/i);
+  assert.match(flat, /would ask the maintainer the same question twice/i);
+
+  // Each reference says what the validator already owns, so a reader knows to run
+  // it rather than work from the prose.
+  for (const path of [
+    "curate-project-knowledge/references/knowledge-model.md",
+    "curate-product-knowledge/references/product-writing-contract.md",
+    "curate-engineering-knowledge/references/engineering-writing-contract.md",
+    "verify-knowledge-quality/references/authority-review.md",
+    "verify-knowledge-quality/references/reader-communication-review.md",
+  ]) {
+    assert.match(
+      (await read(path)).replace(/\s+/g, " "),
+      /cannot check|already (?:refuses|checked|enforces)/i,
+      `${path} must say what the validator already owns`,
+    );
+  }
+
+  // The two axes own their own checks; a third file restating both is what made
+  // "run them independently" impossible to follow.
+  await assert.rejects(read("verify-knowledge-quality/references/quality-rubric.md"));
+
+  // The required-section lists belong to the templates and the validator, which
+  // names the missing one. Prose copies of them drifted from both.
+  const contracts = [
+    await read("curate-product-knowledge/references/product-writing-contract.md"),
+    await read("curate-engineering-knowledge/references/engineering-writing-contract.md"),
+  ];
+  for (const contract of contracts) {
+    assert.doesNotMatch(contract, /^## Required sections$/m);
+  }
+  // The path-to-view mapping is enforced by expectedViewForPath, so no document
+  // restates which directory takes which view.
+  assert.doesNotMatch(model, /^- product: `vision\//m);
 });

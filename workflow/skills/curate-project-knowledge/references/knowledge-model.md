@@ -1,247 +1,115 @@
 # Knowledge model
 
-## Surfaces and trust
+What `wfctl knowledge validate` cannot check. It already enforces the view for a
+path, the purpose for a view, the required sections, the authority class a view
+demands, the source-resource formats, the realization enums, the quality checks
+and axes, reciprocal decision lineage, and reachability — and it names the file
+and the field when it refuses. Nothing here restates that. Run it and read what
+it says.
 
-- `raw/`: append-oriented untrusted input; never evidence.
-- `intake/`: Git-frozen raw review records; never current truth or an OKF source.
-- `reconstruction/`: source-first baseline and audit receipts at exact revisions.
-- `changes/active/`: proposed behavior, living execution agreements, and their checkpoints.
-- `changes/archive/`: qualified historical changes and resolved capture receipts.
-- `changes/inbox/`: pending non-authoritative captures awaiting triage.
-- `knowledge/`: curated OKF v0.2 current knowledge and the default reading surface.
-- source repositories: implementation authority at exact revisions.
+## The four routes, and why only three ask the maintainer
 
-QMD retrieves Markdown but never proves truth or coverage. Compiled graphs are
-disposable navigation. Graphify navigates source code but is not authority.
-Every selected source is read directly.
+Four things write into `knowledge/`, and they gate differently:
 
-All lanes converge through one promotion gate: extract atomic candidates,
-verify each against its proper authority, obtain maintainer adjudication for
-normative or ambiguous meaning, update the smallest coherent current concepts,
-verify quality, and validate the bundle.
+| Route | Writes | Maintainer gate |
+| --- | --- | --- |
+| A change bundle | drafts under `promotion/`, copied on their word | before the write, `wfctl work promote` |
+| A reconstruction case | directly, closure waits on it | at closure, `maintainer_review` approved |
+| A trajectory | directly, as a page carrying no accepted intent | at `trajectory declare`, for the direction |
+| An intake case | directly, closure waits on it | none |
 
-## One truth, multiple views
+The rule behind the column: **a route needs a maintainer gate exactly when it can
+become a cited authority.** A bundle becomes `project-change:<id>#<section>`, a
+reconstruction becomes `project-reconstruction:<case>#<candidate>`, a declared
+direction becomes `trajectory-vision:<id>`. An intake case becomes nothing — no
+source kind names it, and curated knowledge may not reference an `intake/` path at
+all.
 
-Product and engineering documents are linked views of the same project, not
-independent truths.
+So an intake case cannot be the authority for anything it promotes. Its candidates
+acquire authority elsewhere first: product meaning from an approved change or
+reconstruction, implementation from pinned code, history from version control plus
+an archived change, an external fact from its primary source. Routing a candidate
+before authoring is forced by that, not by tidiness. Asking an intake case for its
+own approval would ask the maintainer the same question twice.
 
-### Product view
+## Trust, in one place
 
-Use for vision, Areas, capabilities, use cases, cross-Area product flows,
-domain concepts, product rules, delivery summaries, and stakeholder evolution.
-It answers what the product provides, who it serves, how it behaves now, which
-rules and exceptions apply, and whether it is available.
+`raw/` is untrusted input and never evidence. `intake/` and `reconstruction/` are
+operational records. `changes/active/` is a living agreement; `changes/archive/` is
+qualified history. `knowledge/` is the default reading surface. Source
+repositories are implementation authority at an exact revision.
 
-Declare:
+QMD retrieves and never proves. Compiled graphs are disposable navigation.
+Graphify navigates code and is not authority. Every selected source is read
+directly.
 
-```yaml
-view: product
-purpose: current-behavior
-audience: [stakeholder, maintainer, domain-expert]
-```
+## What each view is for
 
-Product bodies contain no implementation detail. Their `Engineering details`
-section contains links only.
+The choice of view is a judgement about the reader, and the path only records it.
 
-### Engineering view
+- **Product** answers what the product provides, who it serves, how it behaves
+  now, which rules and exceptions apply, and whether it is available.
+- **Engineering** answers how that behaviour is realized and verified.
+- **Decision** answers what was chosen and why, and what it replaced.
+- **Reference** carries primary external context.
+- **Uncertainty** carries a live question that trusted current evidence supports.
 
-Use for implementation, architecture, repositories, contracts, data and
-control flow, runtime behavior, operations, and technical constraints. It
-answers how current product behavior is realized and verified.
+Proposed or rejected ideas take no current-knowledge view.
 
-Declare:
+**A standalone decision earns its own page only when all three hold:** the choice
+is hard to reverse, it is surprising without context, and it resolves a real
+tradeoff. Otherwise it belongs in the owning concept, the change ledger, or the
+Area's evolution. A repeated rejection may reveal a durable non-goal, but only an
+explicit maintainer decision promotes that negative rule; the rejected proposal
+stays where it was.
 
-```yaml
-view: engineering
-purpose: technical-realization
-audience: [engineer, operator, maintainer]
-```
+**Code proves observed delivery, never accepted intent and never correctness.**
 
-Engineering documents link product meaning and never infer accepted intent
-from code.
+## Where an artifact belongs
 
-### Decision, reference, and uncertainty views
+`wfctl init` creates the directory shape, and it is the source of truth for what
+exists. What it cannot decide:
 
-- Decisions use `view: decision`, `purpose: decision-history`, and include the
-  maintainer audience.
-- Primary external context uses `view: reference`,
-  `purpose: external-context`.
-- Trusted live questions use `view: uncertainty`, `purpose: open-question`.
+- Do not nest implementation or decisions under a capability because they support
+  it. Link them.
+- Subdivide a typed collection only when its own size requires it.
+- Use a root collection only for honest project-wide ownership. When one Area is
+  primary, store the artifact there and link it from the others.
+- A bounded context is a proven technical model and language boundary. It is not
+  another word for Area.
+- Canonical domain language belongs with the owning Area concept rather than a
+  global glossary. Record the preferred term, its definition, its contextual
+  boundary, accepted aliases, and the names to avoid. Proposed terminology stays
+  in the active change record until product authority accepts it.
 
-Proposed or rejected ideas do not use a current knowledge view.
+## Relations the validator does not know about
 
-Create a standalone decision only when the choice is hard to reverse,
-surprising without context, or resolves a real tradeoff. Keep routine local
-choices in the owning concept, change ledger, or Area evolution. A repeated
-rejection may expose a durable non-goal, but only an explicit maintainer
-decision promotes that negative rule; rejected proposals remain case-only.
+`x-wf.relations` carries the edges a person authored, and nothing checks which
+kind you chose. Use `supports`, `governed-by`, `implemented-by`, `depends-on`,
+`affects`, `conflicts-with`, or `related-to`. Add only material relations, give
+each a meaningful context, and repeat the target as an ordinary Markdown link so
+a reader can follow it.
 
-## Human information architecture
+## What the receipt is worth
 
-- `knowledge/index.md`: progressive project entry point.
-- `vision/`: accepted project purpose, outcomes, principles, and non-goals.
-- `areas/`: primary durable product or functional decomposition.
-- `product/`: concise users, outcomes, Areas, and genuinely cross-Area flows.
-- `architecture/`: cross-Area technical realization.
-- `decisions/`: only genuinely cross-Area decision records.
-- `repositories/`: technical ownership and integration boundaries.
-- `uncertainties/`: trusted unresolved current questions.
-- `references/`: primary external context.
+The material hash excludes `verified` and `x-wf.quality`, so both receipts bind
+the authored content without referring to themselves. Any other material edit
+changes the hash and invalidates both.
 
-Each `areas/<area>/index.md` is the main stakeholder page. It links typed
-sibling collections:
+A quality receipt records that a review happened against one exact revision. It
+creates no authority and does not make an incorrect review true.
 
-```text
-areas/<area>/
-├── index.md
-├── capabilities/     # product
-├── use-cases/        # product
-├── concepts/         # product/domain
-├── rules/            # product
-├── implementation/   # engineering
-├── decisions/        # decision history
-└── log.md             # local chronology
-```
+Authority is claim-specific. Repetition, recency, search rank, and an agent's
+confidence create none of it.
 
-Do not nest implementation and decisions under a capability merely because
-they support it. Link them. Subdivide a typed collection only when its own
-size requires it.
-
-Use root collections only for honest project-wide ownership. When one Area is
-primary, store the artifact there and link it from affected Areas. A bounded
-context is a proven technical model and language boundary, not another word
-for Area.
-
-## Product intent and realization
-
-Document lifecycle and product delivery are independent:
-
-```yaml
-realization:
-  intent: accepted
-  delivery: verified
-  alignment: aligned
-  assessed_at: 2026-07-28T12:00:00Z
-```
-
-- Curated intent is `accepted` or `superseded`.
-- Delivery is `absent`, `partial`, `implemented`, `verified`, `retired`,
-  `unknown`, or `not-applicable`.
-- Alignment is `aligned`, `drifted`, `unknown`, or `not-applicable`.
-
-Concrete delivery requires implementation authority. Concrete alignment
-requires both product and implementation authority. Code proves observed
-delivery, never accepted intent or correctness.
-
-## Authored relations and compiled navigation
-
-Every concept declares `x-wf.relations`. Add only material relations, give
-each a meaningful context, and repeat its target as a normal Markdown link.
-Supported kinds are `supports`, `governed-by`, `implemented-by`, `depends-on`,
-`affects`, `conflicts-with`, and `related-to`.
-
-Area ownership and decision lineage have dedicated metadata and generated
-edges. Stable concepts remain reachable from `knowledge/index.md`.
-`wfctl knowledge build` compiles these explicit statements into ignored
-navigation artifacts; it infers no truth.
-
-## Strict profile over OKF
-
-Every concept requires:
-
-- explicit lifecycle, view, purpose, audience, generation, and authority;
-- non-empty claim-level authoritative sources with matching footnotes;
-- explicit authored relations and valid human-visible links;
-- current verification for stable content;
-- a current semantic quality receipt for stable content;
-- human verification for normative authority;
-- explicit deprecation destination or reason;
-- no raw or intake reference.
-
-Path and view must agree:
-
-- product: `vision/`, `product/`, and Area `capabilities/`, `use-cases/`,
-  `concepts/`, or `rules/`;
-- engineering: `architecture/`, `repositories/`, and Area `implementation/`;
-- decision: root or Area `decisions/`;
-- reference: `references/`;
-- uncertainty: `uncertainties/`.
-
-The validator rejects code and implementation sections in product documents
-and requires their stakeholder sections. It requires technical sections in
-engineering documents. Deterministic checks cannot prove semantic truth, so
-`verify-knowledge-quality` reads the full evidence and records a
-content-hash-bound review.
-
-## Quality receipt
-
-After semantic review, record:
-
-```yaml
-x-wf:
-  relations: []
-  quality:
-    status: passed
-    by: workflow-agent/1
-    at: 2026-07-28T12:00:00Z
-    content_hash: "<wfctl knowledge hash output>"
-    checks:
-      - factuality
-      - audience-fit
-      - abstraction
-      - completeness
-      - delivery-state
-    axes:
-      authority-truth:
-        status: passed
-        by: workflow-agent/1
-        at: 2026-07-28T12:00:00Z
-        content_hash: "<same hash>"
-      reader-communication:
-        status: passed
-        by: workflow-agent/1
-        at: 2026-07-28T12:00:00Z
-        content_hash: "<same hash>"
-```
-
-The material hash excludes `verified` and `x-wf.quality`, allowing both
-receipts to bind the exact authored content without self-reference. Any other
-material edit changes the hash and invalidates both receipts. The quality
-receipt records a review; it creates no authority. Its two axes review
-authority/truth and reader communication independently.
-
-## Authority by claim
-
-- Intent, product meaning, architecture rationale, ownership, contracts,
-  policy, and decisions require maintainer authority.
-- Existing implementation requires pinned source code.
-- Absent delivery may use a reviewed whole-scope reconstruction receipt.
-- History requires pinned version-control evidence plus a reviewed archived
-  change or reconstruction receipt.
-- External facts require primary sources.
-
-Pinned code resources use
-`git:<repository>@<40-character-commit>#<path>[:<symbol>]`.
-Reviewed changes use `project-change:<id>#<section>`.
-Reviewed reconstruction decisions use
-`project-reconstruction:<case-id>#<candidate-id>`.
-
-Authority is claim-specific. Repetition, recency, search rank, and agent
-confidence do not create authority.
-
-## Current truth and evolution
+## Current truth and its lineage
 
 Keep current meaning at one stable path. A changed decision creates a successor
-record and deprecates predecessors through reciprocal lineage. Do not version
-whole Areas.
+and deprecates its predecessor through reciprocal lineage; do not version whole
+Areas.
 
-The product Area index leads with current behavior. Its Evolution section
-summarizes what changed, why, and what it affected. Full decision records keep
-context, exact choice, rationale, alternatives, consequences, transition, open
-questions, and lineage. Area logs provide local chronology without flattening
-hundreds of decisions into one file.
-
-Canonical domain language belongs with the owning Area concept rather than a
-flattened global glossary. Record the preferred term, definition, contextual
-boundary, accepted aliases, and names to avoid. Proposed terminology stays in
-the active change record until product authority accepts it.
+The product Area index leads with current behaviour. Its evolution section says
+what changed, why, and what it affected. A full decision record keeps the context,
+the choice, the rationale, the alternatives, the consequences, the transition, the
+open questions, and the lineage. An Area log carries local chronology so hundreds
+of decisions never flatten into one file.

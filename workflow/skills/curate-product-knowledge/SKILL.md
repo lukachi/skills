@@ -9,81 +9,68 @@ Write the product view of verified project truth. Make it understandable to a
 client or product manager without requiring source code, API, architecture, or
 repository knowledge.
 
-Read [the product writing contract](references/product-writing-contract.md)
-before authoring or materially rewriting a product document. Use
+`wfctl knowledge validate` refuses the structural failures — code in a product
+body, a missing section, an `Engineering details` section that summarizes instead
+of linking, a realization state its authority cannot support. Read
+[the product writing contract](references/product-writing-contract.md) for the
+abstraction test, which is the part no check can make. Use
 [the product concept template](assets/product-concept.md) for a new concept.
 
 ## Establish authority
 
 1. Work from the knowledge root and identify the primary Area.
-2. Read the relevant Area index, product concepts, current decisions, and
-   linked engineering concepts in full.
-3. Separate:
-   - accepted intent and product meaning;
-   - currently observed delivery;
-   - alignment or drift between them;
-   - planned, rejected, superseded, and unknown claims.
+2. Read the relevant Area index, the product concepts, the current decisions, and
+   the linked engineering concepts in full.
+3. Separate accepted intent and product meaning, currently observed delivery,
+   alignment or drift between them, and what is planned, rejected, superseded, or
+   unknown.
 4. Require explicit maintainer authority for intent, product meaning, rules,
    normative ownership, and product decisions.
-5. Require pinned source and fresh checks for delivery claims. Invoke
-   `analyze-with-graphify` in every relevant exact leaf before direct source
-   and test inspection.
-6. Never use raw, intake, search results, a compiled graph, or agent prose as
-   authority.
+5. Require pinned source and fresh checks for a delivery claim. Invoke
+   `analyze-with-graphify` in every relevant exact leaf before inspecting source
+   and tests directly.
 
 ## Author the product view
 
-1. Declare `view: product`, `purpose: current-behavior`, and include
-   `stakeholder` in `audience`.
-2. State the current answer first. Explain what the product provides, who it
-   serves, observable behavior, rules, outcomes, boundaries, exceptions,
-   delivery state, examples, and meaningful evolution.
-3. Use the vocabulary a domain expert or client would use. Explain necessary
-   domain terms on first use.
-   For a `Domain Concept`, explicitly record the canonical term, concise
-   definition, contextual boundary, accepted aliases, and names to avoid.
-   During unresolved discussion, keep proposed terms in the active change
-   record rather than silently changing current vocabulary.
-4. Describe outcomes and behavior, not classes, functions, endpoints, schemas,
-   storage, messages, packages, repositories, or source paths.
-5. Keep `Engineering details` link-only. Put technical explanations in a
-   document authored with `curate-engineering-knowledge`.
-6. Use present tense only for behavior supported by the declared delivery
-   state. Say plainly when a capability is absent, partial, retired, unknown,
-   or accepted but not yet available. Never present planned or uncertain
-   behavior as currently available.
-7. Preserve material exceptions and conditions. Plain language may simplify
-   wording but must not simplify away meaning.
-8. Keep current truth at one stable path. When a decision changes, update the
-   current product explanation and link the decision lineage; do not copy the
-   whole Area into version folders.
-9. Attribute every material claim to an authoritative source with matching
-   source IDs and footnotes. Do not expose machine-local paths.
+1. State the current answer first. Then what the product provides, who it serves,
+   observable behavior, rules, outcomes, boundaries, exceptions, delivery state,
+   examples, and meaningful evolution.
+2. Use the vocabulary a domain expert or client would use, and explain a necessary
+   domain term on first use. For a `Domain Concept`, record the canonical term, a
+   concise definition, the contextual boundary, the accepted aliases, and the names
+   to avoid. While a term is still being argued, keep the proposed version in the
+   active change record rather than silently changing current vocabulary.
+3. Use present tense only for behavior the declared delivery state supports. Say
+   plainly when a capability is absent, partial, retired, unknown, or accepted but
+   not yet available.
+4. Preserve material exceptions and conditions. Plain language may simplify the
+   wording and never the meaning — an exception dropped to make a sentence read
+   well is the failure this whole view exists to prevent.
+5. Attribute every material claim to an authoritative source, and keep
+   machine-local paths out of the document.
 
 ## Area indexes
 
 Treat `knowledge/areas/<area>/index.md` as the primary stakeholder page for an
-Area. Use the Area template owned by `curate-project-knowledge`. Keep it
-product-first and bounded:
+Area, and keep it product-first and bounded:
 
 - summarize rather than flatten every child document;
 - link capabilities, use cases, rules, current decisions, and evolution;
 - show delivery honestly;
 - keep `Engineering details` as links with short nontechnical labels.
 
-The path a page occupies is where it will live, whichever route it takes to get
-there. Work from a change bundle writes it under that bundle's `promotion/`
-directory at exactly that path, and the maintainer's word is what copies it into
-`knowledge/`. Work from a reconstruction or intake case writes it into
-`knowledge/` directly, because that promotion is what its closure waits for.
+An index is navigation rather than a claim about the product, so it reaches
+`knowledge/` on its own: the promotion gate refuses one as a draft.
+[The knowledge model](../curate-project-knowledge/references/knowledge-model.md)
+carries the four routes and which gate each one answers to.
 
 ## Verify before stable
 
-1. Invoke `verify-knowledge-quality` after the substantive body is complete.
-2. Resolve every failed or uncertain rubric item.
-3. Run `wfctl knowledge hash --concept <path>` and bind both the semantic
-   quality receipt and normal verification to that content hash.
-4. Use `status: stable` only after the quality receipt is current, all
-   authority requirements pass, and normative claims have human verification.
-5. Run `wfctl knowledge validate`, `wfctl knowledge build`, and `qmd update`.
-6. Do not report completion while any gate fails.
+1. Invoke `verify-knowledge-quality` once the substantive body is complete, and
+   resolve every failed or uncertain rubric item.
+2. Run `wfctl knowledge hash --concept <path>` and bind both the quality receipt
+   and the verification event to that one hash.
+3. Use `status: stable` only after the receipt is current, the authority
+   requirements pass, and normative claims carry human verification.
+4. Run `wfctl knowledge validate`, `wfctl knowledge build`, and `qmd update`. Do
+   not report completion while any gate fails.
