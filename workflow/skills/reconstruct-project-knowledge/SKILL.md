@@ -83,7 +83,7 @@ complete JSON accounting remains the machine source.
 8. Run `wfctl knowledge reconstruct check <case-id>` and read the complete
    `case.md` plus every generated repository dossier. Run `wfctl knowledge
    reconstruct coverage <case-id>` for the complete machine-owned coverage
-   summary; do not manually edit `*.coverage.json`.
+   summary.
    On a fresh session, after compaction, or whenever the active case ID is not
    already established, begin instead with:
 

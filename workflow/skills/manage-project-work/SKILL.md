@@ -110,15 +110,9 @@ claim. If a binding or checkpoint is invalid, stop and reconcile it rather
 than reconstructing state from chat memory. A checkpoint locates the frontier;
 it never replaces the required full reads.
 
-If an upgraded legacy bundle has no structured checkpoint, read its current
-record and former Progress/Handoff sections completely, then run `wfctl work
-checkpoint` once to adopt the new model. Preserve the old prose as lineage, but
-do not maintain a second resume state afterward.
-
-If a pre-ledger bundle has no `Discovery ledger`, do not fabricate past
-discoveries. Add the section when material work next changes that owner and
-preserve new discoveries from that point forward; old bundle versions remain
-readable for compatibility.
+A bundle written before the current schema has no structured checkpoint or no
+`Discovery ledger`, and adopting one is not the same as inventing its history:
+[a bundle written before the current schema](references/legacy-bundles.md).
 
 ## Route the active bundle
 

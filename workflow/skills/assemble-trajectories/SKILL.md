@@ -148,7 +148,7 @@ Every error it reports is yours to fix. None of them is a maintainer question.
 The output lists the roots awaiting a vision, largest total gap first. That
 order is the product's, not the corpus's; work it in that order.
 
-Do not compose the packet. Render it:
+Render the packet rather than composing one:
 
 ```sh
 wfctl knowledge trajectory ask [<trajectory>]
@@ -224,8 +224,8 @@ the gap, the pinned evidence, the three axes — and marks the sections no recor
 this pipeline carries: who it serves, the words the domain uses, an example. Those
 are yours to write, and the page does not validate until you have.
 
-**Do not wait for a direction before publishing.** A subject with none still gets
-its page: what it does today, read at the pin, with no accepted intent and no
+**Publish every subject, direction or not.** A subject with none still gets its
+page: what it does today, read at the pin, with no accepted intent and no
 alignment, because there is nothing yet to be aligned with. Waiting instead makes
 curated knowledge a derivative of the maintainer's decision queue — a subject read
 in full from source does not appear to exist until they answer, so "what does this

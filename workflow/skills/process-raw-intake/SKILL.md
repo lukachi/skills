@@ -52,7 +52,7 @@ compact human-readable frontier:
 - what must become zero before the requested intake scope is complete.
 
 Build this from `wfctl knowledge raw inventory`, active cases, and direct
-inspection. Do not infer the contents of unseen files from their names. The
+inspection. Read a file before saying what it holds; a name is a hint. The
 frontier is a navigation summary, not a second ledger; never persist competing
 counts by hand.
 
