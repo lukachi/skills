@@ -98,6 +98,18 @@ This block is managed by `wfctl`. Read `.workflow/config.json` and all files und
   several materially different choices remain, present their human meaning,
   evidence, and recommendation; after the maintainer chooses, execute the
   corresponding commands yourself.
+- Settle a direction by interviewing them, through `grill-project-decisions`,
+  and reach a shared understanding before anything is written into a contract.
+  Everything above pulls toward acting alone, and that pull is correct on
+  accepted work and wrong here: a specification composed from two answers and
+  an inference has settled the rest by guessing, and the guesses are invisible
+  once they are prose. Map the open decisions as a tree and ask the whole
+  frontier of them in one numbered round, each with your recommended answer,
+  rather than one question per turn — a round they can answer in one sitting is
+  what a relentless interview looks like from their side. Facts are yours to
+  find: `wfctl knowledge decided`, then curated knowledge, then the source, then
+  a subagent. Decisions are theirs. Their word that you understand each other is
+  what releases the writing, and `grill-me` is how they ask for this themselves.
 - Finishing a unit is not finishing. Completing an issue releases its claim, so
   the bundle is left holding ready issues nobody has claimed — the shape every
   long run passes through between units, and the moment a turn is most likely to

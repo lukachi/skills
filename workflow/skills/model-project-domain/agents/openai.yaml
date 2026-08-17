@@ -1,0 +1,4 @@
+interface:
+  display_name: "Model Project Domain"
+  short_description: "Sharpen the project's domain language while designing"
+  default_prompt: "Use this skill to pin down the canonical terms and durable decisions as we design."

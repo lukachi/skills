@@ -1,81 +1,266 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/mattpocock/skills.git",
-    "revision": "2ab958093e83e0ec752e6c1c5932da465bf23e0c",
+    "revision": "9c9f36ccd3995266cd675468af71639c8dde1ec5",
     "license": "MIT",
     "copyright": "Copyright (c) 2026 Matt Pocock"
   },
-  "reviewedAt": "2026-07-31",
+  "reviewedAt": "2026-08-17",
+  "previousRevision": "2ab958093e83e0ec752e6c1c5932da465bf23e0c",
   "distribution": {
-    "strategy": "integrated-derived-skills",
+    "strategy": "adapted-upstream-skills",
     "installOriginalSuite": false,
     "fetchMutableUpstreamAtInstall": false
+  },
+  "method": {
+    "rule": "Adapt the upstream text; do not paraphrase it. Each local skill keeps the upstream structure, section names, leading words, and behavioural instructions, and edits only what the workflow changes: the tracker becomes the central bundle, the tracker operations become wfctl commands, and the review gates are named where upstream names a tracker label.",
+    "reviewNote": "Revision 2ab9580 was recorded as 'derived' but was in practice a paraphrase: the conversational instructions were dropped while the artifacts and state machines were kept. This revision restores them from the upstream text."
   },
   "derivations": [
     {
       "upstream": ["skills/engineering/wayfinder/SKILL.md"],
       "local": ["skills/shape-project-direction/SKILL.md"],
-      "relationship": "derived",
-      "retained": ["destination-first map", "decision issues", "fog", "frontier", "chart and work modes"],
-      "modified": ["central bundle", "local issue graph", "hash review receipts", "specification exit gate", "no product implementation"]
+      "relationship": "adapted",
+      "retained": [
+        "destination named first",
+        "plan don't do",
+        "refer by name",
+        "map as index not store",
+        "map body sections",
+        "HITL and AFK ticket types",
+        "grilling as the default type",
+        "fog of war and the fog-or-ticket test",
+        "out of scope never graduates",
+        "chart and work modes",
+        "one ticket per session except research"
+      ],
+      "modified": [
+        "tracker becomes changes/active/<id>: map.md and issues/",
+        "claim, block, complete and map status become wfctl work commands",
+        "bound-repository accounting and knowledge alignment added before the map may finish",
+        "exit runs through specify-project-change and wfctl work map finish"
+      ]
     },
     {
       "upstream": ["skills/engineering/to-spec/SKILL.md"],
       "local": ["skills/specify-project-change/SKILL.md"],
-      "relationship": "derived",
-      "retained": ["synthesize existing discussion", "product outcome", "implementation decisions", "testing seams", "out of scope"],
-      "modified": ["canonical change.md", "stable acceptance IDs", "knowledge alignment", "maintainer framing review", "Wayfinder synthesis"]
+      "relationship": "adapted",
+      "retained": [
+        "synthesize, do not interview",
+        "seams sketched and confirmed with the maintainer",
+        "problem and solution from the actor's perspective",
+        "extensive user stories",
+        "implementation decisions without volatile paths",
+        "prototype-snippet exception",
+        "testing decisions",
+        "out of scope"
+      ],
+      "modified": [
+        "spec is change.md in the central bundle",
+        "stable acceptance ids derived from the user stories",
+        "framing rendered by wfctl work ask and approved by wfctl work approve",
+        "resolved-map collapse and wfctl work map finish"
+      ]
     },
     {
       "upstream": ["skills/engineering/to-tickets/SKILL.md"],
       "local": ["skills/split-project-change/SKILL.md"],
-      "relationship": "derived",
-      "retained": ["tracer-bullet issues", "blocking edges", "complete issue briefs", "maintainer granularity review"],
-      "modified": ["bundle-local tracker", "acceptance coverage", "repository scope", "cycle validation", "explicit frontier"]
+      "relationship": "adapted",
+      "retained": [
+        "tracer-bullet vertical slices",
+        "vertical slice rules",
+        "prefactor first: make the change easy then make the easy change",
+        "blocking edges and the frontier",
+        "expand-migrate-contract for wide refactors sized by blast radius",
+        "quiz the maintainer on granularity and edges",
+        "issue body is the end-to-end behaviour",
+        "no volatile paths"
+      ],
+      "modified": [
+        "issues are created by wfctl work issue create inside the bundle",
+        "acceptance coverage, repository scope and cycle validation are gate-checked"
+      ]
     },
     {
       "upstream": [
         "skills/engineering/implement/SKILL.md",
-        "skills/engineering/tdd/SKILL.md"
+        "skills/engineering/tdd/SKILL.md",
+        "skills/engineering/tdd/tests.md",
+        "skills/engineering/tdd/mocking.md"
       ],
-      "local": ["skills/implement-work-item/SKILL.md"],
-      "relationship": "combined-derivation",
-      "retained": ["implement approved work", "behavior-first test cycle", "focused checks", "broad final checks", "review after implementation"],
-      "modified": ["exact leaf and worktree claim", "Graphify-first inspection", "durable progress", "evidence-backed completion", "no automatic commit"]
+      "local": [
+        "skills/implement-work-item/SKILL.md",
+        "skills/implement-work-item/references/tests.md",
+        "skills/implement-work-item/references/mocking.md"
+      ],
+      "relationship": "adapted",
+      "verbatim": [
+        "skills/implement-work-item/references/tests.md",
+        "skills/implement-work-item/references/mocking.md"
+      ],
+      "retained": [
+        "seams and pre-agreed seams",
+        "red before green",
+        "one slice at a time",
+        "refactoring is not part of the loop",
+        "what a good test is",
+        "implementation-coupled, tautological and horizontal-slicing anti-patterns",
+        "typecheck and single files regularly, full suite once at the end"
+      ],
+      "modified": [
+        "exact leaf and worktree claim before any edit",
+        "Graphify-first inspection and knowledge alignment",
+        "hash-bound checkpoints and the discovery ledger",
+        "evidence-backed completion; no automatic commit"
+      ]
     },
     {
       "upstream": ["skills/engineering/code-review/SKILL.md"],
-      "local": ["skills/verify-project-work/SKILL.md"],
-      "relationship": "derived",
-      "retained": ["separate spec axis", "separate engineering standards axis", "independent findings"],
-      "modified": ["complete bundle accounting", "acceptance matrix", "exact revision receipts", "knowledge promotion", "maintainer completion gate"]
+      "local": [
+        "skills/verify-project-work/SKILL.md",
+        "skills/verify-project-work/references/smell-baseline.md"
+      ],
+      "relationship": "adapted",
+      "retained": [
+        "pin the fixed point and confirm the diff resolves",
+        "two axes run as parallel subagents",
+        "Standards and Spec subagent briefs",
+        "smell baseline with repository override and judgement-call rule",
+        "report side by side without merging or reranking",
+        "why two axes"
+      ],
+      "modified": [
+        "the fixed point comes from the first delivery claim's recorded revision",
+        "the spec source is change.md, so no spec hunt is needed",
+        "complete bundle accounting, acceptance matrix, drafted pages, closure and the promotion gate follow the review"
+      ]
+    },
+    {
+      "upstream": ["skills/productivity/grilling/SKILL.md"],
+      "local": ["skills/grill-project-decisions/SKILL.md"],
+      "relationship": "adapted",
+      "retained": [
+        "interview relentlessly until shared understanding",
+        "design tree",
+        "rounds and the frontier",
+        "the whole frontier asked in one numbered round with recommendations",
+        "the question format",
+        "finding facts is the agent's job, decisions are the maintainer's",
+        "non-blocking fact-finding",
+        "do not act until the maintainer confirms shared understanding"
+      ],
+      "modified": [
+        "facts are looked up through wfctl knowledge decided, QMD and Graphify before a subagent",
+        "each round is persisted to the owning record's decision ledger and checkpoint",
+        "the maintainer's confirmation is what the framing gate is waiting for"
+      ]
+    },
+    {
+      "upstream": [
+        "skills/productivity/grill-me/SKILL.md",
+        "skills/engineering/grill-with-docs/SKILL.md"
+      ],
+      "local": ["skills/grill-me/SKILL.md"],
+      "relationship": "adapted",
+      "retained": [
+        "user-invoked entry point",
+        "calls the grilling and domain-modeling skills together"
+      ],
+      "modified": [
+        "the two upstream entry points collapse into one, because the workflow always maintains the domain model while grilling"
+      ]
+    },
+    {
+      "upstream": [
+        "skills/engineering/domain-modeling/SKILL.md",
+        "skills/engineering/domain-modeling/CONTEXT-FORMAT.md",
+        "skills/engineering/domain-modeling/ADR-FORMAT.md"
+      ],
+      "local": ["skills/model-project-domain/SKILL.md"],
+      "relationship": "adapted",
+      "retained": [
+        "active discipline, not merely reading the glossary",
+        "challenge against the glossary",
+        "sharpen fuzzy language",
+        "stress-test with concrete scenarios",
+        "cross-reference with code",
+        "record each term as it resolves rather than batching",
+        "glossary holds no implementation detail",
+        "only terms this project owns",
+        "the three tests before a decision record earns its own page"
+      ],
+      "modified": [
+        "the working glossary is the bundle's Domain language section",
+        "the promoted glossary is a Domain Concept page through curate-product-knowledge",
+        "an ADR is a decision page through curate-project-knowledge"
+      ]
+    },
+    {
+      "upstream": [
+        "skills/engineering/prototype/SKILL.md",
+        "skills/engineering/prototype/LOGIC.md",
+        "skills/engineering/prototype/UI.md"
+      ],
+      "local": [
+        "skills/prototype-project-decision/SKILL.md",
+        "skills/prototype-project-decision/references/logic.md",
+        "skills/prototype-project-decision/references/ui.md"
+      ],
+      "relationship": "adapted",
+      "verbatim": [
+        "skills/prototype-project-decision/references/logic.md",
+        "skills/prototype-project-decision/references/ui.md"
+      ],
+      "retained": [
+        "throwaway code that answers a question",
+        "the logic and UI branches and the cost of picking wrong",
+        "the six rules that apply to both",
+        "capture the answer and keep the prototype as a primary source"
+      ],
+      "modified": [
+        "the answer lands in the Wayfinder issue resolution or the bundle's decision ledger",
+        "the prototype branch is linked as a bundle artifact"
+      ]
+    },
+    {
+      "upstream": ["skills/productivity/wait-what/SKILL.md"],
+      "local": ["skills/wait-what/SKILL.md"],
+      "relationship": "adapted",
+      "retained": [
+        "user-invoked",
+        "re-pitch with context, in Simplified Technical English, in the project's own language"
+      ],
+      "modified": [
+        "the ubiquitous language comes from curated knowledge",
+        "the reader test from the maintainer-review rule is named explicitly"
+      ]
+    },
+    {
+      "upstream": ["skills/engineering/research/SKILL.md"],
+      "local": ["skills/research-project-context/SKILL.md"],
+      "relationship": "adapted",
+      "retained": [
+        "background subagent so the caller keeps working",
+        "primary sources only, every claim followed to the source that owns it",
+        "findings written to one file with its citations"
+      ],
+      "modified": [
+        "findings land in the owning record or a pending capture rather than a loose file",
+        "an external primary source authorizes an external fact only"
+      ]
     }
   ],
   "embeddedInfluences": [
     {
-      "upstream": "skills/engineering/domain-modeling/SKILL.md",
-      "usedIn": ["shape-project-direction", "specify-project-change", "curation skills"]
-    },
-    {
-      "upstream": "skills/engineering/grill-with-docs/SKILL.md",
-      "usedIn": ["shape-project-direction"]
-    },
-    {
-      "upstream": "skills/productivity/grilling/SKILL.md",
-      "usedIn": ["shape-project-direction", "specify-project-change"]
-    },
-    {
-      "upstream": "skills/engineering/research/SKILL.md",
-      "usedIn": ["shape-project-direction", "research-project-context"]
-    },
-    {
-      "upstream": "skills/engineering/prototype/SKILL.md",
-      "usedIn": ["shape-project-direction"]
-    },
-    {
       "upstream": "skills/productivity/handoff/SKILL.md",
-      "usedIn": ["manage-project-work", "implement-work-item"]
+      "usedIn": ["manage-project-work", "implement-work-item"],
+      "note": "Split locally: unowned material becomes a capture, and resumable session state becomes the checkpoint's handoff field."
+    },
+    {
+      "upstream": "skills/productivity/writing-for-agents/SKILL.md",
+      "usedIn": ["every workflow skill"],
+      "note": "Reference for how these skills are written: information hierarchy, completion criteria, leading words, and the negation, duplication, sprawl and no-op failure modes."
     }
   ]
 }

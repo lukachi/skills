@@ -1,0 +1,6 @@
+interface:
+  display_name: "Assemble Trajectories"
+  short_description: "Lift what was read into decidable subjects"
+  default_prompt: "Use this skill to turn what has been read into product subjects the maintainer can set a direction against."
+policy:
+  allow_implicit_invocation: false

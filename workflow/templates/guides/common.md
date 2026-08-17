@@ -59,6 +59,20 @@ this change,” or “check the workflow.” The installed skills translate thos
 requests into the complete internal procedure. You do not need to invoke a
 skill by name.
 
+## Two names worth knowing
+
+Everything else is reached for you. These two are yours, because only you can
+decide you want them:
+
+- **`grill-me`** — a relentless interview before anything is written down. The
+  agent maps the open decisions as a tree, asks the whole frontier of them in
+  numbered rounds with a recommendation on each, and writes nothing into the
+  contract until you say the two of you understand each other. Ask for it
+  whenever a direction is being settled and the questions feel too few.
+- **`wait-what`** — that last message did not land. It makes the agent re-pitch
+  the same thing with context, in plain language, carrying nothing you would have
+  to look up.
+
 ## Trust boundary
 
 | Surface | Purpose | Trust |

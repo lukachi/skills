@@ -25,9 +25,14 @@ research pass.
 
 ## Research
 
+Spin up a **background subagent** to do the reading, so the session that asked
+keeps working while it reads. A Wayfinder research issue is resolved this way and
+never blocks the rest of the frontier: only the questions downstream of the fact
+wait for it.
+
 1. Prefer specifications, standards bodies, official documentation, original
    papers, source repositories, regulators, and first-party product
-   documentation.
+   documentation. Follow every claim back to the source that owns it.
 2. Use secondary sources to discover primary material or represent a
    materially different interpretation. Never hide the source class.
 3. Record for each material source: title, publisher or author, URL or stable

@@ -30,6 +30,15 @@
 - Install `shape-project-direction` for both profiles so an unbounded
   significant initiative can resolve its Wayfinder map inside the same central
   bundle before implementation starts.
+- Install `grill-project-decisions` and `model-project-domain` for both profiles.
+  Shaping and specification both reach them, and a session that cannot reach the
+  grilling engine settles the maintainer's decisions by guessing instead.
+- Install `grill-me` and `wait-what` for both profiles. Both are user-invoked:
+  they carry `disable-model-invocation: true`, so only the maintainer can start
+  them, and they exist so the maintainer can ask to be interrogated and can say
+  that a message did not land.
+- Install `prototype-project-decision` for both profiles. A Wayfinder prototype
+  issue is unresolvable without it.
 - Install `specify-project-change`, `split-project-change`, and
   `implement-work-item` for both profiles so specification synthesis,
   dependency-aware issue creation, and exact-worktree execution are explicit

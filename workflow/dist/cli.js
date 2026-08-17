@@ -7821,17 +7821,22 @@ var init_planner = __esm({
         "curate-product-knowledge",
         "curate-project-knowledge",
         "explore-project-knowledge",
+        "grill-me",
+        "grill-project-decisions",
         "implement-work-item",
         "manage-project-work",
+        "model-project-domain",
         "operate-project-knowledge",
         "process-raw-intake",
+        "prototype-project-decision",
         "reconstruct-project-knowledge",
         "research-project-context",
         "shape-project-direction",
         "specify-project-change",
         "split-project-change",
         "verify-knowledge-quality",
-        "verify-project-work"
+        "verify-project-work",
+        "wait-what"
       ],
       leaf: [
         "align-project-knowledge",
@@ -7839,13 +7844,18 @@ var init_planner = __esm({
         "curate-product-knowledge",
         "curate-project-knowledge",
         "explore-project-knowledge",
+        "grill-me",
+        "grill-project-decisions",
         "implement-work-item",
         "manage-project-work",
+        "model-project-domain",
+        "prototype-project-decision",
         "shape-project-direction",
         "specify-project-change",
         "split-project-change",
         "verify-knowledge-quality",
-        "verify-project-work"
+        "verify-project-work",
+        "wait-what"
       ]
     };
   }

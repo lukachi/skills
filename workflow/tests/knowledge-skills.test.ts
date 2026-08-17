@@ -269,12 +269,101 @@ test("direction shaping and project research are deliberate bounded modes", asyn
     assert.ok(String(openai.interface?.short_description).length >= 25);
     assert.ok(String(openai.interface?.short_description).length <= 64);
   }
-  assert.match(shape, /same central bundle/i);
-  assert.match(shape, /one question at a time|one focused question/i);
-  assert.match(shape, /Do not edit product source|does not write source code/i);
+  assert.match(shape, /central change bundle/i);
+  assert.match(shape, /product source stays untouched|Do not edit product source/i);
   assert.match(research, /primary (?:and current )?sources|primary material/);
   assert.match(research, /candidate, not authority/i);
   assert.match(research, /claim-to-source matrix/);
+});
+
+/**
+ * The conversational half of the upstream skills, which a paraphrase drops first
+ * because no gate can check it. Revision 2ab9580 kept every artifact and state
+ * machine and lost all of this: relentless interviewing, the shared-understanding
+ * bound, grilling as the default ticket type, naming work rather than numbering
+ * it, and the maintainer's own entry point. Each assertion below names one
+ * behaviour whose absence was invisible until a maintainer said the sessions did
+ * not interrogate them.
+ */
+test("the conversational behaviour adapted from upstream survives", async () => {
+  const read = (name: string) =>
+    readFile(join(root, "skills", name, "SKILL.md"), "utf8");
+  const grill = await read("grill-project-decisions");
+  const grillMe = await read("grill-me");
+  const domain = await read("model-project-domain");
+  const shape = await read("shape-project-direction");
+  const spec = await read("specify-project-change");
+  const split = await read("split-project-change");
+  const implement = await read("implement-work-item");
+  const verify = await read("verify-project-work");
+
+  // Grilling is an engine with a termination condition the maintainer owns.
+  assert.match(grill, /relentlessly/i);
+  assert.match(grill, /design tree/i);
+  assert.match(grill, /frontier/i);
+  assert.match(grill, /Ask the whole frontier in one round/i);
+  assert.match(grill, /recommended answer/i);
+  assert.match(grill, /until the maintainer confirms/i);
+  assert.match(grill, /shared understanding/i);
+
+  // The maintainer can summon it; upstream keeps this user-invoked.
+  assert.match(grillMe, /^disable-model-invocation:\s*true$/m);
+  assert.match(grillMe, /grill-project-decisions/);
+  assert.match(grillMe, /model-project-domain/);
+  const waitWhat = await read("wait-what");
+  assert.match(waitWhat, /^disable-model-invocation:\s*true$/m);
+
+  // Domain modelling is the active discipline, not a section header.
+  assert.match(domain, /Challenge against/i);
+  assert.match(domain, /Sharpen fuzzy language/i);
+  assert.match(domain, /scenarios/i);
+  assert.match(domain, /Hard to reverse/i);
+
+  // Wayfinder's own steering, all of it dropped in the paraphrase.
+  assert.match(shape, /Refer by name/i);
+  assert.match(shape, /never by a bare id/i);
+  assert.match(shape, /\bHITL\b/);
+  assert.match(shape, /\bAFK\b/);
+  assert.match(shape, /The default case/i);
+  assert.match(shape, /fog of war/i);
+  assert.match(shape, /never resolve more than one issue per session/i);
+  assert.match(shape, /grill-project-decisions/);
+
+  // Specification synthesises; the interview is a separate, earlier act.
+  assert.match(spec, /the\s+interview is not this step/i);
+  assert.match(spec, /User stories/);
+  assert.match(spec, /As a `<actor>`/);
+  assert.match(spec, /seams/i);
+  assert.match(spec, /Check with the maintainer that these seams/i);
+
+  // Ticket design keeps its rules and its wide-refactor escape hatch.
+  assert.match(split, /tracer bullet/i);
+  assert.match(split, /prefactor/i);
+  assert.match(split, /make the change easy, then make the easy change/i);
+  assert.match(split, /expand.contract/i);
+  assert.match(split, /blast radius/i);
+  assert.match(split, /Does the granularity feel right/i);
+
+  // The test-first loop and its bounds.
+  assert.match(implement, /pre-agreed seams/i);
+  assert.match(implement, /red before green/i);
+  assert.match(implement, /Refactoring is not part of this loop/i);
+  assert.match(implement, /Tautological/i);
+  assert.match(implement, /Horizontal slicing/i);
+
+  // Two axes, in parallel, never reranked into one verdict.
+  assert.match(verify, /Standards/);
+  assert.match(verify, /two Agent calls/i);
+  assert.match(verify, /smell baseline/i);
+  assert.match(verify, /Do not merge or rerank/i);
+  assert.match(verify, /Why two axes/i);
+  const smells = await readFile(
+    join(root, "skills/verify-project-work/references/smell-baseline.md"),
+    "utf8",
+  );
+  for (const smell of ["Mysterious Name", "Feature Envy", "Shotgun Surgery", "Refused Bequest"]) {
+    assert.match(smells, new RegExp(smell));
+  }
 });
 
 test("project work skills share one bundle, explicit frontier, and full-file gate", async () => {
@@ -315,13 +404,19 @@ test("project work skills share one bundle, explicit frontier, and full-file gat
   assert.match(contents.get("manage-project-work")!, /context --stage resume/);
   assert.match(contents.get("manage-project-work")!, /without an ID/);
   assert.match(contents.get("shape-project-direction")!, /fog/i);
-  assert.match(contents.get("shape-project-direction")!, /Do not jump from a map directly/i);
+  assert.match(
+    contents.get("shape-project-direction")!,
+    /nothing goes from a map straight into\s+implementation/i,
+  );
   assert.match(contents.get("specify-project-change")!, /Read every required file completely/i);
   assert.match(contents.get("split-project-change")!, /tracer bullet/i);
   assert.match(contents.get("implement-work-item")!, /Claim before analysis or edits/i);
   assert.match(contents.get("implement-work-item")!, /wfctl work checkpoint/);
   assert.match(contents.get("implement-work-item")!, /Discovery ledger/);
-  assert.match(contents.get("implement-work-item")!, /Never hide a discovery only in checkpoint/i);
+  assert.match(
+    contents.get("implement-work-item")!,
+    /The\s+discovery itself stays in the semantic record/i,
+  );
   assert.match(contents.get("verify-project-work")!, /changed-after-review/i);
   assert.match(contents.get("verify-project-work")!, /wfctl work checkpoint/);
   assert.match(contents.get("verify-project-work")!, /before.*final hash receipt/is);
@@ -361,7 +456,7 @@ test("directly derived project-work skills retain exact centralized provenance",
     }>;
   };
   assert.match(manifest.source.revision, /^[0-9a-f]{40}$/);
-  assert.equal(manifest.distribution.strategy, "integrated-derived-skills");
+  assert.equal(manifest.distribution.strategy, "adapted-upstream-skills");
   assert.equal(manifest.distribution.installOriginalSuite, false);
   assert.equal(manifest.distribution.fetchMutableUpstreamAtInstall, false);
   const thirdParty = await readFile(join(root, "THIRD_PARTY.md"), "utf8");
@@ -372,14 +467,45 @@ test("directly derived project-work skills retain exact centralized provenance",
   assert.match(thirdParty, /single human-readable attribution/i);
   assert.match(upstreamLicense, /Copyright \(c\) 2026 Matt Pocock/);
 
+  // One row per local skill that adapts upstream text. A local file that appears
+  // here and nowhere in THIRD_PARTY.md is an undocumented derivation; a local
+  // skill missing from this map is one nobody recorded a lineage for.
   const expected = new Map([
     ["skills/shape-project-direction/SKILL.md", "skills/engineering/wayfinder/SKILL.md"],
     ["skills/specify-project-change/SKILL.md", "skills/engineering/to-spec/SKILL.md"],
     ["skills/split-project-change/SKILL.md", "skills/engineering/to-tickets/SKILL.md"],
     ["skills/implement-work-item/SKILL.md", "skills/engineering/implement/SKILL.md"],
+    ["skills/implement-work-item/references/tests.md", "skills/engineering/tdd/tests.md"],
+    ["skills/implement-work-item/references/mocking.md", "skills/engineering/tdd/mocking.md"],
     ["skills/verify-project-work/SKILL.md", "skills/engineering/code-review/SKILL.md"],
+    [
+      "skills/verify-project-work/references/smell-baseline.md",
+      "skills/engineering/code-review/SKILL.md",
+    ],
+    ["skills/grill-project-decisions/SKILL.md", "skills/productivity/grilling/SKILL.md"],
+    ["skills/grill-me/SKILL.md", "skills/productivity/grill-me/SKILL.md"],
+    ["skills/model-project-domain/SKILL.md", "skills/engineering/domain-modeling/SKILL.md"],
+    [
+      "skills/prototype-project-decision/SKILL.md",
+      "skills/engineering/prototype/SKILL.md",
+    ],
+    [
+      "skills/prototype-project-decision/references/logic.md",
+      "skills/engineering/prototype/LOGIC.md",
+    ],
+    [
+      "skills/prototype-project-decision/references/ui.md",
+      "skills/engineering/prototype/UI.md",
+    ],
+    ["skills/wait-what/SKILL.md", "skills/productivity/wait-what/SKILL.md"],
+    ["skills/research-project-context/SKILL.md", "skills/engineering/research/SKILL.md"],
   ]);
-  assert.equal(manifest.derivations.length, expected.size);
+  const declared = new Set(manifest.derivations.flatMap((entry) => entry.local));
+  assert.deepEqual(
+    [...expected.keys()].filter((local) => !declared.has(local)),
+    [],
+    "every adapted local file must declare its upstream lineage",
+  );
   for (const derivation of manifest.derivations) {
     assert.ok(derivation.retained.length > 0);
     assert.ok(derivation.modified.length > 0);
