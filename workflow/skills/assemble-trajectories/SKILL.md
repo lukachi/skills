@@ -16,39 +16,13 @@ current source has been read at a named revision. A claim about current truth
 made while reading is a claim made before the material that contradicts it has
 been read.
 
-Read [the trajectory contract](../../TRAJECTORIES.md) before the first
-assembly in a session.
+Read every source your own findings cite. Opening an area they do not cite is a
+different pass, and nothing reaches `knowledge/` before the page phase.
 
-## Where observations come from
-
-The material is not lying in the shape this needs, and pretending otherwise wastes
-the first hour of a run. In a corpus assembled under the previous model:
-
-- Case bodies are templates. The substance lives in the frontmatter.
-- A candidate's `reason` is prose containing several observations at once. Split
-  it, and attribute each statement to the source it came from rather than to the
-  candidate.
-- `sources[].candidate_ids` maps candidates back to the raw paths they were drawn
-  from. That mapping is how a candidate becomes citable observations.
-- No entry carries its own date. Derive `at` from what the material asserts, else
-  the commit date of the pinned revision, else the page's `generated.at` — and
-  treat the last as a last resort, because it dates the reading and not the
-  material.
-
-Re-read a cited source when the prose is ambiguous about what it actually said.
-That is not new reading; it is checking a quotation.
-
-## What you never do here
-
-- Do not widen the scope by reading material outside it. Reading a source your
-  own findings cite is fine; opening a new area is not.
-- Do not write anything under `knowledge/`. Curation is phase six.
-- Do not decide a vision. Recording one the maintainer gave you is your work;
-  supplying the answer yourself is the one betrayal this workflow cannot detect
-  afterwards, and `--attested` is where it would hide.
-- Do not ask the maintainer anything during phases two through four. Every
-  question that occurs to you there is a question whose answer is probably in
-  material you have already read.
+Read [the trajectory contract](../../TRAJECTORIES.md) before the first assembly in
+a session, and [where observations come from](references/observations.md) when the
+material was assembled under the previous model — case bodies that are templates,
+candidate `reason` prose holding several observations, entries carrying no date.
 
 ## Say where you are
 
@@ -61,7 +35,9 @@ compared: 11 implementation findings against dnd-admin@2743a3ef, dnd-api@34cf66c
 assembled: 5 trajectories, 1 root, 8 gaps
 ```
 
-Counts only. A phase boundary is not an opportunity to ask something.
+Counts only. A phase boundary is not an opportunity to ask something: a question
+that occurs to you here is a question whose answer is probably in material you
+have already read.
 
 ## Phase two — findings
 
@@ -219,6 +195,9 @@ that is the string, and the final statement is the proposal with the third one
 dropped. A reader months later must be able to see the answer and the statement
 side by side and judge whether one follows from the other.
 
+Record the vision they gave you. Supplying the answer yourself is the one betrayal
+this workflow cannot detect afterwards, and `--attested` is where it would hide.
+
 Use `--supersedes` when a vision replaces an earlier one for the same subject.
 Never edit a vision document by hand; the receipt will not match, and the
 compiler will say so.
@@ -255,152 +234,23 @@ Current behavior is an observation and direction is a decision; publish the
 observation when you have it. When the direction arrives, promote again with
 `--force` and the same page gains its second half.
 
-Promoting again replaces what it generated and keeps what a person wrote. The
-sections no record in this pipeline holds — who it serves, the domain's words,
-the rules, the boundaries, the example, and any engineering page linked from it —
-survive untouched, and the command names each one it kept. Two things follow from
-that. What it kept was not re-derived from the records this run read, so if those
-records now say something the kept text contradicts, reconciling them is yours.
-And a kept section that cites a footnote may be citing a different claim
-afterwards, because declaring a direction adds the vision as the first source and
-shifts every pinned one down; the command says so when it happens and renumbers
-nothing, since guessing which claim an author meant is worse than reporting that
-the citation moved.
-
 The one subject that cannot be published is one whose every observation came from
 raw, because curated knowledge may not cite untrusted input and the page would
 rest on nothing. Read it at a pin first.
 
-Two things it will tell you that matter more than the page.
-
-**Raw observations could not become evidence.** Curated knowledge may never cite
-untrusted input, so whatever a raw observation established rests on nothing once
-promoted. If most of a subject came from raw, the page is thinner than the
-trajectory was, and that is worth saying rather than hiding.
-
-**Pages nothing claims.** A trajectory names the pages it replaces in `replaces`,
-and promotion reports every page in the area that no trajectory named. Each is
-either a subject with no trajectory yet or one whose trajectory forgot to claim
-it — and the difference matters, because the first is work and the second is a
-record that will be orphaned when the old page goes.
-
-Promotion never deletes. Retiring a replaced page is a separate act after the new
-one validates, and it is yours: a tool that quietly retires knowledge cannot be
-run twice with confidence.
+Read [what promoting changes](references/promotion.md) before a second promote, or
+when the command reports a kept section, a moved citation, a raw observation that
+could not become evidence, or a page no trajectory claims.
 
 ## Phase seven — the debts become work
 
 A reconstruction that ends with every debt correctly recorded and none of it
-reaching work has not finished; it has produced a document. This is the road out,
-and it is the same road for one debt and for two hundred.
+reaching work has not finished; it has produced a document.
 
-**You do not decide when this happens; the brief does.** The debt gate opens when
-every subject that owes something has a direction to owe it against, and not
-before — ordering debts against a direction nobody set asks the maintainer to
-rank work with no standard. Until then the brief shows the vision gate instead,
-and that is the work.
+**You do not decide when this happens; the brief does.** The debt gate opens once
+every subject that owes something has a direction to owe it against. Until then
+the brief shows the vision gate instead, and that is the work.
 
-When it opens, do not compose the list. Render it:
-
-```sh
-wfctl knowledge trajectory debts --ask
-```
-
-Grouped by subject, heaviest first, with what distinguishes each group and no
-identifier anywhere — the same rule the vision packet obeys. The order is a
-proposal from what the graph knows: how much else stops working without a
-subject, and how much its own line owes. Say so, and say plainly that theirs
-replaces it. Forty-eight questions is the overload this pipeline exists to
-remove; one ordered conversation is not.
-
-Their answer has exactly three outcomes per group, and every debt must land in
-one of them:
-
-| They say | You run |
-| --- | --- |
-| this is next | `wfctl work start`, then `trajectory schedule` for each debt |
-| deliberately not now | `wfctl knowledge trajectory defer --reason "<theirs>"` |
-| something else first | nothing yet; it stays open and the gate stays open with it |
-
-A debt left in none of the three is a debt that will be forgotten, which is the
-failure the ledger exists to prevent. `defer` requires a reason for the same
-reason a park does: set aside without one, it cannot be told from unread, and the
-next session reopens the decision.
-
-The full ledger, for your own reading rather than theirs:
-
-```sh
-wfctl knowledge trajectory debts
-```
-
-Open first, then the ones being closed, then the deferred, grouped by subject.
-Three lines at the end matter more than the list:
-
-- **Debts on subjects with no declared direction.** What they are owed against is
-  unstated, so they cannot be sized or scheduled. Those subjects go back to phase
-  five — `trajectory ask` — before anything else happens to them.
-- **Debts naming work that has landed.** The debt does not end because a bundle
-  closed. Re-read the subject at a new pin and it disappears if it is no longer
-  true; if it survives the re-read, the work did not close it and saying so is
-  the point.
-- **Debts naming a bundle that exists nowhere.** Each reads as handled and is not.
-  Fix those before presenting anything.
-
-Then group and open work. Grouping is yours and it is a judgement: debts that
-close together belong in one bundle, and a bundle spanning two subjects is
-ordinary — a subject is a unit of direction, not a unit of work.
-
-```sh
-wfctl work start <slug> --title "<what becomes true>" --leaf <checkout> [--leaf <checkout> ...]
-wfctl knowledge trajectory schedule <trajectory> --gap <n or phrase> --work <bundle>
-```
-
-Repeat `--leaf` for every repository the debt actually reaches. A subject is a
-unit of direction and a repository is a unit of code, so one debt crossing three
-of them is ordinary rather than a sign the grouping is wrong. Shape it from here:
-only this repository sees all three at once, and `wfctl work repositories <id>`
-reads what each one declares about itself — its own instructions and the skills
-installed only there — which a session inside any single checkout would see for
-that checkout alone. This is delivery and not another reconstruction: it reads
-what the debt touches and ends in one approved specification.
-
-`schedule` refuses a bundle that does not exist, and refuses a second bundle for
-a debt one already claims. Both refusals are the same rule: a debt pointing at
-nothing, or at two things, reads as owned and is not.
-
-**What the maintainer decides here is which debts, and in what order — nothing
-else.** Which bundle, how it is cut into issues, what the acceptance criteria
-say: yours. If a debt's direction is already declared, its cost is already
-stated, and nothing conflicts, propose the bundle and open it. Bringing them a
-list of twenty debts and asking "shall I open a bundle for each" is the phase-five
-failure repeated one stage later.
-
-Frame the bundle from the debt, not from the code: the acceptance criteria say
-what becomes true for the product, and the debt statement is usually already that
-sentence. Then put the framing to them with `wfctl work ask`, and record their
-answer where they gave it:
-
-```sh
-wfctl work approve <bundle> --stage framing --by human:<id> \
-  --attested "<their answer, word for word>" --session "<where they said it>"
-```
-
-Do not hand them the command. An interactive terminal and a token both remain,
-and both are theirs to ask for; neither is the default, and sending someone to a
-second terminal to retype a bundle id and their own name records no decision that
-the attestation does not.
-
-## What follows
-
-The gap recomputes from the declared vision. Nothing else about it is stored: a
-gap accepted as correct is a vision that was wrong, so amend the vision and the
-gap disappears.
-
-There is no command that marks a debt done, and that absence is deliberate. A
-debt ends when the subject is read again at a new revision and the gap is no
-longer derivable — never because someone struck it off a list. A tool that let a
-subject claim delivery nobody read would reintroduce the exact defect this
-pipeline was built to remove.
-
-Only then does curation run, and it writes from trajectories rather than from
-candidates.
+When it opens, read [the debts become work](references/debts.md). It owns the
+rendered packet, the three states every debt must land in, the three lines of the
+ledger that matter more than the list, and how a debt ends.

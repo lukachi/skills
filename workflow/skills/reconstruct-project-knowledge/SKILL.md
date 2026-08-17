@@ -57,37 +57,10 @@ complete JSON accounting remains the machine source.
 ## Start and bind exact checkouts
 
 1. Work from the initialized knowledge repository.
-2. Run `wfctl knowledge sources list` yourself. Treat its model literally:
-   - durable project scope may contain any repository names, roles, and count;
-   - each repository may have any number of known local worktrees;
-   - exactly one may be explicitly marked `ACTIVE` for default reconstruction.
-3. Require every source checkout to be an initialized leaf pointing back to
-   this knowledge root. `wfctl init leaf --knowledge <root>` registers the
-   repository and adds the exact worktree, but deliberately does not activate
-   it. When the maintainer supplies another initialized checkout, use `wfctl
-   knowledge sources add --leaf <path>` yourself to add or refresh it.
-4. Resolve one clean checkout per repository without exposing registry
-   mechanics:
-   - use an available existing `ACTIVE` checkout;
-   - when no active selection exists and exactly one known checkout is
-     available, announce that checkout and run `wfctl knowledge sources select
-     --leaf <path>` yourself;
-   - when several known checkouts are available and none is active, show
-     repository, path, branch, and commit, recommend one, ask one focused
-     question, then execute the selection yourself;
-   - when the active checkout is unavailable, never replace it silently; show
-     the available alternatives and ask before switching;
-   - when no known checkout is available, state which repository is missing
-     and ask for its path. Invoke `setup-workflow-environment` if it is not yet
-     initialized.
-   If the maintainer explicitly names worktrees for a one-off audit, validate
-   them and use repeated `--leaf` overrides without changing saved active
-   selections.
-5. The durable registry
-   stores repository identity but never a local path; ignored runtime state
-   stores known worktrees and explicit active selections. Selecting one affects
-   only default reconstruction. Normal leaf work may start from any registered
-   worktree and binds its own exact code root in the work spec.
+2. Resolve one clean checkout per repository, then require each to be an
+   initialized leaf pointing back to this knowledge root. Selection has five
+   cases and a one-off override, and it must not expose registry mechanics to the
+   maintainer: [resolving a checkout](references/checkout-selection.md).
 6. Start only after selection is explicit. A baseline with no `--leaf` includes
    every registered repository's active worktree and fails closed if any
    selection is missing or unavailable. The knowledge repository must already
@@ -103,45 +76,10 @@ complete JSON accounting remains the machine source.
    alternative worktree without changing the stored default selection. A baseline
    override must still include every registered repository. An `audit` may
    deliberately select a subset, but its title and scope must say so.
-7. Resolve raw scope before starting any reconstruction-linked intake. The CLI
-   records `unavailable` automatically only when the frozen snapshot and
-   working tree contain no raw files. Otherwise inventory the pinned snapshot,
-   use QMD only far enough to describe its themes, and recommend one
-   maintainer-facing choice:
-   - `all`: every raw blob in the reconstruction-start snapshot;
-   - `selected`: named themes mapped by the agent to explicit paths;
-   - `excluded`: raw will not participate in this reconstruction.
-
-   Raw being unreviewed, contradictory, obsolete, or unable to prove current
-   behavior is never by itself a reason to recommend `excluded`; those are
-   normal raw properties. Judge scope by possible relevance to the declared
-   reconstruction objective and by information-loss risk. Material that may
-   preserve intended behavior, abandoned alternatives, decision history, or
-   unrealized product ideas normally belongs in `all` or a bounded `selected`
-   scope even though every claim still requires reconciliation. Recommend
-   `excluded` only when the mapped snapshot is outside the declared objective
-   or the maintainer confirms that it should not inform this reconstruction.
-   If relevance cannot yet be established safely, present a neutral choice or
-   recommend a bounded selected review; do not convert uncertainty into
-   exclusion.
-
-   Ask one focused question. Do not require the maintainer to know pathspecs.
-   Record the answer yourself:
-
-   ```sh
-   wfctl knowledge reconstruct raw-scope <case-id> \
-     --mode selected \
-     --path raw/<approved-path> \
-     --by human:<maintainer-id> \
-     --note "<what was included or excluded and why>"
-   ```
-
-   Use repeated `--path` for selected scope. `all` and `excluded` take no
-   paths. Never invent `human:*` approval. Never start a linked intake case
-   before this decision. If `reconstruct check` reports a legacy v3 case,
-   record its scope through this command before continuing. Once linked intake
-   starts, the scope is immutable; a materially revised choice requires a new
-   reconstruction case.
+7. Resolve raw scope before starting any reconstruction-linked intake, and
+   record the maintainer's answer yourself. The choice is `all`, named `selected`
+   themes, or `excluded`, and unreviewed or contradictory raw is never by itself a
+   reason to exclude: [deciding the raw scope](references/raw-scope.md).
 8. Run `wfctl knowledge reconstruct check <case-id>` and read the complete
    `case.md` plus every generated repository dossier. Run `wfctl knowledge
    reconstruct coverage <case-id>` for the complete machine-owned coverage
@@ -240,16 +178,9 @@ before the first repository pass and whenever a disposition must be recorded.
    evidence, never assumed from names or a built-in topology. Never promote one
    leaf's partial view as the whole capability. Record unowned behavior,
    mismatched schemas, and incomplete implementations.
-5. Classify each candidate with the shared adjudicated-claim model:
-   - `claim_class` and `semantic_role`;
-   - `intent_state`: what the project currently intends;
-   - `delivery_state`: what implementation currently delivers;
-   - `alignment`: whether those two are known to agree.
-   - `temporal`: capture, assertion, and effective time when established;
-   - `relations`: explicit supersession, contradiction, refinement,
-     implementation, and derivation links;
-   - `routing`: current knowledge, history, change, or case-only.
-   Use cross-case references such as
+5. Classify each candidate with the shared adjudicated-claim model, which
+   [the intake model](../process-raw-intake/references/intake-model.md) defines
+   field by field. Use cross-case references such as
    `intake:<case-id>#<candidate-id>` when a reconstruction candidate resolves,
    refines, or supersedes a raw-intake candidate. Capture order is not truth.
 6. Keep `proposed` intent outside current knowledge. Mark it `deferred` or
@@ -384,22 +315,10 @@ observation layer turns an earlier mistake into evidence.
    Requirements about whether a child belongs to this reconstruction — baseline,
    parent binding, approved scope, source identities — hold throughout. A page
    that fails on one of those is failing for a real reason.
-7. Submit each finished packet with `wfctl knowledge reconstruct workstream
-   submit` and have a different actor run `wfctl knowledge reconstruct
-   workstream review`. Before acceptance, respond to contradictions,
-   insufficient evidence, negative claims, or review rework with `wfctl
-   knowledge reconstruct workstream escalate`; choose a stronger profile, a
-   narrower follow-up workstream, maintainer review, retained uncertainty, or
-   an explicitly justified same-profile correction. Mark orchestration complete
-   only after every workstream
-   is accepted or has
-   a review-approved `cancelled` disposition, blocked work is either resolved
-   or represented by an honest partial outcome, the
-   orchestrator's synthesis audit passes, and a distinct fresh actor records
-   the independent review. Record `assurance` as `independent-agent`,
-   `separate-session`, or `maintainer`, plus the actual host run ID when
-   applicable. `wfctl knowledge reconstruct check` rejects missing,
-   unfinished, unreviewed, unreferenced, or path-leaking workstreams.
+7. Close every workstream a fan-out opened, and mark orchestration complete only
+   once each is accepted or cancelled with review approval:
+   [closing a workstream](references/agent-routing.md). A `single-agent` case
+   opened none and skips this.
 8. Present the maintainer a baseline review packet: current intended product,
    observed implementation, alignment and drift, reconstructed evolution with
    confidence limits, unknowns, and the human reading path. This is the one

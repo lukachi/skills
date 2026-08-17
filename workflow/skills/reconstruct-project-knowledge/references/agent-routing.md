@@ -143,3 +143,22 @@ history for them. New packets use version 3; if adaptive rerouting is needed for
 legacy work, start a new version 3 packet with an explicit relationship.
 Likewise, orchestration version 2 keeps its original final-assurance fields;
 new cases use orchestration version 3 and the explicit review/deep provenance.
+
+## Closing a workstream
+
+Submit each finished packet with `wfctl knowledge reconstruct workstream
+submit` and have a different actor run `wfctl knowledge reconstruct
+workstream review`. Before acceptance, respond to contradictions,
+insufficient evidence, negative claims, or review rework with `wfctl
+knowledge reconstruct workstream escalate`; choose a stronger profile, a
+narrower follow-up workstream, maintainer review, retained uncertainty, or
+an explicitly justified same-profile correction. Mark orchestration complete
+only after every workstream
+is accepted or has
+a review-approved `cancelled` disposition, blocked work is either resolved
+or represented by an honest partial outcome, the
+orchestrator's synthesis audit passes, and a distinct fresh actor records
+the independent review. Record `assurance` as `independent-agent`,
+`separate-session`, or `maintainer`, plus the actual host run ID when
+applicable. `wfctl knowledge reconstruct check` rejects missing,
+unfinished, unreviewed, unreferenced, or path-leaking workstreams.
