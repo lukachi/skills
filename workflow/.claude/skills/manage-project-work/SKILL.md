@@ -40,6 +40,8 @@ wfctl work start <slug> --title "<title>" --mode full|slice|wayfinder
 Start from one leaf for single-repository delivery. Start from knowledge with
 no leaf for project-only work, or repeat `--leaf` for known multi-repository
 scope. Do not bind guessed leaves merely because Wayfinder may need them later.
+Work that turns out to need one gains it later with `wfctl work bind <id>`, run
+from that repository's own checkout.
 
 Run `wfctl work status <id>` and `wfctl work context <id> --stage shape`.
 Use the returned bundle in knowledge for records and only the returned code
@@ -120,9 +122,16 @@ readable for compatibility.
 
 ## Route the active bundle
 
+- Use `grill-project-decisions` before either shaping or specifying settles
+  anything. It is the interview: the whole frontier of open decisions asked in
+  numbered rounds, each with a recommendation, until the maintainer says you have
+  reached a shared understanding. Nothing is written into the contract before they
+  say it. Pair it with `model-project-domain`, which keeps the project's own words
+  sharp while the interview runs — `grill-me` is the maintainer's own way in.
 - Use `shape-project-direction` only for deliberate Wayfinder.
 - Use `specify-project-change` to synthesize bounded work or collapse a clear
-  map into stable acceptance criteria.
+  map into stable acceptance criteria. It synthesizes what the interview already
+  settled and starts no interview of its own.
 - Use `split-project-change` when approved work needs several dependency-aware
   sessions.
 - Use `implement-work-item` for exactly one frontier issue. A small bounded

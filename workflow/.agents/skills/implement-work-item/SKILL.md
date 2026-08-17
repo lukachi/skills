@@ -1,6 +1,6 @@
 ---
 name: implement-work-item
-description: Claim and implement exactly one ready issue from a central project change bundle in its exact bound leaf checkout or worktree. Use when the maintainer explicitly asks to implement a named or next frontier issue, or when resuming its existing claim. Do not use for an unresolved Wayfinder issue, unapproved shaping, lightweight unrelated edits, or work in an inferred checkout.
+description: Claim and implement exactly one ready issue from a central change bundle, test-first at pre-agreed seams, in its exact bound leaf checkout. Use when the maintainer asks to implement a named or next frontier issue, or when resuming its existing claim.
 ---
 
 # Implement Work Item
@@ -8,55 +8,109 @@ description: Claim and implement exactly one ready issue from a central project 
 Build one bounded unit from a fresh, explicit context. The issue tracks local
 progress; `change.md` remains the parent contract.
 
-Read [the execution contract](references/execution-contract.md) before the
-first claim in a repository.
+## Workspace invariants
+
+- The central bundle is the record workspace. Each `Code root` from `wfctl work
+  status` is an implementation workspace.
+- A linked worktree is a distinct root even when it shares Git objects. Derive a
+  checkout from the reported roots, never from a branch name, a repository name, a
+  sibling path, or where `change.md` lives.
+- Re-run status after a directory change, a branch change, compaction, and before
+  verification.
 
 ## Load before claiming
 
-1. Run `wfctl work issue show <change-id> <issue-id>` from the exact intended
-   leaf. If no issue was named, run `wfctl work issue list <change-id>` and
-   choose only a frontier issue.
-2. Read every listed required file completely. This includes the parent spec,
-   selected issue, transitive blockers, and referenced artifacts.
-3. After each complete read, run `wfctl work review file <change-id> <path>`.
-   Do not record a receipt after reading only headings, summaries, or excerpts.
-4. Run `wfctl work status <change-id>` and verify the current Git root equals
-   the reported code root exactly.
+1. Run `wfctl work issue show <change-id> <issue-id>` from the exact intended leaf.
+   With no issue named, run `wfctl work issue list <change-id>` and choose a
+   frontier issue.
+2. Read every listed required file completely — the parent spec, the selected
+   issue, transitive blockers, referenced artifacts.
+3. After each complete read, run `wfctl work review file <change-id> <path>`. A
+   receipt over headings, summaries, or excerpts is a receipt for a file nobody
+   read.
+4. Run `wfctl work status <change-id>` and confirm the current Git root equals the
+   reported code root exactly.
 5. Claim before analysis or edits:
 
 ```sh
 wfctl work issue claim <change-id> <issue-id> --actor "agent:<identity>"
 ```
 
-The claim records repository, branch, revision, and worktree identity. Stop on
-any mismatch instead of choosing a sibling checkout.
+The claim records repository, branch, revision, and worktree identity. A mismatch
+stops the work rather than selecting a sibling checkout.
+
+## Confirm the seams
+
+A **seam** is the public boundary you test at: the interface where you observe
+behaviour without reaching inside. Tests live at seams.
+
+**Test only at pre-agreed seams.** The specification records the seams the
+maintainer confirmed. Where this issue needs one the spec does not carry, write
+down the seams under test and confirm them before writing a test. Ask: what is the
+public interface here, and which seams should we test?
+
+You cannot test everything, and agreeing the seams up front is how the testing
+effort lands on the critical paths and the complex logic instead of on every edge
+case.
 
 ## Implement one tracer bullet
 
-Invoke `analyze-with-graphify` in every repository this issue legitimately
-touches, then inspect the actual source. Recheck relevant curated knowledge
-with `align-project-knowledge`. Search may supplement the graph; it does not
-replace it.
+Invoke `analyze-with-graphify` in every repository this issue legitimately touches,
+then inspect the actual source. Recheck the relevant curated knowledge with
+`align-project-knowledge`. Text search supplements the graph.
 
-Implement the smallest complete behavior that satisfies this issue. Prefer a
-high public seam and work one behavior cycle at a time:
+Implement the smallest complete behaviour that satisfies this issue, one cycle at
+a time:
 
-1. add one externally meaningful failing check;
-2. confirm it fails for the intended reason;
-3. make the minimum production change that passes it;
-4. run the focused check;
-5. repeat, then run broader relevant checks.
+1. Write one externally meaningful failing check at a confirmed seam.
+2. Confirm it fails for the intended reason — **red before green**.
+3. Make the minimum production change that passes it. Anticipate no future test
+   and add no speculative feature.
+4. Run the focused check.
+5. Repeat. One seam, one test, one minimal implementation per cycle.
 
-Tests must derive expected behavior from the approved contract or an
-independent authority, never from the implementation they are meant to test.
-Do not over-mock the behavior under review.
+Typecheck regularly and run single test files regularly. Run the broader relevant
+suite once, at the end.
 
-After every material maintainer turn or meaningful investigation cycle, apply
-the preservation test from `manage-project-work`: if losing newly learned
-information could cause repeated material investigation, a different choice,
-misunderstanding, or unsafe action in a fresh session, append a complete entry
-to the issue's `Discovery ledger`. Record observation, evidence, implication,
-scope, and disposition without forcing it into a predefined finding category.
+**Refactoring is not part of this loop.** It belongs to the review stage, which
+`verify-project-work` owns.
+
+### What a good test is
+
+Tests verify behaviour through public interfaces, not implementation details. The
+code can change entirely and the tests should not. A good test reads like a
+specification — "a player can accept a quest with a valid character" says exactly
+what capability exists — and survives a refactor because it does not care about
+internal structure.
+
+Read [good and bad tests](references/tests.md) for worked examples, and
+[when to mock](references/mocking.md) before standing anything in for a real
+collaborator.
+
+### Anti-patterns
+
+- **Implementation-coupled** — mocks internal collaborators, tests private
+  methods, or verifies through a side channel such as querying the database
+  instead of using the interface. The tell: the test breaks on a refactor while
+  the behaviour has not changed.
+- **Tautological** — the assertion recomputes the expected value the way the code
+  does, so it passes by construction and can never disagree with the code.
+  Expected values come from an independent source: the approved contract, a
+  known-good literal, a worked example.
+- **Horizontal slicing** — all the tests first, then all the implementation. Bulk
+  tests verify _imagined_ behaviour: they test the shape of things, go insensitive
+  to real changes, and commit to a test structure before the implementation is
+  understood. Work in vertical slices instead, each test a tracer bullet that
+  responds to what the last cycle taught you.
+
+## Keep the record current
+
+After every material maintainer turn or investigation cycle, apply the
+preservation test from `manage-project-work`: where losing what you just learned
+could make a fresh session repeat material investigation, choose differently,
+misunderstand the work, or act unsafely, append a complete entry to the issue's
+`Discovery ledger` — observation, evidence, implication, scope, disposition.
+
 Update evidence and current understanding next, then refresh the issue's single
 structured checkpoint last:
 
@@ -68,22 +122,23 @@ wfctl work checkpoint <change-id> --issue <issue-id> \
   --next "<exact next action>"
 ```
 
-Use `--status blocked --blocker "<reason>"` when progress genuinely cannot
-continue. Record deviations in the parent `change.md` when they affect approved
-scope, acceptance, or decisions; refresh the parent checkpoint and reopen
-framing review before continuing materially different work.
+Use `--status blocked --blocker "<what you need from them>"` when the maintainer is
+what the work is missing, and `--handoff "<why this session stops here>"` when
+nothing is missing except this session. Record a deviation in the parent
+`change.md` when it affects approved scope, acceptance, or decisions; refresh the
+parent checkpoint and reopen framing review before continuing materially different
+work.
 
-The checkpoint may identify the latest discovery and its effect on the next
-action, but the full information stays in the semantic record or a linked
-artifact. Never hide a discovery only in checkpoint prose, command output, or
-conversation memory.
+The checkpoint may name the latest discovery and its effect on the next action. The
+discovery itself stays in the semantic record or a linked artifact.
 
 ## Resolve honestly
 
-Inspect the real diff and production path. Record commands, direct source
-evidence, limitations, placeholders, and unresolved risk. With normal
-maintainer authorization, preserve code in the exact bound Git commit; `wfctl`
-never commits automatically.
+Inspect the real diff and the production path. Record the commands, the direct
+source evidence, the limitations, the placeholders, and any unresolved risk.
+
+Ask before you commit. With that authorization, preserve the implementation in the
+exact bound Git commit; `wfctl` never commits on its own.
 
 Resolve only this issue:
 
@@ -93,14 +148,17 @@ wfctl work issue complete <change-id> <issue-id> \
   --evidence "<direct inspection or command result>"
 ```
 
-If interrupted, refresh the claimed issue checkpoint before stopping. A fresh
-session begins with `wfctl work context --stage resume`, reads every required
-file and discovery entry completely, and resumes the existing exact claim; it
-does not infer another issue, actor, checkout, or code root. If
-deliberately giving the issue back, run `wfctl work issue release`; it resets
-the issue checkpoint to ready. Completion makes the issue checkpoint terminal;
-then refresh the parent checkpoint with the next frontier action. Do not mark a
-partial outcome completed. Final change-wide review, drafting the pages this work
-changes, and closure belong to `verify-project-work` after every required issue
-is terminal; the maintainer's approval of those pages comes after the bundle is
-closed, and holds nothing up.
+Completion makes the issue checkpoint terminal; refresh the parent checkpoint with
+the next frontier action. A partial outcome is not marked completed. Where the
+issue is deliberately given back, `wfctl work issue release` resets it to ready.
+
+Finishing a unit is not finishing: completing an issue releases its claim and
+leaves the bundle holding ready issues nobody has claimed. The next unit is
+available work.
+
+A fresh session begins with `wfctl work context --stage resume`, reads every
+required file and discovery entry completely, and resumes the existing exact
+claim rather than inferring another issue, actor, or code root.
+
+Change-wide review, the curated pages this work changes, and closure belong to
+`verify-project-work` once every required issue is terminal.

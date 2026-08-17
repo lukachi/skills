@@ -29,17 +29,37 @@
     "explore-project-knowledge": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "02a871fdc9ccc4086df980b6c29f31792a4c8246155cf57980a898e26a87c92f"
+      "computedHash": "3af2e38ed23a16e94e05883414c29bccba4cbf3b8bef882f73756d25b6c923bc"
+    },
+    "grill-me": {
+      "source": "/Users/lukachisama/Documents/agent-skills/workflow",
+      "sourceType": "local",
+      "computedHash": "7716a29acefe19636d96bcc3782238b1034238752728e99a040254bb3ca99033"
+    },
+    "grill-project-decisions": {
+      "source": "/Users/lukachisama/Documents/agent-skills/workflow",
+      "sourceType": "local",
+      "computedHash": "22d2d855d75bfdac0bf9b37595ae062f86dcff90a6db72fe19594b53c7cf6264"
     },
     "implement-work-item": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "a21a8c78d3371e81db35cbe1f0d52475de1dadb56a772ee9ca76913cd56cd403"
+      "computedHash": "de47a7220dd6991f049bd47fea878db3fcea7753f691add1c940a66d105d94d7"
     },
     "manage-project-work": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "1f33177bfcb13423c56bc9b7a6a4b1dac8d28b653a776847d785183bca10e93d"
+      "computedHash": "aef1473fc802783f0201b4add3ca56a850758a9a2f6a330d69a676a2c82b3637"
+    },
+    "model-project-domain": {
+      "source": "/Users/lukachisama/Documents/agent-skills/workflow",
+      "sourceType": "local",
+      "computedHash": "5b54e1ff8c9287a8422e01fe3a20a788cf70dd4fe1bbc55d945c228a5cbbd392"
+    },
+    "prototype-project-decision": {
+      "source": "/Users/lukachisama/Documents/agent-skills/workflow",
+      "sourceType": "local",
+      "computedHash": "254621ac3bf136cff4f946cc2db5c715272373d4d0e6d389ec94ef7213b34091"
     },
     "qmd": {
       "source": "/Users/lukachisama/.bun/install/global/node_modules/@tobilu/qmd/skills/qmd",
@@ -49,22 +69,27 @@
     "setup-workflow-environment": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "746ab468dd038e38a0b4e8d53cda2e2502b9997695e9833d60b93e3e8ca60d7f"
+      "computedHash": "66efa4ca3ab51ab8ef5e171a441ce350e1d9658970df08d563ea9de736b24d8e"
     },
     "shape-project-direction": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "7e0b6c9535c4d1faf95c340b1c1b3b9c8e68d3e9dbc63ba77b56df46b437e192"
+      "computedHash": "28137ea8578bd33a4366ff8a6388f1664df89612449e21884e9c1f00f5043081"
+    },
+    "show-project-work": {
+      "source": "/Users/lukachisama/Documents/agent-skills/workflow",
+      "sourceType": "local",
+      "computedHash": "0e9829720943175f716cb6e76956fc37be794ee17f123803406082462e3073cc"
     },
     "specify-project-change": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "acbe1a8faad0aa2287169bc51924fe28f3c9f3200e4939b9aa508546cbff301e"
+      "computedHash": "4c3624df5b930ac703098560e9ea2e61bd2cd57bd3f0096aac7370beb32fa362"
     },
     "split-project-change": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "06d265d98ad7a9e9383819d98c479d09f2141f67d5720ef9b1800622796fe811"
+      "computedHash": "b1095fd0478f386189e552a728ac8eb14dd470b2d0deada6afad9821bae6b087"
     },
     "verify-knowledge-quality": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
@@ -74,7 +99,12 @@
     "verify-project-work": {
       "source": "/Users/lukachisama/Documents/agent-skills/workflow",
       "sourceType": "local",
-      "computedHash": "335b19c9782d95f72ef5c6c07f66a4a8c814f9242c79f143cb0660f3685795a3"
+      "computedHash": "f0b67dd7cb08f7c7109ab3160d85a662e814f1964ce9fd57163e0988792f3137"
+    },
+    "wait-what": {
+      "source": "/Users/lukachisama/Documents/agent-skills/workflow",
+      "sourceType": "local",
+      "computedHash": "1d55d63dc476890686bd2fb5e8b20ccd9f74b27f8173644b0b1564ddc9248064"
     }
   }
 }

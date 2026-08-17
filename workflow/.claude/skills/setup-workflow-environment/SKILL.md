@@ -73,7 +73,11 @@ requests manual or automation-oriented instructions.
     project discovery works identically from knowledge and leaf sessions.
     Confirm `shape-project-direction`, `specify-project-change`,
     `split-project-change`, and `implement-work-item` are installed for both
-    profiles. For a knowledge profile, also confirm
+    profiles. Confirm `grill-project-decisions`, `model-project-domain`,
+    `prototype-project-decision`, and `show-project-work` are installed for both
+    profiles, and that `grill-me` and `wait-what` are too — those two are the
+    maintainer's own entry points and carry `disable-model-invocation: true`, so
+    tell them the names exist. For a knowledge profile, also confirm
     `research-project-context` is installed.
 12. For a knowledge profile, confirm that `.qmd/index.yml` defines separate
     `knowledge`, `changes`, `intake`, `reconstruction`, and `raw` collections.

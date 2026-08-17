@@ -60,6 +60,20 @@ this change,” or “check the workflow.” The installed skills translate thos
 requests into the complete internal procedure. You do not need to invoke a
 skill by name.
 
+## Two names worth knowing
+
+Everything else is reached for you. These two are yours, because only you can
+decide you want them:
+
+- **`grill-me`** — a relentless interview before anything is written down. The
+  agent maps the open decisions as a tree, asks the whole frontier of them in
+  numbered rounds with a recommendation on each, and writes nothing into the
+  contract until you say the two of you understand each other. Ask for it
+  whenever a direction is being settled and the questions feel too few.
+- **`wait-what`** — that last message did not land. It makes the agent re-pitch
+  the same thing with context, in plain language, carrying nothing you would have
+  to look up.
+
 ## Trust boundary
 
 | Surface | Purpose | Trust |
@@ -259,19 +273,29 @@ deliberate separate step, not that a specific person typed it. Every other
 review decision the agent records as a stable `human:<reviewer-id>` and
 timestamp after you answer.
 
-## Review packet
+## What a message from the agent looks like
 
-Each request should contain:
+Every message carries three things, in this order, and stops:
 
-1. **Decision** — the exact claim, framing, or outcome.
-2. **Evidence** — pinned sources and fresh verification.
-3. **Conflicts** — contrary evidence, gaps, deviations, or risk.
-4. **Recommendation** — the agent's preferred answer and reasoning.
-5. **Requested response** — approve, correct, or defer.
+1. **What is now true** that was not true before, in your product's own words.
+2. **What is yours to decide**, if anything — one decision, with the agent's
+   recommendation and what each answer costs.
+3. **What happens next without you.**
 
-Deferral is valid. The agent preserves uncertainty instead of guessing.
-When several decisions are needed, the agent asks one at a time and updates
-the living record before continuing.
+Evidence is not in the message. It is in the record, which has a place for each
+kind of it, and the agent brings it out when you ask to audit rather than to
+decide. A message carrying identifiers you would have to look up — a bundle id,
+a criterion id, a file path — is a defect; say `wait-what` and it will re-pitch
+in plain language and stay there.
+
+Where the answer is a shape rather than a sentence — a flow, a layout, a
+sequence, or a change to one — the agent draws it instead of describing it.
+
+Deferral is a valid answer, and so is "I do not know": the agent records the gap
+rather than guessing at your preference. Several decisions never arrive stacked
+in one message. The one exception is an interview, where the agent asks a whole
+round of numbered questions at once, each with a recommendation — that is
+`grill-me` working as intended, not a wall of asks.
 
 ## Significant-work loop
 

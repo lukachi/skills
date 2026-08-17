@@ -18,16 +18,26 @@ skills-lock.json
 .claude/skills/curate-project-knowledge/
 .agents/skills/explore-project-knowledge/
 .claude/skills/explore-project-knowledge/
+.agents/skills/grill-me/
+.claude/skills/grill-me/
+.agents/skills/grill-project-decisions/
+.claude/skills/grill-project-decisions/
 .agents/skills/implement-work-item/
 .claude/skills/implement-work-item/
 .agents/skills/manage-project-work/
 .claude/skills/manage-project-work/
+.agents/skills/model-project-domain/
+.claude/skills/model-project-domain/
+.agents/skills/prototype-project-decision/
+.claude/skills/prototype-project-decision/
 .agents/skills/qmd/
 .claude/skills/qmd/
 .agents/skills/setup-workflow-environment/
 .claude/skills/setup-workflow-environment/
 .agents/skills/shape-project-direction/
 .claude/skills/shape-project-direction/
+.agents/skills/show-project-work/
+.claude/skills/show-project-work/
 .agents/skills/specify-project-change/
 .claude/skills/specify-project-change/
 .agents/skills/split-project-change/
@@ -36,4 +46,6 @@ skills-lock.json
 .claude/skills/verify-knowledge-quality/
 .agents/skills/verify-project-work/
 .claude/skills/verify-project-work/
+.agents/skills/wait-what/
+.claude/skills/wait-what/
 # wfctl:end

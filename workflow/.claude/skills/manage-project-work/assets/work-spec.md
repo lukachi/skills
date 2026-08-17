@@ -77,6 +77,15 @@ verification:
 
 State the intended outcome and why it matters.
 
+# User stories
+
+A long numbered list, in the form: As a <actor>, I want <capability>, so that
+<benefit>. Extensive enough to cover every aspect of the change. This is the part
+of the spec a person can read and judge; acceptance criteria are derived from it
+rather than a substitute for it.
+
+1. As a <actor>, I want <capability>, so that <benefit>.
+
 # Current state
 
 Maintain the latest agreed problem, desired outcome, constraints, scope,
@@ -173,7 +182,15 @@ List relevant vision, product, architecture, decision, repository, and uncertain
 
 # Acceptance criteria
 
-- [ ] Add observable, testable completion criteria.
+- [ ] Add observable, testable completion criteria, each traceable to a user story.
+
+# Test seams
+
+Record the seams the behaviour is tested at and what each one proves. Prefer
+existing seams, use the highest seam that can prove the behaviour, and keep the
+count as close to one as the change allows. Note what makes a good test here and
+the prior art these tests follow. The maintainer confirmed these seams before they
+were written down.
 
 # Verification evidence
 

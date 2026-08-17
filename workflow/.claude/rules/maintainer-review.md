@@ -106,19 +106,32 @@ forbids is decisions buried inside prose, not decisions on their own lines.
 
 ### 5. Give the answer a shape they can hit
 
-Name the options, or say what a bare yes changes. Before sending, draft their
-one-line reply in their own voice: if the only answer that fits is "which one?",
-you wrote a status line and the question is still missing.
+**Write their reply before you send the message.** Draft the answer you expect,
+in their voice, one line. If nothing fits — if the only reply available is
+"which one?" or "what specifically?" — then what you wrote is a status line and
+the question is still missing.
 
-Bad: "I need your word on the boundaries here."
+Saying that something waits is the common way to fail this, and it fails because
+it describes your queue rather than their decision.
 
-Good: "Either a player sees quests they cannot accept, greyed out, or the board
-hides them until they qualify. Greyed out, I think — the hidden version reads as
-a bug the first time someone hears about a quest they cannot find. Say which."
+Bad: "Three records are ready and all three are waiting on you." It passes every
+other rule here — it names no count alone, it can carry a table, it reads as
+brevity — and still leaves them to work out what they are being asked.
 
-A count fails this test and so does a category. "I do not know" is an answer you
-can record, and saying so out loud is worth more than a preference guessed from
-a polite reply and then treated as settled.
+Bad: a category. "The boundaries", "a decision about the deck", "your word on the
+shape" each name the subject and withhold the question.
+
+Good: an alternative with its consequence. "Delete the twenty-two explanations,
+or give the row a note field; the note is my recommendation, and it costs one
+migration."
+
+This is a test rather than a list of phrases to avoid, because the failure is the
+same in every language and rewords faster than any list can be kept. Apply it to
+each sentence that puts something to them, including a blocker, a status line,
+and the last line of a report.
+
+"I do not know" is an answer you can record, and saying so out loud is worth more
+than a preference guessed from a polite reply and then treated as settled.
 
 ### 6. Find their answer before asking for it
 
@@ -330,6 +343,11 @@ the bundle's `promotion/` directory, record them with `wfctl work promotion <id>
 and put them to the maintainer with `wfctl work ask <id> --stage promotion`, which
 shows the pages themselves rather than a list of paths. `wfctl work promote <id>`
 writes them.
+
+The packet ends by telling them a wrong page gets rewritten rather than argued
+for, and that is a working sentence: rewrite the draft where it sits in the
+queue, reseal it, refresh its review receipt, and run `wfctl work promotion <id>`
+again. Their answer is never lost by correcting what it was about.
 
 A bundle closed with pages waiting sits in the promotion queue instead of the
 archive, and nothing running is held by it. What it does hold is the next framing
