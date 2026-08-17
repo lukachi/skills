@@ -19,10 +19,15 @@ been read.
 Read every source your own findings cite. Opening an area they do not cite is a
 different pass, and nothing reaches `knowledge/` before the page phase.
 
-Read [the trajectory contract](../../TRAJECTORIES.md) before the first assembly in
-a session, and [where observations come from](references/observations.md) when the
-material was assembled under the previous model — case bodies that are templates,
+Read [the record shapes](references/record-shapes.md) before writing the first
+record of a session — the fields each layer carries, and how every pointer is
+resolved. Read [where observations come from](references/observations.md) when the
+material was assembled under the previous model: case bodies that are templates,
 candidate `reason` prose holding several observations, entries carrying no date.
+
+The normative contract is `spec/KNOWLEDGE.md` and `spec/CLI.md`.
+[The design record](../../TRAJECTORIES.md) holds why the model is shaped this way,
+along with its prototypes and its open risks; reading it is not part of an assembly.
 
 ## Say where you are
 
@@ -89,11 +94,11 @@ a statement, and `now.pinned` is where that name goes.
 Record what changed between the finding's period and now, not just the current
 state. A closed gap is as much a part of the line as an open one.
 
-Every pointer you write is resolved by `wfctl knowledge trajectory check`: a
-repo-relative path must exist, and a `git:<owner>/<repo>@<40-hex>#<path>` pointer
-is checked against a connected checkout. A pinned pointer whose repository is not
-connected comes back as a warning rather than a pass — those are the ones still
-worth your own eyes.
+Every pointer is resolved by `wfctl knowledge trajectory check`, in the forms
+[the record shapes](references/record-shapes.md) lists. One outcome is yours rather
+than the tool's: a pinned pointer whose repository has no connected checkout comes
+back unverified rather than passed, and those are the ones still worth your own
+eyes.
 
 Phase-three evidence carries no read receipt. `wfctl knowledge reconstruct read`
 writes into `reconstruction/`, which does not belong to this pipeline, so what a

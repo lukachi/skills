@@ -4,6 +4,13 @@ Non-normative. Records a design agreed in discussion, ahead of any spec change.
 When this lands, its parts move into `spec/KNOWLEDGE.md`,
 `spec/RECONSTRUCTION.md`, `spec/CLI.md`, and the affected rules and skills.
 
+**Nothing here is required reading for an assembly.** The record shapes moved to
+`skills/assemble-trajectories/references/record-shapes.md`, which is what an agent
+writing a record reads; the phases live in that skill; the compiler reports every
+structural failure by name. What stays here is why the model is shaped this way,
+the two prototypes that shaped it, what was deliberately not done, and what is
+still open — read by whoever decides whether to keep building it.
+
 ## The defect
 
 Today a candidate claim is classified and routed at read time

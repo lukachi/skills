@@ -877,3 +877,49 @@ test("the curation cluster states the four routes and stops restating the valida
   // restates which directory takes which view.
   assert.doesNotMatch(model, /^- product: `vision\//m);
 });
+
+test("the trajectory design record is not required reading for an assembly", async () => {
+  const skill = await readFile(
+    join(root, "skills/assemble-trajectories/SKILL.md"),
+    "utf8",
+  );
+  const flat = skill.replace(/\s+/g, " ");
+
+  // It called a 730-line non-normative design record "the trajectory contract" and
+  // required it before the first assembly, while that record named this skill as
+  // the procedure. The pointer was circular and the shapes were buried in it.
+  assert.doesNotMatch(skill, /the trajectory contract/i);
+  assert.match(flat, /Read \[the record shapes\]\(references\/record-shapes\.md\)/);
+  assert.match(flat, /reading it is not part of an assembly/i);
+  assert.match(flat, /normative contract is `spec\/KNOWLEDGE\.md` and `spec\/CLI\.md`/);
+
+  // The shapes an agent needs to write a record, in the skill's own references.
+  const shapes = await readFile(
+    join(root, "skills/assemble-trajectories/references/record-shapes.md"),
+    "utf8",
+  );
+  for (const field of [
+    "read_at",
+    "scope_limits",
+    "cause:",
+    "now:",
+    "pinned:",
+    "primary:",
+    "declared_by: human:<id>",
+  ]) {
+    assert.ok(shapes.includes(field), `record shapes must carry ${field}`);
+  }
+  assert.equal(
+    (shapes.match(/^```/gm) ?? []).length % 2,
+    0,
+    "record shapes must have balanced code fences",
+  );
+
+  // The design record says so itself, so a reader does not repeat the discovery.
+  const design = await readFile(join(root, "TRAJECTORIES.md"), "utf8");
+  assert.match(design, /^Non-normative\./m);
+  assert.match(
+    design.replace(/\s+/g, " "),
+    /Nothing here is required reading for an assembly/i,
+  );
+});
