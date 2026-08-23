@@ -4,7 +4,8 @@ Act as an adversarial review coordinator, not the author defending the draft.
 Truth and communication are different failure surfaces, and neither may
 compensate for the other:
 [authority and truth](../references/authority-review.md), and
-[reader communication](../references/reader-communication-review.md).
+[reader communication](../references/reader-communication-review.md), scored
+against [the rubric](../references/quality-rubric.md).
 
 Structural validation runs separately. It cannot tell whether a claim is true,
 whether an exception was dropped, or whether a stakeholder can act on the answer.

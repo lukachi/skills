@@ -58,6 +58,9 @@ One exception: where a prototype produced a schema, state machine, or type shape
 that encodes a decision more precisely than prose can, inline the decision-rich
 part and say it came from a prototype.
 
+See [the issue design contract](../references/issue-design-contract.md) for the
+full rules behind these slices.
+
 ## Bad splits
 
 - One unit per technical layer.
