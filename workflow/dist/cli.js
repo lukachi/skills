@@ -1473,6 +1473,7 @@ var init_install = __esm({
 var leaves_exports = {};
 __export(leaves_exports, {
   GRAPH_PATH: () => GRAPH_PATH,
+  assertInsideClaim: () => assertInsideClaim,
   assertTraversable: () => assertTraversable,
   graphSetup: () => graphSetup,
   inspectLeaf: () => inspectLeaf,
@@ -1480,7 +1481,7 @@ __export(leaves_exports, {
   renderLeaves: () => renderLeaves
 });
 import { stat as stat3 } from "node:fs/promises";
-import { resolve as resolve8 } from "node:path";
+import { resolve as resolve8, sep as sep2 } from "node:path";
 async function inspectLeaf(entry, now = /* @__PURE__ */ new Date()) {
   const base = {
     repository: entry.repository,
@@ -1555,6 +1556,29 @@ function renderLeaves(leaves) {
     ] : []
   ].join("\n");
 }
+function assertInsideClaim(options) {
+  const target = resolve8(options.target);
+  const containing = options.leaves.find((leaf) => {
+    const base = resolve8(leaf.path);
+    return target === base || target.startsWith(`${base}${sep2}`);
+  });
+  if (!containing) {
+    throw new GateRefusal(
+      `${options.target} is not inside any registered repository.`,
+      "wfctl repo add <owner/name> --path <dir> [--worktree <id>]",
+      options.leaves.length === 0 ? "Nothing is registered, so there is nowhere this write could legitimately land." : `Registered:
+${options.leaves.map((leaf) => `  ${leaf.repository}  ${leaf.worktreeId}  ${leaf.path}`).join("\n")}`
+    );
+  }
+  if (!options.claim) return;
+  if (containing.repository !== options.claim.repository || containing.worktreeId !== options.claim.worktreeId) {
+    throw new GateRefusal(
+      `This unit is claimed from ${options.claim.repository} (${options.claim.worktreeId}), and that path is in ${containing.repository} (${containing.worktreeId}).`,
+      `wfctl work issue claim <id> --repository ${containing.repository} --worktree ${containing.worktreeId}`,
+      "A worktree is an exact workspace, not an alias for its repository. Code written into a sibling checkout looks entirely correct there and belongs to different work."
+    );
+  }
+}
 var GRAPH_PATH, STALE_AFTER_DAYS;
 var init_leaves = __esm({
   "src/core/leaves.ts"() {
@@ -1584,6 +1608,17 @@ function decideWrite(input) {
     throw error;
   }
   if (!flow) return {};
+  const claimed = flow.issues.find((issue) => issue.status === "claimed")?.claim;
+  try {
+    assertInsideClaim({
+      target,
+      leaves: input.leaves ?? [],
+      ...claimed ? { claim: { repository: claimed.repository, worktreeId: claimed.worktreeId } } : {}
+    });
+  } catch (error) {
+    if (error instanceof GateRefusal) return { refusal: error };
+    throw error;
+  }
   const normalized = normalize(knowledgeRoot, target);
   const first = input.writtenThisUnit.length === 0;
   const covered = flow.recall.covered.some(

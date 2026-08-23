@@ -146,8 +146,21 @@ test("the write hook refuses a first write with no traversal, then goes silent o
   let flow = await currentFlow(ctx.root);
   assert.ok(flow);
 
+  // A write has to land inside a registered checkout before anything else about
+  // it matters; that is what the registry was invented for.
+  const leaves = [
+    {
+      repository: "acme/a",
+      worktreeId: "main",
+      path: "/leaf",
+      graph: "ready" as const,
+      ageDays: 0,
+    },
+  ];
+
   const refused = decideWrite({
     flow,
+    leaves,
     knowledgeRoot: ctx.root,
     target: "/leaf/src/thing.ts",
     writtenThisUnit: [],
@@ -161,6 +174,7 @@ test("the write hook refuses a first write with no traversal, then goes silent o
 
   const first = decideWrite({
     flow,
+    leaves,
     knowledgeRoot: ctx.root,
     target: "/leaf/src/thing.ts",
     writtenThisUnit: [],
@@ -169,6 +183,7 @@ test("the write hook refuses a first write with no traversal, then goes silent o
 
   const silent = decideWrite({
     flow,
+    leaves,
     knowledgeRoot: ctx.root,
     target: "/leaf/src/thing.ts",
     writtenThisUnit: ["/leaf/src/thing.ts"],
@@ -178,6 +193,7 @@ test("the write hook refuses a first write with no traversal, then goes silent o
 
   const widened = decideWrite({
     flow,
+    leaves,
     knowledgeRoot: ctx.root,
     target: "/leaf/src/elsewhere.ts",
     writtenThisUnit: ["/leaf/src/thing.ts"],

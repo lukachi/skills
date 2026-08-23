@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import { GateRefusal } from "./gates.js";
 import type { RegisteredRepository } from "./registry.js";
 
@@ -138,4 +138,55 @@ export function renderLeaves(leaves: LeafState[]): string {
         ]
       : []),
   ].join("\n");
+}
+
+
+/**
+ * The write is inside a registered checkout, and inside the claimed one.
+ *
+ * This is what registration was for. An agent working across several worktrees
+ * loses track of which one it is in — the failure that produced the registry in
+ * the first place — and the symptom is code landing in a sibling checkout,
+ * where it looks entirely correct and belongs to different work.
+ *
+ * Two questions, refused separately because they have different remedies. A
+ * target in no registered checkout may be a repository nobody registered. A
+ * target in the wrong one is a claim pointing somewhere else.
+ */
+export function assertInsideClaim(options: {
+  target: string;
+  leaves: LeafState[];
+  /** The checkout the current unit is claimed from, when one is claimed. */
+  claim?: { repository: string; worktreeId: string };
+}): void {
+  const target = resolve(options.target);
+  const containing = options.leaves.find((leaf) => {
+    const base = resolve(leaf.path);
+    return target === base || target.startsWith(`${base}${sep}`);
+  });
+
+  if (!containing) {
+    throw new GateRefusal(
+      `${options.target} is not inside any registered repository.`,
+      'wfctl repo add <owner/name> --path <dir> [--worktree <id>]',
+      options.leaves.length === 0
+        ? "Nothing is registered, so there is nowhere this write could legitimately land."
+        : `Registered:\n${options.leaves.map((leaf) => `  ${leaf.repository}  ${leaf.worktreeId}  ${leaf.path}`).join("\n")}`,
+    );
+  }
+
+  if (!options.claim) return;
+
+  if (
+    containing.repository !== options.claim.repository ||
+    containing.worktreeId !== options.claim.worktreeId
+  ) {
+    throw new GateRefusal(
+      `This unit is claimed from ${options.claim.repository} (${options.claim.worktreeId}), and that path is in ${containing.repository} (${containing.worktreeId}).`,
+      `wfctl work issue claim <id> --repository ${containing.repository} --worktree ${containing.worktreeId}`,
+      "A worktree is an exact workspace, not an alias for its repository. Code " +
+        "written into a sibling checkout looks entirely correct there and belongs " +
+        "to different work.",
+    );
+  }
 }

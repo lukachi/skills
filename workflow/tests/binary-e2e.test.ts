@@ -192,16 +192,21 @@ test("knowledge/ cannot be reached by case, symlink or the absolute path", async
 
 test("the write hook goes quiet on ground it has already covered", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "quiet", "--weight", "lightweight"]);
-  wfctl(root, ["recall", "route", "graphify", "--covered", "/leaf/a.ts"]);
+  const leaf = await mkdtemp(join(tmpdir(), "wfctl-leaf-"));
+  await mkdir(resolve(leaf, "graphify-out"), { recursive: true });
+  await writeFile(resolve(leaf, "graphify-out/graph.json"), "{}", "utf8");
+  wfctl(root, ["repo", "add", "acme/a", "--path", leaf]);
 
-  const first = wfctl(root, ["hook", "write", "--target", "/leaf/a.ts"]);
+  wfctl(root, ["work", "start", "--title", "quiet", "--weight", "lightweight"]);
+  wfctl(root, ["recall", "route", "graphify", "--covered", resolve(leaf, "a.ts")]);
+
+  const first = wfctl(root, ["hook", "write", "--target", resolve(leaf, "a.ts")]);
   assert.match(first.stdout, /first write of this unit/);
 
-  const second = wfctl(root, ["hook", "write", "--target", "/leaf/a.ts"]);
+  const second = wfctl(root, ["hook", "write", "--target", resolve(leaf, "a.ts")]);
   assert.equal(second.stdout.trim(), "", "the guard re-fired on ground it had covered");
 
-  const widened = wfctl(root, ["hook", "write", "--target", "/leaf/elsewhere.ts"]);
+  const widened = wfctl(root, ["hook", "write", "--target", resolve(leaf, "elsewhere.ts")]);
   assert.match(widened.stdout, /outside what any traversal/);
 });
 
@@ -556,4 +561,49 @@ test("registering a leaf says what it still needs, and listing shows every graph
 
   wfctl(root, ["repo", "add", "acme/gone", "--path", "/nowhere/at/all"]);
   assert.match(wfctl(root, ["repo", "list"]).stdout, /unreachable\s+acme\/gone/);
+});
+
+test("a write outside the registered checkouts is refused", async () => {
+  const root = await installed();
+  const leaf = await mkdtemp(join(tmpdir(), "wfctl-leafA-"));
+  await mkdir(resolve(leaf, "graphify-out"), { recursive: true });
+  await writeFile(resolve(leaf, "graphify-out/graph.json"), "{}", "utf8");
+
+  wfctl(root, ["repo", "add", "acme/a", "--path", leaf]);
+  wfctl(root, ["work", "start", "--title", "w", "--weight", "significant"]);
+  wfctl(root, ["recall", "route", "graphify", "--covered", resolve(leaf, "src/a.ts")]);
+
+  const stray = wfctl(root, ["hook", "write", "--target", "/tmp/nowhere-registered/x.ts"]);
+  assert.equal(stray.status, 2, "a write landed outside every registered repository");
+  assert.match(stray.stdout, /not inside any registered repository/);
+});
+
+test("a write into a sibling checkout is refused while another is claimed", async () => {
+  const root = await installed();
+  const a = await mkdtemp(join(tmpdir(), "wfctl-leafA-"));
+  const b = await mkdtemp(join(tmpdir(), "wfctl-leafB-"));
+  for (const leaf of [a, b]) {
+    await mkdir(resolve(leaf, "graphify-out"), { recursive: true });
+    await writeFile(resolve(leaf, "graphify-out/graph.json"), "{}", "utf8");
+  }
+
+  wfctl(root, ["repo", "add", "acme/a", "--path", a]);
+  wfctl(root, ["repo", "add", "acme/b", "--path", b]);
+  wfctl(root, ["work", "start", "--title", "w", "--weight", "significant"]);
+  wfctl(root, ["recall", "route", "graphify", "--covered", resolve(a, "src/a.ts")]);
+  wfctl(root, ["work", "issue", "create", "--title", "unit"]);
+  wfctl(root, ["work", "issue", "claim", "U001", "--repository", "acme/a", "--worktree", "main"]);
+
+  /**
+   * The failure the registry was invented for: an agent working across several
+   * worktrees loses track of which it is in, and the code lands in a sibling
+   * checkout where it looks entirely correct and belongs to different work.
+   */
+  const sibling = wfctl(root, ["hook", "write", "--target", resolve(b, "src/x.ts")]);
+  assert.equal(sibling.status, 2, "a write landed in a checkout this unit does not own");
+  assert.match(sibling.stdout, /claimed from acme\/a/);
+  assert.match(sibling.stdout, /acme\/b/);
+
+  const owned = wfctl(root, ["hook", "write", "--target", resolve(a, "src/a.ts")]);
+  assert.equal(owned.status, 0, owned.stdout);
 });

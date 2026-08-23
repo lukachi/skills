@@ -76,6 +76,12 @@ lives in the leaf. The instruction was therefore unfollowable in exactly the
 case it exists for — a repository nobody had analysed yet — and the refusal that
 enforced it named a command that could not succeed.
 
+A write is refused outside every registered checkout, and outside the claimed
+one while a unit is claimed. That is what the registry was invented for: an
+agent working across several worktrees loses track of which it is in, and the
+symptom is code landing in a sibling checkout where it looks entirely correct
+and belongs to different work. Registration existed and nothing consulted it.
+
 Leaf state is observed, never installed: whether the checkout is there, whether
 it has a graph, and how old that graph is. It is reported when a repository is
 registered, listed on demand, and — the one that matters — carried into the

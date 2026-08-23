@@ -1,5 +1,5 @@
 import { relative, resolve } from "node:path";
-import { assertTraversable, type LeafState } from "./leaves.js";
+import { assertInsideClaim, assertTraversable, type LeafState } from "./leaves.js";
 import { assertWriteAllowed } from "./paths.js";
 import { renderCounterLine } from "./recall.js";
 import type { FlowRecord } from "./types.js";
@@ -58,6 +58,26 @@ export function decideWrite(input: WriteHookInput): WriteHookDecision {
   }
 
   if (!flow) return {};
+
+  /**
+   * Before anything else about this write: is it even in the right place?
+   *
+   * Traversal counts and guidance are pointless if the file is in a checkout
+   * this work does not own.
+   */
+  const claimed = flow.issues.find((issue) => issue.status === "claimed")?.claim;
+  try {
+    assertInsideClaim({
+      target,
+      leaves: input.leaves ?? [],
+      ...(claimed
+        ? { claim: { repository: claimed.repository, worktreeId: claimed.worktreeId } }
+        : {}),
+    });
+  } catch (error) {
+    if (error instanceof GateRefusal) return { refusal: error };
+    throw error;
+  }
 
   const normalized = normalize(knowledgeRoot, target);
   const first = input.writtenThisUnit.length === 0;

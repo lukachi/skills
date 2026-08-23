@@ -38,6 +38,24 @@ traverse something that is not there.
 Rebuild when the source has moved. A stale graph answers confidently about code
 that is gone, and nothing about it looks wrong.
 
+## You write only where the claim says
+
+Two refusals stand between an edit and the wrong checkout.
+
+A target in **no registered repository** is refused outright. There is nowhere
+it could legitimately land, and the remedy is to register that repository or to
+be somewhere else.
+
+A target in the **wrong registered repository** is refused while a unit is
+claimed from another. A worktree is an exact workspace, not an alias for its
+repository — several checkouts of one repository exist precisely so different
+work can run at once, and code written into a sibling looks entirely correct
+there while belonging to different work.
+
+This is what the registry is for. Deriving a checkout from a repository name, a
+branch, a sibling path, or where a record lives is how the code ended up in the
+wrong tree often enough to invent the mechanism.
+
 ## Order
 
 1. Traverse outward from what you are touching — callers, dependents, anything
