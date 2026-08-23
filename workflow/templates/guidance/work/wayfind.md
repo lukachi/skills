@@ -38,10 +38,6 @@ The map body is the whole map at low resolution, loaded once per session:
 - **Not yet specified** — in-scope fog you cannot phrase as a question yet.
 - **Out of scope** — work ruled beyond the destination.
 
-When you put the map to the maintainer — the route so far, where the fog still is
-— draw it rather than listing it. A route is a shape, and they can see a wrong
-edge in a tree where they cannot find one in a paragraph.
-
 ## Kinds of question
 
 Every question is either worked **with** the maintainer, or by the agent alone. A

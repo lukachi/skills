@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
-import { findDistributionRoot } from "./assets.js";
+import { findDistributionRoot } from "./distribution.js";
 import {
   isMissingFileError,
   readConfig,

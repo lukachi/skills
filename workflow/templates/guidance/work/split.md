@@ -32,9 +32,8 @@ delete the old form once no caller remains.
 
 ## Put the breakdown to the maintainer
 
-A breakdown is a graph, so draw it rather than describing it — a tree with each
-node named by what it delivers. For each unit show its title, what it delivers,
-and anything that genuinely has to come first.
+Show each unit: its title, what it delivers, and anything that genuinely has to
+come first.
 
 Then ask, as one numbered round with your own answer on each rather than three
 turns:

@@ -210,17 +210,20 @@ async function workflowLeafFixture(): Promise<{ root: string; graphPath: string 
       schemaVersion: 1,
       installedVersion: "0.8.0",
       profile: "leaf",
-      files: { ".workflow/rules/evidence-first.md": { sha256: "0".repeat(64) } },
+      files: {
+        ".workflow/rules/evidence-first.md": { sha256: "0".repeat(64) },
+        ".workflow/guidance/work/framed.md": { sha256: "1".repeat(64) },
+      },
     }),
     "utf8",
   );
   await writeFile(join(root, "AGENTS.md"), "# Project\n\nManaged block plus my own notes.\n", "utf8");
 
-  // One skill wfctl ships, one the project authored itself.
-  await mkdir(join(root, ".claude/skills/implement-work-item"), { recursive: true });
+  // Guidance wfctl ships, and a skill the project authored itself.
+  await mkdir(join(root, ".workflow/guidance/work"), { recursive: true });
   await writeFile(
-    join(root, ".claude/skills/implement-work-item/SKILL.md"),
-    "---\nname: implement-work-item\n---\n",
+    join(root, ".workflow/guidance/work/framed.md"),
+    "# The framing\n",
     "utf8",
   );
   await mkdir(join(root, ".claude/skills/deploy-our-service"), { recursive: true });
@@ -233,7 +236,6 @@ async function workflowLeafFixture(): Promise<{ root: string; graphPath: string 
     join(root, "skills-lock.json"),
     JSON.stringify({
       skills: {
-        "implement-work-item": { source: "/somewhere/workflow", sourceType: "local" },
         "deploy-our-service": { source: "./skills", sourceType: "local" },
       },
     }),
@@ -275,11 +277,11 @@ test("dispositions wfctl's own installed files without excluding project-authore
   assert.match(file(".workflow/rules/evidence-first.md")?.reason ?? "", /Installed by wfctl/);
   assert.equal(file(".workflow/state.json")?.status, "irrelevant");
 
-  // A skill wfctl ships and the lock confirms.
-  assert.equal(file(".claude/skills/implement-work-item/SKILL.md")?.category, "workflow-asset");
-  assert.equal(file(".claude/skills/implement-work-item/SKILL.md")?.status, "irrelevant");
+  // Guidance wfctl ships.
+  assert.equal(file(".workflow/guidance/work/framed.md")?.category, "workflow-asset");
+  assert.equal(file(".workflow/guidance/work/framed.md")?.status, "irrelevant");
 
-  // A skill the project wrote sits in the same directory and stays in scope.
+  // A skill the project wrote is not wfctl's and stays in scope.
   assert.equal(file(".claude/skills/deploy-our-service/SKILL.md")?.category, "documentation");
   assert.equal(file(".claude/skills/deploy-our-service/SKILL.md")?.status, "pending");
 

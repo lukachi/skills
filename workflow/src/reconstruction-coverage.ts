@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import { allWorkflowSkills } from "./planner.js";
+
 import { readPinnedGitTextRange } from "./pinned-git-read.js";
 
 export const RECONSTRUCTION_COVERAGE_VERSION = 1;
@@ -1375,7 +1375,17 @@ const SKILL_ROOTS = [".claude/skills/", ".agents/skills/"];
 // A skill this wfctl does not install is the project's own and stays in scope.
 // QMD's native skill is version-matched and installed by wfctl; Graphify's is
 // installed by Graphify itself, so it is not claimed here.
-const WORKFLOW_SKILL_NAMES = new Set([...allWorkflowSkills(), "qmd"]);
+/**
+ * Directories this workflow installs, excluded from source-graph scope.
+ *
+ * It used to be the list of installed skill names. There are no skills any
+ * more, so what wfctl owns in a repository is the guidance bundle and its
+ * runtime — and ownership stays an identity the tool records rather than a path
+ * pattern, because excluding `.claude` and `.agents` wholesale once hid a
+ * project's own engineering documents from every traversal this workflow
+ * prescribes.
+ */
+const WORKFLOW_SKILL_NAMES = new Set(["guidance", "runtime", "qmd"]);
 
 interface WorkflowOwnership {
   owned: Set<string>;

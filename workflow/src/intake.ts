@@ -13,7 +13,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
-import { findDistributionRoot } from "./assets.js";
+import { findDistributionRoot } from "./distribution.js";
 import { errorMessage, isMissingFileError, readConfig } from "./config.js";
 import { readRepositoryMetadata } from "./git.js";
 import { withFileLock } from "./file-lock.js";

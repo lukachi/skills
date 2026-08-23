@@ -9,9 +9,6 @@ person can judge, and this file exists because that happened once already.
 | Upstream | Vendored at | What it governs here |
 | --- | --- | --- |
 | [`mattpocock/skills`](https://github.com/mattpocock/skills) | `vendor/mattpocock/` | The delivery flow: wayfinding, specification, tickets, TDD, review, grilling, domain modeling, prototyping |
-| [`humanlayer/skills`](https://github.com/humanlayer/skills) | `vendor/humanlayer/` | The formats an agent draws with instead of describing |
-| [`ayghri/i-have-adhd`](https://github.com/ayghri/i-have-adhd) | `vendor/ayghri/` | The structure of the maintainer-review rule |
-| [`JuliusBrussee/caveman`](https://github.com/JuliusBrussee/caveman) | `vendor/juliusbrussee/` | When a register switches itself off, and that a style never grows its own output |
 
 ## Matt Pocock skills
 
@@ -55,69 +52,9 @@ This revision restores them from the upstream text.
 | `implement`, `tdd` | `implement-work-item` | Pre-agreed seams; red before green; one slice at a time; refactoring outside the loop; what a good test is; the three anti-patterns; `tests.md` and `mocking.md` verbatim | Exact leaf/worktree claim; Graphify-first inspection; hash-bound checkpoints and discovery ledger; evidence-backed resolution; no automatic commit |
 | `code-review` | `verify-project-work` | Pin the fixed point; two axes as parallel subagents with their briefs; the Fowler smell baseline with repository override; side-by-side reporting without reranking | Fixed point comes from the first delivery claim's revision; the spec source is `change.md`; bundle accounting, acceptance matrix, drafted pages, closure and the promotion gate follow |
 | `grilling` | `grill-project-decisions` | Interview relentlessly until shared understanding; design tree; rounds and the frontier; the whole frontier asked in one numbered round with recommendations; facts are the agent's job and decisions the maintainer's; do not act before their confirmation | Facts looked up through `wfctl knowledge decided`, QMD and Graphify first; each round persisted to the decision ledger and checkpoint; their confirmation is what the framing gate waits for |
-| `grill-me`, `grill-with-docs` | `grill-me` | User-invoked entry point that calls grilling and domain modeling together | The two upstream entry points collapse into one, because this workflow always maintains the domain model while grilling |
 | `domain-modeling` | `model-project-domain` | Active discipline; challenge the glossary; sharpen fuzzy terms; stress-test with scenarios; cross-reference with code; record terms as they resolve; the three tests before a decision earns its own page | The working glossary is the bundle's `Domain language` section; the promoted glossary is a Domain Concept page; an ADR is a decision page |
 | `prototype` | `prototype-project-decision` | Throwaway code that answers a question; the logic and UI branches; the six shared rules; keep the prototype as a primary source; `logic.md` and `ui.md` verbatim | The answer lands in the Wayfinder issue resolution or the bundle's decision ledger; the throwaway branch is linked as a bundle artifact |
-| `wait-what` | `wait-what` | User-invoked re-pitch, with context, in Simplified Technical English, in the project's own language | The language comes from curated knowledge; the reader test in `maintainer-review` is named |
 | `research` | `research-project-context` | Background subagent; primary sources only, every claim followed to its owner | Findings land in the owning record or a pending capture; an external source authorizes an external fact only |
-
-## HumanLayer `show-me`
-
-Pinned to `3c2629142c5d437428269b1b722b08c0b87f574d`, reviewed 2026-08-17.
-Manifest: [`vendor/humanlayer/upstream.json`](vendor/humanlayer/upstream.json).
-
-| Upstream source | Local skill | Retained behavior | Main `wfctl` modifications |
-| --- | --- | --- | --- |
-| `show-me` | `show-project-work` | Every format and its worked example, verbatim: pseudocode, call tree, component tree, shallow file tree, Mermaid, the four diff shapes, the whole block, one focused HTML file. Place the visual next to the short text it supports; keep only what answers the current question; use one, use several, not all | The HTML artifact is written under the bundle's `artifacts/` and linked from the record that raised the question; a packet rendered by `wfctl work ask` is never replaced by a visual; a diff takes its fixed point from the first delivery claim's revision |
-
-The examples are kept exactly as upstream wrote them. An example rewritten into
-this project's own nouns stops demonstrating a format and starts demonstrating
-this project, which is the failure that produced the corpus this replaces.
-
-The reasoning is upstream's own, in
-[Why Software Factories Fail](https://github.com/humanlayer/advanced-context-engineering-for-coding-agents/blob/main/wsff.md#program-design):
-a call-stack tree, a file-tree diff and a signature sketch each settle a decision
-that would otherwise be made implicitly during review, at the most expensive
-possible time to change your mind. This workflow's framing gate exists for the
-same reason.
-
-## `i-have-adhd` — the shape of the review rule
-
-Pinned to `2ed064090711586e0c97a2fbbf15465fe8f1808b`, reviewed 2026-08-17.
-Manifest: [`vendor/ayghri/upstream.json`](vendor/ayghri/upstream.json).
-
-The structure was taken whole and the rules are this project's own. What
-transfers: a model of the reader stated first and the rules derived from it;
-numbered rules each carrying a Bad and a Good; a named list of overrides instead
-of an implied one; a persistence clause; and a mechanical pre-send check.
-
-`.claude/rules/maintainer-review.md` had the same material as prose — rationale
-without examples, judgement without a checklist, and no statement that it still
-applies on the fortieth turn. Under the pressure of a fresh finding, the
-judgement lost.
-
-Dropped: time estimates, because a gate has no human clock; and restating state
-every turn, because `wfctl brief` and the checkpoint already carry it durably and
-a second copy is a second thing to keep true.
-
-## `caveman` — auto-clarity and the anti-inflation rule
-
-Pinned to `766dce6b1394ebb56a3090748d5a0240a5aefb36`, reviewed 2026-08-17.
-Manifest: [`vendor/juliusbrussee/upstream.json`](vendor/juliusbrussee/upstream.json).
-Only `skills/` was read; the engine, proxy and related runtime are BSL-1.1 and
-nothing under those paths is derived from or referenced.
-
-Two mechanisms transfer. **Auto-clarity**: named conditions under which the
-compressed form suspends itself — a security consequence, an irreversible action,
-a sequence whose order could be misread, an ambiguity compression created, and a
-maintainer who asked to clarify or repeated a question. **The anti-inflation
-rule**: a style is a substitution and never an addition, and a shortening that
-costs the reader more than it saves is not a shortening.
-
-Not taken: the compression itself. Upstream's axis is tokens; this workflow's is
-comprehension, and upstream already excludes anything persisted outside the
-conversation — which here is every record. No intensity levels are carried, so
-there is one register switch and `wait-what` holds it.
 
 ## Embedded influences
 
