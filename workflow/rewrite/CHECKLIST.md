@@ -10,7 +10,7 @@ verified against this file, not against memory.
 - [x] A3 Skills are removed as a delivery mechanism. Content ships as a versioned asset bundle the CLI reads; `wfctl upgrade` refreshes it.
 - [x] A4 Content is re-cut from role to state: the CLI prints only the slice that applies now.
 - [x] A5 Conversational content is dropped, not relocated.
-- [ ] A6 Installation is knowledge-repository only. No leaf profile, no leaf install.  _(not yet: leaf install still present in old code)_
+- [x] A6 Installation is knowledge-repository only. No leaf profile, no leaf install.
 - [x] A7 The agent is bootstrapped in the knowledge repo and writes into leaf paths as an orchestrator.
 - [x] A8 Hooks fire session-wide and resolve the leaf binding from the edit's target path.
 
@@ -37,8 +37,8 @@ verified against this file, not against memory.
 ## D. Cases
 
 - [x] D1 Two cases only: `work` (changes) and `reconstruction`.
-- [ ] D2 Intake is absorbed into reconstruction.  _(not yet: reconstruction deferred)_
-- [ ] D3 Raw material lives at `reconstruction/raw/`, owned by that module.  _(not yet: reconstruction deferred)_
+- [~] D2 Intake is absorbed into reconstruction.  _(partial: the installed shape has no `intake/`; the case itself is phase two)_
+- [x] D3 Raw material lives at `reconstruction/raw/`, owned by that module.
 - [ ] D4 `knowledge/` may never cite it; the validator's path ban moves to the new location.  _(not yet: reconstruction deferred)_
 - [x] D5 No routing or classification step. The maintainer starts a case explicitly.
 - [x] D6 Two independent state machines.
@@ -176,4 +176,4 @@ wayfinding, and attestation is gone from framing approval.
 
 Core modules: `src/core/{types,flow,recall,steps,checkpoint,gates,guidance,paths,verify,write-hook,commands}.ts`.
 Guidance bundle: `templates/guidance/`.
-Tests: `tests/core-flow.test.ts`, `tests/core-commands.test.ts` — 32 passing.
+Tests: `tests/core-flow.test.ts`, `tests/core-commands.test.ts`, `tests/core-install.test.ts` — 38 passing.
