@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, symlinkSync } from "node:fs";
+import { chmodSync, existsSync, symlinkSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -35,6 +35,13 @@ async function installed(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "wfctl-e2e-"));
   const result = wfctl(root, ["init", "knowledge", "--target", root]);
   assert.equal(result.status, 0, result.stdout);
+
+  // The runtime guards shell out to `wfctl` on PATH, exactly as they do for a
+  // real install. Without one on PATH the guards fail open and prove nothing.
+  await mkdir(resolve(root, "bin"), { recursive: true });
+  const shim = resolve(root, "bin/wfctl");
+  await writeFile(shim, `#!/bin/sh\nexec "${process.execPath}" "${binary}" "$@"\n`, "utf8");
+  chmodSync(shim, 0o755);
   return root;
 }
 
@@ -292,4 +299,61 @@ test("a capture beginning with dashes is still recordable", async () => {
 
   const result = wfctl(root, ["capture", "--fix the parser, it drops the last token"]);
   assert.equal(result.status, 0, result.stdout);
+});
+
+test("brief --json satisfies the stop guard's contract, not just a stub's", async () => {
+  /**
+   * The stop-guard suite stubs `wfctl brief --json`, so it stayed green for as
+   * long as the flag did not exist and the guard silently allowed every turn.
+   * This checks the two sides against each other.
+   */
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "contract", "--weight", "significant"]);
+
+  const report = JSON.parse(wfctl(root, ["brief", "--json"]).stdout);
+  const awaiting = (report.signals ?? []).filter(
+    (signal: { awaits?: string }) => signal.awaits === "agent",
+  );
+  assert.ok(awaiting.length > 0, "the guard arms on signals awaiting the agent; none were emitted");
+  for (const signal of report.signals) {
+    assert.equal(typeof signal.id, "string");
+    assert.ok(["agent", "maintainer"].includes(signal.awaits));
+    assert.equal(typeof signal.summary, "string");
+  }
+
+  const guard = resolve(root, ".workflow/runtime/guard-stop.mjs");
+  const decision = execFileSync(process.execPath, [guard], {
+    cwd: root,
+    encoding: "utf8",
+    input: JSON.stringify({
+      cwd: root,
+      session_id: "s",
+      prompt_id: "p",
+      last_assistant_message: "I will do the next thing.",
+      transcript_path: "/dev/null",
+      stop_hook_active: false,
+    }),
+    env: { ...process.env, PATH: `${resolve(root, "bin")}:${process.env.PATH}` },
+  });
+  assert.match(decision, /"decision":"block"/, "the guard did not fire on outstanding work");
+  assert.match(decision, /wfctl checkpoint --summary/, "the guard named a command that does not exist");
+});
+
+test("the stop guard releases when nothing awaits the agent", async () => {
+  const root = await installed();
+  const guard = resolve(root, ".workflow/runtime/guard-stop.mjs");
+
+  const decision = execFileSync(process.execPath, [guard], {
+    cwd: root,
+    encoding: "utf8",
+    input: JSON.stringify({
+      cwd: root,
+      session_id: "s",
+      prompt_id: "p",
+      last_assistant_message: "done",
+      transcript_path: "/dev/null",
+      stop_hook_active: false,
+    }),
+  });
+  assert.equal(decision.trim(), "", "an idle repository must end the turn");
 });
