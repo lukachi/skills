@@ -66,7 +66,7 @@ export function assertRecall(flow: FlowRecord, step: WorkStep): void {
   throw new GateRefusal(
     `Recall is incomplete for ${step}.`,
     "wfctl recall answer <item> --answer \"<what you found>\" --route <qmd|graphify|grep|read|maintainer> --source \"<where>\"",
-    renderCounterLine(step, flow.recall),
+    `${renderCounterLine(step, flow.recall)}\n\nwfctl guide recall — why this checklist exists`,
   );
 }
 

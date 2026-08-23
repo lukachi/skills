@@ -16,11 +16,60 @@ import type { WorkStep } from "./types.js";
  * delivered at the moment its state is true, and again the next time that state
  * is true, which is the property a file cannot have.
  */
+/**
+ * Topics the agent can ask for by name.
+ *
+ * The managed agent block stays thin on purpose — it is loaded every session
+ * and must say only what cannot arrive any other way. Depth belongs here, where
+ * it is fetched at the moment it applies rather than read once at turn one and
+ * forgotten by the time it matters.
+ */
+export const GUIDE_TOPICS: Record<string, GuidanceKey> = {
+  wfctl: "guide/wfctl",
+  recall: "recall/checklist",
+  structure: "recall/structure",
+  interview: "decide/interview",
+  "domain-language": "decide/domain-language",
+  prototype: "decide/prototype",
+  research: "decide/research",
+  adversarial: "verify/adversarial",
+  "curate-product": "curate/product",
+  "curate-engineering": "curate/engineering",
+  quality: "curate/quality",
+  routing: "curate/routing",
+  discoveries: "work/discoveries",
+  wayfind: "work/wayfind",
+};
+
 export type GuidanceKey =
   | `work/${WorkStep}`
   | "work/capture"
   | "work/promotion-path"
   | "recall/checklist"
+  | "recall/structure"
+  | "guide/wfctl"
+  | "decide/interview"
+  | "decide/domain-language"
+  | "decide/prototype"
+  | "decide/research"
+  | "curate/product"
+  | "curate/engineering"
+  | "curate/quality"
+  | "curate/routing"
+  | "work/discoveries"
+  | "work/wayfind"
+  | "recall/structure"
+  | "guide/wfctl"
+  | "decide/interview"
+  | "decide/domain-language"
+  | "decide/prototype"
+  | "decide/research"
+  | "curate/product"
+  | "curate/engineering"
+  | "curate/quality"
+  | "curate/routing"
+  | "work/discoveries"
+  | "work/wayfind"
   | "verify/adversarial"
   | "session/start";
 

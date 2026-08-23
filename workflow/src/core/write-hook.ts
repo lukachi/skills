@@ -70,7 +70,7 @@ export function decideWrite(input: WriteHookInput): WriteHookDecision {
       refusal: new GateRefusal(
         "No structural traversal has been made for this unit.",
         "wfctl recall route graphify --covered <files>",
-        renderCounterLine(flow.step, flow.recall),
+        `${renderCounterLine(flow.step, flow.recall)}\n\nwfctl guide structure — searching by graph before by string`,
       ),
     };
   }

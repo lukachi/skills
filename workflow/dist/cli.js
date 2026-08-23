@@ -270,7 +270,9 @@ function assertRecall(flow, step) {
   throw new GateRefusal(
     `Recall is incomplete for ${step}.`,
     'wfctl recall answer <item> --answer "<what you found>" --route <qmd|graphify|grep|read|maintainer> --source "<where>"',
-    renderCounterLine(step, flow.recall)
+    `${renderCounterLine(step, flow.recall)}
+
+wfctl guide recall \u2014 why this checklist exists`
   );
 }
 function assertNotParked(flow) {
@@ -315,6 +317,7 @@ var init_gates = __esm({
 // src/core/guidance.ts
 var guidance_exports = {};
 __export(guidance_exports, {
+  GUIDE_TOPICS: () => GUIDE_TOPICS,
   compose: () => compose,
   loadGuidance: () => loadGuidance
 });
@@ -333,9 +336,26 @@ async function loadGuidance(source, key) {
 function compose(parts) {
   return parts.filter((part) => Boolean(part && part.trim())).join("\n\n");
 }
+var GUIDE_TOPICS;
 var init_guidance = __esm({
   "src/core/guidance.ts"() {
     "use strict";
+    GUIDE_TOPICS = {
+      wfctl: "guide/wfctl",
+      recall: "recall/checklist",
+      structure: "recall/structure",
+      interview: "decide/interview",
+      "domain-language": "decide/domain-language",
+      prototype: "decide/prototype",
+      research: "decide/research",
+      adversarial: "verify/adversarial",
+      "curate-product": "curate/product",
+      "curate-engineering": "curate/engineering",
+      quality: "curate/quality",
+      routing: "curate/routing",
+      discoveries: "work/discoveries",
+      wayfind: "work/wayfind"
+    };
   }
 });
 
@@ -571,7 +591,9 @@ function decideWrite(input) {
       refusal: new GateRefusal(
         "No structural traversal has been made for this unit.",
         "wfctl recall route graphify --covered <files>",
-        renderCounterLine(flow.step, flow.recall)
+        `${renderCounterLine(flow.step, flow.recall)}
+
+wfctl guide structure \u2014 searching by graph before by string`
       )
     };
   }
@@ -1165,6 +1187,8 @@ var USAGE = `wfctl \u2014 project workflow
 
   init knowledge [--target <dir>]
 
+  guide [<topic>]              detail for one topic, when the state needs it
+
   hook write --target <path>   used by the pre-write guard, not by hand
 `;
 function flag(argv, name) {
@@ -1255,6 +1279,26 @@ async function run(argv, context) {
           };
         }
         return { stdout: USAGE, exitCode: 1 };
+      }
+      case "guide": {
+        const { GUIDE_TOPICS: GUIDE_TOPICS2, loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
+        const topic = rest[0];
+        if (!topic) {
+          return {
+            stdout: `topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
+            exitCode: 0
+          };
+        }
+        const key = GUIDE_TOPICS2[topic];
+        if (!key) {
+          return {
+            stdout: `No guide named ${topic}.
+topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
+            exitCode: 1
+          };
+        }
+        const text = await loadGuidance2({ root: context.assets }, key);
+        return { stdout: text ?? `The ${topic} guide is missing from this installation.`, exitCode: text ? 0 : 2 };
       }
       case "hook": {
         const [action, ...args] = rest;

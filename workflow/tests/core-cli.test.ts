@@ -80,3 +80,32 @@ test("an unknown step is named rather than silently ignored", async () => {
   assert.equal(result.exitCode, 1);
   assert.match(result.stdout, /One of: opened, aligned/);
 });
+
+test("the guide serves detail on demand and lists its topics", async () => {
+  const ctx = await context();
+
+  const listed = await run(["guide"], ctx);
+  assert.equal(listed.exitCode, 0);
+  assert.match(listed.stdout, /topics: .*recall/);
+
+  const page = await run(["guide", "wfctl"], ctx);
+  assert.equal(page.exitCode, 0);
+  assert.match(page.stdout, /You do not need to know the sequence/);
+
+  const recall = await run(["guide", "recall"], ctx);
+  assert.match(recall.stdout, /cannot feel that something is missing/);
+
+  const unknown = await run(["guide", "nonsense"], ctx);
+  assert.equal(unknown.exitCode, 1);
+  assert.match(unknown.stdout, /No guide named nonsense/);
+});
+
+test("a recall refusal points at the guide that explains it", async () => {
+  const ctx = await context();
+  await run(["work", "start", "--title", "thing", "--weight", "significant"], ctx);
+  await run(["work", "step", "aligned"], ctx);
+
+  const blocked = await run(["work", "step", "framed"], ctx);
+  assert.equal(blocked.exitCode, 2);
+  assert.match(blocked.stdout, /wfctl guide recall/);
+});

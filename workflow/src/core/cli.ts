@@ -35,6 +35,8 @@ const USAGE = `wfctl — project workflow
 
   init knowledge [--target <dir>]
 
+  guide [<topic>]              detail for one topic, when the state needs it
+
   hook write --target <path>   used by the pre-write guard, not by hand
 `;
 
@@ -135,6 +137,26 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           };
         }
         return { stdout: USAGE, exitCode: 1 };
+      }
+
+      case "guide": {
+        const { GUIDE_TOPICS, loadGuidance } = await import("./guidance.js");
+        const topic = rest[0];
+        if (!topic) {
+          return {
+            stdout: `topics: ${Object.keys(GUIDE_TOPICS).sort().join(", ")}`,
+            exitCode: 0,
+          };
+        }
+        const key = GUIDE_TOPICS[topic];
+        if (!key) {
+          return {
+            stdout: `No guide named ${topic}.\ntopics: ${Object.keys(GUIDE_TOPICS).sort().join(", ")}`,
+            exitCode: 1,
+          };
+        }
+        const text = await loadGuidance({ root: context.assets }, key);
+        return { stdout: text ?? `The ${topic} guide is missing from this installation.`, exitCode: text ? 0 : 2 };
       }
 
       case "hook": {

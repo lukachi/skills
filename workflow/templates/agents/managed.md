@@ -16,6 +16,10 @@ handed.
 **A refusal names the command that clears it.** Read the remedy line and act on
 it. Do not work around a refusal by editing a record by hand.
 
+**`wfctl guide <topic>`** brings back the detail for one topic when you need it
+— start with `wfctl guide wfctl`. This block stays short on purpose: it is
+loaded every session and says only what cannot arrive any other way.
+
 **Two decisions are the maintainer's, and only two.** What the work is, before it
 starts. What the project says about itself, afterwards. Closing is neither — the
 checks have already answered it, and asking them to confirm arithmetic costs a
