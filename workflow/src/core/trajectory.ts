@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
-import { withLock } from "./lock.js";
+import { withLock, writeAtomic } from "./lock.js";
 
 /**
  * Trajectories.
@@ -44,6 +44,8 @@ export const AXES = ["intent", "delivery", "vision"] as const;
 export type Axis = (typeof AXES)[number];
 
 export interface TrajectoryEvent {
+  /** Stable within its line, so a later event can name this one. */
+  id: string;
   /** What happened, in product language. */
   summary: string;
   axis: Axis;
@@ -52,6 +54,15 @@ export interface TrajectoryEvent {
   at?: string;
   /** A closed change writes this, so the line does not go stale when work lands. */
   change?: string;
+  /**
+   * The earlier event this one settles.
+   *
+   * A delivery names the intent it delivers. Nothing infers the link: matching
+   * summaries meant echoing the intent sentence closed the gap while a genuine
+   * delivery worded differently never did, and matching by order meant any
+   * delivery closed every intent before it, including unrelated ones.
+   */
+  settles?: string;
 }
 
 export interface Trajectory {
@@ -85,13 +96,7 @@ export async function readTrajectory(root: string, id: string): Promise<Trajecto
 export async function writeTrajectory(root: string, trajectory: Trajectory): Promise<void> {
   const path = trajectoryPath(root, trajectory.id);
   await mkdir(dirname(path), { recursive: true });
-  await withLock(path, () =>
-    writeFile(
-      path,
-      `${JSON.stringify({ ...trajectory, updatedAt: new Date().toISOString() }, null, 2)}\n`,
-      "utf8",
-    ),
-  );
+  await withLock(path, () => writeAtomic(path, `${JSON.stringify({ ...trajectory, updatedAt: new Date().toISOString() }, null, 2)}\n`));
 }
 
 export async function listTrajectories(root: string): Promise<Trajectory[]> {
@@ -141,7 +146,7 @@ export function subjectId(subject: string): string {
 export async function appendEvent(
   root: string,
   subject: string,
-  event: TrajectoryEvent,
+  event: Omit<TrajectoryEvent, "id"> & { id?: string },
 ): Promise<Trajectory> {
   if (!subject.trim()) {
     throw new GateRefusal(
@@ -164,7 +169,7 @@ async function appendLocked(
   root: string,
   id: string,
   subject: string,
-  event: TrajectoryEvent,
+  event: Omit<TrajectoryEvent, "id"> & { id?: string },
 ): Promise<Trajectory> {
   const existing = await readTrajectory(root, id);
   const trajectory: Trajectory = existing ?? {
@@ -174,17 +179,26 @@ async function appendLocked(
     updatedAt: new Date().toISOString(),
   };
 
+  if (event.settles && !trajectory.events.some((entry) => entry.id === event.settles)) {
+    throw new GateRefusal(
+      `${trajectory.subject} has no event ${event.settles}.`,
+      `wfctl trajectory show "${trajectory.subject}"`,
+      "A delivery settles an intent that was recorded; naming one that was not " +
+        "closes nothing and hides that it closed nothing.",
+    );
+  }
+
   trajectory.events = [
     ...trajectory.events,
-    { ...event, at: event.at ?? new Date().toISOString() },
+    {
+      ...event,
+      id: event.id || `E${String(trajectory.events.length + 1).padStart(3, "0")}`,
+      at: event.at ?? new Date().toISOString(),
+    },
   ];
   const path = trajectoryPath(root, trajectory.id);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(
-    path,
-    `${JSON.stringify({ ...trajectory, updatedAt: new Date().toISOString() }, null, 2)}\n`,
-    "utf8",
-  );
+  await writeAtomic(path, `${JSON.stringify({ ...trajectory, updatedAt: new Date().toISOString() }, null, 2)}\n`);
   return trajectory;
 }
 
@@ -203,24 +217,56 @@ export interface Gap {
   direction: string[];
 }
 
+/**
+ * What is recorded and not delivered — by chronology, not by wording.
+ *
+ * Subtracting matching summaries was wrong in both directions: echoing the
+ * intent sentence verbatim cleared the debt, while a genuine delivery worded
+ * any other way never did. The comment above says a debt is not closed by
+ * anybody saying so, and saying so was exactly what closed it.
+ *
+ * What actually settles it is order. An intent is outstanding until a delivery
+ * event is recorded after it — because a delivery is an observation of the
+ * source at a revision, not a claim about the intent.
+ */
+/**
+ * What is recorded and not yet settled.
+ *
+ * Still derived and still never stored — but from an explicit link rather than
+ * from wording or order. An intent or a vision is outstanding until a delivery
+ * event names it, and only the agent reading the source can say that a
+ * particular observation settles a particular intention.
+ */
 export function deriveGap(trajectory: Trajectory): Gap {
-  const summaries = (axis: Axis) =>
-    trajectory.events.filter((event) => event.axis === axis).map((event) => event.summary);
+  const settled = new Set(
+    trajectory.events
+      .filter((event) => event.axis === "delivery" && event.settles)
+      .map((event) => event.settles as string),
+  );
 
-  const delivered = new Set(summaries("delivery"));
+  const outstanding = (axis: Axis): string[] =>
+    trajectory.events
+      .filter((event) => event.axis === axis && !settled.has(event.id))
+      .map((event) => event.summary);
+
   return {
     subject: trajectory.subject,
-    delivery: summaries("intent").filter((summary) => !delivered.has(summary)),
-    direction: summaries("vision").filter((summary) => !delivered.has(summary)),
+    delivery: outstanding("intent"),
+    direction: outstanding("vision"),
   };
 }
 
 export function renderTrajectory(trajectory: Trajectory): string {
   const lines = [`${trajectory.subject}  (${trajectory.id})`, ""];
+  const settled = new Set(
+    trajectory.events.filter((event) => event.settles).map((event) => event.settles as string),
+  );
   for (const event of trajectory.events) {
-    const when = event.at ? `${event.at}  ` : "";
+    const when = event.at ? `${event.at.slice(0, 10)}  ` : "";
     const from = event.change ? `  ← ${event.change}` : "";
-    lines.push(`  ${event.axis.padEnd(8)} ${when}${event.summary}${from}`);
+    const mark = settled.has(event.id) ? " ✓" : "";
+    const closes = event.settles ? `  settles ${event.settles}` : "";
+    lines.push(`  ${event.id}  ${event.axis.padEnd(8)} ${when}${event.summary}${from}${closes}${mark}`);
   }
   const gap = deriveGap(trajectory);
   if (gap.delivery.length > 0) {

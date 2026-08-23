@@ -1,5 +1,6 @@
+import { realpathSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { GateRefusal } from "./gates.js";
 import type { RegisteredRepository } from "./registry.js";
 
@@ -88,8 +89,23 @@ export function graphSetup(path: string): string {
  * you have not traversed, and there is nothing to traverse. Reporting only the
  * first sends the agent to a command that cannot succeed.
  */
-export function assertTraversable(leaves: LeafState[]): void {
-  const blocked = leaves.filter((leaf) => leaf.graph === "missing" || leaf.graph === "unreachable");
+/**
+ * Only the leaf being written to has to be traversable.
+ *
+ * It checked every registered repository, so one stale registration blocked
+ * writes everywhere — and the refusal named a graph build that could not
+ * unblock it, because the real cause was the flow's step.
+ */
+export function assertTraversable(leaves: LeafState[], target?: string): void {
+  const relevant = target
+    ? leaves.filter((leaf) => {
+        const base = canonical(leaf.path);
+        const real = canonical(target);
+        return real === base || real.startsWith(`${base}${sep}`);
+      })
+    : leaves;
+
+  const blocked = relevant.filter((leaf) => leaf.graph === "missing" || leaf.graph === "unreachable");
   if (blocked.length === 0) return;
 
   const missing = blocked.filter((leaf) => leaf.graph === "missing");
@@ -156,13 +172,35 @@ export function renderLeaves(leaves: LeafState[]): string {
 export function assertInsideClaim(options: {
   target: string;
   leaves: LeafState[];
+  /** The knowledge repository, whose own files this rule does not govern. */
+  knowledgeRoot?: string;
   /** The checkout the current unit is claimed from, when one is claimed. */
   claim?: { repository: string; worktreeId: string };
 }): void {
   const target = resolve(options.target);
+
+  /**
+   * The knowledge repository is not a leaf and never will be.
+   *
+   * This rule is about source code landing in the wrong checkout. Applying it
+   * to the repository the agent is standing in refused the promotion draft the
+   * tool had created one command earlier, and pointed at registering a source
+   * repository, which has nothing to do with it. What may be written *here* is
+   * the write guard's own business, and it has already ruled on it.
+   */
+  if (options.knowledgeRoot) {
+    const base = resolve(options.knowledgeRoot);
+    if (target === base || target.startsWith(`${base}${sep}`)) return;
+  }
+  /**
+   * Resolve before comparing. A lexical prefix check let any symlink placed
+   * inside a registered checkout point anywhere on disk — `src/etclink → /etc`
+   * made `/etc/passwd` a legitimate write target.
+   */
+  const real = canonical(target);
   const containing = options.leaves.find((leaf) => {
-    const base = resolve(leaf.path);
-    return target === base || target.startsWith(`${base}${sep}`);
+    const base = canonical(leaf.path);
+    return real === base || real.startsWith(`${base}${sep}`);
   });
 
   if (!containing) {
@@ -189,4 +227,22 @@ export function assertInsideClaim(options: {
         "to different work.",
     );
   }
+}
+
+
+/** Resolve through the filesystem, tolerating a target that does not exist yet. */
+function canonical(path: string): string {
+  let current = resolve(path);
+  const trailing: string[] = [];
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      return [realpathSync.native(current), ...trailing].join(sep);
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return resolve(path);
+      trailing.unshift(current.slice(parent.length + 1));
+      current = parent;
+    }
+  }
+  return resolve(path);
 }

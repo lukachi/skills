@@ -13,6 +13,7 @@ import {
   issueClaim,
   issueComplete,
   issueCreate,
+  issueDrop,
   issueList,
   issueNote,
   park,
@@ -49,7 +50,7 @@ const USAGE = `wfctl — project workflow
   work step <step>             record that this step is reached
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
-  work issue complete <id>
+  work issue complete <id> | drop <id> --reason "<why it left the route>"
   work park --reason ... | work release --attested "<their words>"
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
@@ -72,16 +73,18 @@ const USAGE = `wfctl — project workflow
   reconstruct subject <trajectory-id>
   reconstruct probe --question ... --page <path> --asker <agent> [--passed]
   reconstruct stage            advance when this stage's gate passes
+  reconstruct abandon --reason "<why>"
   reconstruct close
 
   trajectory append --subject ... --summary ... --axis <intent|delivery|vision>
+                    [--settles <event-id>]   a delivery names the intent it settles
   trajectory list | trajectory show <subject>
 
   recall list                  the checklist
   recall answer <item> --answer ... --route ... --source ...
   recall route <route> [--covered <path>...]
 
-  flow close                   flush the checkpoint and drop the fence
+  flow close [<flow-id>]       flush the checkpoint and drop the fence
 
   init knowledge [--target <dir>]
 
@@ -170,7 +173,42 @@ function oneOf<T extends string>(
   return value as T;
 }
 
+/**
+ * Flags this CLI accepts anywhere. Anything else is a typo or an obsolete
+ * option, and silently ignoring one lets a command run with a meaning nobody
+ * intended — the same class as a dropped argument.
+ */
+const KNOWN_FLAGS = new Set([
+  "path", "json", "title", "weight", "summary", "handoff", "last", "next", "todo",
+  "answer", "route", "source", "covered", "written", "target", "review",
+  "reason", "attested", "outcome", "subject", "satisfies", "note", "repository",
+  "checkout", "worktree", "page", "at", "axis", "change", "settles", "claim",
+  "in", "not", "raw", "revision", "question", "asker", "passed", "awaits",
+  "dirty", "resolution", "side", "help",
+]);
+
 export async function run(argv: string[], context: CommandContext): Promise<{ stdout: string; exitCode: number }> {
+  /**
+   * A capture's text is an argument even when it opens with dashes — a finding
+   * phrased "--fix the parser" has to be recordable, and capture is the only
+   * sanctioned outlet while a flow is open.
+   */
+  const scanned = argv[0] === "capture" ? argv.filter((entry) => entry === "--awaits") : argv;
+  const unknown = scanned
+    .filter((entry) => entry.startsWith("--"))
+    .map((entry) => entry.slice(2).split("=")[0] ?? "")
+    .filter((name) => name && !KNOWN_FLAGS.has(name));
+  if (unknown.length > 0) {
+    return {
+      stdout: new GateRefusal(
+        `Unknown flag(s): ${unknown.map((name) => `--${name}`).join(", ")}`,
+        "wfctl help",
+        "A flag nobody reads is a command running with a meaning you did not intend.",
+      ).render(),
+      exitCode: 2,
+    };
+  }
+
   const [group, ...rest] = argv;
 
   try {
@@ -191,21 +229,31 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
            * prose brief, fail to parse it and fall silent — so the turn-boundary
            * half of the design did nothing at all.
            */
-          return ok_(
-            JSON.stringify(
-              {
-                current,
-                signals: flows.flatMap((flow) => {
-                  const blocker = deriveBlocker(flow);
-                  return blocker
-                    ? [{ id: flow.id, awaits: blocker.awaits, summary: blocker.summary, remedy: blocker.remedy }]
-                    : [];
-                }),
-              },
-              null,
-              2,
-            ),
-          );
+          const { briefExtras } = await import("./commands.js");
+          const extras = await briefExtras(context);
+          const signals = flows.flatMap((flow) => {
+            const blocker = deriveBlocker(flow);
+            return blocker
+              ? [{ id: flow.id, awaits: blocker.awaits, summary: blocker.summary, remedy: blocker.remedy }]
+              : [];
+          });
+          for (const id of extras.queued) {
+            signals.push({
+              id,
+              awaits: "maintainer" as const,
+              summary: "waits in the promotion queue",
+              remedy: 'wfctl work promote --subject "<product subject>" --summary "<what it now does>"',
+            });
+          }
+          if (extras.reconstruction) {
+            signals.push({
+              id: extras.reconstruction.id,
+              awaits: "agent" as const,
+              summary: `reconstruction at stage ${extras.reconstruction.stage}`,
+              remedy: "wfctl reconstruct status",
+            });
+          }
+          return ok_(JSON.stringify({ current, signals }, null, 2));
         }
         return await brief(context);
       }
@@ -291,6 +339,12 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
             });
           }
           if (sub === "complete") return await issueComplete(context, rest_[0] ?? "");
+          if (sub === "drop") {
+            return await issueDrop(context, {
+              id: rest_[0] ?? "",
+              reason: flag(rest_, "reason") ?? "",
+            });
+          }
           /**
            * An incomplete command names its own subcommands rather than
            * reprinting the whole usage, which reads as "this does not exist".
@@ -479,6 +533,7 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
             claims: flags(args, "claim"),
             ...(flag(args, "at") ? { at: flag(args, "at") as string } : {}),
             ...(flag(args, "change") ? { change: flag(args, "change") as string } : {}),
+            ...(flag(args, "settles") ? { settles: flag(args, "settles") as string } : {}),
           });
           return ok_(renderTrajectory(trajectory));
         }
@@ -644,7 +699,12 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
             subject: flag(args, "subject") ?? "",
             sides: flags(args, "side"),
           });
-          return ok_(`recorded; ${next.contradictions.length} to adjudicate after the crawl.`);
+          const recorded = next.contradictions[next.contradictions.length - 1];
+          return ok_(
+            `${recorded?.id}  ${recorded?.subject}\n` +
+              `recorded; ${next.contradictions.length} to adjudicate after the crawl.\n` +
+              `resolve it later with: wfctl reconstruct resolve ${recorded?.id} --resolution "<what they decided>"`,
+          );
         }
 
         if (action === "resolve") {
@@ -669,12 +729,57 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         }
 
         if (action === "subject") {
+          const { readTrajectory, subjectId, listTrajectories } = await import("./trajectory.js");
+          const named = args[0] ?? "";
+
+          /**
+           * The id has to resolve. It was stored as a bare string, so a subject
+           * that did not exist — including `../../../../etc/passwd` — satisfied
+           * the assemble gate, which counts the array's length and never asked
+           * what was in it.
+           */
+          const found =
+            (await readTrajectory(context.root, named)) ??
+            (await readTrajectory(context.root, subjectId(named)));
+          if (!found) {
+            const all = await listTrajectories(context.root);
+            throw new GateRefusal(
+              `No trajectory for ${named}.`,
+              'wfctl trajectory append --subject "<the product subject>" --summary "<what happened>" --axis <intent|delivery|vision>',
+              all.length > 0
+                ? `Assembled so far:\n${all.map((entry) => `  ${entry.id}  ${entry.subject}`).join("\n")}`
+                : "Nothing has been assembled yet.",
+            );
+          }
+
           const next = {
             ...record,
-            trajectories: [...new Set([...record.trajectories, args[0] ?? ""])].filter(Boolean),
+            trajectories: [...new Set([...record.trajectories, found.id])],
           };
           await reconstruct.writeCase(context.root, next);
           return ok_(reconstruct.renderStatus(next));
+        }
+
+        if (action === "abandon") {
+          /**
+           * A case opened by mistake, or on the wrong repository, had no way
+           * out at all: close refused before promote, start refused while one
+           * was open, and only hand-editing state escaped.
+           */
+          const reason = flag(args, "reason") ?? "";
+          if (!reason.trim()) {
+            throw new GateRefusal(
+              "Abandoning a reconstruction records why.",
+              'wfctl reconstruct abandon --reason "<why this pass is not finishing>"',
+            );
+          }
+          await reconstruct.writeCase(context.root, {
+            ...record,
+            stage: "promote",
+            abandoned: { at: new Date().toISOString(), reason: reason.trim() },
+          });
+          const archived = await reconstruct.closeCase(context.root, record.id);
+          return ok_(`${record.id} abandoned: ${reason.trim()}\narchived at:\n${archived}`);
         }
 
         if (action === "stage") {
@@ -726,17 +831,27 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         const { renderIssues, validateCurated } = await import("./curated.js");
         const [action, ...args] = rest;
         if (action === "validate") {
-          const issues = await validateCurated(context.root, flag(args, "page"));
-          return { stdout: renderIssues(issues), exitCode: issues.length > 0 ? 2 : 0 };
+          const { collectPages } = await import("./curated.js");
+          const page = flag(args, "page");
+          const issues = await validateCurated(context.root, page);
+          const pages = page ? 1 : (await collectPages(context.root)).length;
+          return { stdout: renderIssues(issues, pages), exitCode: issues.length > 0 ? 2 : 0 };
         }
         if (action === "hash") {
-          const { contentHash, stripSeal, KNOWLEDGE_DIR } = await import("./curated.js");
-          const page = args[0] ?? flag(args, "page") ?? "";
+          const { contentHash, stripSeal, KNOWLEDGE_DIR, normalizePage } = await import(
+            "./curated.js"
+          );
+          const asked = args[0] ?? flag(args, "page") ?? "";
+          const page = normalizePage(context.root, asked);
           const body = await readFile(resolve(context.root, KNOWLEDGE_DIR, page), "utf8").catch(
             () => undefined,
           );
           if (body === undefined) {
-            throw new GateRefusal(`No page at ${page}.`, "wfctl knowledge validate");
+            throw new GateRefusal(
+              `No page at ${asked}.`,
+              "wfctl knowledge validate",
+              `Looked in knowledge/ for ${page}.`,
+            );
           }
           return ok_(contentHash(stripSeal(body)));
         }
@@ -789,8 +904,8 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
       }
 
       case "flow":
-        if (rest[0] === "close") return await flowClose(context);
-        return { stdout: USAGE, exitCode: 1 };
+        if (rest[0] === "close") return await flowClose(context, rest[1]);
+        return { stdout: "wfctl flow close [<flow-id>]", exitCode: 1 };
 
       case "init": {
         assertProfileSupported(rest[0] ?? "");
@@ -824,7 +939,10 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
       }
 
       default:
-        return { stdout: USAGE, exitCode: 1 };
+        return {
+          stdout: `wfctl has no command "${group}".\n\n${USAGE}`,
+          exitCode: 1,
+        };
     }
   } catch (error) {
     if (error instanceof GateRefusal) return { stdout: error.render(), exitCode: 2 };

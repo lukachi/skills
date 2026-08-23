@@ -146,6 +146,32 @@ export function deriveBlocker(flow: FlowRecord): DerivedBlocker | undefined {
     };
   }
 
+  /**
+   * A step whose work is already recorded is not what the flow waits on.
+   * `brief` at `verified` asked for the review it had just accepted, and never
+   * named drafting or closing — so an agent driving off the brief alone could
+   * reach `verified` and never leave it.
+   */
+  if (flow.step === "verified" && flow.review) {
+    return {
+      step: "closed",
+      awaits: "agent",
+      summary:
+        "Draft the pages this work changes, then close. Closure asks nobody: the " +
+        "checks have already answered it.",
+      remedy: 'wfctl work promotion draft "<area>/<page>.md"',
+    };
+  }
+
+  if (flow.step === "closed") {
+    return {
+      step: "promoted",
+      awaits: "maintainer",
+      summary: definitionFor("promoted").demands,
+      remedy: definitionFor("promoted").command,
+    };
+  }
+
   const awaitsMaintainer = flow.step === "framed" || flow.step === "promoted";
   return {
     step: flow.step,
@@ -161,16 +187,31 @@ export function deriveBlocker(flow: FlowRecord): DerivedBlocker | undefined {
  * line is what tells the agent it has been moving quickly through checks it did
  * not actually perform.
  */
+/**
+ * What this state demands, and the one command to run next.
+ *
+ * It used to print the command that had just succeeded — an agent following
+ * `next:` literally re-ran the step it was already past and hit the recall
+ * refusal, forever. The step's own command belongs under the demand it
+ * satisfies; `next:` is the step after it.
+ */
 export function renderStep(flow: FlowRecord): string {
   const definition = definitionFor(flow.step);
-  const lines = [
+  const following = nextStep(flow.step);
+  const shortfall = shortfallFor(flow.step, flow.recall);
+
+  const next = !isSatisfied(shortfall)
+    ? "wfctl recall answer <item> --answer \"<what you found>\" --route <route> --source \"<where>\""
+    : (following ? definitionFor(following).command : "wfctl work close --outcome <completed|partial|abandoned>");
+
+  return [
     `flow ${flow.id}  ·  step ${flow.step}`,
     "",
     definition.demands,
     "",
-    `next: ${definition.command}`,
+    `record it with: ${definition.command}`,
+    `next: ${next}`,
     "",
     renderCounterLine(flow.step, flow.recall),
-  ];
-  return lines.join("\n");
+  ].join("\n");
 }

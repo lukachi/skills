@@ -120,8 +120,15 @@ test("debts are derived across every subject, and never stored", async () => {
   await appendEvent(target, "Refunds", { summary: "partial refunds", axis: "intent", claims: [] });
   await appendEvent(target, "Refunds", { summary: "whole order only", axis: "delivery", claims: [] });
   await appendEvent(target, "Search", { summary: "offline search", axis: "vision", claims: [] });
+  // A delivery settles an intent by naming it. Matching the wording was both
+  // gameable (echo the sentence) and permanently wrong (any other phrasing).
   await appendEvent(target, "Billing", { summary: "invoices", axis: "intent", claims: [] });
-  await appendEvent(target, "Billing", { summary: "invoices", axis: "delivery", claims: [] });
+  await appendEvent(target, "Billing", {
+    summary: "the source issues invoices at abc123",
+    axis: "delivery",
+    claims: [],
+    settles: "E001",
+  });
 
   const report = await collectDebts(target);
   assert.deepEqual(report.delivery.map((gap) => gap.subject), ["Refunds"]);
@@ -136,6 +143,36 @@ test("debts are derived across every subject, and never stored", async () => {
   const { readdir } = await import("node:fs/promises");
   const files = await readdir(resolve(target, "trajectories"));
   assert.ok(files.every((file) => !file.includes("debt")));
+});
+
+test("echoing the intent sentence does not clear a debt", async () => {
+  const target = await root();
+  const { appendEvent } = await import("../src/core/trajectory.js");
+  const { collectDebts } = await import("../src/core/debts.js");
+
+  await appendEvent(target, "Refunds", { summary: "partial refunds", axis: "intent", claims: [] });
+  await appendEvent(target, "Refunds", { summary: "partial refunds", axis: "delivery", claims: [] });
+
+  const report = await collectDebts(target);
+  assert.deepEqual(report.delivery.map((gap) => gap.subject), ["Refunds"]);
+});
+
+test("a delivery cannot settle an event that was never recorded", async () => {
+  const target = await root();
+  const { appendEvent } = await import("../src/core/trajectory.js");
+  const { GateRefusal: Refusal } = await import("../src/core/gates.js");
+
+  await appendEvent(target, "Refunds", { summary: "partial refunds", axis: "intent", claims: [] });
+  await assert.rejects(
+    () =>
+      appendEvent(target, "Refunds", {
+        summary: "done",
+        axis: "delivery",
+        claims: [],
+        settles: "E999",
+      }),
+    Refusal,
+  );
 });
 
 test("no gaps says why that might not be good news", async () => {

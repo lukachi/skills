@@ -118,7 +118,16 @@ export interface FlowRecord {
    * The accepted review. Its presence is what `verified` and `closed` check —
    * validating a review and discarding it left both steps with no precondition.
    */
-  review?: { reviewer: string; at: string; attacks: number; findings: number };
+  review?: {
+    reviewer: string;
+    at: string;
+    attacks: unknown[];
+    findings: unknown[];
+    stubSurvivors: string[];
+    fixedPoint: string;
+    /** Where the artifact came from, so a replay across flows is visible. */
+    source: string;
+  };
 }
 
 /* ------------------------------------------------------------------ recall */

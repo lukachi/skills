@@ -117,6 +117,14 @@ wfctl work close --outcome <completed|partial|abandoned>
 Use the honest outcome. A `completed` that had to be argued for is the one worth
 doubting.
 
+Every unit must be terminal — done or deliberately dropped. An open unit is
+exactly the work nobody got to, and closing over it reports undelivered work as
+delivered:
+
+```sh
+wfctl work issue drop <id> --reason "<why it left the route>"
+```
+
 ## Promoting
 
 ```sh

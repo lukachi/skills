@@ -771,3 +771,237 @@ async function walkToVerifiedE2E(root: string): Promise<void> {
   );
   wfctl(root, ["work", "verify", "--review", review]);
 }
+
+test("promote actually writes the pages into curated knowledge", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "retry", "--weight", "significant"]);
+  await walkToVerifiedE2E(root);
+  wfctl(root, ["work", "promotion", "draft", "networking/retry.md"]);
+
+  const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+  await writeFile(
+    resolve(root, "changes/active", id, "promotion/networking/retry.md"),
+    "---\nview: product\npurpose: what retrying does\naudience: stakeholders\n---\n\n# Retry\n\nIdempotent requests are retried.\n",
+    "utf8",
+  );
+  wfctl(root, ["work", "close", "--outcome", "completed"]);
+
+  const promoted = wfctl(root, ["work", "promote", "--subject", "Retry", "--summary", "retries now happen"]);
+  assert.equal(promoted.status, 0, promoted.stdout);
+
+  /**
+   * It renamed the bundle into the archive and reported success while
+   * `knowledge/` stayed empty — so `decided`, which reads `knowledge/`, could
+   * never answer, and recall item A2 was permanently unsatisfiable.
+   */
+  assert.ok(existsSync(resolve(root, "knowledge/networking/retry.md")), "the page never reached the corpus");
+  assert.match(promoted.stdout, /now in curated knowledge/);
+
+  const found = wfctl(root, ["decided", "retry idempotent requests"]);
+  assert.match(found.stdout, /a curated page/, "decided still cannot see a promoted page");
+});
+
+test("promoting with nothing drafted is refused", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "empty", "--weight", "lightweight"]);
+  await walkToVerifiedE2E(root);
+  wfctl(root, ["work", "close", "--outcome", "completed"]);
+
+  const result = wfctl(root, ["work", "promote", "--subject", "S", "--summary", "s"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /Nothing is waiting to be promoted|no drafted page/);
+});
+
+test("parallel work start opens exactly one flow", async () => {
+  const root = await installed();
+  await Promise.all(
+    Array.from({ length: 6 }, (_, index) =>
+      new Promise<void>((done) => {
+        wfctl(root, ["work", "start", "--title", `race ${index}`, "--weight", "lightweight"]);
+        done();
+      }),
+    ),
+  );
+
+  const { readdir } = await import("node:fs/promises");
+  const flows = (await readdir(resolve(root, ".workflow/flows"))).filter((n) => n.endsWith(".json"));
+  assert.equal(flows.length, 1, `the fence was raced: ${flows.join(", ")}`);
+});
+
+test("flow close takes the id its own refusal prints", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "orphan", "--weight", "lightweight"]);
+  const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+  await writeFile(resolve(root, ".workflow/flows/current"), "", "utf8");
+
+  const blocked = wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight"]);
+  assert.equal(blocked.status, 2);
+  assert.match(blocked.stdout, new RegExp(`flow close ${id}`));
+
+  // The remedy used to ignore its argument, so the repository stayed fenced forever.
+  const closed = wfctl(root, ["flow", "close", id]);
+  assert.equal(closed.status, 0, closed.stdout);
+  assert.equal(wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight"]).status, 0);
+});
+
+test("flow close runs the gates work close runs", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "parked", "--weight", "lightweight"]);
+  wfctl(root, ["work", "park", "--reason", "not yet"]);
+
+  const parked = wfctl(root, ["flow", "close"]);
+  assert.equal(parked.status, 2, "a parked flow was closed, discarding the maintainer's hold");
+  assert.match(parked.stdout, /parked/);
+
+  wfctl(root, ["work", "release", "--attested", "go"]);
+  wfctl(root, ["work", "issue", "create", "--title", "undelivered"]);
+
+  const open = wfctl(root, ["flow", "close"]);
+  assert.equal(open.status, 2, "an undelivered unit did not block the close");
+  assert.match(open.stdout, /not terminal/);
+});
+
+test("the next line names the step after this one, not the one just run", async () => {
+  const root = await installed();
+  const started = wfctl(root, ["work", "start", "--title", "next", "--weight", "significant"]);
+  assert.doesNotMatch(started.stdout, /next: wfctl work start/);
+
+  const aligned = wfctl(root, ["work", "step", "aligned"]);
+  assert.doesNotMatch(aligned.stdout, /next: wfctl work step aligned/, "next named the command that just ran");
+});
+
+test("brief names the promotion queue, an awaiting capture and an open reconstruction", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "queued", "--weight", "significant"]);
+  await walkToVerifiedE2E(root);
+  wfctl(root, ["work", "promotion", "draft", "a/b.md"]);
+  const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+  await writeFile(
+    resolve(root, "changes/active", id, "promotion/a/b.md"),
+    "---\nview: product\npurpose: p\naudience: a\n---\n\n# B\n\nx\n",
+    "utf8",
+  );
+  wfctl(root, ["work", "close", "--outcome", "completed"]);
+  wfctl(root, ["capture", "should the default be 30s?", "--awaits"]);
+
+  const brief = wfctl(root, ["brief"]);
+  assert.match(brief.stdout, /promotion queue/, "the queue was invisible to the brief");
+  assert.match(brief.stdout, /capture\(s\) await the maintainer/);
+
+  const json = JSON.parse(wfctl(root, ["brief", "--json"]).stdout);
+  assert.ok(json.signals.some((s: { awaits: string }) => s.awaits === "maintainer"));
+});
+
+test("brief at verified points forward, not back at the review it accepted", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "forward", "--weight", "significant"]);
+  await walkToVerifiedE2E(root);
+
+  const brief = wfctl(root, ["brief"]);
+  assert.doesNotMatch(brief.stdout, /remedy: wfctl work verify/, "it asked for the review it already had");
+  assert.match(brief.stdout, /promotion draft/);
+});
+
+test("a review keeps its whole artifact, and a finding with an odd status is refused", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "review", "--weight", "significant"]);
+  await walkToVerifiedE2E(root);
+
+  const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+  const record = JSON.parse(await readFile(resolve(root, ".workflow/flows", `${id}.json`), "utf8"));
+  assert.ok(Array.isArray(record.review.attacks), "only counts were kept");
+  assert.equal(typeof record.review.source, "string");
+
+  await writeFile(
+    resolve(root, "blocking.json"),
+    JSON.stringify({
+      reviewer: "agent:other",
+      attacks: [{ lens: "intent", target: "t", test: "x", output: "held", broke: false }],
+      findings: [{ lens: "intent", summary: "s", failure: "f", status: "blocking" }],
+      stubSurvivors: [],
+    }),
+    "utf8",
+  );
+  const blocking = wfctl(root, ["work", "verify", "--review", resolve(root, "blocking.json")]);
+  assert.equal(blocking.status, 2, "only the literal 'open' was refused");
+  assert.match(blocking.stdout, /not open or accepted/);
+});
+
+test("a claim names a registered checkout", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "claim", "--weight", "significant"]);
+  wfctl(root, ["work", "issue", "create", "--title", "u"]);
+
+  const invented = wfctl(root, ["work", "issue", "claim", "U001", "--repository", "acme/nope"]);
+  assert.equal(invented.status, 2, "a claim named a repository that does not exist");
+  assert.match(invented.stdout, /not a registered checkout/);
+});
+
+test("a symlink inside a registered checkout cannot reach outside it", async () => {
+  const root = await installed();
+  const leaf = await mkdtemp(join(tmpdir(), "wfctl-leaf-"));
+  await mkdir(resolve(leaf, "graphify-out"), { recursive: true });
+  await writeFile(resolve(leaf, "graphify-out/graph.json"), "{}", "utf8");
+  const { symlinkSync: link } = await import("node:fs");
+  link("/etc", resolve(leaf, "etclink"));
+
+  wfctl(root, ["repo", "add", "acme/a", "--path", leaf]);
+  wfctl(root, ["work", "start", "--title", "sym", "--weight", "lightweight"]);
+  wfctl(root, ["recall", "route", "graphify", "--covered", resolve(leaf, "a.ts")]);
+
+  const escaped = wfctl(root, ["hook", "write", "--target", resolve(leaf, "etclink/passwd")]);
+  assert.equal(escaped.status, 2, "a symlink inside a checkout reached /etc");
+});
+
+test("the knowledge repository's own files are not governed by the claim rule", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "draft", "--weight", "lightweight"]);
+  const created = wfctl(root, ["work", "promotion", "draft", "a/b.md"]);
+  assert.equal(created.status, 0);
+
+  const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+  const draft = resolve(root, "changes/active", id, "promotion/a/b.md");
+
+  // It refused the draft the tool had created one command earlier, and pointed
+  // at registering a source repository, which has nothing to do with it.
+  const allowed = wfctl(root, ["hook", "write", "--target", draft]);
+  assert.equal(allowed.status, 0, allowed.stdout);
+});
+
+test("unknown commands and flags are named", async () => {
+  const root = await installed();
+
+  const command = wfctl(root, ["banana"]);
+  assert.equal(command.status, 1);
+  assert.match(command.stdout, /no command "banana"/);
+
+  const flag = wfctl(root, ["brief", "--banana"]);
+  assert.equal(flag.status, 2, "an unknown flag was silently ignored");
+  assert.match(flag.stdout, /Unknown flag\(s\): --banana/);
+});
+
+test("knowledge validate does not report an all-clear on an empty corpus", async () => {
+  const root = await installed();
+  const result = wfctl(root, ["knowledge", "validate"]);
+  assert.match(result.stdout, /no curated pages/i);
+  assert.doesNotMatch(result.stdout, /pass structural validation/);
+});
+
+test("the shipped page templates pass the shipped validator", async () => {
+  const root = await installed();
+  const { copyFile } = await import("node:fs/promises");
+  await mkdir(resolve(root, "knowledge/areas"), { recursive: true });
+
+  for (const template of ["product-concept.md", "engineering-concept.md"]) {
+    await copyFile(
+      resolve(distribution, "templates/guidance/assets", template),
+      resolve(root, "knowledge/areas", template),
+    );
+    const result = wfctl(root, ["knowledge", "validate", "--page", `areas/${template}`]);
+    assert.doesNotMatch(
+      result.stdout,
+      /no (view|purpose|audience) declared/,
+      `the shipped ${template} fails the shipped validator: ${result.stdout}`,
+    );
+  }
+});

@@ -115,9 +115,18 @@ The gap for one subject is derived inside its line; this gathers them. Nothing
 is stored — a gap is a subtraction, and a stored one is a subtraction that was
 true once.
 
-There is no command that marks a debt paid. It dies when the source changes and
-the subject is read again at a new revision, which is why the workflow
-prescribes re-reading rather than accepting a claim that the work was done.
+A delivery settles an intent by **naming** it:
+
+```sh
+wfctl trajectory append --subject "<subject>" --summary "<what the source shows now>" \
+  --axis delivery --settles <event-id>
+```
+
+Nothing infers the link. Matching the wording meant echoing the intent sentence
+closed the gap while a genuine delivery worded differently never did; matching
+by order meant any delivery closed every intent before it, including unrelated
+ones. Only the agent reading the source can say that one observation settles one
+intention.
 
 Each becomes work the ordinary way. Grouping several by the outcome that would
 close them usually turns the list into one decision.

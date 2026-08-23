@@ -65,10 +65,41 @@ export async function brief(context: CommandContext): Promise<CommandResult> {
   const current = await currentFlow(context.root);
   return ok(
     compose([
-      renderBrief(flows, current?.id),
+      renderBrief(flows, current?.id, await briefExtras(context)),
       await guidanceFor(context, "session/start"),
     ]),
   );
+}
+
+/**
+ * Everything else that awaits somebody.
+ *
+ * A promotion queue, a capture marked for the maintainer and an open
+ * reconstruction were each invisible here, and the brief is the surface the
+ * whole design calls authoritative.
+ */
+export async function briefExtras(context: CommandContext) {
+  const { listQueue } = await import("./promotion-queue.js");
+  const { currentCase } = await import("./reconstruct.js");
+  const { readdir, readFile: read } = await import("node:fs/promises");
+
+  const queued = await listQueue(context.root).catch(() => []);
+
+  const inbox = await readdir(resolve(context.root, "changes/inbox")).catch(() => []);
+  let awaitingCaptures = 0;
+  for (const entry of inbox) {
+    if (!entry.endsWith(".md")) continue;
+    const body = await read(resolve(context.root, "changes/inbox", entry), "utf8").catch(() => "");
+    if (/^awaits:\s*maintainer/m.test(body)) awaitingCaptures += 1;
+  }
+
+  const reconstruction = await currentCase(context.root).catch(() => undefined);
+
+  return {
+    queued,
+    awaitingCaptures,
+    ...(reconstruction ? { reconstruction: { id: reconstruction.id, stage: reconstruction.stage } } : {}),
+  };
 }
 
 export async function handoff(context: CommandContext, id?: string): Promise<CommandResult> {
@@ -256,10 +287,41 @@ export async function promotionDraft(
   );
 }
 
-export async function flowClose(context: CommandContext): Promise<CommandResult> {
-  const flow = await currentFlow(context.root);
+/**
+ * Dropping the fence.
+ *
+ * It took no id, so the remedy printed beside every fence refusal —
+ * `wfctl flow close <id>` — silently did nothing, and a flow the pointer had
+ * lost could never be closed by any command at all.
+ *
+ * It also skipped every gate `work close` runs, so it was the unguarded way
+ * past the step chain, past a park the maintainer set, and past units nobody
+ * delivered.
+ */
+export async function flowClose(context: CommandContext, id?: string): Promise<CommandResult> {
+  const flow = id ? await readFlow(context.root, id) : await currentFlow(context.root);
   if (!flow) {
-    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+    const open = (await listFlows(context.root)).filter((entry) => !entry.closedAt);
+    return refused(
+      new GateRefusal(
+        id ? `No flow named ${id}.` : "No flow is open.",
+        open.length > 0 ? `wfctl flow close ${open[0]?.id}` : "wfctl brief",
+        open.length > 0
+          ? `Open:\n${open.map((entry) => `  ${entry.id}`).join("\n")}`
+          : undefined,
+      ),
+    );
+  }
+
+  if (flow.parked) {
+    return refused(
+      new GateRefusal(
+        `${flow.id} is parked: ${flow.parked.reason}`,
+        `wfctl work release --attested "<what they said>"`,
+        "The maintainer held this work. Dropping the fence would discard that " +
+          "without telling them.",
+      ),
+    );
   }
 
   /**
@@ -269,13 +331,17 @@ export async function flowClose(context: CommandContext): Promise<CommandResult>
    * the bundle was left in `changes/active/` with no open flow that could ever
    * close it.
    */
-  const claimed = flow.issues.filter((issue) => issue.status === "claimed");
-  if (claimed.length > 0) {
+  const unfinished = flow.issues.filter(
+    (issue) => issue.status === "claimed" || issue.status === "open",
+  );
+  if (unfinished.length > 0) {
     return refused(
       new GateRefusal(
-        `${claimed.length} unit(s) are still claimed.`,
-        `wfctl work issue complete ${claimed[0]?.id}`,
-        claimed.map((issue) => `  ${issue.id}  ${issue.title}`).join("\n"),
+        `${unfinished.length} unit(s) are not terminal.`,
+        `wfctl work issue complete ${unfinished[0]?.id}`,
+        `${unfinished.map((issue) => `  ${issue.id}  ${issue.status}  ${issue.title}`).join("\n")}\n\n` +
+          "Drop one deliberately if it left the route; closing over it reports " +
+          "undelivered work as delivered.",
       ),
     );
   }
@@ -407,6 +473,28 @@ export async function issueClaim(
   if (flow) {
     try {
       assertNotParked(flow);
+
+      /**
+       * A claim names a checkout the registry knows. It accepted any string, so
+       * the write guard later reported the contradiction it had been handed —
+       * "claimed from acme/nope, and that path is in acme/leaf" — for a
+       * repository that never existed.
+       */
+      const { readRegistry } = await import("./registry.js");
+      const registered = await readRegistry(context.root);
+      const match = registered.find(
+        (entry) =>
+          entry.repository === options.repository && entry.worktreeId === options.worktreeId,
+      );
+      if (!match) {
+        throw new GateRefusal(
+          `${options.repository} (${options.worktreeId}) is not a registered checkout.`,
+          `wfctl repo add ${options.repository} --path <dir> --worktree ${options.worktreeId}`,
+          registered.length > 0
+            ? `Registered:\n${registered.map((entry) => `  ${entry.repository}  ${entry.worktreeId}  ${entry.path}`).join("\n")}`
+            : "Nothing is registered, so no checkout can be claimed.",
+        );
+      }
     } catch (error) {
       if (error instanceof GateRefusal) return refused(error);
       throw error;
@@ -421,6 +509,38 @@ export async function issueClaim(
       worktreeId: options.worktreeId,
     },
   }));
+}
+
+/**
+ * A unit that left the route.
+ *
+ * Without this, blocking closure on open units would have no escape and the
+ * only way past a unit nobody is going to build would be closing over it, which
+ * is what reported undelivered work as delivered in the first place.
+ */
+export async function issueDrop(
+  context: CommandContext,
+  options: { id: string; reason: string },
+): Promise<CommandResult> {
+  if (!options.reason.trim()) {
+    return refused(
+      new GateRefusal(
+        "Dropping a unit records why it left the route.",
+        `wfctl work issue drop ${options.id} --reason "<why it is not being built>"`,
+        "An undated, unexplained drop is indistinguishable from work that was " +
+          "forgotten.",
+      ),
+    );
+  }
+  return withIssue(context, options.id, (issue) => {
+    const next: IssueRecord = {
+      ...issue,
+      status: "dropped",
+      notes: [...issue.notes, `dropped: ${options.reason.trim()}`],
+    };
+    delete next.claim;
+    return next;
+  });
 }
 
 export async function issueComplete(
@@ -509,11 +629,22 @@ export async function verify(
     await writeFlow(context.root, {
       ...flow,
       step: "verified",
+      /**
+       * The whole artifact, not a count of it.
+       *
+       * Keeping only totals meant the record could never show what was
+       * attacked, which is the one thing a review exists to prove — and the
+       * same artifact replayed across four flows in two repositories without
+       * anything noticing.
+       */
       review: {
         reviewer: review.reviewer,
         at: new Date().toISOString(),
-        attacks: review.attacks.length,
-        findings: review.findings.length,
+        attacks: review.attacks,
+        findings: review.findings,
+        stubSurvivors: review.stubSurvivors,
+        fixedPoint: review.fixedPoint,
+        source: resolve(options.review),
       },
     });
 
@@ -521,6 +652,7 @@ export async function verify(
       compose([
         `review accepted from ${review.reviewer}: ${review.attacks.length} attack(s), ${review.findings.length} finding(s)`,
         await guidanceFor(context, "work/closed"),
+        'next: wfctl work promotion draft "<area>/<page>.md"   (then: wfctl work close --outcome <completed|partial|abandoned>)',
       ]),
     );
   } catch (error) {
@@ -601,13 +733,21 @@ export async function close(
     throw error;
   }
 
-  const open = flow.issues.filter((issue) => issue.status === "claimed");
-  if (open.length > 0) {
+  /**
+   * Open units block too, not only claimed ones. Sixty-five undelivered units
+   * closed as `completed` because only a claim was checked, and an open unit is
+   * exactly the work nobody got to.
+   */
+  const unfinished = flow.issues.filter(
+    (issue) => issue.status === "claimed" || issue.status === "open",
+  );
+  if (unfinished.length > 0) {
     return refused(
       new GateRefusal(
-        `${open.length} unit(s) are still claimed.`,
-        `wfctl work issue complete ${open[0]?.id}`,
-        open.map((issue) => `  ${issue.id}  ${issue.title}`).join("\n"),
+        `${unfinished.length} unit(s) are not terminal.`,
+        `wfctl work issue complete ${unfinished[0]?.id}`,
+        `${unfinished.map((issue) => `  ${issue.id}  ${issue.status}  ${issue.title}`).join("\n")}\n\n` +
+          "Drop one deliberately if it left the route: wfctl work issue drop <id> --reason \"<why>\"",
       ),
     );
   }
@@ -706,7 +846,9 @@ export async function promote(
     const result = await movePages({ knowledgeRoot: context.root, bundleId: bundle });
     return ok(
       compose([
-        `${bundle} promoted and archived at:\n${result.archived}`,
+        `${result.pages.length} page(s) now in curated knowledge:`,
+        result.pages.map((page) => `  knowledge/${page}`).join("\n"),
+        `${bundle} archived at:\n${result.archived}`,
         renderTrajectory(trajectory),
       ]),
     );

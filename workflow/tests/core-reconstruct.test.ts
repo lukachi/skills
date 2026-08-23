@@ -303,7 +303,10 @@ test("promotion writes the pages and appends to the subject's line", async () =>
     ctx,
   );
   assert.equal(promoted.exitCode, 0);
-  assert.match(promoted.stdout, /promoted and archived/);
+  assert.match(promoted.stdout, /now in curated knowledge/);
+  // The page must actually be in the corpus, which is what promote never did.
+  const { existsSync } = await import("node:fs");
+  assert.ok(existsSync(resolve(ctx.root, "knowledge/areas/billing/index.md")));
   assert.match(promoted.stdout, /refunds can be partial/);
 
   const [trajectory] = await listTrajectories(ctx.root);
@@ -349,7 +352,7 @@ test("the whole reconstruction walks stage by stage, and each gate names its rem
   assert.match(noSubject.stdout, /before the material that contradicts it/);
 
   await run(["trajectory", "append", "--subject", "Refunds", "--summary", "whole order only", "--axis", "delivery"], ctx);
-  await run(["reconstruct", "subject", "refunds"], ctx);
+  await run(["reconstruct", "subject", "Refunds"], ctx);
 
   const toAdjudicate = await run(["reconstruct", "stage"], ctx);
   assert.match(toAdjudicate.stdout, /stage adjudicate/);
@@ -365,6 +368,10 @@ test("the whole reconstruction walks stage by stage, and each gate names its rem
 
   // A self-asked probe is refused where it is recorded, not two commands later
   // at the gate — accepting it there left the case wedged with no way to remove it.
+  // A probe names a page that exists; one naming a page nobody wrote asks nothing.
+  await mkdir(resolve(ctx.root, "knowledge"), { recursive: true });
+  await writeFile(resolve(ctx.root, "knowledge/p.md"), "# Refunds\n", "utf8");
+
   const selfProbe = await run(
     ["reconstruct", "probe", "--question", "what do refunds do?", "--page", "p.md", "--asker", "agent:crawler", "--passed"],
     ctx,

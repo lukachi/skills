@@ -1,4 +1,5 @@
-import { relative, resolve } from "node:path";
+import { realpathSync } from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
 import { assertInsideClaim, assertTraversable, type LeafState } from "./leaves.js";
 import { assertWriteAllowed } from "./paths.js";
 import { renderCounterLine } from "./recall.js";
@@ -65,10 +66,28 @@ export function decideWrite(input: WriteHookInput): WriteHookDecision {
    * Traversal counts and guidance are pointless if the file is in a checkout
    * this work does not own.
    */
+  /**
+   * A write inside the knowledge repository is recordkeeping, not source work.
+   *
+   * Neither the claim rule nor the traversal floor governs it: they exist to
+   * stop code landing in the wrong checkout and to stop code being written
+   * against structure nobody read. Applying them here refused the promotion
+   * draft the tool had created one command earlier.
+   */
+  const insideKnowledge = (() => {
+    // Resolve both sides: on macOS the repository is reached as /tmp and the
+    // target as /private/tmp, and a lexical compare of the two never matches.
+    const base = canonicalPath(knowledgeRoot);
+    const path = canonicalPath(target);
+    return path === base || path.startsWith(`${base}${sep}`);
+  })();
+  if (insideKnowledge) return {};
+
   const claimed = flow.issues.find((issue) => issue.status === "claimed")?.claim;
   try {
     assertInsideClaim({
       target,
+      knowledgeRoot,
       leaves: input.leaves ?? [],
       ...(claimed
         ? { claim: { repository: claimed.repository, worktreeId: claimed.worktreeId } }
@@ -100,7 +119,7 @@ export function decideWrite(input: WriteHookInput): WriteHookDecision {
      * not exist follows the remedy, fails, and has nowhere to go.
      */
     try {
-      assertTraversable(input.leaves ?? []);
+      assertTraversable(input.leaves ?? [], target);
     } catch (error) {
       if (error instanceof GateRefusal) return { refusal: error };
       throw error;
@@ -129,4 +148,22 @@ export function decideWrite(input: WriteHookInput): WriteHookDecision {
 function normalize(root: string, path: string): string {
   const absolute = resolve(root, path);
   return relative(root, absolute) || absolute;
+}
+
+
+/** Resolve through the filesystem, tolerating a path that does not exist yet. */
+function canonicalPath(path: string): string {
+  let current = resolve(path);
+  const trailing: string[] = [];
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      return [realpathSync.native(current), ...trailing].join(sep);
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return resolve(path);
+      trailing.unshift(current.slice(parent.length + 1));
+      current = parent;
+    }
+  }
+  return resolve(path);
 }

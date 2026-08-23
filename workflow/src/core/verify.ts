@@ -131,6 +131,22 @@ export function assertReviewUsable(flow: FlowRecord, review: Review): void {
     );
   }
 
+  /**
+   * Only the literal "open" was refused, so `blocking`, `rejected`, an empty
+   * string and null all passed — a review could carry a finding that says the
+   * work is wrong and be accepted for spelling it differently.
+   */
+  const unknown = review.findings.filter(
+    (finding) => finding.status !== "open" && finding.status !== "accepted",
+  );
+  if (unknown.length > 0) {
+    throw new GateRefusal(
+      `${unknown.length} finding(s) declare a status that is not open or accepted.`,
+      "Set each to open, or to accepted with a reason.",
+      unknown.map((finding) => `  [${finding.lens}] ${String(finding.status)}: ${finding.summary}`).join("\n"),
+    );
+  }
+
   const open = review.findings.filter((finding) => finding.status === "open");
   if (open.length > 0) {
     throw new GateRefusal(

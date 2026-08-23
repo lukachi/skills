@@ -101,6 +101,16 @@ you already know.
 wfctl reconstruct probe --question "<...>" --page <path> --asker <a different agent> [--passed]
 ```
 
+## Giving up
+
+```sh
+wfctl reconstruct abandon --reason "<why this pass is not finishing>"
+```
+
+A case opened by mistake, or on the wrong repository, needs a way out that is
+not hand-editing state. It archives with the reason rather than pretending the
+pass completed.
+
 ## Closing
 
 A pass that changed nothing still writes. "Checked at this revision, nothing

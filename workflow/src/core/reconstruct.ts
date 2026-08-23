@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
 import { filesAt, resolveRevision } from "./git.js";
-import { withLock } from "./lock.js";
+import { withLock, writeAtomic } from "./lock.js";
 import type { RegisteredRepository } from "./registry.js";
 import type { Claim } from "./trajectory.js";
 
@@ -115,6 +115,8 @@ export interface ReconstructionCase {
   probes: Probe[];
   /** True when the corpus already held pages when this started. */
   hadBaseline: boolean;
+  /** Set when the pass is given up rather than finished. */
+  abandoned?: { at: string; reason: string };
 }
 
 export function casePath(root: string, id: string): string {
@@ -133,7 +135,31 @@ export async function readCase(root: string, id: string): Promise<Reconstruction
 export async function writeCase(root: string, record: ReconstructionCase): Promise<void> {
   const path = casePath(root, record.id);
   await mkdir(dirname(path), { recursive: true });
-  await withLock(path, () => writeFile(path, `${JSON.stringify(record, null, 2)}\n`, "utf8"));
+  await withLock(path, () => writeAtomic(path, `${JSON.stringify(record, null, 2)}\n`));
+}
+
+/**
+ * Read, change, write — with nobody else in between.
+ *
+ * `writeCase` was locked and its callers were not, so five parallel reads each
+ * loaded the same case, each added one path, and coverage ended at one instead
+ * of five. The crawl gate then refused for files that had been read.
+ */
+export async function mutateCase(
+  root: string,
+  id: string,
+  change: (record: ReconstructionCase) => ReconstructionCase,
+): Promise<ReconstructionCase> {
+  const path = casePath(root, id);
+  return withLock(path, async () => {
+    const current = await readCase(root, id);
+    if (!current) {
+      throw new GateRefusal(`No reconstruction named ${id}.`, "wfctl reconstruct status");
+    }
+    const next = change(current);
+    await writeAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
+    return next;
+  });
 }
 
 /**
@@ -185,6 +211,23 @@ export function nextStage(stage: Stage): Stage | undefined {
 export function remaining(coverage: Coverage): string[] {
   const done = new Set([...coverage.read, ...coverage.excluded.map((entry) => entry.path)]);
   return coverage.inScope.filter((path) => !done.has(path));
+}
+
+/**
+ * Excluding everything is not reading everything.
+ *
+ * Five one-word exclusions over a five-file scope satisfied the coverage gate
+ * with nothing read at all, which was the load-bearing step in closing a
+ * "completed" pass that had read nothing.
+ */
+export function assertSomethingRead(record: ReconstructionCase): void {
+  if (record.coverage.read.length > 0) return;
+  throw new GateRefusal(
+    "Nothing in scope was read; every file was excluded.",
+    "wfctl reconstruct read <path>",
+    "A pass that excluded its whole scope has established nothing about the " +
+      "project, and closing it would record that it had.",
+  );
 }
 
 export function assertCrawlComplete(record: ReconstructionCase): void {
@@ -267,6 +310,9 @@ export function assertProbed(record: ReconstructionCase, actor: string): void {
  * the work; closing empty throws away the only thing the pass produced.
  */
 export function renderOutcome(record: ReconstructionCase): string {
+  if (record.abandoned) {
+    return `Abandoned: ${record.abandoned.reason}`;
+  }
   if (record.trajectories.length > 0) {
     return `${record.trajectories.length} subject(s) recorded.`;
   }
@@ -284,6 +330,7 @@ export function renderOutcome(record: ReconstructionCase): string {
  * provenance receipt. Skipping `stage` skipped everything it protects.
  */
 export function assertClosable(record: ReconstructionCase, actor: string): void {
+  if (record.abandoned) return;
   if (record.stage !== "promote") {
     throw new GateRefusal(
       `This case is at ${record.stage}; closing needs it at promote.`,
@@ -321,7 +368,7 @@ const CURRENT_POINTER = "reconstruction/active/current";
 export async function setCurrentCase(root: string, id: string): Promise<void> {
   const path = resolve(root, CURRENT_POINTER);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${id}\n`, "utf8");
+  await writeAtomic(path, `${id}\n`);
 }
 
 export async function currentCase(root: string): Promise<ReconstructionCase | undefined> {
@@ -445,15 +492,15 @@ export async function markRead(
       "Reading outside the agreed scope is how a bounded pass becomes an unbounded one.",
     );
   }
-  const next: ReconstructionCase = {
-    ...record,
+  return mutateCase(root, record.id, (current) => ({
+    ...current,
     coverage: {
-      ...record.coverage,
-      read: [...new Set([...record.coverage.read, path])].sort(),
+      ...current.coverage,
+      // A path cannot be both read and excluded; the later act wins.
+      read: [...new Set([...current.coverage.read, path])].sort(),
+      excluded: current.coverage.excluded.filter((entry) => entry.path !== path),
     },
-  };
-  await writeCase(root, next);
-  return next;
+  }));
 }
 
 export async function markExcluded(
@@ -477,18 +524,17 @@ export async function markExcluded(
       "An unexplained exclusion is indistinguishable from a file nobody got to.",
     );
   }
-  const next: ReconstructionCase = {
-    ...record,
+  return mutateCase(root, record.id, (current) => ({
+    ...current,
     coverage: {
-      ...record.coverage,
+      ...current.coverage,
+      read: current.coverage.read.filter((entry) => entry !== path),
       excluded: [
-        ...record.coverage.excluded.filter((entry) => entry.path !== path),
+        ...current.coverage.excluded.filter((entry) => entry.path !== path),
         { path, reason: reason.trim() },
       ],
     },
-  };
-  await writeCase(root, next);
-  return next;
+  }));
 }
 
 /**
@@ -509,14 +555,25 @@ export async function recordContradiction(
       'wfctl reconstruct contradiction --subject "<...>" --side "<...>" --side "<...>"',
     );
   }
-  const id = `C${String(record.contradictions.length + 1).padStart(3, "0")}`;
-  const next: ReconstructionCase = {
-    ...record,
-    contradictions: [...record.contradictions, { id, subject: options.subject, sides: options.sides }],
-  };
-  await writeCase(root, next);
-  return next;
+  let created = "";
+  return mutateCase(root, record.id, (current) => {
+    const id = `C${String(current.contradictions.length + 1).padStart(3, "0")}`;
+    created = id;
+    return {
+      ...current,
+      contradictions: [
+        ...current.contradictions,
+        { id, subject: options.subject, sides: options.sides },
+      ],
+    };
+  }).then((next) => {
+    lastContradictionId = created;
+    return next;
+  });
 }
+
+/** The id just recorded, so the command can print it rather than hiding it. */
+export let lastContradictionId = "";
 
 export async function resolveContradiction(
   root: string,
@@ -526,7 +583,13 @@ export async function resolveContradiction(
 ): Promise<ReconstructionCase> {
   const found = record.contradictions.find((entry) => entry.id.toUpperCase() === id.toUpperCase());
   if (!found) {
-    throw new GateRefusal(`No contradiction named ${id}.`, "wfctl reconstruct status");
+    throw new GateRefusal(
+      `No contradiction named ${id}.`,
+      "wfctl reconstruct status",
+      record.contradictions.length > 0
+        ? `Recorded:\n${record.contradictions.map((entry) => `  ${entry.id}  ${entry.subject}`).join("\n")}`
+        : "None recorded.",
+    );
   }
   if (!resolution.trim()) {
     throw new GateRefusal(
@@ -534,14 +597,14 @@ export async function resolveContradiction(
       `wfctl reconstruct resolve ${id} --resolution "<what they decided>"`,
     );
   }
-  const next: ReconstructionCase = {
-    ...record,
-    contradictions: record.contradictions.map((entry) =>
-      entry === found ? { ...entry, resolution: resolution.trim() } : entry,
+  return mutateCase(root, record.id, (current) => ({
+    ...current,
+    contradictions: current.contradictions.map((entry) =>
+      entry.id.toUpperCase() === id.toUpperCase()
+        ? { ...entry, resolution: resolution.trim() }
+        : entry,
     ),
-  };
-  await writeCase(root, next);
-  return next;
+  }));
 }
 
 export async function recordProbe(
@@ -576,9 +639,43 @@ export async function recordProbe(
       'wfctl reconstruct probe --question "<...>" --page <path> --asker <agent>',
     );
   }
-  const next: ReconstructionCase = { ...record, probes: [...record.probes, probe] };
-  await writeCase(root, next);
-  return next;
+
+  /**
+   * The pages have to exist. A probe passed against `knowledge/nonexistent.md`
+   * with an empty corpus, which is the whole round satisfied having written
+   * nothing.
+   */
+  for (const page of probe.pages) {
+    const candidates = [resolve(root, page), resolve(root, "knowledge", page)];
+    const present = await Promise.all(
+      candidates.map((candidate) =>
+        stat(candidate).then(
+          (entry) => entry.isFile(),
+          () => false,
+        ),
+      ),
+    );
+    if (!present.some(Boolean)) {
+      throw new GateRefusal(
+        `${page} is not a page that exists.`,
+        "wfctl knowledge validate",
+        "A probe asks whether the written pages can answer without the source. " +
+          "One naming a page nobody wrote asks nothing.",
+      );
+    }
+  }
+  /**
+   * A second answer to the same question supersedes the first.
+   *
+   * Appending meant a failed probe could never be cleared: re-running it with
+   * `--passed` added a passing one beside the failure, the gate still refused,
+   * and with no way to abandon a case that deadlocked reconstruction for the
+   * repository permanently.
+   */
+  return mutateCase(root, record.id, (current) => ({
+    ...current,
+    probes: [...current.probes.filter((entry) => entry.question !== probe.question), probe],
+  }));
 }
 
 export async function advanceStage(
@@ -587,8 +684,22 @@ export async function advanceStage(
   actor: string,
 ): Promise<{ record: ReconstructionCase; stage: Stage }> {
   switch (record.stage) {
+    case "scope":
+      /**
+       * The crawl gate was defeated by never giving it anything to measure:
+       * with an empty scope, "everything in scope is read" is vacuously true.
+       */
+      if (record.repositories.length === 0 || record.coverage.inScope.length === 0) {
+        throw new GateRefusal(
+          "The scope has not been settled, so there is nothing to read.",
+          "wfctl reconstruct scope --repository <owner/name>",
+          "A crawl over an empty scope satisfies its own gate without reading anything.",
+        );
+      }
+      break;
     case "crawl":
       assertCrawlComplete(record);
+      assertSomethingRead(record);
       break;
     case "assemble":
       assertTrajectoriesExist(record);
@@ -623,7 +734,9 @@ export function renderStatus(record: ReconstructionCase): string {
     "",
     `coverage: ${record.coverage.read.length} read, ${record.coverage.excluded.length} excluded, ${left.length} left`,
     `subjects:  ${record.trajectories.length}`,
-    `open contradictions: ${open.length}`,
+    open.length > 0
+      ? `open contradictions:\n${open.map((entry) => `  ${entry.id}  ${entry.subject}`).join("\n")}`
+      : "open contradictions: none",
     `probes: ${record.probes.filter((probe) => probe.passed === true).length}/${record.probes.length} passed`,
   ].join("\n");
 }

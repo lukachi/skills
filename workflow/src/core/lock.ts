@@ -121,3 +121,20 @@ async function abandoned(target: string): Promise<boolean> {
   if (!created) return true;
   return Date.now() - created.mtimeMs > STALE_AFTER_MS;
 }
+
+
+/**
+ * Write a file so no reader ever sees it half-written.
+ *
+ * A bare `writeFile` truncates and then fills, so a concurrent reader could
+ * observe an empty or partial file — two of forty-eight units were lost that
+ * way, and a crash mid-write would have truncated the record permanently.
+ * Rename is atomic within a filesystem, so a reader sees either the old file or
+ * the new one.
+ */
+export async function writeAtomic(path: string, body: string): Promise<void> {
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, body, "utf8");
+  const { rename } = await import("node:fs/promises");
+  await rename(temporary, path);
+}

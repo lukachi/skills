@@ -1,5 +1,5 @@
-import { mkdir, readdir, rename, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { copyFile, mkdir, readdir, rename, stat } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
 
 /**
@@ -107,10 +107,23 @@ export async function listQueue(knowledgeRoot: string): Promise<string[]> {
     .sort();
 }
 
+/**
+ * Promotion writes the pages into curated knowledge, then archives the record.
+ *
+ * It did neither of the first two for a long time: it renamed the directory
+ * into the archive and reported success, so `knowledge/` stayed empty after
+ * every promotion and `wfctl decided` — which reads `knowledge/` — could never
+ * return anything. Recall item A2 asks whether a decision record exists, so the
+ * gate the whole checklist rests on was permanently unanswerable.
+ *
+ * The copy happens before the rename. A failure after the pages have landed
+ * would leave a record in the queue whose pages are already in the corpus, and
+ * promoting it again would be indistinguishable from promoting it once.
+ */
 export async function promote(options: {
   knowledgeRoot: string;
   bundleId: string;
-}): Promise<{ archived: string }> {
+}): Promise<{ archived: string; pages: string[] }> {
   const queued = resolve(options.knowledgeRoot, QUEUE, options.bundleId);
   if (!(await isDirectory(queued))) {
     throw new GateRefusal(
@@ -118,10 +131,34 @@ export async function promote(options: {
       "wfctl work promotion list",
     );
   }
+
+  const drafts = resolve(queued, "promotion");
+  const entries = await readdir(drafts, { recursive: true, withFileTypes: true }).catch(() => []);
+  const pages: string[] = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    const from = join(entry.parentPath ?? drafts, entry.name);
+    const page = relative(drafts, from);
+    const to = resolve(options.knowledgeRoot, "knowledge", page);
+    await mkdir(dirname(to), { recursive: true });
+    await copyFile(from, to);
+    pages.push(page);
+  }
+
+  if (pages.length === 0) {
+    throw new GateRefusal(
+      `${options.bundleId} is in the queue with no drafted page.`,
+      `wfctl work promotion draft "<area>/<page>.md"`,
+      "A record waits here because it has something to say. One with nothing to " +
+        "say archives at closure instead.",
+    );
+  }
+
   const archived = resolve(options.knowledgeRoot, ARCHIVE, options.bundleId);
   await mkdir(resolve(options.knowledgeRoot, ARCHIVE), { recursive: true });
   await rename(queued, archived);
-  return { archived };
+  return { archived, pages };
 }
 
 export function queuePath(knowledgeRoot: string, bundleId: string): string {

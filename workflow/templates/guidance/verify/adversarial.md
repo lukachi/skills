@@ -10,13 +10,21 @@ that never ran.
 
 Lenses, each asking something the others do not:
 
+Write each lens name exactly as the validator spells it — hyphenated, no spaces:
+`intent`, `correctness`, `contract`, `failure-paths`, `state-and-data`,
+`delivery-reality`, `test-integrity`.
+
 - **intent** — does the diff do what the framing asked, and only that?
 - **correctness** — which input makes it produce the wrong answer?
 - **contract** — what existing caller breaks? what shape changed?
-- **failure paths** — error, empty, concurrent, retried, partial?
-- **state and data** — what happens to data written by the previous version?
-- **delivery reality** — is the only caller a test, fixture, demo, or mock?
-- **test integrity** — would these tests catch a broken implementation?
+- **failure-paths** — error, empty, concurrent, retried, partial?
+- **state-and-data** — what happens to data written by the previous version?
+- **delivery-reality** — is the only caller a test, fixture, demo, or mock?
+- **test-integrity** — would these tests catch a broken implementation?
+
+A finding's `status` is `open` or `accepted`, and `accepted` carries a reason.
+Any other value is refused: only the literal `open` used to be, so a finding
+that said the work was wrong passed for spelling it differently.
 
 The highest-yield checks need no judgment at all:
 

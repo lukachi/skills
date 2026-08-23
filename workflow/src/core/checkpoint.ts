@@ -65,15 +65,58 @@ export function buildCheckpoint(input: CheckpointInput, now = new Date()): Check
  * exactly like a complete one while carrying a fraction of the state. Only the
  * flow in hand can be long, and there is only ever one of those.
  */
-export function renderBrief(flows: FlowRecord[], currentId: string | undefined): string {
+export interface BriefExtras {
+  /** Records waiting on the maintainer's promotion decision. */
+  queued?: string[];
+  /** Captures marked as needing them. */
+  awaitingCaptures?: number;
+  /** An open reconstruction, which is not a flow and was invisible here. */
+  reconstruction?: { id: string; stage: string };
+}
+
+export function renderBrief(
+  flows: FlowRecord[],
+  currentId: string | undefined,
+  extras: BriefExtras = {},
+): string {
   const open = flows.filter((flow) => !flow.closedAt);
+
+  /**
+   * Everything awaiting somebody, not only the pointed-at flow.
+   *
+   * The brief reported "No flow is open" while a record sat in the promotion
+   * queue and a capture waited on the maintainer — and its own text promises to
+   * mark what awaits them. What it omits, nobody sees.
+   */
+  const waiting: string[] = [];
+  if (extras.reconstruction) {
+    waiting.push(
+      `reconstruction ${extras.reconstruction.id} · stage ${extras.reconstruction.stage}` +
+        `\n  awaits agent: wfctl reconstruct status`,
+    );
+  }
+  for (const id of extras.queued ?? []) {
+    waiting.push(
+      `${id} waits in the promotion queue` +
+        `\n  awaits maintainer: what the project now says about itself` +
+        `\n  remedy: wfctl work promote --subject "<product subject>" --summary "<what it now does>"`,
+    );
+  }
+  if (extras.awaitingCaptures) {
+    waiting.push(
+      `${extras.awaitingCaptures} capture(s) await the maintainer` +
+        `\n  remedy: put them one decision at a time, not as a backlog`,
+    );
+  }
+
   if (open.length === 0) {
     return [
       "No flow is open.",
+      ...(waiting.length > 0 ? ["", ...waiting] : []),
       "",
       "Start one explicitly when the maintainer asks for work:",
-      "  wfctl work start --title \"<what this is>\"",
-      "  wfctl reconstruct start --title \"<what this is>\"",
+      '  wfctl work start --title "<what this is>" --weight <significant|lightweight>',
+      "  wfctl reconstruct start",
     ].join("\n");
   }
 
@@ -95,6 +138,10 @@ export function renderBrief(flows: FlowRecord[], currentId: string | undefined):
       }
     } else {
       lines.push("No checkpoint yet. Write one before this session does anything material.");
+      lines.push(
+        '  wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\',
+      );
+      lines.push('    --last "<last completed action>" --next "<the exact next action>"');
     }
 
     const blocker = deriveBlocker(current);
@@ -112,7 +159,13 @@ export function renderBrief(flows: FlowRecord[], currentId: string | undefined):
     for (const flow of others) {
       const summary = flow.checkpoint?.summary ?? "no checkpoint";
       lines.push(`  ${flow.id}  ·  ${flow.step}  ·  ${summary}`);
+      lines.push(`    close it with: wfctl flow close ${flow.id}`);
     }
+  }
+
+  if (waiting.length > 0) {
+    lines.push("");
+    lines.push(...waiting);
   }
 
   return lines.join("\n");

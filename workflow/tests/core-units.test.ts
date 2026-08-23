@@ -35,6 +35,7 @@ test("completing a unit says the next one is available work", async () => {
   const ctx = await opened();
   await run(["work", "issue", "create", "--title", "first"], ctx);
   await run(["work", "issue", "create", "--title", "second"], ctx);
+  await run(["repo", "add", "o/r", "--path", "/tmp"], ctx);
   await run(["work", "issue", "claim", "U001", "--repository", "o/r", "--worktree", "main"], ctx);
 
   const done = await run(["work", "issue", "complete", "U001"], ctx);
@@ -45,6 +46,8 @@ test("completing a unit says the next one is available work", async () => {
 
 test("a claim records the workspace and never a revision", async () => {
   const ctx = await opened();
+  // A claim names a checkout the registry knows; any string used to be accepted.
+  await run(["repo", "add", "o/r", "--path", "/tmp", "--worktree", "wt-1"], ctx);
   await run(["work", "issue", "create", "--title", "first"], ctx);
   await run(["work", "issue", "claim", "U001", "--repository", "o/r", "--worktree", "wt-1"], ctx);
 
@@ -59,6 +62,7 @@ test("a claim records the workspace and never a revision", async () => {
 test("a parked flow refuses a claim, and only their words release it", async () => {
   const ctx = await opened();
   await run(["work", "issue", "create", "--title", "first"], ctx);
+  await run(["repo", "add", "o/r", "--path", "/tmp"], ctx);
   await run(["work", "park", "--reason", "client rebuild first"], ctx);
 
   const blocked = await run(["work", "issue", "claim", "U001", "--repository", "o/r"], ctx);
@@ -125,16 +129,23 @@ test("verification accepts a delegated review and hands over the closing guidanc
   assert.match(result.stdout, /Nobody is asked/);
 });
 
-test("closing refuses while a unit is still claimed", async () => {
+test("closing refuses while any unit is not terminal", async () => {
   const ctx = await opened();
   await walkToVerified(ctx);
   await run(["work", "issue", "create", "--title", "first"], ctx);
-  await run(["work", "issue", "claim", "U001", "--repository", "o/r"], ctx);
 
+  // An OPEN unit blocks too: sixty-five undelivered units once closed as
+  // `completed` because only a claim was checked.
   const result = await run(["work", "close", "--outcome", "completed"], ctx);
   assert.equal(result.exitCode, 2);
-  assert.match(result.stdout, /still claimed/);
+  assert.match(result.stdout, /not terminal/);
   assert.match(result.stdout, /wfctl work issue complete U001/);
+
+  // Dropping it deliberately is the way past, and it records why.
+  const bare = await run(["work", "issue", "drop", "U001"], ctx);
+  assert.equal(bare.exitCode, 2);
+  await run(["work", "issue", "drop", "U001", "--reason", "left the route"], ctx);
+  assert.equal((await run(["work", "close", "--outcome", "partial"], ctx)).exitCode, 0);
 });
 
 test("a partial close holding pages waits in the queue", async () => {

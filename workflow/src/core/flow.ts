@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
-import { withLock } from "./lock.js";
+import { withLock, writeAtomic } from "./lock.js";
 import { emptyRecall } from "./recall.js";
 import type { FlowKind, FlowRecord, WorkWeight } from "./types.js";
 import { FLOW_SCHEMA_VERSION } from "./types.js";
@@ -54,7 +54,7 @@ export async function writeFlow(root: string, flow: FlowRecord): Promise<void> {
   const path = flowPath(root, flow.id);
   await withLock(path, async () => {
     const next = { ...flow, updatedAt: new Date().toISOString() };
-    await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    await writeAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
   });
 }
 
@@ -77,7 +77,7 @@ export async function mutateFlow(
       throw new GateRefusal(`No flow named ${id}.`, "wfctl brief");
     }
     const next = { ...change(current), updatedAt: new Date().toISOString() };
-    await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    await writeAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
     return next;
   });
 }
@@ -105,7 +105,7 @@ async function setCurrent(root: string, id: string | undefined): Promise<void> {
     await rm(path, { force: true });
     return;
   }
-  await writeFile(path, `${id}\n`, "utf8");
+  await writeAtomic(path, `${id}\n`);
 }
 
 export interface OpenFlowOptions {
@@ -115,17 +115,7 @@ export interface OpenFlowOptions {
   now?: Date;
 }
 
-export class FlowOpenError extends Error {
-  constructor(
-    message: string,
-    /** The command that clears this refusal. Never omitted — a refusal that does
-     * not name its own remedy costs a turn and teaches nothing. */
-    readonly remedy: string,
-  ) {
-    super(message);
-    this.name = "FlowOpenError";
-  }
-}
+export class FlowOpenError extends GateRefusal {}
 
 /**
  * Opening a flow refuses while another is open.
@@ -135,6 +125,17 @@ export class FlowOpenError extends Error {
  * command that would open a second workload will not run.
  */
 export async function openFlow(root: string, options: OpenFlowOptions): Promise<FlowRecord> {
+  /**
+   * The fence is checked and taken under one lock.
+   *
+   * Six parallel `work start` calls each read "nothing open", each wrote a
+   * record, and five of them became unreachable behind a single pointer — the
+   * repository fenced forever by the mechanism meant to fence one workload.
+   */
+  return withLock(resolve(root, FLOW_DIR, "open"), () => openFlowLocked(root, options));
+}
+
+async function openFlowLocked(root: string, options: OpenFlowOptions): Promise<FlowRecord> {
   /**
    * The fence reads the records, not the pointer.
    *
@@ -194,7 +195,11 @@ export async function openFlow(root: string, options: OpenFlowOptions): Promise<
 export async function closeFlow(root: string, id: string): Promise<FlowRecord> {
   const flow = await readFlow(root, id);
   if (!flow) {
-    throw new FlowOpenError(`No flow named ${id}.`, "wfctl brief");
+    throw new FlowOpenError(
+      `No flow named ${id}.`,
+      "wfctl brief",
+      "The brief lists every open flow, including ones the pointer has lost.",
+    );
   }
   const closed: FlowRecord = { ...flow, closedAt: new Date().toISOString() };
   delete closed.checkpoint;

@@ -41,13 +41,34 @@ export function contentHash(body: string): string {
   return createHash("sha256").update(body.trim()).digest("hex");
 }
 
+/**
+ * Read the frontmatter the way the shipped templates write it.
+ *
+ * An earlier version only understood inline values, so both templates failed
+ * the validator that ships beside them — an agent following the guidance to
+ * "use the template" produced a page the tool rejected. Block sequences count:
+ * a key whose value is a list of `- ` lines is declared.
+ */
 function frontmatter(body: string): Record<string, string> {
   const match = /^---\n([\s\S]*?)\n---/.exec(body);
   if (!match) return {};
+
   const fields: Record<string, string> = {};
-  for (const line of (match[1] ?? "").split("\n")) {
-    const pair = /^([a-z_-]+):\s*(.*)$/.exec(line.trim());
-    if (pair?.[1]) fields[pair[1]] = (pair[2] ?? "").replace(/^["']|["']$/g, "").trim();
+  const lines = (match[1] ?? "").split("\n");
+
+  for (const [index, raw] of lines.entries()) {
+    const pair = /^([a-z_-]+):\s*(.*)$/.exec(raw);
+    if (!pair?.[1]) continue;
+
+    const inline = (pair[2] ?? "").replace(/^["']|["']$/g, "").trim();
+    if (inline) {
+      fields[pair[1]] = inline;
+      continue;
+    }
+
+    // A block sequence or mapping beneath the key still declares it.
+    const following = lines[index + 1] ?? "";
+    fields[pair[1]] = /^\s+\S/.test(following) ? following.trim().replace(/^-\s*/, "") : "";
   }
   return fields;
 }
@@ -83,11 +104,12 @@ export function inspectPage(path: string, body: string): PageIssue[] {
     });
   }
 
-  for (const untrusted of UNTRUSTED) {
-    if (body.includes(untrusted)) {
+  const cited = UNTRUSTED.find((untrusted) => body.includes(untrusted));
+  if (cited) {
+    {
       issues.push({
         path,
-        problem: `cites ${untrusted}, which carries no authority`,
+        problem: `cites ${cited}, which carries no authority`,
         remedy:
           "Cite the evidence itself — a pinned source location, a promoted decision, " +
           "or the maintainer's own answer",
@@ -217,8 +239,24 @@ export async function inspectLinks(root: string): Promise<PageIssue[]> {
   return issues;
 }
 
+/**
+ * Accept the path forms the tool itself prints.
+ *
+ * `--page` took a knowledge-relative path while every path the CLI prints is
+ * either absolute or repository-relative, so following the tool's own output
+ * produced "cannot be read → check the path".
+ */
+export function normalizePage(root: string, page: string): string {
+  const base = resolve(root, KNOWLEDGE_DIR);
+  const absolute = resolve(root, page);
+  const inside = relative(base, absolute);
+  if (!inside.startsWith("..")) return inside;
+  const fromRoot = relative(base, resolve(base, page));
+  return fromRoot.startsWith("..") ? page : fromRoot;
+}
+
 export async function validateCurated(root: string, only?: string): Promise<PageIssue[]> {
-  const pages = only ? [only] : await collectPages(root);
+  const pages = only ? [normalizePage(root, only)] : await collectPages(root);
   const issues: PageIssue[] = [];
   for (const page of pages) {
     const body = await readFile(resolve(root, KNOWLEDGE_DIR, page), "utf8").catch(() => undefined);
@@ -247,8 +285,16 @@ export function assertPromotable(issues: PageIssue[]): void {
   );
 }
 
-export function renderIssues(issues: PageIssue[]): string {
-  if (issues.length === 0) return "Every page passes structural validation.";
+export function renderIssues(issues: PageIssue[], pages = 1): string {
+  if (pages === 0) {
+    return [
+      "There are no curated pages.",
+      "",
+      "That is not a pass. An empty corpus satisfies every structural check, and",
+      "reporting it as clean reads exactly like a corpus that was checked.",
+    ].join("\n");
+  }
+  if (issues.length === 0) return `${pages} page(s) pass structural validation.`;
   return [
     ...issues.map((issue) => `${issue.path}\n  ${issue.problem}\n  → ${issue.remedy}`),
     "",
