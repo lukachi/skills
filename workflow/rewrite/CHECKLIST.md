@@ -29,7 +29,7 @@ verified against this file, not against memory.
 - [x] C2 The **brief** is its index rendering, emitted by the SessionStart hook.
 - [x] C3 The **handoff** is its full body — the detailed recall.
 - [x] C4 The brief prints the bound flow's handoff in full, every other flow as one line, so truncation cannot hide what matters.
-- [~] C5 Pointing at the handoff is not enough; the next command refuses until it is receipted.  _(partial: gate exists, not wired into commands)_
+- [x] C5 Pointing at the handoff is not enough; the next command refuses until it is receipted.
 - [x] C6 Blockers are derived from the flow's position in its step sequence, never stored.
 - [x] C7 The checkpoint recalls working state and nothing else.
 - [x] C8 Checkpoints are frequent. There is no session-management exit.
@@ -37,7 +37,7 @@ verified against this file, not against memory.
 ## D. Cases
 
 - [x] D1 Two cases only: `work` (changes) and `reconstruction`.
-- [~] D2 Intake is absorbed into reconstruction.  _(partial: the installed shape has no `intake/`; the case itself is phase two)_
+- [x] D2 Intake is absorbed into reconstruction.
 - [x] D3 Raw material lives at `reconstruction/raw/`, owned by that module.
 - [ ] D4 `knowledge/` may never cite it; the validator's path ban moves to the new location.  _(not yet: reconstruction deferred)_
 - [x] D5 No routing or classification step. The maintainer starts a case explicitly.
@@ -76,8 +76,8 @@ verified against this file, not against memory.
 - [x] H1 Sized by scope and coherence. Never "for one agent session".
 - [x] H2 Pocock's "one slice at a time" is kept; "one ticket per session" is dropped.
 - [x] H3 Blocking edges, frontier computation and cycle validation are removed.
-- [~] H4 Issues carry a status and the agent's own notes.  _(partial: model has the field; retrieval commands pending)_
-- [~] H5 The CLI retrieves them well: filter, read, mark, annotate.  _(partial: retrieval commands pending)_
+- [x] H4 Issues carry a status and the agent's own notes.
+- [x] H5 The CLI retrieves them well: filter, read, mark, annotate.
 - [x] H6 Claims bind repository and worktree, never branch and commit.
 - [x] H7 Not stopping between units belongs to the Stop guard, never to issue selection.
 
@@ -92,10 +92,10 @@ verified against this file, not against memory.
 
 - [x] J1 The fixed point predates the work: the framing at its approved digest, and the source at the first claim's revision.
 - [x] J2 Nothing is re-derived at verification time; moved criteria are themselves a finding.
-- [~] J3 The review is delegated to a subagent. The implementing agent cannot run it.  _(partial: contract enforced; subagent runner pending)_
+- [x] J3 The review is delegated to a subagent. The implementing agent cannot run it.
 - [x] J4 The reviewer receives the diff, the framing, and the repository — never the implementation's reasoning.
 - [x] J5 Prompts are inverted: produce the failure, do not confirm the success.
-- [~] J6 Every attack is an executable test. The subagent writes it, runs it, and returns source, output and verdict.  _(partial: contract enforced; runner pending)_
+- [x] J6 Every attack is an executable test. The subagent writes it, runs it, and returns source, output and verdict.
 - [x] J7 Tests and review are ephemeral. Nothing is added to the suite.
 - [x] J8 "Looks correct" is not an allowed answer; a failed attack must state what was tried.
 - [x] J9 Zero findings and zero recorded attacks blocks, as an empty review.
@@ -111,7 +111,7 @@ verified against this file, not against memory.
 - [x] K3 Promotion is the maintainer's decision.
 - [x] K4 The agent never types a promotion path. `work promotion draft <page>` creates the file and prints it.
 - [x] K5 The write hook refuses a curated page created outside the bundle's `promotion/`.
-- [ ] K6 A partial outcome keeps its drafted pages promotable.  _(not yet: promotion queue pending)_
+- [x] K6 A partial outcome keeps its drafted pages promotable.
 
 ## L. Findings during work
 
@@ -127,10 +127,10 @@ verified against this file, not against memory.
 
 ## N. Known defects to fix in the rewrite
 
-- [ ] N1 Receipts cannot be refreshed on a closed bundle (DISC-001).  _(not yet: promotion queue pending)_
+- [x] N1 Receipts cannot be refreshed on a closed bundle (DISC-001).
 - [x] N2 Branch movement deadlocks claim, checkpoint and rebind (DISC-004, 006, 007) — removed by H6.
-- [ ] N3 A partial close drops drafted pages into the archive (DISC-003).  _(not yet: promotion queue pending)_
-- [ ] N4 Parked flows still appear in the resume selector (DISC-005).  _(not yet: parked flows already excluded by the single-flow fence; verify when the selector lands)_
+- [x] N3 A partial close drops drafted pages into the archive (DISC-003).
+- [x] N4 Parked flows still appear in the resume selector (DISC-005).
 - [x] N5 A rebind destroys the record's start commit and accounting (DISC-007).
 - [x] N6 Refusals name neither what changed nor the move that clears it (E5).
 
@@ -176,4 +176,4 @@ wayfinding, and attestation is gone from framing approval.
 
 Core modules: `src/core/{types,flow,recall,steps,checkpoint,gates,guidance,paths,verify,write-hook,commands}.ts`.
 Guidance bundle: `templates/guidance/`.
-Tests: `tests/core-flow.test.ts`, `tests/core-commands.test.ts`, `tests/core-install.test.ts` — 38 passing.
+Tests: `tests/core-*.test.ts` — 53 passing. The binary is `src/core/cli.ts`.

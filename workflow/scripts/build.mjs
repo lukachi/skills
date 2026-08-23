@@ -2,7 +2,7 @@ import { chmod } from "node:fs/promises";
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["src/cli.ts"],
+  entryPoints: ["src/core/cli.ts"],
   outfile: "dist/cli.js",
   bundle: true,
   platform: "neutral",

@@ -16,8 +16,6 @@ import type { WorkStep } from "./types.js";
  * delivered at the moment its state is true, and again the next time that state
  * is true, which is the property a file cannot have.
  */
-export const GUIDANCE_ROOT = "guidance";
-
 export type GuidanceKey =
   | `work/${WorkStep}`
   | "work/capture"
@@ -27,7 +25,12 @@ export type GuidanceKey =
   | "session/start";
 
 export interface GuidanceSource {
-  /** Directory holding the installed guidance bundle. */
+  /**
+   * The directory holding the guidance files themselves — `templates/guidance`
+   * in the distribution, `.workflow/guidance` once installed. It names the leaf
+   * directory rather than a root to search under, because the two layouts differ
+   * and a loader that guessed between them would silently find nothing.
+   */
   root: string;
 }
 
@@ -42,7 +45,7 @@ export async function loadGuidance(
   source: GuidanceSource,
   key: GuidanceKey,
 ): Promise<string | undefined> {
-  const path = resolve(source.root, GUIDANCE_ROOT, `${key}.md`);
+  const path = resolve(source.root, `${key}.md`);
   try {
     const text = await readFile(path, "utf8");
     return text.trim().length > 0 ? text.trim() : undefined;

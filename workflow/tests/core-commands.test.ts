@@ -19,7 +19,7 @@ import { RECALL_ITEMS } from "../src/core/recall.js";
 import { decideWrite } from "../src/core/write-hook.js";
 import type { CommandContext } from "../src/core/commands.js";
 
-const assets = resolve(import.meta.dirname, "..", "templates");
+const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
 
 async function context(): Promise<CommandContext> {
   return { root: await mkdtemp(join(tmpdir(), "wfctl-cmd-")), assets, actor: "agent:test" };
