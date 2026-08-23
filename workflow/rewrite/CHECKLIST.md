@@ -170,6 +170,22 @@ Three things changed in the re-cut rather than being carried across: issue
 blocking edges are gone, "sized for one session" is gone from both splitting and
 wayfinding, and attestation is gone from framing approval.
 
+## Foundations complete
+
+Hooks install and fire: the session brief, the pre-write guard (refuses a first
+write with no traversal, then silent on known ground), and the stop guard. The
+managed block and hook settings merge without touching what the project already
+had.
+
+Specs rewritten: `ENGINE.md`, `WORK.md`, `CLI.md`, and the surfaces in
+`KNOWLEDGE.md`, `DEVELOPMENT.md`, `VERIFICATION.md` and `README.md`.
+`RECONSTRUCTION.md` is marked as describing the previous implementation.
+
+Evals: trigger evals deleted — nothing is loaded by the model choosing to load
+it, so the question has no subject. Eighteen behaviour evals across four suites.
+
+Remaining: the reconstruction case, which absorbs intake and raw.
+
 ## Status
 
 `[x]` implemented and tested · `[~]` partial · `[ ]` not yet.
