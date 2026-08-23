@@ -1469,12 +1469,108 @@ var init_install = __esm({
   }
 });
 
+// src/core/leaves.ts
+var leaves_exports = {};
+__export(leaves_exports, {
+  GRAPH_PATH: () => GRAPH_PATH,
+  assertTraversable: () => assertTraversable,
+  graphSetup: () => graphSetup,
+  inspectLeaf: () => inspectLeaf,
+  inspectLeaves: () => inspectLeaves,
+  renderLeaves: () => renderLeaves
+});
+import { stat as stat3 } from "node:fs/promises";
+import { resolve as resolve8 } from "node:path";
+async function inspectLeaf(entry, now = /* @__PURE__ */ new Date()) {
+  const base = {
+    repository: entry.repository,
+    worktreeId: entry.worktreeId,
+    path: entry.path,
+    graph: "unreachable"
+  };
+  const reachable = await stat3(entry.path).then(
+    (found) => found.isDirectory(),
+    () => false
+  );
+  if (!reachable) return base;
+  const graph = await stat3(resolve8(entry.path, GRAPH_PATH)).catch(() => void 0);
+  if (!graph) return { ...base, graph: "missing" };
+  const ageDays = Math.floor((now.getTime() - graph.mtimeMs) / 864e5);
+  return { ...base, graph: ageDays > STALE_AFTER_DAYS ? "stale" : "ready", ageDays };
+}
+async function inspectLeaves(entries, now = /* @__PURE__ */ new Date()) {
+  return Promise.all(entries.map((entry) => inspectLeaf(entry, now)));
+}
+function graphSetup(path) {
+  return [
+    `No graph in ${path}.`,
+    "",
+    "Nothing is installed into a source repository, but its structure has to be",
+    "readable before anything here can traverse it. In that checkout:",
+    "",
+    "  uv tool install graphifyy      # once per machine, if the CLI is absent",
+    "  graphify build                 # in the leaf, produces graphify-out/",
+    "",
+    "The maintainer runs the install; the build is yours. Rebuild it when the",
+    "source has moved \u2014 a stale graph answers confidently about code that is gone."
+  ].join("\n");
+}
+function assertTraversable(leaves) {
+  const blocked = leaves.filter((leaf) => leaf.graph === "missing" || leaf.graph === "unreachable");
+  if (blocked.length === 0) return;
+  const missing = blocked.filter((leaf) => leaf.graph === "missing");
+  const gone = blocked.filter((leaf) => leaf.graph === "unreachable");
+  const detail = [
+    ...missing.map((leaf) => graphSetup(leaf.path)),
+    ...gone.map(
+      (leaf) => `${leaf.repository} is registered at ${leaf.path}, which is not there. Re-register it, or remove it: wfctl repo remove ${leaf.repository} --worktree ${leaf.worktreeId}`
+    )
+  ].join("\n\n");
+  throw new GateRefusal(
+    `${blocked.length} registered repositor${blocked.length === 1 ? "y has" : "ies have"} no graph to traverse.`,
+    missing[0] ? `graphify build   (in ${missing[0].path})` : "wfctl repo list",
+    detail
+  );
+}
+function renderLeaves(leaves) {
+  if (leaves.length === 0) {
+    return [
+      "No repositories are registered.",
+      "",
+      "Register each checkout the project keeps, including worktrees:",
+      "  wfctl repo add <owner/name> --path <dir> [--worktree <id>]"
+    ].join("\n");
+  }
+  const rows = leaves.map((leaf) => {
+    const age = leaf.graph === "ready" || leaf.graph === "stale" ? `${leaf.ageDays}d` : "";
+    return `${leaf.graph.padEnd(11)} ${age.padEnd(5)} ${leaf.repository}  ${leaf.worktreeId.padEnd(10)}  ${leaf.path}`;
+  });
+  const needing = leaves.filter((leaf) => leaf.graph === "missing" || leaf.graph === "stale");
+  return [
+    ...rows,
+    ...needing.length > 0 ? [
+      "",
+      `${needing.length} need a graph built before it can be traversed:`,
+      ...needing.map((leaf) => `  graphify build   (in ${leaf.path})`)
+    ] : []
+  ].join("\n");
+}
+var GRAPH_PATH, STALE_AFTER_DAYS;
+var init_leaves = __esm({
+  "src/core/leaves.ts"() {
+    "use strict";
+    init_gates();
+    GRAPH_PATH = "graphify-out/graph.json";
+    STALE_AFTER_DAYS = 30;
+  }
+});
+
 // src/core/write-hook.ts
 var write_hook_exports = {};
 __export(write_hook_exports, {
   decideWrite: () => decideWrite
 });
-import { relative as relative3, resolve as resolve8 } from "node:path";
+import { relative as relative3, resolve as resolve9 } from "node:path";
 function decideWrite(input) {
   const { flow, knowledgeRoot, target } = input;
   try {
@@ -1495,6 +1591,12 @@ function decideWrite(input) {
   );
   if (!first && covered) return {};
   if (first && (flow.recall.counters.graphify ?? 0) === 0) {
+    try {
+      assertTraversable(input.leaves ?? []);
+    } catch (error) {
+      if (error instanceof GateRefusal) return { refusal: error };
+      throw error;
+    }
     return {
       refusal: new GateRefusal(
         "No structural traversal has been made for this unit.",
@@ -1511,12 +1613,13 @@ wfctl guide structure \u2014 searching by graph before by string`
   };
 }
 function normalize(root, path) {
-  const absolute = resolve8(root, path);
+  const absolute = resolve9(root, path);
   return relative3(root, absolute) || absolute;
 }
 var init_write_hook = __esm({
   "src/core/write-hook.ts"() {
     "use strict";
+    init_leaves();
     init_paths();
     init_recall();
     init_gates();
@@ -1534,10 +1637,10 @@ __export(registry_exports, {
   writeRegistry: () => writeRegistry
 });
 import { mkdir as mkdir7, readFile as readFile6, writeFile as writeFile6 } from "node:fs/promises";
-import { dirname as dirname5, resolve as resolve9 } from "node:path";
+import { dirname as dirname5, resolve as resolve10 } from "node:path";
 async function readRegistry(root) {
   try {
-    const raw = await readFile6(resolve9(root, REGISTRY_PATH), "utf8");
+    const raw = await readFile6(resolve10(root, REGISTRY_PATH), "utf8");
     const parsed = JSON.parse(raw);
     return parsed.repositories ?? [];
   } catch (error) {
@@ -1546,7 +1649,7 @@ async function readRegistry(root) {
   }
 }
 async function writeRegistry(root, repositories) {
-  const path = resolve9(root, REGISTRY_PATH);
+  const path = resolve10(root, REGISTRY_PATH);
   await mkdir7(dirname5(path), { recursive: true });
   await writeFile6(path, `${JSON.stringify({ repositories }, null, 2)}
 `, "utf8");
@@ -1641,10 +1744,10 @@ __export(reconstruct_exports, {
   setCurrentCase: () => setCurrentCase,
   writeCase: () => writeCase
 });
-import { mkdir as mkdir8, readFile as readFile7, readdir as readdir5, stat as stat3, writeFile as writeFile7 } from "node:fs/promises";
-import { dirname as dirname6, join as join4, resolve as resolve10 } from "node:path";
+import { mkdir as mkdir8, readFile as readFile7, readdir as readdir5, stat as stat4, writeFile as writeFile7 } from "node:fs/promises";
+import { dirname as dirname6, join as join4, resolve as resolve11 } from "node:path";
 function casePath(root, id) {
-  return resolve10(root, RECONSTRUCTION_DIR, id, "case.json");
+  return resolve11(root, RECONSTRUCTION_DIR, id, "case.json");
 }
 async function readCase(root, id) {
   try {
@@ -1661,7 +1764,7 @@ async function writeCase(root, record) {
 `, "utf8");
 }
 async function hasBaseline(root) {
-  const knowledge = resolve10(root, "knowledge");
+  const knowledge = resolve11(root, "knowledge");
   try {
     const entries = await readdir5(knowledge, { recursive: true, withFileTypes: true });
     return entries.some((entry) => {
@@ -1674,7 +1777,7 @@ async function hasBaseline(root) {
   }
 }
 async function rawInventory(root) {
-  const raw = resolve10(root, RAW_DIR);
+  const raw = resolve11(root, RAW_DIR);
   try {
     const entries = await readdir5(raw, { recursive: true, withFileTypes: true });
     return entries.filter((entry) => entry.isFile()).map((entry) => join4(entry.parentPath ?? raw, entry.name).slice(raw.length + 1)).sort();
@@ -1762,30 +1865,30 @@ function assertClosable(record, actor) {
   assertProbed(record, actor);
 }
 async function closeCase(root, id) {
-  const from = resolve10(root, RECONSTRUCTION_DIR, id);
-  const present = await stat3(from).then(
+  const from = resolve11(root, RECONSTRUCTION_DIR, id);
+  const present = await stat4(from).then(
     (entry) => entry.isDirectory(),
     () => false
   );
   if (!present) {
     throw new GateRefusal(`No active reconstruction named ${id}.`, "wfctl reconstruct status");
   }
-  const to = resolve10(root, RECONSTRUCTION_ARCHIVE, id);
-  await mkdir8(resolve10(root, RECONSTRUCTION_ARCHIVE), { recursive: true });
+  const to = resolve11(root, RECONSTRUCTION_ARCHIVE, id);
+  await mkdir8(resolve11(root, RECONSTRUCTION_ARCHIVE), { recursive: true });
   const { rename: rename2, rm: rm2 } = await import("node:fs/promises");
   await rename2(from, to);
-  await rm2(resolve10(root, RECONSTRUCTION_DIR, "current"), { force: true });
+  await rm2(resolve11(root, RECONSTRUCTION_DIR, "current"), { force: true });
   return to;
 }
 async function setCurrentCase(root, id) {
-  const path = resolve10(root, CURRENT_POINTER2);
+  const path = resolve11(root, CURRENT_POINTER2);
   await mkdir8(dirname6(path), { recursive: true });
   await writeFile7(path, `${id}
 `, "utf8");
 }
 async function currentCase(root) {
   try {
-    const id = (await readFile7(resolve10(root, CURRENT_POINTER2), "utf8")).trim();
+    const id = (await readFile7(resolve11(root, CURRENT_POINTER2), "utf8")).trim();
     return id ? readCase(root, id) : void 0;
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
@@ -1993,7 +2096,7 @@ var init_reconstruct = __esm({
 
 // src/core/cli.ts
 import { existsSync, realpathSync as realpathSync2 } from "node:fs";
-import { dirname as dirname7, resolve as resolve11 } from "node:path";
+import { dirname as dirname7, resolve as resolve12 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/core/commands.ts
@@ -2850,12 +2953,15 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
           const { loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
           const { writeFlow: writeFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
           const { recordWritten: recordWritten2 } = await Promise.resolve().then(() => (init_recall(), recall_exports));
+          const { readRegistry: readRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
+          const { inspectLeaves: inspectLeaves2 } = await Promise.resolve().then(() => (init_leaves(), leaves_exports));
           const flow = await currentFlow2(context.root);
           const target = flag(args, "target") ?? "";
           const decision = decideWrite2({
             flow,
             knowledgeRoot: context.root,
             target,
+            leaves: await inspectLeaves2(await readRegistry2(context.root)),
             writtenThisUnit: flow?.recall.written ?? [],
             ...flow ? {
               guidance: await loadGuidance2({ root: context.assets }, "work/implement") ?? ""
@@ -2874,18 +2980,28 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
       }
       case "repo": {
         const { addRepository: addRepository2, readRegistry: readRegistry2, removeRepository: removeRepository2, renderRegistry: renderRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
+        const { graphSetup: graphSetup2, inspectLeaf: inspectLeaf2, inspectLeaves: inspectLeaves2, renderLeaves: renderLeaves2 } = await Promise.resolve().then(() => (init_leaves(), leaves_exports));
         const [action, ...args] = rest;
         if (action === "add") {
           const repository = args[0] ?? "";
           const path = flag(args, "path") ?? "";
           const worktreeId = flag(args, "worktree") ?? "main";
-          const entries = await addRepository2(context.root, {
+          const entry = {
             repository,
             checkout: flag(args, "checkout") ?? worktreeId,
             path,
             worktreeId
-          });
-          return ok_(renderRegistry2(entries));
+          };
+          const entries = await addRepository2(context.root, entry);
+          const state = await inspectLeaf2(entry);
+          return ok_(
+            compose_([
+              renderRegistry2(entries),
+              state.graph === "missing" ? graphSetup2(state.path) : void 0,
+              state.graph === "unreachable" ? `${state.path} is not there.` : void 0,
+              state.graph === "stale" ? `Its graph is ${state.ageDays} days old. Rebuild before relying on it: graphify build (in ${state.path})` : void 0
+            ])
+          );
         }
         if (action === "remove") {
           const entries = await removeRepository2(
@@ -2896,7 +3012,7 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
           return ok_(renderRegistry2(entries));
         }
         if (action === "list" || action === void 0) {
-          return ok_(renderRegistry2(await readRegistry2(context.root)));
+          return ok_(renderLeaves2(await inspectLeaves2(await readRegistry2(context.root))));
         }
         return { stdout: USAGE, exitCode: 1 };
       }
@@ -3098,8 +3214,8 @@ ${archived}`);
         return { stdout: USAGE, exitCode: 1 };
       case "init": {
         assertProfileSupported(rest[0] ?? "");
-        const target = resolve11(flag(rest, "target") ?? process.cwd());
-        const distribution = resolve11(context.assets, "..", "..");
+        const target = resolve12(flag(rest, "target") ?? process.cwd());
+        const distribution = resolve12(context.assets, "..", "..");
         const plan = await planInstall({
           target,
           distribution,
@@ -3145,13 +3261,13 @@ ${archived}`);
 function findGuidance(start) {
   let current = start;
   for (let depth = 0; depth < 6; depth += 1) {
-    const candidate = resolve11(current, "templates", "guidance");
+    const candidate = resolve12(current, "templates", "guidance");
     if (existsSync(candidate)) return candidate;
     const parent = dirname7(current);
     if (parent === current) break;
     current = parent;
   }
-  return resolve11(start, "templates", "guidance");
+  return resolve12(start, "templates", "guidance");
 }
 var invokedDirectly = (() => {
   const entry = process.argv[1];

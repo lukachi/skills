@@ -68,6 +68,20 @@ the agent a turn and teaches it nothing — the previous implementation's worst
 messages named the one command that destroyed a record's accounting and not the
 one that cost nothing.
 
+## A leaf has to be readable before it can be read
+
+The workflow tells the agent to traverse the structure graph before touching
+code, and for a long time never said where that graph comes from or that it
+lives in the leaf. The instruction was therefore unfollowable in exactly the
+case it exists for — a repository nobody had analysed yet — and the refusal that
+enforced it named a command that could not succeed.
+
+Leaf state is observed, never installed: whether the checkout is there, whether
+it has a graph, and how old that graph is. It is reported when a repository is
+registered, listed on demand, and — the one that matters — carried into the
+refusal an agent meets when a traversal is required, so that refusal can
+distinguish "you have not traversed" from "there is nothing to traverse".
+
 ## Two cases, entered explicitly
 
 Only two things run: **work** and **reconstruction**. Each owns a directory, a

@@ -90,6 +90,7 @@ Read the one that matches what you are doing. Each is also served by
 | [verification](references/verification.md) | work is ready to be reviewed — includes the review artifact's exact shape |
 | [records](references/records.md) | checkpoints, captures, the promotion queue, trajectories |
 | [deciding](references/deciding.md) | a direction has to be settled with the maintainer |
+| [reading a source repository](references/leaves.md) | the work touches code in a leaf |
 | [the command surface](references/commands.md) | you need the exact flags for something |
 
 ## Things that fire without being called
@@ -123,5 +124,7 @@ that clears it. Editing a record by hand to get past one is how a receipt ends
 up meaning nothing.
 
 **Search by structure before by string.** Text search finds names you already
-thought of. The graph finds what you did not know to look for. A gate will tell
-you when it has not been opened, but by then you have already written the code.
+thought of. The graph finds what you did not know to look for. That graph lives
+in the leaf and somebody has to build it — `wfctl repo list` says which of them
+have one, and a gate will tell you at the moment it matters. See
+[reading a source repository](references/leaves.md).

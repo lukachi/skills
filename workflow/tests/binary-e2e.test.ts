@@ -444,7 +444,7 @@ test("the skill is installed into both agent conventions", async () => {
   for (const base of [".claude/skills/wfctl", ".agents/skills/wfctl"]) {
     const skill = await readFile(resolve(root, base, "SKILL.md"), "utf8");
     assert.match(skill, /^---\nname: wfctl\ndescription: /, "the skill needs valid frontmatter");
-    for (const reference of ["changes-flow", "reconstruction", "recall", "verification", "records", "deciding", "commands"]) {
+    for (const reference of ["changes-flow", "reconstruction", "recall", "verification", "records", "deciding", "commands", "leaves"]) {
       assert.ok(
         existsSync(resolve(root, base, "references", `${reference}.md`)),
         `${base} is missing references/${reference}.md`,
@@ -510,4 +510,50 @@ test("every command the skill names exists in the CLI", async () => {
     return result.status === 1 && result.stdout.includes("wfctl — project workflow");
   });
   assert.deepEqual(unknown, [], `the skill names commands that do not exist: ${unknown.join(", ")}`);
+});
+
+test("a traversal gate distinguishes 'not traversed' from 'nothing to traverse'", async () => {
+  const root = await installed();
+  const leaf = await mkdtemp(join(tmpdir(), "wfctl-leaf-"));
+  await mkdir(resolve(leaf, "src"), { recursive: true });
+
+  wfctl(root, ["repo", "add", "acme/api", "--path", leaf]);
+  wfctl(root, ["work", "start", "--title", "leaf work", "--weight", "significant"]);
+
+  /**
+   * The instruction "traverse the graph first" was unfollowable in exactly the
+   * case it exists for: a leaf nobody had analysed. The refusal said "you have
+   * not traversed" and sent the agent to a command that could not succeed.
+   */
+  const noGraph = wfctl(root, ["hook", "write", "--target", resolve(leaf, "src/a.ts")]);
+  assert.equal(noGraph.status, 2);
+  assert.match(noGraph.stdout, /no graph to traverse/);
+  assert.match(noGraph.stdout, /graphify build/);
+
+  await mkdir(resolve(leaf, "graphify-out"), { recursive: true });
+  await writeFile(resolve(leaf, "graphify-out/graph.json"), "{}", "utf8");
+
+  const withGraph = wfctl(root, ["hook", "write", "--target", resolve(leaf, "src/a.ts")]);
+  assert.equal(withGraph.status, 2);
+  assert.match(withGraph.stdout, /No structural traversal has been made/);
+  assert.doesNotMatch(withGraph.stdout, /no graph to traverse/);
+});
+
+test("registering a leaf says what it still needs, and listing shows every graph's state", async () => {
+  const root = await installed();
+  const leaf = await mkdtemp(join(tmpdir(), "wfctl-leaf-"));
+
+  const added = wfctl(root, ["repo", "add", "acme/api", "--path", leaf]);
+  assert.equal(added.status, 0);
+  assert.match(added.stdout, /No graph in/);
+  assert.match(added.stdout, /graphify build/);
+
+  assert.match(wfctl(root, ["repo", "list"]).stdout, /missing\s+acme\/api/);
+
+  await mkdir(resolve(leaf, "graphify-out"), { recursive: true });
+  await writeFile(resolve(leaf, "graphify-out/graph.json"), "{}", "utf8");
+  assert.match(wfctl(root, ["repo", "list"]).stdout, /ready\s+0d\s+acme\/api/);
+
+  wfctl(root, ["repo", "add", "acme/gone", "--path", "/nowhere/at/all"]);
+  assert.match(wfctl(root, ["repo", "list"]).stdout, /unreachable\s+acme\/gone/);
 });

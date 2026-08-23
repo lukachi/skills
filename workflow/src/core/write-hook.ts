@@ -1,4 +1,5 @@
 import { relative, resolve } from "node:path";
+import { assertTraversable, type LeafState } from "./leaves.js";
 import { assertWriteAllowed } from "./paths.js";
 import { renderCounterLine } from "./recall.js";
 import type { FlowRecord } from "./types.js";
@@ -32,6 +33,14 @@ export interface WriteHookInput {
   /** Files already written during this unit, so the first write is detectable. */
   writtenThisUnit: string[];
   guidance?: string;
+  /**
+   * What the registered leaves currently offer.
+   *
+   * Without it the refusal can only say "you have not traversed", which sends
+   * the agent to a command that cannot succeed when the leaf has no graph at
+   * all. The two states look identical from inside the work.
+   */
+  leaves?: LeafState[];
 }
 
 export function decideWrite(input: WriteHookInput): WriteHookDecision {
@@ -66,6 +75,17 @@ export function decideWrite(input: WriteHookInput): WriteHookDecision {
    * architecture nobody read.
    */
   if (first && (flow.recall.counters.graphify ?? 0) === 0) {
+    /**
+     * Say which of the two is true. An agent told to traverse a graph that does
+     * not exist follows the remedy, fails, and has nowhere to go.
+     */
+    try {
+      assertTraversable(input.leaves ?? []);
+    } catch (error) {
+      if (error instanceof GateRefusal) return { refusal: error };
+      throw error;
+    }
+
     return {
       refusal: new GateRefusal(
         "No structural traversal has been made for this unit.",

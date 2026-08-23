@@ -151,6 +151,15 @@ wfctl repo remove <owner/name> [--worktree <id>]
 
 Its own operation, run after installation and again whenever a checkout appears.
 
+`repo list` reports each checkout's structure graph as `ready`, `stale`,
+`missing` or `unreachable`, with its age. `repo add` says the same for the one
+it just registered — that is the cheapest moment to say what a leaf still needs,
+because the path is known and nothing is in flight.
+
+Nothing is installed into a leaf. The graph is built there by `graphify build`,
+and a gate that requires a traversal says so when the leaf has none, rather than
+naming a command that cannot succeed.
+
 ## Reconstruction
 
 ```sh

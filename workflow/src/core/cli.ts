@@ -377,12 +377,15 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           const { loadGuidance } = await import("./guidance.js");
           const { writeFlow } = await import("./flow.js");
           const { recordWritten } = await import("./recall.js");
+          const { readRegistry } = await import("./registry.js");
+          const { inspectLeaves } = await import("./leaves.js");
           const flow = await currentFlow(context.root);
           const target = flag(args, "target") ?? "";
           const decision = decideWrite({
             flow,
             knowledgeRoot: context.root,
             target,
+            leaves: await inspectLeaves(await readRegistry(context.root)),
             writtenThisUnit: flow?.recall.written ?? [],
             ...(flow
               ? {
@@ -411,18 +414,36 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         const { addRepository, readRegistry, removeRepository, renderRegistry } = await import(
           "./registry.js"
         );
+        const { graphSetup, inspectLeaf, inspectLeaves, renderLeaves } = await import("./leaves.js");
         const [action, ...args] = rest;
         if (action === "add") {
           const repository = args[0] ?? "";
           const path = flag(args, "path") ?? "";
           const worktreeId = flag(args, "worktree") ?? "main";
-          const entries = await addRepository(context.root, {
+          const entry = {
             repository,
             checkout: flag(args, "checkout") ?? worktreeId,
             path,
             worktreeId,
-          });
-          return ok_(renderRegistry(entries));
+          };
+          const entries = await addRepository(context.root, entry);
+
+          /**
+           * Registering is the one moment the path is known and nothing is in
+           * flight, so it is the cheapest place to say what this leaf still
+           * needs before anything here can read it.
+           */
+          const state = await inspectLeaf(entry);
+          return ok_(
+            compose_([
+              renderRegistry(entries),
+              state.graph === "missing" ? graphSetup(state.path) : undefined,
+              state.graph === "unreachable" ? `${state.path} is not there.` : undefined,
+              state.graph === "stale"
+                ? `Its graph is ${state.ageDays} days old. Rebuild before relying on it: graphify build (in ${state.path})`
+                : undefined,
+            ]),
+          );
         }
         if (action === "remove") {
           const entries = await removeRepository(
@@ -433,7 +454,7 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           return ok_(renderRegistry(entries));
         }
         if (action === "list" || action === undefined) {
-          return ok_(renderRegistry(await readRegistry(context.root)));
+          return ok_(renderLeaves(await inspectLeaves(await readRegistry(context.root))));
         }
         return { stdout: USAGE, exitCode: 1 };
       }
