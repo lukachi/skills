@@ -420,10 +420,9 @@ test("every topic the guide page lists actually resolves", async () => {
   assert.deepEqual(dead, [], `the guide page lists topics that do not resolve: ${dead.join(", ")}`);
 });
 
-test("every internal link in the installed guidance resolves", async () => {
-  const root = await installed();
+test("every internal link in the shipped guidance resolves", async () => {
   const { readdir } = await import("node:fs/promises");
-  const base = resolve(root, ".workflow/guidance");
+  const base = resolve(distribution, "templates/guidance");
   const entries = await readdir(base, { recursive: true, withFileTypes: true });
 
   const broken: string[] = [];

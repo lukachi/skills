@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import {
-  GUIDANCE_DIR,
   KNOWLEDGE_DIRECTORIES,
+  RUNTIME_DIR,
   applyInstall,
   assertProfileSupported,
   planInstall,
@@ -46,16 +47,21 @@ test("installation creates the knowledge shape, with raw under reconstruction an
   assert.deepEqual(created.sort(), [...KNOWLEDGE_DIRECTORIES].sort());
 });
 
-test("it installs guidance and no skills at all", async () => {
+test("it installs the runtime guards and nothing else — guidance ships with the CLI", async () => {
   const root = await target();
   const plan = await planInstall({ target: root, distribution, version: "1.0.0" });
   const result = await applyInstall(plan, { distribution, version: "1.0.0" });
 
-  assert.ok(result.written.some((path) => path === join(GUIDANCE_DIR, "work/framed.md")));
+  assert.ok(result.written.every((path) => path.startsWith(`${RUNTIME_DIR}/`)));
+  assert.ok(result.written.some((path) => path.endsWith("guard-stop.mjs")));
   assert.ok(result.written.every((path) => !path.includes("skills")));
 
-  const body = await readFile(resolve(root, GUIDANCE_DIR, "work/framed.md"), "utf8");
-  assert.match(body, /cheapest moment to change the scope/);
+  /**
+   * Copying guidance into the project bought a per-project override nobody
+   * asked for and cost an upgrade step to keep it current. It is read from
+   * where wfctl lives, so upgrading wfctl upgrades it.
+   */
+  assert.ok(!existsSync(resolve(root, ".workflow/guidance")));
 });
 
 test("a second run rewrites nothing", async () => {
@@ -74,14 +80,14 @@ test("a file the maintainer edited is reported and never replaced silently", asy
   const plan = await planInstall({ target: root, distribution, version: "1.0.0" });
   await applyInstall(plan, { distribution, version: "1.0.0" });
 
-  const edited = resolve(root, GUIDANCE_DIR, "work/framed.md");
+  const edited = resolve(root, RUNTIME_DIR, "guard-stop.mjs");
   await writeFile(edited, "the maintainer wrote this instead\n", "utf8");
 
   const next = await planInstall({ target: root, distribution, version: "1.0.0" });
-  assert.ok(next.edited.includes(join(GUIDANCE_DIR, "work/framed.md")));
+  assert.ok(next.edited.includes(join(RUNTIME_DIR, "guard-stop.mjs")));
 
   const result = await applyInstall(next, { distribution, version: "1.0.0" });
-  assert.ok(result.conflicts.includes(join(GUIDANCE_DIR, "work/framed.md")));
+  assert.ok(result.conflicts.includes(join(RUNTIME_DIR, "guard-stop.mjs")));
   assert.equal(await readFile(edited, "utf8"), "the maintainer wrote this instead\n");
 });
 
@@ -93,7 +99,7 @@ test("installed files are hash-tracked so an upgrade can tell ours from theirs",
   const state = await readInstallState(root);
   assert.ok(state);
   assert.equal(state.installedVersion, "1.0.0");
-  assert.match(state.files[join(GUIDANCE_DIR, "work/framed.md")]?.sha256 ?? "", /^[0-9a-f]{64}$/);
+  assert.match(state.files[join(RUNTIME_DIR, "guard-stop.mjs")]?.sha256 ?? "", /^[0-9a-f]{64}$/);
 });
 
 test("installation places the hooks that reach an agent which never runs a command", async () => {

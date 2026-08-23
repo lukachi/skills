@@ -1068,7 +1068,6 @@ var install_exports = {};
 __export(install_exports, {
   FLOWS_DIR: () => FLOWS_DIR,
   GUARD_NAMES: () => GUARD_NAMES,
-  GUIDANCE_DIR: () => GUIDANCE_DIR,
   HOOK_SETTINGS: () => HOOK_SETTINGS,
   INSTALL_SCHEMA_VERSION: () => INSTALL_SCHEMA_VERSION,
   KNOWLEDGE_DIRECTORIES: () => KNOWLEDGE_DIRECTORIES,
@@ -1128,17 +1127,11 @@ async function planInstall(options) {
     );
     if (!present) operations.push({ kind: "create-directory", path: directory });
   }
-  const bundles = [
-    { source: "templates/guidance", prefix: GUIDANCE_DIR },
-    { source: "templates/runtime", prefix: RUNTIME_DIR }
-  ];
-  const guidance = [];
-  for (const bundle of bundles) {
-    for (const file of await collect(resolve7(options.distribution, bundle.source))) {
-      guidance.push({ path: join3(bundle.prefix, file.path), content: file.content });
-    }
+  const installable = [];
+  for (const file of await collect(resolve7(options.distribution, "templates/runtime"))) {
+    installable.push({ path: join3(RUNTIME_DIR, file.path), content: file.content });
   }
-  for (const file of guidance) {
+  for (const file of installable) {
     const rel = file.path;
     const current = await readIfPresent(resolve7(options.target, rel));
     const recorded = state?.files[rel]?.sha256;
@@ -1187,16 +1180,15 @@ async function applyInstall(plan, options) {
       result.conflicts.push(operation.path);
       continue;
     }
-    const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
     const source = resolve7(
       options.distribution,
-      runtime ? "templates/runtime" : "templates/guidance",
-      relative2(runtime ? RUNTIME_DIR : GUIDANCE_DIR, operation.path)
+      "templates/runtime",
+      relative2(RUNTIME_DIR, operation.path)
     );
     const content = await readFile5(source, "utf8");
     await mkdir6(dirname4(absolute), { recursive: true });
     await writeFile5(absolute, content, "utf8");
-    if (runtime) await chmod(absolute, 493);
+    await chmod(absolute, 493);
     state.files[operation.path] = { sha256: hash(content) };
     result.written.push(operation.path);
   }
@@ -1382,7 +1374,7 @@ function renderGuards(status) {
     "mechanism that catches a turn ending on work nobody is waiting for."
   ].join("\n");
 }
-var MANAGED_BEGIN, MANAGED_END, HOOK_SETTINGS, INSTALL_SCHEMA_VERSION, GUIDANCE_DIR, RUNTIME_DIR, FLOWS_DIR, KNOWLEDGE_DIRECTORIES, GUARD_NAMES, GUARD_EVENTS;
+var MANAGED_BEGIN, MANAGED_END, HOOK_SETTINGS, INSTALL_SCHEMA_VERSION, RUNTIME_DIR, FLOWS_DIR, KNOWLEDGE_DIRECTORIES, GUARD_NAMES, GUARD_EVENTS;
 var init_install = __esm({
   "src/core/install.ts"() {
     "use strict";
@@ -1431,7 +1423,6 @@ var init_install = __esm({
       }
     };
     INSTALL_SCHEMA_VERSION = 1;
-    GUIDANCE_DIR = ".workflow/guidance";
     RUNTIME_DIR = ".workflow/runtime";
     FLOWS_DIR = ".workflow/flows";
     KNOWLEDGE_DIRECTORIES = [
@@ -1445,7 +1436,6 @@ var init_install = __esm({
       "reconstruction/active",
       "reconstruction/archive",
       "trajectories",
-      GUIDANCE_DIR,
       RUNTIME_DIR,
       FLOWS_DIR
     ];
@@ -3118,7 +3108,13 @@ ${archived}`);
           lines.push(`  ${result.conflicts.length} left alone because they were edited:`);
           for (const path of result.conflicts) lines.push(`    ${path}`);
         }
-        lines.push("", "Restart the agent session so the new instructions load.");
+        lines.push(
+          "",
+          "Guidance is not installed \u2014 it ships with wfctl and is read from there,",
+          "so upgrading wfctl upgrades it. There is nothing here to refresh.",
+          "",
+          "Restart the agent session so the new instructions load."
+        );
         return { stdout: lines.join("\n"), exitCode: 0 };
       }
       default:

@@ -18,7 +18,9 @@ it. Do not work around a refusal by editing a record by hand.
 
 **`wfctl guide <topic>`** brings back the detail for one topic when you need it
 — start with `wfctl guide wfctl`. This block stays short on purpose: it is
-loaded every session and says only what cannot arrive any other way.
+loaded every session and says only what cannot arrive any other way. The
+guidance lives inside wfctl, not in this repository, so it is never out of date
+with the tool.
 
 **Two decisions are the maintainer's, and only two.** What the work is, before it
 starts. What the project says about itself, afterwards. Closing is neither — the

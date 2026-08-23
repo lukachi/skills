@@ -687,7 +687,13 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           lines.push(`  ${result.conflicts.length} left alone because they were edited:`);
           for (const path of result.conflicts) lines.push(`    ${path}`);
         }
-        lines.push("", "Restart the agent session so the new instructions load.");
+        lines.push(
+          "",
+          "Guidance is not installed — it ships with wfctl and is read from there,",
+          "so upgrading wfctl upgrades it. There is nothing here to refresh.",
+          "",
+          "Restart the agent session so the new instructions load.",
+        );
         return { stdout: lines.join("\n"), exitCode: 0 };
       }
 

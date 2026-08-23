@@ -74,7 +74,17 @@ export const HOOK_SETTINGS = {
  */
 export const INSTALL_SCHEMA_VERSION = 1;
 
-export const GUIDANCE_DIR = ".workflow/guidance";
+/**
+ * Guidance is NOT installed.
+ *
+ * It ships inside the CLI and is read from there, so upgrading wfctl upgrades
+ * the guidance: nothing to refresh, nothing to drift, and no edited-copy
+ * conflict to resolve. Copying it into every project bought a per-project
+ * override nobody asked for and cost an upgrade step to keep it current.
+ *
+ * The runtime guards are different — the host executes them by path from inside
+ * the project — so those are installed.
+ */
 export const RUNTIME_DIR = ".workflow/runtime";
 export const FLOWS_DIR = ".workflow/flows";
 
@@ -97,7 +107,6 @@ export const KNOWLEDGE_DIRECTORIES = [
   "reconstruction/active",
   "reconstruction/archive",
   "trajectories",
-  GUIDANCE_DIR,
   RUNTIME_DIR,
   FLOWS_DIR,
 ];
@@ -180,19 +189,12 @@ export async function planInstall(options: {
     if (!present) operations.push({ kind: "create-directory", path: directory });
   }
 
-  const bundles: { source: string; prefix: string }[] = [
-    { source: "templates/guidance", prefix: GUIDANCE_DIR },
-    { source: "templates/runtime", prefix: RUNTIME_DIR },
-  ];
-
-  const guidance: { path: string; content: string }[] = [];
-  for (const bundle of bundles) {
-    for (const file of await collect(resolve(options.distribution, bundle.source))) {
-      guidance.push({ path: join(bundle.prefix, file.path), content: file.content });
-    }
+  const installable: { path: string; content: string }[] = [];
+  for (const file of await collect(resolve(options.distribution, "templates/runtime"))) {
+    installable.push({ path: join(RUNTIME_DIR, file.path), content: file.content });
   }
 
-  for (const file of guidance) {
+  for (const file of installable) {
     const rel = file.path;
     const current = await readIfPresent(resolve(options.target, rel));
     const recorded = state?.files[rel]?.sha256;
@@ -257,16 +259,15 @@ export async function applyInstall(
       continue;
     }
 
-    const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
     const source = resolve(
       options.distribution,
-      runtime ? "templates/runtime" : "templates/guidance",
-      relative(runtime ? RUNTIME_DIR : GUIDANCE_DIR, operation.path),
+      "templates/runtime",
+      relative(RUNTIME_DIR, operation.path),
     );
     const content = await readFile(source, "utf8");
     await mkdir(dirname(absolute), { recursive: true });
     await writeFile(absolute, content, "utf8");
-    if (runtime) await chmod(absolute, 0o755);
+    await chmod(absolute, 0o755);
     state.files[operation.path] = { sha256: hash(content) };
     result.written.push(operation.path);
   }

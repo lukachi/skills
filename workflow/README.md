@@ -42,6 +42,10 @@ prints what the current state demands, the next one refuses until that exists,
 and three hooks cover the moments no command reaches: the session opening, a
 file about to change, and a turn ending with work outstanding.
 
+The guidance ships inside `wfctl` and is read from there, so upgrading the tool
+upgrades what every project is told. Nothing is copied into your repositories to
+drift.
+
 ## What you get
 
 - A human-readable project road that lets maintainers, product people, and new

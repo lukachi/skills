@@ -34,7 +34,10 @@ seventy per cent or more. Moving the text somewhere better-loaded does not fix
 this — placement is not compliance, and the instructions already sitting in the
 loaded agent block were ignored just as often.
 
-So there are no skills. The same content is cut by the **state it applies to**
+So there are no skills. The guidance ships inside the CLI and is read from
+there, so upgrading wfctl upgrades it — there is nothing installed into a
+project to drift, refresh, or conflict on. The same content is cut by the
+**state it applies to**
 rather than by the role performing it, and the tool delivers the slice when that
 state is true. Nothing is compacted to achieve this; the volume was never the
 problem. What changes is when the text arrives, and that it arrives again the
@@ -173,8 +176,10 @@ leaf code from there as an orchestrator, so a leaf never needed an installation
 of its own — and measurement said it never used one. Asking for a leaf install
 is refused with what replaced it.
 
-What is installed is the guidance bundle, the runtime guards, the hook settings
-and one managed agent block. `wfctl` must:
+What is installed is small on purpose: the runtime guards, which the host
+executes by path from inside the project, the hook settings that point at them,
+the directories the flows write into, and one managed agent block. Guidance is
+not installed — it ships with the CLI. `wfctl` must:
 
 - preview mutations and request confirmation in interactive use;
 - preserve unowned files and text, including everything outside the managed
