@@ -14,6 +14,7 @@ import {
   issueList,
   issueNote,
   park,
+  promote,
   promotionDraft,
   recallAnswer,
   recallRoute,
@@ -50,10 +51,19 @@ const USAGE = `wfctl — project workflow
   work park --reason ... | work release --attested "<their words>"
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
+  work promote --subject "<product subject>" --summary "<what it now does>"
   work promotion draft <page>  create a page draft at the path it will occupy
   work promotion list          records waiting on the maintainer
 
   capture "<what you found>" [--awaits]
+
+  repo add <owner/name> --path <dir> [--worktree <id>]
+  repo list | repo remove <owner/name> [--worktree <id>]
+
+  reconstruct start            open a case over the registered repositories
+
+  trajectory append --subject ... --summary ... --axis <intent|delivery|vision>
+  trajectory list | trajectory show <subject>
 
   recall list                  the checklist
   recall answer <item> --answer ... --route ... --source ...
@@ -67,6 +77,10 @@ const USAGE = `wfctl — project workflow
 
   hook write --target <path>   used by the pre-write guard, not by hand
 `;
+
+function ok_(stdout: string): { stdout: string; exitCode: number } {
+  return { stdout, exitCode: 0 };
+}
 
 function flag(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(`--${name}`);
@@ -190,6 +204,12 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           }
           return await close(context, { outcome });
         }
+        if (action === "promote") {
+          return await promote(context, {
+            subject: flag(args, "subject") ?? "",
+            summary: flag(args, "summary") ?? "",
+          });
+        }
         if (action === "promotion" && args[0] === "draft") {
           return await promotionDraft(context, {
             knowledgeRoot: context.root,
@@ -249,6 +269,117 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           });
           if (decision.refusal) return { stdout: decision.refusal.render(), exitCode: 2 };
           return { stdout: decision.message ?? "", exitCode: 0 };
+        }
+        return { stdout: USAGE, exitCode: 1 };
+      }
+
+      case "repo": {
+        const { addRepository, readRegistry, removeRepository, renderRegistry } = await import(
+          "./registry.js"
+        );
+        const [action, ...args] = rest;
+        if (action === "add") {
+          const repository = args[0] ?? "";
+          const path = flag(args, "path") ?? "";
+          const worktreeId = flag(args, "worktree") ?? "main";
+          const entries = await addRepository(context.root, {
+            repository,
+            checkout: flag(args, "checkout") ?? worktreeId,
+            path,
+            worktreeId,
+          });
+          return ok_(renderRegistry(entries));
+        }
+        if (action === "remove") {
+          const entries = await removeRepository(
+            context.root,
+            args[0] ?? "",
+            flag(args, "worktree"),
+          );
+          return ok_(renderRegistry(entries));
+        }
+        if (action === "list" || action === undefined) {
+          return ok_(renderRegistry(await readRegistry(context.root)));
+        }
+        return { stdout: USAGE, exitCode: 1 };
+      }
+
+      case "trajectory": {
+        const { appendEvent, listTrajectories, readTrajectory, renderTrajectory, subjectId } =
+          await import("./trajectory.js");
+        const [action, ...args] = rest;
+        if (action === "append") {
+          const trajectory = await appendEvent(context.root, flag(args, "subject") ?? "", {
+            summary: flag(args, "summary") ?? "",
+            axis: (flag(args, "axis") ?? "delivery") as "intent" | "delivery" | "vision",
+            claims: flags(args, "claim"),
+            ...(flag(args, "at") ? { at: flag(args, "at") as string } : {}),
+            ...(flag(args, "change") ? { change: flag(args, "change") as string } : {}),
+          });
+          return ok_(renderTrajectory(trajectory));
+        }
+        if (action === "show") {
+          const trajectory = await readTrajectory(context.root, subjectId(args[0] ?? ""));
+          if (!trajectory) {
+            return { stdout: `No trajectory for ${args[0]}.`, exitCode: 1 };
+          }
+          return ok_(renderTrajectory(trajectory));
+        }
+        const all = await listTrajectories(context.root);
+        return ok_(
+          all.length === 0
+            ? "no trajectories yet."
+            : all.map((entry) => `${entry.id}  ${entry.events.length} event(s)  ${entry.subject}`).join("\n"),
+        );
+      }
+
+      case "reconstruct": {
+        const reconstruct = await import("./reconstruct.js");
+        const { readRegistry } = await import("./registry.js");
+        const [action, ...args] = rest;
+
+        if (action === "start") {
+          const repositories = await readRegistry(context.root);
+          if (repositories.length === 0) {
+            throw new GateRefusal(
+              "No repositories are registered, so there is nothing to read.",
+              "wfctl repo add <owner/name> --path <dir>",
+            );
+          }
+          const raw = await reconstruct.rawInventory(context.root);
+          const baseline = await reconstruct.hasBaseline(context.root);
+          const id = `${new Date().toISOString().slice(0, 10)}-reconstruct`;
+          await reconstruct.writeCase(context.root, {
+            id,
+            stage: "scope",
+            createdAt: new Date().toISOString(),
+            repositories: [],
+            rawPaths: raw,
+            coverage: { inScope: [], read: [], excluded: [] },
+            claims: [],
+            contradictions: [],
+            trajectories: [],
+            probes: [],
+            hadBaseline: baseline,
+          });
+          return ok_(
+            [
+              `reconstruction ${id} opened`,
+              baseline
+                ? "Curated knowledge already holds pages, so this is a re-check of an existing baseline."
+                : "Curated knowledge is empty, so this is a first baseline.",
+              "",
+              "registered:",
+              ...repositories.map((entry) => `  ${entry.repository}  ${entry.worktreeId}  ${entry.path}`),
+              "",
+              raw.length > 0
+                ? `raw material: ${raw.length} file(s) under reconstruction/raw/`
+                : "raw material: none",
+              "",
+              "Put one scope decision to the maintainer: which repositories, how much of",
+              "the raw material, and what is deliberately out. One question, not four.",
+            ].join("\n"),
+          );
         }
         return { stdout: USAGE, exitCode: 1 };
       }

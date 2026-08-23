@@ -542,3 +542,60 @@ export async function close(
     throw error;
   }
 }
+
+
+/**
+ * Promotion writes the pages **and** appends to the subject's line.
+ *
+ * Writing only the pages was a gap. A closed change is an event on a subject's
+ * line, so a promotion that skips it leaves the line built solely by
+ * reconstruction — stale the moment work lands, and rediscovered by the next
+ * reconstruction at the cost of reading everything again.
+ */
+export async function promote(
+  context: CommandContext,
+  options: { subject: string; summary: string },
+): Promise<CommandResult> {
+  const { listQueue, promote: movePages } = await import("./promotion-queue.js");
+  const { appendEvent, renderTrajectory } = await import("./trajectory.js");
+
+  const queued = await listQueue(context.root);
+  const bundle = queued[0];
+  if (!bundle) {
+    return refused(
+      new GateRefusal("Nothing is waiting to be promoted.", "wfctl work promotion list"),
+    );
+  }
+
+  if (!options.subject.trim()) {
+    return refused(
+      new GateRefusal(
+        "Promotion needs the product subject this work belongs to.",
+        'wfctl work promote --subject "<the product subject>" --summary "<what it now does>"',
+        "The pages say what is true now. The subject's line says how it got " +
+          "there, and a promotion that writes only pages leaves that line to be " +
+          "rediscovered by the next reconstruction.",
+      ),
+    );
+  }
+
+  try {
+    const trajectory = await appendEvent(context.root, options.subject, {
+      summary: options.summary.trim() || options.subject.trim(),
+      axis: "delivery",
+      claims: [],
+      change: bundle,
+      at: new Date().toISOString(),
+    });
+    const result = await movePages({ knowledgeRoot: context.root, bundleId: bundle });
+    return ok(
+      compose([
+        `${bundle} promoted and archived at:\n${result.archived}`,
+        renderTrajectory(trajectory),
+      ]),
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
+}

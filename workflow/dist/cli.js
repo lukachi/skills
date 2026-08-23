@@ -829,12 +829,130 @@ var init_promotion_queue = __esm({
   }
 });
 
+// src/core/trajectory.ts
+var trajectory_exports = {};
+__export(trajectory_exports, {
+  AXES: () => AXES,
+  TRAJECTORY_DIR: () => TRAJECTORY_DIR,
+  appendEvent: () => appendEvent,
+  deriveGap: () => deriveGap,
+  listTrajectories: () => listTrajectories,
+  readTrajectory: () => readTrajectory,
+  renderTrajectory: () => renderTrajectory,
+  subjectId: () => subjectId,
+  trajectoryPath: () => trajectoryPath,
+  writeTrajectory: () => writeTrajectory
+});
+import { mkdir as mkdir4, readFile as readFile4, readdir as readdir3, writeFile as writeFile3 } from "node:fs/promises";
+import { dirname as dirname2, resolve as resolve5 } from "node:path";
+function trajectoryPath(root, id) {
+  return resolve5(root, TRAJECTORY_DIR, `${id}.json`);
+}
+async function readTrajectory(root, id) {
+  try {
+    return JSON.parse(await readFile4(trajectoryPath(root, id), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return void 0;
+    throw error;
+  }
+}
+async function writeTrajectory(root, trajectory) {
+  const path = trajectoryPath(root, trajectory.id);
+  await mkdir4(dirname2(path), { recursive: true });
+  await writeFile3(
+    path,
+    `${JSON.stringify({ ...trajectory, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+`,
+    "utf8"
+  );
+}
+async function listTrajectories(root) {
+  let entries;
+  try {
+    entries = await readdir3(resolve5(root, TRAJECTORY_DIR));
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  const found = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue;
+    const trajectory = await readTrajectory(root, entry.slice(0, -".json".length));
+    if (trajectory) found.push(trajectory);
+  }
+  return found.sort((left, right) => left.subject.localeCompare(right.subject));
+}
+function subjectId(subject) {
+  return subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+}
+async function appendEvent(root, subject, event) {
+  if (!subject.trim()) {
+    throw new GateRefusal(
+      "An event needs the subject whose line it belongs to.",
+      'wfctl trajectory append --subject "<the product subject>" --summary "<what happened>"'
+    );
+  }
+  if (!event.summary.trim()) {
+    throw new GateRefusal(
+      "An event needs its summary, in product language.",
+      'wfctl trajectory append --subject "<...>" --summary "<what happened>"'
+    );
+  }
+  const id = subjectId(subject);
+  const existing = await readTrajectory(root, id);
+  const trajectory = existing ?? {
+    id,
+    subject: subject.trim(),
+    events: [],
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  trajectory.events = [...trajectory.events, event];
+  await writeTrajectory(root, trajectory);
+  return trajectory;
+}
+function deriveGap(trajectory) {
+  const summaries = (axis) => trajectory.events.filter((event) => event.axis === axis).map((event) => event.summary);
+  const delivered = new Set(summaries("delivery"));
+  return {
+    subject: trajectory.subject,
+    delivery: summaries("intent").filter((summary) => !delivered.has(summary)),
+    direction: summaries("vision").filter((summary) => !delivered.has(summary))
+  };
+}
+function renderTrajectory(trajectory) {
+  const lines = [`${trajectory.subject}  (${trajectory.id})`, ""];
+  for (const event of trajectory.events) {
+    const when = event.at ? `${event.at}  ` : "";
+    const from = event.change ? `  \u2190 ${event.change}` : "";
+    lines.push(`  ${event.axis.padEnd(8)} ${when}${event.summary}${from}`);
+  }
+  const gap = deriveGap(trajectory);
+  if (gap.delivery.length > 0) {
+    lines.push("", "  not delivered:");
+    for (const item of gap.delivery) lines.push(`    ${item}`);
+  }
+  if (gap.direction.length > 0) {
+    lines.push("", "  direction not reached:");
+    for (const item of gap.direction) lines.push(`    ${item}`);
+  }
+  return lines.join("\n");
+}
+var TRAJECTORY_DIR, AXES;
+var init_trajectory = __esm({
+  "src/core/trajectory.ts"() {
+    "use strict";
+    init_gates();
+    TRAJECTORY_DIR = "trajectories";
+    AXES = ["intent", "delivery", "vision"];
+  }
+});
+
 // src/core/write-hook.ts
 var write_hook_exports = {};
 __export(write_hook_exports, {
   decideWrite: () => decideWrite
 });
-import { relative as relative3, resolve as resolve7 } from "node:path";
+import { relative as relative3, resolve as resolve8 } from "node:path";
 function decideWrite(input) {
   const { flow, knowledgeRoot, target } = input;
   try {
@@ -871,7 +989,7 @@ wfctl guide structure \u2014 searching by graph before by string`
   };
 }
 function normalize(root, path) {
-  const absolute = resolve7(root, path);
+  const absolute = resolve8(root, path);
   return relative3(root, absolute) || absolute;
 }
 var init_write_hook = __esm({
@@ -883,13 +1001,271 @@ var init_write_hook = __esm({
   }
 });
 
+// src/core/registry.ts
+var registry_exports = {};
+__export(registry_exports, {
+  REGISTRY_PATH: () => REGISTRY_PATH,
+  addRepository: () => addRepository,
+  readRegistry: () => readRegistry,
+  removeRepository: () => removeRepository,
+  renderRegistry: () => renderRegistry,
+  writeRegistry: () => writeRegistry
+});
+import { mkdir as mkdir7, readFile as readFile6, writeFile as writeFile6 } from "node:fs/promises";
+import { dirname as dirname5, resolve as resolve9 } from "node:path";
+async function readRegistry(root) {
+  try {
+    const raw = await readFile6(resolve9(root, REGISTRY_PATH), "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed.repositories ?? [];
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+}
+async function writeRegistry(root, repositories) {
+  const path = resolve9(root, REGISTRY_PATH);
+  await mkdir7(dirname5(path), { recursive: true });
+  await writeFile6(path, `${JSON.stringify({ repositories }, null, 2)}
+`, "utf8");
+}
+async function addRepository(root, entry) {
+  for (const [field, value] of Object.entries(entry)) {
+    if (!String(value).trim()) {
+      throw new GateRefusal(
+        `A registered repository needs its ${field}.`,
+        "wfctl repo add <owner/name> --path <dir> [--checkout <name>] [--worktree <id>]"
+      );
+    }
+  }
+  const existing = await readRegistry(root);
+  const duplicate = existing.find(
+    (candidate) => candidate.repository === entry.repository && candidate.worktreeId === entry.worktreeId
+  );
+  if (duplicate) {
+    throw new GateRefusal(
+      `${entry.repository} worktree ${entry.worktreeId} is already registered at ${duplicate.path}.`,
+      `wfctl repo remove ${entry.repository} --worktree ${entry.worktreeId}`,
+      "Two checkouts of one repository are distinct only by worktree identity. Registering the same one twice makes the second silently shadow the first."
+    );
+  }
+  const next = [...existing, entry].sort(
+    (left, right) => left.repository.localeCompare(right.repository) || left.worktreeId.localeCompare(right.worktreeId)
+  );
+  await writeRegistry(root, next);
+  return next;
+}
+async function removeRepository(root, repository, worktreeId) {
+  const existing = await readRegistry(root);
+  const next = existing.filter(
+    (entry) => entry.repository !== repository || worktreeId !== void 0 && entry.worktreeId !== worktreeId
+  );
+  if (next.length === existing.length) {
+    throw new GateRefusal(`${repository} is not registered.`, "wfctl repo list");
+  }
+  await writeRegistry(root, next);
+  return next;
+}
+function renderRegistry(repositories) {
+  if (repositories.length === 0) {
+    return [
+      "No repositories are registered.",
+      "",
+      "Register each checkout the project keeps, including worktrees:",
+      "  wfctl repo add <owner/name> --path <dir> [--worktree <id>]"
+    ].join("\n");
+  }
+  return repositories.map((entry) => `${entry.repository}  ${entry.worktreeId.padEnd(12)}  ${entry.path}`).join("\n");
+}
+var REGISTRY_PATH;
+var init_registry = __esm({
+  "src/core/registry.ts"() {
+    "use strict";
+    init_gates();
+    REGISTRY_PATH = ".workflow/repositories.json";
+  }
+});
+
+// src/core/reconstruct.ts
+var reconstruct_exports = {};
+__export(reconstruct_exports, {
+  RAW_DIR: () => RAW_DIR,
+  RECONSTRUCTION_ARCHIVE: () => RECONSTRUCTION_ARCHIVE,
+  RECONSTRUCTION_DIR: () => RECONSTRUCTION_DIR,
+  STAGES: () => STAGES,
+  STAGE_PRESENCE: () => STAGE_PRESENCE,
+  assertAdjudicated: () => assertAdjudicated,
+  assertCrawlComplete: () => assertCrawlComplete,
+  assertProbed: () => assertProbed,
+  assertTrajectoriesExist: () => assertTrajectoriesExist,
+  casePath: () => casePath,
+  closeCase: () => closeCase,
+  hasBaseline: () => hasBaseline,
+  nextStage: () => nextStage,
+  rawInventory: () => rawInventory,
+  readCase: () => readCase,
+  remaining: () => remaining,
+  renderOutcome: () => renderOutcome,
+  writeCase: () => writeCase
+});
+import { mkdir as mkdir8, readFile as readFile7, readdir as readdir5, stat as stat3, writeFile as writeFile7 } from "node:fs/promises";
+import { dirname as dirname6, join as join4, resolve as resolve10 } from "node:path";
+function casePath(root, id) {
+  return resolve10(root, RECONSTRUCTION_DIR, id, "case.json");
+}
+async function readCase(root, id) {
+  try {
+    return JSON.parse(await readFile7(casePath(root, id), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return void 0;
+    throw error;
+  }
+}
+async function writeCase(root, record) {
+  const path = casePath(root, record.id);
+  await mkdir8(dirname6(path), { recursive: true });
+  await writeFile7(path, `${JSON.stringify(record, null, 2)}
+`, "utf8");
+}
+async function hasBaseline(root) {
+  const knowledge = resolve10(root, "knowledge");
+  try {
+    const entries = await readdir5(knowledge, { recursive: true, withFileTypes: true });
+    return entries.some((entry) => {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) return false;
+      const parent = entry.parentPath ?? knowledge;
+      return !(parent === knowledge && entry.name === "index.md");
+    });
+  } catch {
+    return false;
+  }
+}
+async function rawInventory(root) {
+  const raw = resolve10(root, RAW_DIR);
+  try {
+    const entries = await readdir5(raw, { recursive: true, withFileTypes: true });
+    return entries.filter((entry) => entry.isFile()).map((entry) => join4(entry.parentPath ?? raw, entry.name).slice(raw.length + 1)).sort();
+  } catch {
+    return [];
+  }
+}
+function nextStage(stage) {
+  const index = STAGES.indexOf(stage);
+  return index >= 0 ? STAGES[index + 1] : void 0;
+}
+function remaining(coverage) {
+  const done = /* @__PURE__ */ new Set([...coverage.read, ...coverage.excluded.map((entry) => entry.path)]);
+  return coverage.inScope.filter((path) => !done.has(path));
+}
+function assertCrawlComplete(record) {
+  const left = remaining(record.coverage);
+  if (left.length === 0) return;
+  throw new GateRefusal(
+    `${left.length} file(s) in scope are neither read nor excluded.`,
+    'wfctl reconstruct read <path>   (or: wfctl reconstruct exclude <path> --reason "<why>")',
+    left.slice(0, 10).join("\n  ")
+  );
+}
+function assertTrajectoriesExist(record) {
+  if (record.trajectories.length > 0) return;
+  throw new GateRefusal(
+    "No trajectory has been assembled, so nothing can be written yet.",
+    'wfctl trajectory append --subject "<the product subject>" --summary "<what happened>" --axis <intent|delivery|vision>',
+    "A claim about current truth made while reading is made before the material that contradicts it has been read."
+  );
+}
+function assertAdjudicated(record) {
+  const open = record.contradictions.filter((entry) => !entry.resolution?.trim());
+  if (open.length === 0) return;
+  throw new GateRefusal(
+    `${open.length} contradiction(s) are unresolved.`,
+    'wfctl reconstruct resolve <id> --resolution "<what they decided>"',
+    open.map((entry) => `  ${entry.id}  ${entry.subject}`).join("\n")
+  );
+}
+function assertProbed(record, actor) {
+  if (record.probes.length === 0) {
+    throw new GateRefusal(
+      "No omission probe has been run.",
+      'wfctl reconstruct probe --question "<answerable only from the pages>" --page <path>',
+      "A probe asks whether the written pages can answer without reopening the source. It is what catches material that was fetched and never read."
+    );
+  }
+  const mine = record.probes.filter((probe) => probe.asker === actor);
+  if (mine.length > 0) {
+    throw new GateRefusal(
+      "The probes were asked by the agent that wrote the pages.",
+      "Delegate the probe round to a separate agent.",
+      "Asking yourself what you might have missed returns what you already know."
+    );
+  }
+  const failed = record.probes.filter((probe) => probe.passed !== true);
+  if (failed.length > 0) {
+    throw new GateRefusal(
+      `${failed.length} probe(s) did not pass.`,
+      "Repair the pages, then run the probe round again.",
+      failed.map((probe) => `  ${probe.question}`).join("\n")
+    );
+  }
+}
+function renderOutcome(record) {
+  if (record.trajectories.length > 0) {
+    return `${record.trajectories.length} subject(s) recorded.`;
+  }
+  const revisions = record.repositories.map((entry) => `${entry.repository}@${entry.revision}${entry.dirty ? " (dirty)" : ""}`).join(", ");
+  return `Nothing moved. Checked at ${revisions}.`;
+}
+async function closeCase(root, id) {
+  const from = resolve10(root, RECONSTRUCTION_DIR, id);
+  const present = await stat3(from).then(
+    (entry) => entry.isDirectory(),
+    () => false
+  );
+  if (!present) {
+    throw new GateRefusal(`No active reconstruction named ${id}.`, "wfctl reconstruct status");
+  }
+  const to = resolve10(root, RECONSTRUCTION_ARCHIVE, id);
+  await mkdir8(resolve10(root, RECONSTRUCTION_ARCHIVE), { recursive: true });
+  const { rename: rename2 } = await import("node:fs/promises");
+  await rename2(from, to);
+  return to;
+}
+var RECONSTRUCTION_DIR, RECONSTRUCTION_ARCHIVE, RAW_DIR, STAGES, STAGE_PRESENCE;
+var init_reconstruct = __esm({
+  "src/core/reconstruct.ts"() {
+    "use strict";
+    init_gates();
+    RECONSTRUCTION_DIR = "reconstruction/active";
+    RECONSTRUCTION_ARCHIVE = "reconstruction/archive";
+    RAW_DIR = "reconstruction/raw";
+    STAGES = [
+      "scope",
+      "crawl",
+      "assemble",
+      "adjudicate",
+      "write",
+      "probe",
+      "promote"
+    ];
+    STAGE_PRESENCE = {
+      scope: "maintainer",
+      crawl: "nobody",
+      assemble: "nobody",
+      adjudicate: "maintainer",
+      write: "nobody",
+      probe: "nobody",
+      promote: "maintainer"
+    };
+  }
+});
+
 // src/core/cli.ts
 import { existsSync } from "node:fs";
-import { dirname as dirname4, resolve as resolve8 } from "node:path";
+import { dirname as dirname7, resolve as resolve11 } from "node:path";
 
 // src/core/commands.ts
-import { mkdir as mkdir4, writeFile as writeFile3 } from "node:fs/promises";
-import { dirname as dirname2, resolve as resolve5 } from "node:path";
+import { mkdir as mkdir5, writeFile as writeFile4 } from "node:fs/promises";
+import { dirname as dirname3, resolve as resolve6 } from "node:path";
 
 // src/core/checkpoint.ts
 init_steps();
@@ -1056,7 +1432,7 @@ async function workStart(context, options) {
       title: options.title,
       weight: options.weight
     });
-    await mkdir4(resolve5(context.root, "changes/active", flow.id), { recursive: true });
+    await mkdir5(resolve6(context.root, "changes/active", flow.id), { recursive: true });
     await writeFlow(context.root, { ...flow, members: [flow.id] });
     return ok(
       compose([
@@ -1251,12 +1627,12 @@ async function issueComplete(context, id) {
   });
   if (result.exitCode !== 0) return result;
   const flow = await currentFlow(context.root);
-  const remaining = (flow?.issues ?? []).filter((issue) => issue.status === "open");
+  const remaining2 = (flow?.issues ?? []).filter((issue) => issue.status === "open");
   return ok(
     compose([
       result.stdout,
-      remaining.length > 0 ? `${remaining.length} unit(s) still open:
-  ${remaining.map((issue) => `${issue.id}  ${issue.title}`).join("\n  ")}
+      remaining2.length > 0 ? `${remaining2.length} unit(s) still open:
+  ${remaining2.map((issue) => `${issue.id}  ${issue.title}`).join("\n  ")}
 
 Finishing a unit is not finishing. The next unit is available work, and available work is yours.` : "every unit is terminal."
     ])
@@ -1267,9 +1643,9 @@ async function capture(context, options) {
     return refused(new GateRefusal("A capture needs its finding.", 'wfctl capture "<what you found>"'));
   }
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-  const path = resolve5(context.root, "changes/inbox", `${stamp}.md`);
-  await mkdir4(dirname2(path), { recursive: true });
-  await writeFile3(
+  const path = resolve6(context.root, "changes/inbox", `${stamp}.md`);
+  await mkdir5(dirname3(path), { recursive: true });
+  await writeFile4(
     path,
     [
       "---",
@@ -1378,6 +1754,46 @@ Its pages are what the maintainer is asked about. Nothing else is.` : `${bundle}
     throw error;
   }
 }
+async function promote2(context, options) {
+  const { listQueue: listQueue2, promote: movePages } = await Promise.resolve().then(() => (init_promotion_queue(), promotion_queue_exports));
+  const { appendEvent: appendEvent2, renderTrajectory: renderTrajectory2 } = await Promise.resolve().then(() => (init_trajectory(), trajectory_exports));
+  const queued = await listQueue2(context.root);
+  const bundle = queued[0];
+  if (!bundle) {
+    return refused(
+      new GateRefusal("Nothing is waiting to be promoted.", "wfctl work promotion list")
+    );
+  }
+  if (!options.subject.trim()) {
+    return refused(
+      new GateRefusal(
+        "Promotion needs the product subject this work belongs to.",
+        'wfctl work promote --subject "<the product subject>" --summary "<what it now does>"',
+        "The pages say what is true now. The subject's line says how it got there, and a promotion that writes only pages leaves that line to be rediscovered by the next reconstruction."
+      )
+    );
+  }
+  try {
+    const trajectory = await appendEvent2(context.root, options.subject, {
+      summary: options.summary.trim() || options.subject.trim(),
+      axis: "delivery",
+      claims: [],
+      change: bundle,
+      at: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    const result = await movePages({ knowledgeRoot: context.root, bundleId: bundle });
+    return ok(
+      compose([
+        `${bundle} promoted and archived at:
+${result.archived}`,
+        renderTrajectory2(trajectory)
+      ])
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
+}
 
 // src/core/cli.ts
 init_gates();
@@ -1386,8 +1802,8 @@ init_recall();
 // src/core/install.ts
 init_gates();
 import { createHash } from "node:crypto";
-import { chmod, mkdir as mkdir5, readFile as readFile4, readdir as readdir3, stat as stat2, writeFile as writeFile4 } from "node:fs/promises";
-import { dirname as dirname3, join as join3, relative as relative2, resolve as resolve6 } from "node:path";
+import { chmod, mkdir as mkdir6, readFile as readFile5, readdir as readdir4, stat as stat2, writeFile as writeFile5 } from "node:fs/promises";
+import { dirname as dirname4, join as join3, relative as relative2, resolve as resolve7 } from "node:path";
 var MANAGED_BEGIN = "<!-- wfctl:begin -->";
 var MANAGED_END = "<!-- wfctl:end -->";
 var HOOK_SETTINGS = {
@@ -1455,14 +1871,14 @@ function hash(content) {
 }
 async function readIfPresent(path) {
   try {
-    return await readFile4(path, "utf8");
+    return await readFile5(path, "utf8");
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
     throw error;
   }
 }
 async function collect(root, prefix = "") {
-  const entries = await readdir3(join3(root, prefix), { withFileTypes: true });
+  const entries = await readdir4(join3(root, prefix), { withFileTypes: true });
   const files = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const rel = prefix ? join3(prefix, entry.name) : entry.name;
@@ -1470,12 +1886,12 @@ async function collect(root, prefix = "") {
       files.push(...await collect(root, rel));
       continue;
     }
-    files.push({ path: rel, content: await readFile4(join3(root, rel), "utf8") });
+    files.push({ path: rel, content: await readFile5(join3(root, rel), "utf8") });
   }
   return files;
 }
 async function readInstallState(target) {
-  const raw = await readIfPresent(resolve6(target, ".workflow/state.json"));
+  const raw = await readIfPresent(resolve7(target, ".workflow/state.json"));
   return raw ? JSON.parse(raw) : void 0;
 }
 async function planInstall(options) {
@@ -1483,7 +1899,7 @@ async function planInstall(options) {
   const operations = [];
   const edited = [];
   for (const directory of KNOWLEDGE_DIRECTORIES) {
-    const path = resolve6(options.target, directory);
+    const path = resolve7(options.target, directory);
     const present = await stat2(path).then(
       (entry) => entry.isDirectory(),
       () => false
@@ -1496,13 +1912,13 @@ async function planInstall(options) {
   ];
   const guidance = [];
   for (const bundle of bundles) {
-    for (const file of await collect(resolve6(options.distribution, bundle.source))) {
+    for (const file of await collect(resolve7(options.distribution, bundle.source))) {
       guidance.push({ path: join3(bundle.prefix, file.path), content: file.content });
     }
   }
   for (const file of guidance) {
     const rel = file.path;
-    const current = await readIfPresent(resolve6(options.target, rel));
+    const current = await readIfPresent(resolve7(options.target, rel));
     const recorded = state?.files[rel]?.sha256;
     const next = hash(file.content);
     if (current === void 0) {
@@ -1535,9 +1951,9 @@ async function applyInstall(plan, options) {
   };
   state.installedVersion = options.version;
   for (const operation of plan.operations) {
-    const absolute = resolve6(plan.target, operation.path);
+    const absolute = resolve7(plan.target, operation.path);
     if (operation.kind === "create-directory") {
-      await mkdir5(absolute, { recursive: true });
+      await mkdir6(absolute, { recursive: true });
       result.created.push(operation.path);
       continue;
     }
@@ -1550,23 +1966,23 @@ async function applyInstall(plan, options) {
       continue;
     }
     const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
-    const source = resolve6(
+    const source = resolve7(
       options.distribution,
       runtime ? "templates/runtime" : "templates/guidance",
       relative2(runtime ? RUNTIME_DIR : GUIDANCE_DIR, operation.path)
     );
-    const content = await readFile4(source, "utf8");
-    await mkdir5(dirname3(absolute), { recursive: true });
-    await writeFile4(absolute, content, "utf8");
+    const content = await readFile5(source, "utf8");
+    await mkdir6(dirname4(absolute), { recursive: true });
+    await writeFile5(absolute, content, "utf8");
     if (runtime) await chmod(absolute, 493);
     state.files[operation.path] = { sha256: hash(content) };
     result.written.push(operation.path);
   }
   await installHooks(plan.target);
   await installManagedBlock(plan.target, options.distribution);
-  await mkdir5(resolve6(plan.target, ".workflow"), { recursive: true });
-  await writeFile4(
-    resolve6(plan.target, ".workflow/state.json"),
+  await mkdir6(resolve7(plan.target, ".workflow"), { recursive: true });
+  await writeFile5(
+    resolve7(plan.target, ".workflow/state.json"),
     `${JSON.stringify(state, null, 2)}
 `,
     "utf8"
@@ -1585,7 +2001,7 @@ function assertProfileSupported(profile) {
   throw new GateRefusal(`Unknown profile ${profile}.`, "wfctl init knowledge");
 }
 async function installHooks(target) {
-  const path = resolve6(target, ".claude/settings.json");
+  const path = resolve7(target, ".claude/settings.json");
   const existing = await readIfPresent(path);
   let settings = {};
   if (existing) {
@@ -1607,31 +2023,31 @@ async function installHooks(target) {
     hooks[event] = [...theirs, ...ours];
   }
   settings.hooks = hooks;
-  await mkdir5(dirname3(path), { recursive: true });
-  await writeFile4(path, `${JSON.stringify(settings, null, 2)}
+  await mkdir6(dirname4(path), { recursive: true });
+  await writeFile5(path, `${JSON.stringify(settings, null, 2)}
 `, "utf8");
 }
 async function installManagedBlock(target, distribution) {
-  const body = (await readFile4(resolve6(distribution, "templates/agents/managed.md"), "utf8")).trim();
+  const body = (await readFile5(resolve7(distribution, "templates/agents/managed.md"), "utf8")).trim();
   const block = `${MANAGED_BEGIN}
 ${body}
 ${MANAGED_END}
 `;
   for (const name of ["AGENTS.md", "CLAUDE.md"]) {
-    const path = resolve6(target, name);
+    const path = resolve7(target, name);
     const existing = await readIfPresent(path);
     if (existing === void 0) {
-      await writeFile4(path, block, "utf8");
+      await writeFile5(path, block, "utf8");
       continue;
     }
     const begin = existing.indexOf(MANAGED_BEGIN);
     const end = existing.indexOf(MANAGED_END);
     if (begin >= 0 && end > begin) {
       const next = existing.slice(0, begin) + block.trimEnd() + existing.slice(end + MANAGED_END.length);
-      await writeFile4(path, next, "utf8");
+      await writeFile5(path, next, "utf8");
       continue;
     }
-    await writeFile4(path, `${existing.trimEnd()}
+    await writeFile5(path, `${existing.trimEnd()}
 
 ${block}`, "utf8");
   }
@@ -1654,10 +2070,19 @@ var USAGE = `wfctl \u2014 project workflow
   work park --reason ... | work release --attested "<their words>"
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
+  work promote --subject "<product subject>" --summary "<what it now does>"
   work promotion draft <page>  create a page draft at the path it will occupy
   work promotion list          records waiting on the maintainer
 
   capture "<what you found>" [--awaits]
+
+  repo add <owner/name> --path <dir> [--worktree <id>]
+  repo list | repo remove <owner/name> [--worktree <id>]
+
+  reconstruct start            open a case over the registered repositories
+
+  trajectory append --subject ... --summary ... --axis <intent|delivery|vision>
+  trajectory list | trajectory show <subject>
 
   recall list                  the checklist
   recall answer <item> --answer ... --route ... --source ...
@@ -1671,6 +2096,9 @@ var USAGE = `wfctl \u2014 project workflow
 
   hook write --target <path>   used by the pre-write guard, not by hand
 `;
+function ok_(stdout) {
+  return { stdout, exitCode: 0 };
+}
 function flag(argv, name) {
   const index = argv.indexOf(`--${name}`);
   return index >= 0 ? argv[index + 1] : void 0;
@@ -1782,6 +2210,12 @@ async function run(argv, context) {
           }
           return await close(context, { outcome });
         }
+        if (action === "promote") {
+          return await promote2(context, {
+            subject: flag(args, "subject") ?? "",
+            summary: flag(args, "summary") ?? ""
+          });
+        }
         if (action === "promotion" && args[0] === "draft") {
           return await promotionDraft(context, {
             knowledgeRoot: context.root,
@@ -1839,6 +2273,104 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
         }
         return { stdout: USAGE, exitCode: 1 };
       }
+      case "repo": {
+        const { addRepository: addRepository2, readRegistry: readRegistry2, removeRepository: removeRepository2, renderRegistry: renderRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
+        const [action, ...args] = rest;
+        if (action === "add") {
+          const repository = args[0] ?? "";
+          const path = flag(args, "path") ?? "";
+          const worktreeId = flag(args, "worktree") ?? "main";
+          const entries = await addRepository2(context.root, {
+            repository,
+            checkout: flag(args, "checkout") ?? worktreeId,
+            path,
+            worktreeId
+          });
+          return ok_(renderRegistry2(entries));
+        }
+        if (action === "remove") {
+          const entries = await removeRepository2(
+            context.root,
+            args[0] ?? "",
+            flag(args, "worktree")
+          );
+          return ok_(renderRegistry2(entries));
+        }
+        if (action === "list" || action === void 0) {
+          return ok_(renderRegistry2(await readRegistry2(context.root)));
+        }
+        return { stdout: USAGE, exitCode: 1 };
+      }
+      case "trajectory": {
+        const { appendEvent: appendEvent2, listTrajectories: listTrajectories2, readTrajectory: readTrajectory2, renderTrajectory: renderTrajectory2, subjectId: subjectId2 } = await Promise.resolve().then(() => (init_trajectory(), trajectory_exports));
+        const [action, ...args] = rest;
+        if (action === "append") {
+          const trajectory = await appendEvent2(context.root, flag(args, "subject") ?? "", {
+            summary: flag(args, "summary") ?? "",
+            axis: flag(args, "axis") ?? "delivery",
+            claims: flags(args, "claim"),
+            ...flag(args, "at") ? { at: flag(args, "at") } : {},
+            ...flag(args, "change") ? { change: flag(args, "change") } : {}
+          });
+          return ok_(renderTrajectory2(trajectory));
+        }
+        if (action === "show") {
+          const trajectory = await readTrajectory2(context.root, subjectId2(args[0] ?? ""));
+          if (!trajectory) {
+            return { stdout: `No trajectory for ${args[0]}.`, exitCode: 1 };
+          }
+          return ok_(renderTrajectory2(trajectory));
+        }
+        const all = await listTrajectories2(context.root);
+        return ok_(
+          all.length === 0 ? "no trajectories yet." : all.map((entry) => `${entry.id}  ${entry.events.length} event(s)  ${entry.subject}`).join("\n")
+        );
+      }
+      case "reconstruct": {
+        const reconstruct = await Promise.resolve().then(() => (init_reconstruct(), reconstruct_exports));
+        const { readRegistry: readRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
+        const [action, ...args] = rest;
+        if (action === "start") {
+          const repositories = await readRegistry2(context.root);
+          if (repositories.length === 0) {
+            throw new GateRefusal(
+              "No repositories are registered, so there is nothing to read.",
+              "wfctl repo add <owner/name> --path <dir>"
+            );
+          }
+          const raw = await reconstruct.rawInventory(context.root);
+          const baseline = await reconstruct.hasBaseline(context.root);
+          const id = `${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}-reconstruct`;
+          await reconstruct.writeCase(context.root, {
+            id,
+            stage: "scope",
+            createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+            repositories: [],
+            rawPaths: raw,
+            coverage: { inScope: [], read: [], excluded: [] },
+            claims: [],
+            contradictions: [],
+            trajectories: [],
+            probes: [],
+            hadBaseline: baseline
+          });
+          return ok_(
+            [
+              `reconstruction ${id} opened`,
+              baseline ? "Curated knowledge already holds pages, so this is a re-check of an existing baseline." : "Curated knowledge is empty, so this is a first baseline.",
+              "",
+              "registered:",
+              ...repositories.map((entry) => `  ${entry.repository}  ${entry.worktreeId}  ${entry.path}`),
+              "",
+              raw.length > 0 ? `raw material: ${raw.length} file(s) under reconstruction/raw/` : "raw material: none",
+              "",
+              "Put one scope decision to the maintainer: which repositories, how much of",
+              "the raw material, and what is deliberately out. One question, not four."
+            ].join("\n")
+          );
+        }
+        return { stdout: USAGE, exitCode: 1 };
+      }
       case "capture":
         return await capture(context, {
           text: rest.filter((entry) => !entry.startsWith("--"))[0] ?? "",
@@ -1849,8 +2381,8 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
         return { stdout: USAGE, exitCode: 1 };
       case "init": {
         assertProfileSupported(rest[0] ?? "");
-        const target = resolve8(flag(rest, "target") ?? process.cwd());
-        const distribution = resolve8(context.assets, "..", "..");
+        const target = resolve11(flag(rest, "target") ?? process.cwd());
+        const distribution = resolve11(context.assets, "..", "..");
         const plan = await planInstall({
           target,
           distribution,
@@ -1882,9 +2414,9 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
 function findGuidance(start) {
   let current = start;
   for (let depth = 0; depth < 6; depth += 1) {
-    const candidate = resolve8(current, "templates", "guidance");
+    const candidate = resolve11(current, "templates", "guidance");
     if (existsSync(candidate)) return candidate;
-    const parent = dirname4(current);
+    const parent = dirname7(current);
     if (parent === current) break;
     current = parent;
   }
