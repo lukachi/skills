@@ -1,4 +1,0 @@
-interface:
-  display_name: "Research Project Context"
-  short_description: "Research external project context safely"
-  default_prompt: "Use $research-project-context to investigate this external project question from primary sources and retain the result in its owner or a pending capture."

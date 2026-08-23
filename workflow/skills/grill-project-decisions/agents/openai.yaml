@@ -1,4 +1,0 @@
-interface:
-  display_name: "Grill Project Decisions"
-  short_description: "Stress-test a direction one frontier round at a time"
-  default_prompt: "Grill me relentlessly about this until we reach a shared understanding."

@@ -7,7 +7,7 @@ verified against this file, not against memory.
 
 - [x] A1 wfctl is a watcher and a director: it observes state and emits the next instruction.
 - [x] A2 No instruction depends on the model deciding to load it. Zero model-decided branches in the instruction path.
-- [~] A3 Skills are removed as a delivery mechanism. Content ships as a versioned asset bundle the CLI reads; `wfctl upgrade` refreshes it.  _(partial: bundle written; installer not wired)_
+- [x] A3 Skills are removed as a delivery mechanism. Content ships as a versioned asset bundle the CLI reads; `wfctl upgrade` refreshes it.
 - [x] A4 Content is re-cut from role to state: the CLI prints only the slice that applies now.
 - [x] A5 Conversational content is dropped, not relocated.
 - [ ] A6 Installation is knowledge-repository only. No leaf profile, no leaf install.  _(not yet: leaf install still present in old code)_
@@ -134,6 +134,41 @@ verified against this file, not against memory.
 - [x] N5 A rebind destroys the record's start commit and accounting (DISC-007).
 - [x] N6 Refusals name neither what changed nor the move that clears it (E5).
 
+
+## Migration record
+
+Nineteen skills were re-cut into `templates/guidance/` and removed. Six are
+staged in `rewrite/staged/` because the states their content belongs to do not
+exist yet.
+
+| Skill | Fate |
+| --- | --- |
+| align-project-knowledge | `work/aligned.md` |
+| analyze-with-graphify | `recall/structure.md` |
+| curate-engineering-knowledge | `curate/engineering.md` |
+| curate-product-knowledge | `curate/product.md` |
+| grill-project-decisions | `decide/interview.md` |
+| implement-work-item | `work/implement.md` + verbatim references |
+| manage-project-work | `work/opened.md`, `work/discoveries.md` |
+| model-project-domain | `decide/domain-language.md` |
+| prototype-project-decision | `decide/prototype.md` + verbatim references |
+| research-project-context | `decide/research.md` + verbatim reference |
+| shape-project-direction | `work/wayfind.md` |
+| specify-project-change | `work/framed.md` |
+| split-project-change | `work/split.md` |
+| verify-knowledge-quality | `curate/quality.md` |
+| verify-project-work | `work/verified.md`, `work/closed.md` |
+| show-project-work | deleted; upstream format catalogue kept as `references/drawing.md` |
+| explore-project-knowledge | deleted — presentation only, no gate |
+| grill-me | deleted — the interview it invoked is now `decide/interview.md` |
+| wait-what | deleted — register only, no gate |
+
+Upstream verbatim material is preserved: `tests.md`, `mocking.md`, `logic.md`,
+`ui.md`, `smell-baseline.md`, and the drawing catalogue.
+
+Three things changed in the re-cut rather than being carried across: issue
+blocking edges are gone, "sized for one session" is gone from both splitting and
+wayfinding, and attestation is gone from framing approval.
 
 ## Status
 
