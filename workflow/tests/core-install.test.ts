@@ -47,19 +47,20 @@ test("installation creates the knowledge shape, with raw under reconstruction an
   assert.deepEqual(created.sort(), [...KNOWLEDGE_DIRECTORIES].sort());
 });
 
-test("it installs the runtime guards and nothing else — guidance ships with the CLI", async () => {
+test("it installs the guards and the skill — guidance ships with the CLI", async () => {
   const root = await target();
   const plan = await planInstall({ target: root, distribution, version: "1.0.0" });
   const result = await applyInstall(plan, { distribution, version: "1.0.0" });
 
-  assert.ok(result.written.every((path) => path.startsWith(`${RUNTIME_DIR}/`)));
   assert.ok(result.written.some((path) => path.endsWith("guard-stop.mjs")));
-  assert.ok(result.written.every((path) => !path.includes("skills")));
+  assert.ok(result.written.some((path) => path === ".claude/skills/wfctl/SKILL.md"));
+  assert.ok(result.written.some((path) => path === ".agents/skills/wfctl/SKILL.md"));
 
   /**
    * Copying guidance into the project bought a per-project override nobody
    * asked for and cost an upgrade step to keep it current. It is read from
-   * where wfctl lives, so upgrading wfctl upgrades it.
+   * where wfctl lives, so upgrading wfctl upgrades it. The skill is different:
+   * the agent needs it before running anything, so it has to be discoverable.
    */
   assert.ok(!existsSync(resolve(root, ".workflow/guidance")));
 });
@@ -151,7 +152,7 @@ test("the managed block lands in both conventions and keeps the maintainer's tex
   const agents = await readFile(resolve(root, "AGENTS.md"), "utf8");
   assert.match(agents, /Read the deploy notes first/);
   assert.match(agents, /wfctl:begin/);
-  assert.match(agents, /there\s+are no skills to find/);
+  assert.match(agents, /`wfctl` skill/);
 
   const claude = await readFile(resolve(root, "CLAUDE.md"), "utf8");
   assert.match(claude, /wfctl brief/);
