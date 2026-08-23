@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { renderBrief, renderHandoff, buildCheckpoint } from "./checkpoint.js";
 import {
@@ -14,6 +14,7 @@ import {
   closeFlow,
   currentFlow,
   listFlows,
+  mutateFlow,
   openFlow,
   readFlow,
   writeFlow,
@@ -211,17 +212,16 @@ export async function recallAnswer(
     );
   }
 
-  const next: FlowRecord = {
-    ...flow,
-    recall: recordAnswer(flow.recall, {
+  const next = await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    recall: recordAnswer(current.recall, {
       item: item.id,
       answer: options.answer,
       route: options.route,
       source: options.source,
       at: new Date().toISOString(),
     }),
-  };
-  await writeFlow(context.root, next);
+  }));
   return ok(renderCounterLine(next.step, next.recall));
 }
 
@@ -234,11 +234,10 @@ export async function recallRoute(
   if (!flow) {
     return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
   }
-  const next: FlowRecord = {
-    ...flow,
-    recall: recordRoute(flow.recall, options.route, options.covered ?? []),
-  };
-  await writeFlow(context.root, next);
+  const next = await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    recall: recordRoute(current.recall, options.route, options.covered ?? []),
+  }));
   return ok(renderCounterLine(next.step, next.recall));
 }
 
@@ -310,16 +309,30 @@ export async function issueCreate(
     );
   }
 
-  const id = `U${String(flow.issues.length + 1).padStart(3, "0")}`;
-  const issue: IssueRecord = {
-    id,
-    title: options.title.trim(),
-    status: "open",
-    notes: [],
-    acceptance: options.acceptance,
-  };
-  await writeFlow(context.root, { ...flow, issues: [...flow.issues, issue] });
-  return ok(`${id}  ${issue.title}`);
+  /**
+   * The id is derived inside the lock, from the record as it stands there.
+   * Deriving it outside gave concurrent calls the same number, and a claim
+   * recorded against it afterwards pointed at whichever one survived.
+   */
+  let created = "";
+  await mutateFlow(context.root, flow.id, (current) => {
+    const id = `U${String(current.issues.length + 1).padStart(3, "0")}`;
+    created = id;
+    return {
+      ...current,
+      issues: [
+        ...current.issues,
+        {
+          id,
+          title: options.title.trim(),
+          status: "open",
+          notes: [],
+          acceptance: options.acceptance,
+        },
+      ],
+    };
+  });
+  return ok(`${created}  ${options.title.trim()}`);
 }
 
 export async function issueList(context: CommandContext): Promise<CommandResult> {
@@ -343,17 +356,24 @@ async function withIssue(
   id: string,
   change: (issue: IssueRecord) => IssueRecord,
 ): Promise<CommandResult> {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
+  const bound = await currentFlow(context.root);
+  if (!bound) {
     return refused(new GateRefusal("No flow is open.", "wfctl brief"));
   }
-  const found = flow.issues.find((issue) => issue.id.toUpperCase() === id.toUpperCase());
-  if (!found) {
+  if (!bound.issues.some((issue) => issue.id.toUpperCase() === id.toUpperCase())) {
     return refused(new GateRefusal(`No unit named ${id}.`, "wfctl work issue list"));
   }
-  const issues = flow.issues.map((issue) => (issue === found ? change(found) : issue));
-  await writeFlow(context.root, { ...flow, issues });
-  const next = issues.find((issue) => issue.id === found.id);
+
+  // Read and write under one lock: the plain pair is what lost units when two
+  // sessions each read the same record and the second overwrote the first.
+  const flow = await mutateFlow(context.root, bound.id, (current) => ({
+    ...current,
+    issues: current.issues.map((issue) =>
+      issue.id.toUpperCase() === id.toUpperCase() ? change(issue) : issue,
+    ),
+  }));
+
+  const next = flow.issues.find((issue) => issue.id.toUpperCase() === id.toUpperCase());
   return ok(`${next?.id}  ${next?.status}  ${next?.title}`);
 }
 
@@ -656,7 +676,26 @@ export async function promote(
     );
   }
 
+  /**
+   * Validate before anything is copied. A refusal here writes nothing and
+   * leaves the pages in the queue, correctable — half a corpus is worse than
+   * none, because the half that landed looks reviewed.
+   */
   try {
+    const { assertPromotable } = await import("./curated.js");
+    const { inspectPage } = await import("./curated.js");
+    const { readdir } = await import("node:fs/promises");
+    const drafts = resolve(context.root, "changes/promotion", bundle, "promotion");
+    const entries = await readdir(drafts, { recursive: true, withFileTypes: true }).catch(() => []);
+    const issues = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      const path = resolve(entry.parentPath ?? drafts, entry.name);
+      const body = await readFile(path, "utf8");
+      issues.push(...inspectPage(path.slice(drafts.length + 1), body));
+    }
+    assertPromotable(issues);
+
     const trajectory = await appendEvent(context.root, options.subject, {
       summary: options.summary.trim() || options.subject.trim(),
       axis: "delivery",

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
+import { withLock } from "./lock.js";
 
 /**
  * Trajectories.
@@ -84,10 +85,12 @@ export async function readTrajectory(root: string, id: string): Promise<Trajecto
 export async function writeTrajectory(root: string, trajectory: Trajectory): Promise<void> {
   const path = trajectoryPath(root, trajectory.id);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(
-    path,
-    `${JSON.stringify({ ...trajectory, updatedAt: new Date().toISOString() }, null, 2)}\n`,
-    "utf8",
+  await withLock(path, () =>
+    writeFile(
+      path,
+      `${JSON.stringify({ ...trajectory, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+      "utf8",
+    ),
   );
 }
 
@@ -154,6 +157,15 @@ export async function appendEvent(
   }
 
   const id = subjectId(subject);
+  return withLock(trajectoryPath(root, id), async () => appendLocked(root, id, subject, event));
+}
+
+async function appendLocked(
+  root: string,
+  id: string,
+  subject: string,
+  event: TrajectoryEvent,
+): Promise<Trajectory> {
   const existing = await readTrajectory(root, id);
   const trajectory: Trajectory = existing ?? {
     id,
@@ -166,7 +178,13 @@ export async function appendEvent(
     ...trajectory.events,
     { ...event, at: event.at ?? new Date().toISOString() },
   ];
-  await writeTrajectory(root, trajectory);
+  const path = trajectoryPath(root, trajectory.id);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(
+    path,
+    `${JSON.stringify({ ...trajectory, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+    "utf8",
+  );
   return trajectory;
 }
 

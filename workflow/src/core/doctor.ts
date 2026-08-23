@@ -263,6 +263,30 @@ export async function runDoctor(
     });
   }
 
+  /* ----------------------------------------------------- curated pages */
+
+  const { collectPages, validateCurated } = await import("./curated.js");
+  const pages = await collectPages(target);
+  if (pages.length === 0) {
+    checks.push({
+      name: "curated-knowledge",
+      status: "warn",
+      message: "Empty; nothing has been recorded about this project yet",
+      remedy: "wfctl reconstruct start",
+    });
+  } else {
+    const issues = await validateCurated(target);
+    checks.push({
+      name: "curated-knowledge",
+      status: issues.length > 0 ? "fail" : "pass",
+      message:
+        issues.length > 0
+          ? `${pages.length} page(s), ${issues.length} structural problem(s)`
+          : `${pages.length} page(s), all structurally valid`,
+      ...(issues.length > 0 ? { remedy: "wfctl knowledge validate" } : {}),
+    });
+  }
+
   /* ---------------------------------------------------------- retrieval */
 
   const qmd = runner("qmd", ["status"], { cwd: target });

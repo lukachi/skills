@@ -88,6 +88,23 @@ that was true once, and a gap accepted as correct is a vision that was wrong.
 Both cases write here. Reconstruction builds lines from what it read; a closed
 change appends what it delivered.
 
+## Has this already been decided?
+
+```sh
+wfctl decided "<the subject>"
+```
+
+Run it before any question reaches the maintainer. It reads the places an answer
+lands — curated pages, open and closed records, captures, and declared
+directions — and reports their own words with a date.
+
+Most answers are not on a curated page. They are in the record that asked the
+question, which is why a knowledge search alone reads like a question nobody has
+answered.
+
+Finding nothing is a real answer too: it means this is genuinely worth their
+turn. Say so when you ask, rather than asking as though you had not looked.
+
 ## Paths you never type
 
 Where a path follows from state, the tool creates it and prints it — promotion

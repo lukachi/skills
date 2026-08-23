@@ -17,7 +17,10 @@ curation, retrieval, lifecycle, and generated relationship artifacts.
 | `changes/archive/` | Honest closed outcomes and resolved capture receipts | Durable project history, not current knowledge by itself |
 | `knowledge/` | Curated OKF v0.2 bundle | Current project knowledge and durable history |
 
-`knowledge/` must never cite or link to anything under `reconstruction/raw/`. Curated claims use
+`knowledge/` must never cite or link to anything under `reconstruction/raw/`,
+and `wfctl knowledge validate` refuses a page that does — at promotion, before
+anything is copied, so a refusal leaves the record correctable in the queue
+rather than the corpus half-taught. Curated claims use
 independent evidence, approved change records, exact source revisions, primary
 external references, or explicit maintainer authority.
 

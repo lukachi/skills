@@ -1,4 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -84,6 +85,10 @@ const USAGE = `wfctl — project workflow
   init knowledge [--target <dir>]
 
   guide [<topic>]              detail for one topic, when the state needs it
+
+  decided "<subject>"          what has already been settled about it, and where
+  knowledge validate [--page <path>]
+  knowledge hash <path>
 
   doctor                       verify this installation and what it depends on
 
@@ -654,6 +659,47 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         }
 
         return { stdout: USAGE, exitCode: 1 };
+      }
+
+      case "decided": {
+        const { findDecisions, renderDecisions } = await import("./decided.js");
+        const subject = rest.filter((entry) => !entry.startsWith("--")).join(" ");
+        if (!subject.trim()) {
+          throw new GateRefusal(
+            "Naming the subject is the whole of this command.",
+            'wfctl decided "<the subject>"',
+          );
+        }
+        return ok_(renderDecisions(subject, await findDecisions(context.root, subject)));
+      }
+
+      case "knowledge": {
+        const { renderIssues, validateCurated } = await import("./curated.js");
+        const [action, ...args] = rest;
+        if (action === "validate") {
+          const issues = await validateCurated(context.root, flag(args, "page"));
+          return { stdout: renderIssues(issues), exitCode: issues.length > 0 ? 2 : 0 };
+        }
+        if (action === "hash") {
+          const { contentHash, stripSeal, KNOWLEDGE_DIR } = await import("./curated.js");
+          const page = args[0] ?? flag(args, "page") ?? "";
+          const body = await readFile(resolve(context.root, KNOWLEDGE_DIR, page), "utf8").catch(
+            () => undefined,
+          );
+          if (body === undefined) {
+            throw new GateRefusal(`No page at ${page}.`, "wfctl knowledge validate");
+          }
+          return ok_(contentHash(stripSeal(body)));
+        }
+        return {
+          stdout: [
+            "wfctl knowledge <validate|hash>",
+            "",
+            "  validate [--page <path>]   structural checks over curated pages",
+            "  hash <path>                the hash both semantic reviews bind to",
+          ].join("\n"),
+          exitCode: 1,
+        };
       }
 
       case "doctor": {

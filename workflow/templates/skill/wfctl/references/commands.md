@@ -56,6 +56,14 @@ command prints what comes next. Reach for it when you need exact flags.
 
 ```
 
+## Two you will reach for often
+
+```sh
+wfctl decided "<subject>"          # what has already been settled, and where
+wfctl knowledge validate           # structural checks over curated pages
+wfctl knowledge hash <page>        # the hash both semantic reviews bind to
+```
+
 ## When something is not working
 
 ```sh

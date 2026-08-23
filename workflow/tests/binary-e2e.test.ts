@@ -670,3 +670,104 @@ test("doctor notices an unresolved capture queue", async () => {
   assert.match(report.stdout, /warn\s+capture-inbox\s+1 unresolved/);
   assert.equal(report.status, 0);
 });
+
+test("concurrent unit creation does not lose units or reuse ids", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "race", "--weight", "significant"]);
+
+  /**
+   * Six concurrent calls all reported success and three units survived, with
+   * their ids reused — so a claim recorded afterwards pointed at different work.
+   */
+  await Promise.all(
+    Array.from({ length: 6 }, (_, index) =>
+      new Promise<void>((done) => {
+        wfctl(root, ["work", "issue", "create", "--title", `unit ${index}`]);
+        done();
+      }),
+    ),
+  );
+
+  const listed = wfctl(root, ["work", "issue", "list"]).stdout;
+  const ids = [...listed.matchAll(/^(U\d{3})/gm)].map((match) => match[1]);
+  assert.equal(ids.length, 6, `units were lost: ${listed}`);
+  assert.equal(new Set(ids).size, 6, `ids were reused: ${ids.join(", ")}`);
+});
+
+test("promotion refuses a page that would not validate, and writes nothing", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "pages", "--weight", "significant"]);
+  await walkToVerifiedE2E(root);
+  wfctl(root, ["work", "promotion", "draft", "areas/billing/index.md"]);
+  wfctl(root, ["work", "close", "--outcome", "completed"]);
+
+  // The draft the tool created is empty: no view, no purpose, no audience.
+  const refused = wfctl(root, ["work", "promote", "--subject", "Billing", "--summary", "s"]);
+  assert.equal(refused.status, 2);
+  assert.match(refused.stdout, /would enter curated knowledge/);
+  assert.match(wfctl(root, ["work", "promotion", "list"]).stdout, /waiting on the maintainer/);
+});
+
+test("a curated page citing raw material is refused", async () => {
+  const root = await installed();
+  await mkdir(resolve(root, "knowledge/areas/x"), { recursive: true });
+  await writeFile(
+    resolve(root, "knowledge/areas/x/index.md"),
+    "---\nview: product\npurpose: p\naudience: a\n---\n\n# X\n\nPer reconstruction/raw/notes.md this is settled.\n",
+    "utf8",
+  );
+
+  const result = wfctl(root, ["knowledge", "validate"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /carries no authority/);
+});
+
+test("decided reports where an answer already lives", async () => {
+  const root = await installed();
+  await mkdir(resolve(root, "changes/archive/old"), { recursive: true });
+  await writeFile(
+    resolve(root, "changes/archive/old/change.md"),
+    "# Refunds\n\nOn 2026-01-04 they settled that partial refunds are out of scope.\n",
+    "utf8",
+  );
+
+  const found = wfctl(root, ["decided", "partial refunds scope"]);
+  assert.equal(found.status, 0);
+  assert.match(found.stdout, /partial refunds are out of scope/);
+  assert.match(found.stdout, /a closed record/);
+
+  const nothing = wfctl(root, ["decided", "an unrelated untouched subject"]);
+  assert.match(nothing.stdout, /Nothing recorded/);
+});
+
+async function walkToVerifiedE2E(root: string): Promise<void> {
+  const { RECALL_ITEMS } = await import("../src/core/recall.js");
+  wfctl(root, ["work", "step", "aligned"]);
+  const answer = (group: string, route: string) => {
+    for (const item of RECALL_ITEMS.filter((entry) => entry.group === group)) {
+      wfctl(root, ["recall", "answer", item.id, "--answer", "x", "--route", route, "--source", "s"]);
+    }
+  };
+  answer("E", "qmd");
+  wfctl(root, ["work", "step", "framed"]);
+  answer("A", "qmd");
+  answer("B", "qmd");
+  answer("C", "qmd");
+  wfctl(root, ["work", "step", "split"]);
+  wfctl(root, ["work", "step", "implement"]);
+  answer("D", "graphify");
+  answer("G", "read");
+
+  const review = resolve(root, "review.json");
+  await writeFile(
+    review,
+    JSON.stringify({
+      reviewer: "agent:reviewer",
+      attacks: [{ lens: "correctness", target: "t", test: "x", output: "held", broke: false }],
+      findings: [],
+      stubSurvivors: [],
+    }),
+    "utf8",
+  );
+  wfctl(root, ["work", "verify", "--review", review]);
+}

@@ -7,7 +7,11 @@ compensate for the other:
 [reader communication](../references/reader-communication-review.md), scored
 against [the rubric](../references/quality-rubric.md).
 
-Structural validation runs separately. It cannot tell whether a claim is true,
+Structural validation runs separately: `wfctl knowledge validate`. It refuses
+what a check can see — a missing view, purpose or audience; a citation of raw
+material; implementation on the product road; a stable page whose seal no longer
+matches its content. It cannot tell whether a claim is true or whether a reader
+can act on it, which is what these two axes are for. It cannot tell whether a claim is true,
 whether an exception was dropped, or whether a stakeholder can act on the answer.
 
 ## Freeze the target
@@ -21,7 +25,9 @@ whether an exception was dropped, or whether a stakeholder can act on the answer
    under a record's `promotion/` directory has no corpus position yet, so its
    structural validation runs when it is promoted; a refusal there writes
    nothing and leaves the page where it is.
-5. Pin the content hash before semantic review. The hash reads frontmatter and
+5. Pin the content hash before semantic review: `wfctl knowledge hash <path>`.
+   It reads frontmatter and body and ignores the seal line, so a hash taken on a
+   draft still matches once the page is copied into the corpus. The hash reads frontmatter and
    body, never location, so a seal bound to the draft still matches once the
    page is copied byte for byte into the corpus.
 

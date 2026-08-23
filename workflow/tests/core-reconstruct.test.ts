@@ -262,6 +262,14 @@ test("promotion writes the pages and appends to the subject's line", async () =>
   await run(["work", "start", "--title", "part refunds", "--weight", "significant"], ctx);
   await walkToVerified(ctx);
   await run(["work", "promotion", "draft", "areas/billing/index.md"], ctx);
+  // An empty draft is refused at promotion now, which is the point of the gate.
+  const { readFile: read } = await import("node:fs/promises");
+  const id = (await read(resolve(ctx.root, ".workflow/flows/current"), "utf8")).trim();
+  await writeFile(
+    resolve(ctx.root, "changes/active", id, "promotion/areas/billing/index.md"),
+    "---\nview: product\npurpose: what billing does today\naudience: stakeholders\n---\n\n# Billing\n\nRefunds can be issued for part of an order.\n",
+    "utf8",
+  );
   await run(["work", "close", "--outcome", "completed"], ctx);
 
   const without = await run(["work", "promote"], ctx);

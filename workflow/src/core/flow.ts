@@ -1,5 +1,7 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { GateRefusal } from "./gates.js";
+import { withLock } from "./lock.js";
 import { emptyRecall } from "./recall.js";
 import type { FlowKind, FlowRecord, WorkWeight } from "./types.js";
 import { FLOW_SCHEMA_VERSION } from "./types.js";
@@ -49,8 +51,35 @@ export async function readFlow(root: string, id: string): Promise<FlowRecord | u
 
 export async function writeFlow(root: string, flow: FlowRecord): Promise<void> {
   await mkdir(flowDirectory(root), { recursive: true });
-  const next = { ...flow, updatedAt: new Date().toISOString() };
-  await writeFile(flowPath(root, flow.id), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  const path = flowPath(root, flow.id);
+  await withLock(path, async () => {
+    const next = { ...flow, updatedAt: new Date().toISOString() };
+    await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  });
+}
+
+/**
+ * Read, change, write — with nobody else in between.
+ *
+ * The plain read-then-write pair is what lost units: two sessions each read the
+ * same record, each added one, and the second overwrote the first. Anything
+ * that derives its new value from the old one must go through this.
+ */
+export async function mutateFlow(
+  root: string,
+  id: string,
+  change: (flow: FlowRecord) => FlowRecord,
+): Promise<FlowRecord> {
+  const path = flowPath(root, id);
+  return withLock(path, async () => {
+    const current = await readFlow(root, id);
+    if (!current) {
+      throw new GateRefusal(`No flow named ${id}.`, "wfctl brief");
+    }
+    const next = { ...change(current), updatedAt: new Date().toISOString() };
+    await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    return next;
+  });
 }
 
 export async function currentFlowId(root: string): Promise<string | undefined> {

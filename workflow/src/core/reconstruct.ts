@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
+import { withLock } from "./lock.js";
 import type { RegisteredRepository } from "./registry.js";
 import type { Claim } from "./trajectory.js";
 
@@ -131,7 +132,7 @@ export async function readCase(root: string, id: string): Promise<Reconstruction
 export async function writeCase(root: string, record: ReconstructionCase): Promise<void> {
   const path = casePath(root, record.id);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  await withLock(path, () => writeFile(path, `${JSON.stringify(record, null, 2)}\n`, "utf8"));
 }
 
 /**
