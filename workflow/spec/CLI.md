@@ -112,6 +112,24 @@ inside the CLI and is read from there, so upgrading wfctl upgrades it. Settings 
 as is everything outside the managed markers. A file the maintainer edited is
 reported rather than replaced.
 
+## Verifying an installation
+
+```sh
+wfctl doctor
+```
+
+Exit 1 on any failure, 0 when everything is healthy or merely degraded. The
+distinction is load-bearing: a failure means the workflow cannot do its job, a
+warning means it can with something reduced. Reporting a warning as a failure
+trains people to ignore the output.
+
+It checks the installation and its drift, the knowledge layout, the skill in
+both agent conventions, the managed block, each guard and whether its script is
+there, **whether `wfctl` is on PATH at all** — the guards shell out to it by
+name and fail open when it is absent, which looks exactly like a healthy session
+— every registered leaf and the age of its graph, graphify and QMD availability,
+whether documents await embedding, and the queues nobody has opened.
+
 ## Runtime guards
 
 ```sh

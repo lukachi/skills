@@ -607,3 +607,66 @@ test("a write into a sibling checkout is refused while another is claimed", asyn
   const owned = wfctl(root, ["hook", "write", "--target", resolve(a, "src/a.ts")]);
   assert.equal(owned.status, 0, owned.stdout);
 });
+
+test("doctor passes on a healthy install and fails on a broken one", async () => {
+  const root = await installed();
+
+  const healthy = wfctl(root, ["doctor"]);
+  assert.equal(healthy.status, 0, healthy.stdout);
+  for (const check of ["installation", "installed-files", "knowledge-layout", "managed-block"]) {
+    assert.match(healthy.stdout, new RegExp(`ok\\s+${check}`), `${check} did not pass: ${healthy.stdout}`);
+  }
+  assert.match(healthy.stdout, /ok\s+skill:\.claude/);
+  assert.match(healthy.stdout, /ok\s+skill:\.agents/);
+  for (const guard of ["stop", "write", "bash"]) {
+    assert.match(healthy.stdout, new RegExp(`ok\\s+guard:${guard}`));
+  }
+
+  const { rm } = await import("node:fs/promises");
+  await rm(resolve(root, ".claude/skills/wfctl"), { recursive: true });
+
+  const broken = wfctl(root, ["doctor"]);
+  assert.equal(broken.status, 1, "a missing skill should fail the check");
+  assert.match(broken.stdout, /FAIL\s+skill:\.claude/);
+  assert.match(broken.stdout, /FAIL\s+installed-files/);
+});
+
+test("doctor reports a guard that was turned off as degraded, not failing", async () => {
+  const root = await installed();
+  wfctl(root, ["guards", "off", "stop"]);
+
+  const report = wfctl(root, ["doctor"]);
+  assert.equal(report.status, 0, "turning a guard off is a decision, not a fault");
+  assert.match(report.stdout, /warn\s+guard:stop/);
+  assert.match(report.stdout, /wfctl guards on stop/);
+});
+
+test("doctor reports leaves whose graph is missing or unreachable", async () => {
+  const root = await installed();
+  const leaf = await mkdtemp(join(tmpdir(), "wfctl-leaf-"));
+  wfctl(root, ["repo", "add", "acme/api", "--path", leaf]);
+  wfctl(root, ["repo", "add", "acme/gone", "--path", "/nowhere/at/all"]);
+
+  const report = wfctl(root, ["doctor"]);
+  assert.match(report.stdout, /warn\s+leaf:acme\/api\/main\s+No graph/);
+  assert.match(report.stdout, /FAIL\s+leaf:acme\/gone\/main/);
+  assert.equal(report.status, 1, "a registered path that is not there is a fault");
+});
+
+test("doctor refuses outside an initialized repository", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wfctl-bare-"));
+  const report = wfctl(root, ["doctor"]);
+  assert.equal(report.status, 1);
+  assert.match(report.stdout, /not an initialized knowledge repository/);
+  assert.match(report.stdout, /wfctl init knowledge/);
+});
+
+test("doctor notices an unresolved capture queue", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "t", "--weight", "lightweight"]);
+  wfctl(root, ["capture", "something worth keeping"]);
+
+  const report = wfctl(root, ["doctor"]);
+  assert.match(report.stdout, /warn\s+capture-inbox\s+1 unresolved/);
+  assert.equal(report.status, 0);
+});

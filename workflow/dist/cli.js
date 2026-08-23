@@ -2129,9 +2129,239 @@ var init_reconstruct = __esm({
   }
 });
 
+// src/core/doctor.ts
+var doctor_exports = {};
+__export(doctor_exports, {
+  exitCodeFor: () => exitCodeFor,
+  renderReport: () => renderReport,
+  runDoctor: () => runDoctor
+});
+import { spawnSync } from "node:child_process";
+import { access, readFile as readFile8, readdir as readdir6, stat as stat5 } from "node:fs/promises";
+import { resolve as resolve12 } from "node:path";
+async function exists(path) {
+  return access(path).then(
+    () => true,
+    () => false
+  );
+}
+async function runDoctor(targetInput, options = {}) {
+  const target = resolve12(targetInput);
+  const runner = options.runner ?? run;
+  const checks = [];
+  const state = await readInstallState(target);
+  if (!state) {
+    checks.push({
+      name: "installation",
+      status: "fail",
+      message: "This is not an initialized knowledge repository",
+      remedy: "wfctl init knowledge"
+    });
+    return { target, checks };
+  }
+  checks.push({
+    name: "installation",
+    status: "pass",
+    message: `wfctl ${state.installedVersion}, ${Object.keys(state.files).length} owned file(s)`
+  });
+  if (options.distribution) {
+    const plan = await planInstall({
+      target,
+      distribution: options.distribution,
+      version: state.installedVersion
+    });
+    const pending = plan.operations.filter((operation) => operation.kind === "write");
+    if (plan.edited.length > 0) {
+      checks.push({
+        name: "installation-edited",
+        status: "warn",
+        message: `${plan.edited.length} owned file(s) edited since install: ${plan.edited.join(", ")}`,
+        remedy: "Keep them, or delete them and run: wfctl init knowledge"
+      });
+    }
+    if (pending.length > 0) {
+      checks.push({
+        name: "installation-pending",
+        status: "warn",
+        message: `${pending.length} file(s) would be written by a reinstall`,
+        remedy: "wfctl init knowledge"
+      });
+    }
+  }
+  const missing = [];
+  for (const path of Object.keys(state.files)) {
+    if (!await exists(resolve12(target, path))) missing.push(path);
+  }
+  checks.push({
+    name: "installed-files",
+    status: missing.length > 0 ? "fail" : "pass",
+    message: missing.length > 0 ? `${missing.length} missing: ${missing.join(", ")}` : "All present",
+    ...missing.length > 0 ? { remedy: "wfctl init knowledge" } : {}
+  });
+  const git = runner("git", ["rev-parse", "--is-inside-work-tree"], { cwd: target });
+  checks.push({
+    name: "git",
+    status: git.status === 0 ? "pass" : "warn",
+    message: git.status === 0 ? "Git repository" : "Not a Git repository; knowledge has no history and cannot be shared",
+    ...git.status === 0 ? {} : { remedy: "git init" }
+  });
+  const absentDirs = [];
+  for (const directory of KNOWLEDGE_DIRECTORIES) {
+    const found = await stat5(resolve12(target, directory)).then(
+      (entry) => entry.isDirectory(),
+      () => false
+    );
+    if (!found) absentDirs.push(directory);
+  }
+  checks.push({
+    name: "knowledge-layout",
+    status: absentDirs.length > 0 ? "fail" : "pass",
+    message: absentDirs.length > 0 ? `Missing: ${absentDirs.join(", ")}` : "Complete",
+    ...absentDirs.length > 0 ? { remedy: "wfctl init knowledge" } : {}
+  });
+  for (const directory of SKILL_DIRS) {
+    const skill = resolve12(target, directory, "SKILL.md");
+    const present = await exists(skill);
+    const frontmatter = present ? (await readFile8(skill, "utf8")).startsWith("---\nname: wfctl") : false;
+    checks.push({
+      name: `skill:${directory.split("/")[0]}`,
+      status: present && frontmatter ? "pass" : "fail",
+      message: present ? frontmatter ? "Installed" : "Present but its frontmatter is not wfctl's" : "Missing \u2014 the agent has no entry point",
+      ...present && frontmatter ? {} : { remedy: "wfctl init knowledge" }
+    });
+  }
+  const block = await readFile8(resolve12(target, "AGENTS.md"), "utf8").catch(() => "");
+  checks.push({
+    name: "managed-block",
+    status: block.includes("wfctl:begin") ? "pass" : "fail",
+    message: block.includes("wfctl:begin") ? "Present in AGENTS.md" : "Absent \u2014 nothing points the agent at the skill",
+    ...block.includes("wfctl:begin") ? {} : { remedy: "wfctl init knowledge" }
+  });
+  for (const guard of await guardStatus(target)) {
+    const script = await exists(
+      resolve12(target, RUNTIME_DIR, guard.guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard.guard}.mjs`)
+    );
+    checks.push({
+      name: `guard:${guard.guard}`,
+      status: guard.installed && script ? "pass" : guard.installed ? "fail" : "warn",
+      message: !script ? "Armed in settings, but its script is missing" : guard.installed ? guard.describes : `Off \u2014 ${guard.describes}`,
+      ...guard.installed && script ? {} : { remedy: `wfctl guards on ${guard.guard}` }
+    });
+  }
+  const onPath = runner("wfctl", ["--help"], { cwd: target });
+  checks.push({
+    name: "wfctl-on-path",
+    status: onPath.status === 0 && onPath.stdout.includes("project workflow") ? "pass" : "fail",
+    message: onPath.status === 0 && onPath.stdout.includes("project workflow") ? "The guards can reach it" : "Not on PATH \u2014 every guard will fail open and report nothing",
+    remedy: "Put wfctl on PATH (bun link, or npm i -g wfctl)"
+  });
+  const registry = await readRegistry(target);
+  if (registry.length === 0) {
+    checks.push({
+      name: "repositories",
+      status: "warn",
+      message: "None registered; no source code can be read or written",
+      remedy: "wfctl repo add <owner/name> --path <dir>"
+    });
+  } else {
+    for (const leaf of await inspectLeaves(registry)) {
+      const status = leaf.graph === "ready" ? "pass" : leaf.graph === "unreachable" ? "fail" : "warn";
+      checks.push({
+        name: `leaf:${leaf.repository}/${leaf.worktreeId}`,
+        status,
+        message: leaf.graph === "ready" ? `Graph ${leaf.ageDays}d old` : leaf.graph === "stale" ? `Graph ${leaf.ageDays}d old; it answers confidently about code that may be gone` : leaf.graph === "missing" ? "No graph; nothing here can traverse it" : `${leaf.path} is not there`,
+        ...leaf.graph === "unreachable" ? { remedy: `wfctl repo remove ${leaf.repository} --worktree ${leaf.worktreeId}` } : leaf.graph === "ready" ? {} : { remedy: `graphify build   (in ${leaf.path})` }
+      });
+    }
+    const graphify = runner("graphify", ["--version"]);
+    checks.push({
+      name: "graphify",
+      status: graphify.status === 0 ? "pass" : "warn",
+      message: graphify.status === 0 ? graphify.stdout.trim() || "Available" : "Not installed",
+      ...graphify.status === 0 ? {} : { remedy: "uv tool install graphifyy" }
+    });
+  }
+  const qmd = runner("qmd", ["status"], { cwd: target });
+  if (qmd.status !== 0) {
+    checks.push({
+      name: "qmd",
+      status: "warn",
+      message: "Not available; curated knowledge can only be searched by reading it",
+      remedy: "Install QMD, then: qmd index"
+    });
+  } else {
+    checks.push({ name: "qmd", status: "pass", message: "Index opens" });
+    const pending = /pending|not embedded|needs embedding/i.test(qmd.stdout);
+    checks.push({
+      name: "qmd-embeddings",
+      status: pending ? "warn" : "pass",
+      message: pending ? "Documents await embedding; semantic retrieval will silently fall back to lexical" : "Ready",
+      ...pending ? { remedy: "qmd embed" } : {}
+    });
+  }
+  const inbox = await readdir6(resolve12(target, "changes/inbox")).catch(() => []);
+  const captures = inbox.filter((entry) => entry.endsWith(".md"));
+  checks.push({
+    name: "capture-inbox",
+    status: captures.length > 0 ? "warn" : "pass",
+    message: captures.length > 0 ? `${captures.length} unresolved capture(s); a queue nobody opens is the same as no queue` : "Empty",
+    ...captures.length > 0 ? { remedy: "Route or discard each one" } : {}
+  });
+  const queued = await readdir6(resolve12(target, "changes/promotion")).catch(() => []);
+  if (queued.length > 0) {
+    checks.push({
+      name: "promotion-queue",
+      status: "warn",
+      message: `${queued.length} record(s) waiting on the maintainer`,
+      remedy: "wfctl work promotion list"
+    });
+  }
+  return { target, checks };
+}
+function renderReport(report) {
+  const symbol = { pass: "ok  ", warn: "warn", fail: "FAIL" };
+  const lines = report.checks.map((check) => {
+    const head = `${symbol[check.status]}  ${check.name.padEnd(28)} ${check.message}`;
+    return check.status === "pass" || !check.remedy ? head : `${head}
+      \u2192 ${check.remedy}`;
+  });
+  const failed = report.checks.filter((check) => check.status === "fail").length;
+  const warned = report.checks.filter((check) => check.status === "warn").length;
+  return [
+    ...lines,
+    "",
+    failed > 0 ? `${failed} failing, ${warned} degraded.` : warned > 0 ? `Healthy, ${warned} degraded.` : "Healthy."
+  ].join("\n");
+}
+function exitCodeFor(report) {
+  return report.checks.some((check) => check.status === "fail") ? 1 : 0;
+}
+var run;
+var init_doctor = __esm({
+  "src/core/doctor.ts"() {
+    "use strict";
+    init_install();
+    init_install();
+    init_leaves();
+    init_registry();
+    run = (command, args, options) => {
+      const result = spawnSync(command, args, {
+        cwd: options?.cwd,
+        encoding: "utf8",
+        timeout: 2e4
+      });
+      return {
+        status: result.status,
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? ""
+      };
+    };
+  }
+});
+
 // src/core/cli.ts
 import { existsSync, realpathSync as realpathSync2 } from "node:fs";
-import { dirname as dirname7, resolve as resolve12 } from "node:path";
+import { dirname as dirname7, resolve as resolve13 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/core/commands.ts
@@ -2747,6 +2977,8 @@ var USAGE = `wfctl \u2014 project workflow
 
   guide [<topic>]              detail for one topic, when the state needs it
 
+  doctor                       verify this installation and what it depends on
+
   guards [status]              which runtime guards are on
   guards on|off <stop|write|bash>
 
@@ -2796,7 +3028,7 @@ function oneOf(value, allowed, name, fallback) {
   }
   return value;
 }
-async function run(argv, context) {
+async function run2(argv, context) {
   const [group, ...rest] = argv;
   try {
     switch (group) {
@@ -3224,6 +3456,13 @@ ${archived}`);
         }
         return { stdout: USAGE, exitCode: 1 };
       }
+      case "doctor": {
+        const { exitCodeFor: exitCodeFor2, renderReport: renderReport2, runDoctor: runDoctor2 } = await Promise.resolve().then(() => (init_doctor(), doctor_exports));
+        const report = await runDoctor2(context.root, {
+          distribution: resolve13(context.assets, "..", "..")
+        });
+        return { stdout: renderReport2(report), exitCode: exitCodeFor2(report) };
+      }
       case "guards": {
         const { GUARD_NAMES: GUARD_NAMES2, guardStatus: guardStatus2, renderGuards: renderGuards2, setGuard: setGuard2 } = await Promise.resolve().then(() => (init_install(), install_exports));
         const [action, ...args] = rest;
@@ -3249,8 +3488,8 @@ ${archived}`);
         return { stdout: USAGE, exitCode: 1 };
       case "init": {
         assertProfileSupported(rest[0] ?? "");
-        const target = resolve12(flag(rest, "target") ?? process.cwd());
-        const distribution = resolve12(context.assets, "..", "..");
+        const target = resolve13(flag(rest, "target") ?? process.cwd());
+        const distribution = resolve13(context.assets, "..", "..");
         const plan = await planInstall({
           target,
           distribution,
@@ -3296,13 +3535,13 @@ ${archived}`);
 function findGuidance(start) {
   let current = start;
   for (let depth = 0; depth < 6; depth += 1) {
-    const candidate = resolve12(current, "templates", "guidance");
+    const candidate = resolve13(current, "templates", "guidance");
     if (existsSync(candidate)) return candidate;
     const parent = dirname7(current);
     if (parent === current) break;
     current = parent;
   }
-  return resolve12(start, "templates", "guidance");
+  return resolve13(start, "templates", "guidance");
 }
 var invokedDirectly = (() => {
   const entry = process.argv[1];
@@ -3319,12 +3558,12 @@ if (invokedDirectly) {
     assets: findGuidance(import.meta.dirname),
     actor: process.env.WFCTL_ACTOR ?? "agent:unknown"
   };
-  const result = await run(process.argv.slice(2), context);
+  const result = await run2(process.argv.slice(2), context);
   process.stdout.write(`${result.stdout}
 `);
   process.exit(result.exitCode);
 }
 export {
   findGuidance,
-  run
+  run2 as run
 };

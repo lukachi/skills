@@ -56,6 +56,16 @@ command prints what comes next. Reach for it when you need exact flags.
 
 ```
 
+## When something is not working
+
+```sh
+wfctl doctor
+```
+
+Run it when a command behaves in a way the guidance does not explain — a guard
+that never fires, retrieval that returns nothing, a traversal that cannot find
+a graph. It names what is broken and the command that clears it.
+
 ## Exit codes
 
 | Code | Meaning |

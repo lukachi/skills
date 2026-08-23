@@ -85,6 +85,8 @@ const USAGE = `wfctl — project workflow
 
   guide [<topic>]              detail for one topic, when the state needs it
 
+  doctor                       verify this installation and what it depends on
+
   guards [status]              which runtime guards are on
   guards on|off <stop|write|bash>
 
@@ -652,6 +654,14 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         }
 
         return { stdout: USAGE, exitCode: 1 };
+      }
+
+      case "doctor": {
+        const { exitCodeFor, renderReport, runDoctor } = await import("./doctor.js");
+        const report = await runDoctor(context.root, {
+          distribution: resolve(context.assets, "..", ".."),
+        });
+        return { stdout: renderReport(report), exitCode: exitCodeFor(report) };
       }
 
       case "guards": {

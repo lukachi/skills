@@ -119,6 +119,11 @@ the next action in the same turn. Finishing a unit is not finishing — completi
 one releases its claim and leaves units nobody has taken, which is the moment a
 long run is most likely to stop on "next I will do X" and then not.
 
+**When the tool itself misbehaves, ask it.** `wfctl doctor` verifies the
+installation and everything it depends on — the guards, the skill, each
+registered leaf and its graph, retrieval. A guard that never fires and a
+retrieval that returns nothing both look like a quiet, healthy session.
+
 **Act on a refusal, do not work around it.** Every refusal names the command
 that clears it. Editing a record by hand to get past one is how a receipt ends
 up meaning nothing.
