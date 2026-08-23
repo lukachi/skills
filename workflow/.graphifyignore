@@ -1,6 +1,0 @@
-# wfctl:begin
-.workflow/
-graphify-out/
-AGENTS.md
-CLAUDE.md
-# wfctl:end
