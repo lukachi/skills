@@ -262,6 +262,14 @@ QMD is a rebuildable retrieval cache:
 `wfctl` must not implement a competing semantic Markdown index, embedding
 store, or ranking pipeline.
 
+## Reachability
+
+A page nothing links to is unreachable, and a reader who cannot navigate to it
+is a reader for whom it does not exist. Area indexes link their capabilities and
+engineering links established product meaning, so both a dead link and an orphan
+are structural failures rather than tidiness. The entry point is never an
+orphan: it is where a reader starts.
+
 ## Deterministic artifacts
 
 `wfctl knowledge build` compiles two ignored, rebuildable artifacts:

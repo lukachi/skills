@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
+import { filesAt, resolveRevision } from "./git.js";
 import { withLock } from "./lock.js";
 import type { RegisteredRepository } from "./registry.js";
 import type { Claim } from "./trajectory.js";
@@ -344,7 +345,13 @@ export async function currentCase(root: string): Promise<ReconstructionCase | un
 export async function recordScope(
   root: string,
   record: ReconstructionCase,
-  options: { repositories: PinnedRepository[]; rawScope: RawScope; inScope: string[] },
+  options: {
+    repositories: PinnedRepository[];
+    rawScope: RawScope;
+    inScope: string[];
+    /** Paths deliberately left out, with the reason, before the crawl starts. */
+    exclude?: string[];
+  },
 ): Promise<ReconstructionCase> {
   /**
    * Scope is settled once.
@@ -375,14 +382,52 @@ export async function recordScope(
    */
   const raw =
     options.rawScope === "all" ? record.rawPaths.map((path) => `${RAW_DIR}/${path}`) : [];
-  const inScope = [...new Set([...options.inScope, ...raw])].sort();
+
+  /**
+   * What the repository contained at the pinned revision, not what the agent
+   * typed. Measuring against a supplied list answers "did you read what you
+   * chose to read", which is a question that cannot fail — a baseline could be
+   * declared complete by scoping one file, and one was.
+   *
+   * An explicit `--in` narrows that tree; it never adds to it, so a path
+   * outside the repository cannot enter scope at all.
+   */
+  const fromTree = options.repositories.flatMap((repository) => {
+    const revision = resolveRevision(repository.path, repository.revision);
+    return filesAt(repository.path, revision).map(
+      (file) => `${repository.repository}:${file}`,
+    );
+  });
+
+  const narrowed =
+    options.inScope.length > 0
+      ? fromTree.filter((entry) =>
+          options.inScope.some(
+            (want) => entry === want || entry.endsWith(`:${want}`) || entry.includes(`:${want}`),
+          ),
+        )
+      : fromTree;
+
+  if (options.inScope.length > 0 && narrowed.length === 0) {
+    throw new GateRefusal(
+      "Nothing in the pinned tree matches that scope.",
+      "wfctl reconstruct scope --repository <owner/name> --revision <sha>   (with no --in, for everything)",
+      `Asked for: ${options.inScope.join(", ")}`,
+    );
+  }
+
+  const excluded = (options.exclude ?? []).map((path) => ({
+    path,
+    reason: "excluded when the scope was settled",
+  }));
+  const inScope = [...new Set([...narrowed, ...raw])].sort();
 
   const next: ReconstructionCase = {
     ...record,
     stage: "crawl",
     repositories: options.repositories,
     rawScope: options.rawScope,
-    coverage: { ...record.coverage, inScope },
+    coverage: { ...record.coverage, inScope, excluded },
   };
   await writeCase(root, next);
   return next;

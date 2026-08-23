@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { contentHash, inspectPage, stripSeal, validateCurated } from "../src/core/curated.js";
+import { contentHash, inspectLinks, inspectPage, stripSeal, validateCurated } from "../src/core/curated.js";
 import { findDecisions, renderDecisions } from "../src/core/decided.js";
 import { GateRefusal } from "../src/core/gates.js";
 import { withLock } from "../src/core/lock.js";
@@ -76,12 +76,74 @@ test("the hash ignores the seal line, so a draft's seal survives promotion", () 
 test("validation walks the whole corpus", async () => {
   const target = await root();
   await mkdir(resolve(target, "knowledge/areas/billing"), { recursive: true });
+  await writeFile(
+    resolve(target, "knowledge/index.md"),
+    `${page()}\n[Billing](areas/billing/index.md)\n`,
+    "utf8",
+  );
   await writeFile(resolve(target, "knowledge/areas/billing/index.md"), page(), "utf8");
   await writeFile(resolve(target, "knowledge/broken.md"), "# No frontmatter\n", "utf8");
 
   const issues = await validateCurated(target);
   assert.ok(issues.every((issue) => issue.path !== "areas/billing/index.md"));
   assert.ok(issues.some((issue) => issue.path === "broken.md"));
+});
+
+test("a page nothing links to is unreachable, and a dead link is named", async () => {
+  const target = await root();
+  await mkdir(resolve(target, "knowledge/areas"), { recursive: true });
+  await writeFile(
+    resolve(target, "knowledge/index.md"),
+    `${page()}\n[Gone](areas/gone.md)\n`,
+    "utf8",
+  );
+  await writeFile(resolve(target, "knowledge/areas/orphan.md"), page(), "utf8");
+
+  const issues = await inspectLinks(target);
+  assert.ok(
+    issues.some((issue) => issue.path === "index.md" && issue.problem.includes("not a curated page")),
+    "a dead link was not reported",
+  );
+  assert.ok(
+    issues.some((issue) => issue.path === "areas/orphan.md" && issue.problem.includes("nothing links")),
+    "an unreachable page was not reported",
+  );
+  // The entry point is where a reader starts; it is never an orphan.
+  assert.ok(!issues.some((issue) => issue.path === "index.md" && issue.problem.includes("nothing links")));
+});
+
+test("debts are derived across every subject, and never stored", async () => {
+  const target = await root();
+  const { appendEvent } = await import("../src/core/trajectory.js");
+  const { collectDebts, renderDebts } = await import("../src/core/debts.js");
+
+  await appendEvent(target, "Refunds", { summary: "partial refunds", axis: "intent", claims: [] });
+  await appendEvent(target, "Refunds", { summary: "whole order only", axis: "delivery", claims: [] });
+  await appendEvent(target, "Search", { summary: "offline search", axis: "vision", claims: [] });
+  await appendEvent(target, "Billing", { summary: "invoices", axis: "intent", claims: [] });
+  await appendEvent(target, "Billing", { summary: "invoices", axis: "delivery", claims: [] });
+
+  const report = await collectDebts(target);
+  assert.deepEqual(report.delivery.map((gap) => gap.subject), ["Refunds"]);
+  assert.deepEqual(report.direction.map((gap) => gap.subject), ["Search"]);
+
+  const rendered = renderDebts(report);
+  assert.match(rendered, /Accepted and not delivered/);
+  assert.match(rendered, /partial refunds/);
+  assert.match(rendered, /turns the list into one decision/);
+
+  // Nothing was written: the gap is a subtraction, not a record.
+  const { readdir } = await import("node:fs/promises");
+  const files = await readdir(resolve(target, "trajectories"));
+  assert.ok(files.every((file) => !file.includes("debt")));
+});
+
+test("no gaps says why that might not be good news", async () => {
+  const target = await root();
+  const { collectDebts, renderDebts } = await import("../src/core/debts.js");
+  const rendered = renderDebts(await collectDebts(target));
+  assert.match(rendered, /No gaps/);
+  assert.match(rendered, /read again at a new revision/);
 });
 
 /* --------------------------------------------------------------- decided */

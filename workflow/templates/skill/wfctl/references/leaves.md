@@ -56,6 +56,24 @@ This is what the registry is for. Deriving a checkout from a repository name, a
 branch, a sibling path, or where a record lives is how the code ended up in the
 wrong tree often enough to invent the mechanism.
 
+## Scope comes from the tree, not from you
+
+A reconstruction's scope is what the repository contained at the pinned
+revision. `--in` narrows that; it never adds to it, so a path outside the
+repository cannot enter scope at all.
+
+That is what makes coverage mean something. Measured against a list you supplied
+it answers "did you read what you chose to read", which cannot fail — a baseline
+could be, and was, declared complete by scoping one file.
+
+```sh
+wfctl reconstruct read <owner/name>:<path> --at <owner/name>
+```
+
+reads a file at the pinned revision without a checkout, and prints the citation
+another reader can resolve on a machine that never had that branch. That is the
+difference between a citation and an assertion.
+
 ## Order
 
 1. Traverse outward from what you are touching — callers, dependents, anything

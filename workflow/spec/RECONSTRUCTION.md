@@ -79,8 +79,15 @@ an unbounded one.
 
 ## Coverage, and what proves reading
 
-Coverage is plain accounting: what was in scope, what is read, what is excluded,
-what remains. It is kept because unread should be a number rather than a
+**Scope is derived from the pinned tree**, never from paths the agent supplied.
+`--in` narrows what the repository contained at that revision and cannot add to
+it. Measuring coverage against a supplied list answers "did you read what you
+chose to read", a question that cannot fail — a baseline could be declared
+complete by scoping one file, and an unregistered repository at an invented
+revision was accepted and printed back as though it had been read.
+
+Coverage is then plain accounting: what was in scope, what is read, what is
+excluded, what remains. It is kept because unread should be a number rather than a
 judgement.
 
 Line-range reading receipts are **not** kept. The agent asserted that a file was
@@ -106,6 +113,14 @@ into a line until they have been separated from each other.
 Routing lanes do not survive. The trajectory decides where anything goes, and
 deciding it twice is how a claim reached curated knowledge before the line it
 belonged to existed.
+
+## Reading at a revision
+
+A file can be read at the pinned revision without a checkout, and the citation
+it prints — `repository@revision:path` — resolves for a reader on a machine that
+never had that branch. That is the difference between a citation and an
+assertion, and it is what lets a later pass re-read the same subject at a new
+pin and see what moved.
 
 ## Trajectories
 

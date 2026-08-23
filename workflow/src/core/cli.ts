@@ -64,8 +64,9 @@ const USAGE = `wfctl — project workflow
 
   reconstruct start            open a case over the registered repositories
   reconstruct status
-  reconstruct scope --repository <owner/name> --revision <sha> [--raw all|selected|none] [--in <path>]...
-  reconstruct read <path> | exclude <path> --reason "<why>"
+  reconstruct scope --repository <owner/name> [--revision <sha>] [--raw all|selected|none] [--in <path>]...
+  reconstruct read <path> [--at <owner/name>]   record a read, or print the file at the pinned revision
+  reconstruct exclude <path> --reason "<why>"
   reconstruct contradiction --subject ... --side ... --side ...
   reconstruct resolve <id> --resolution "<what they decided>"
   reconstruct subject <trajectory-id>
@@ -86,6 +87,7 @@ const USAGE = `wfctl — project workflow
 
   guide [<topic>]              detail for one topic, when the state needs it
 
+  debts                        what is accepted and not delivered, across every subject
   decided "<subject>"          what has already been settled about it, and where
   knowledge validate [--page <path>]
   knowledge hash <path>
@@ -565,19 +567,61 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         if (action === "status") return ok_(reconstruct.renderStatus(record));
 
         if (action === "scope") {
+          const { readRegistry } = await import("./registry.js");
+          const { head, resolveRevision } = await import("./git.js");
+          const registered = await readRegistry(context.root);
+
+          /**
+           * The repository, its path and its revision come from the registry
+           * and from Git, not from flags. An unregistered repository at an
+           * invented revision used to be accepted and printed back as though
+           * it had been read.
+           */
+          const repositories = flags(args, "repository").map((name) => {
+            const entry = registered.find((candidate) => candidate.repository === name);
+            if (!entry) {
+              throw new GateRefusal(
+                `${name} is not registered, so there is no checkout to read.`,
+                `wfctl repo add ${name} --path <dir>`,
+              );
+            }
+            const asked = flag(args, "revision");
+            const observed = head(entry.path);
+            return {
+              ...entry,
+              revision: asked ? resolveRevision(entry.path, asked) : observed.revision,
+              dirty: observed.dirty,
+            };
+          });
+
           const next = await reconstruct.recordScope(context.root, record, {
-            repositories: flags(args, "repository").map((repository) => ({
-              repository,
-              checkout: repository,
-              path: "",
-              worktreeId: flag(args, "worktree") ?? "main",
-              revision: flag(args, "revision") ?? "",
-              dirty: args.includes("--dirty"),
-            })),
+            repositories,
             rawScope: oneOf(flag(args, "raw"), ["all", "selected", "none"] as const, "raw", "none"),
             inScope: flags(args, "in"),
+            exclude: flags(args, "not"),
           });
           return ok_(reconstruct.renderStatus(next));
+        }
+
+        if (action === "read" && flag(args, "at")) {
+          const { citation, readAt } = await import("./git.js");
+          const { readRegistry } = await import("./registry.js");
+          const name = flag(args, "at") ?? "";
+          const entry = (await readRegistry(context.root)).find(
+            (candidate) => candidate.repository === name,
+          );
+          const pinned = record.repositories.find((candidate) => candidate.repository === name);
+          if (!entry || !pinned) {
+            throw new GateRefusal(
+              `${name} is not in this case's scope.`,
+              "wfctl reconstruct status",
+            );
+          }
+          const file = args[0] ?? "";
+          const body = readAt(entry.path, pinned.revision, file);
+          return ok_(
+            [`${citation(name, pinned.revision, file)}`, "", body].join("\n"),
+          );
         }
 
         if (action === "read") {
@@ -659,6 +703,11 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         }
 
         return { stdout: USAGE, exitCode: 1 };
+      }
+
+      case "debts": {
+        const { collectDebts, renderDebts } = await import("./debts.js");
+        return ok_(renderDebts(await collectDebts(context.root)));
       }
 
       case "decided": {

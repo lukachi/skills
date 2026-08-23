@@ -105,6 +105,23 @@ answered.
 Finding nothing is a real answer too: it means this is genuinely worth their
 turn. Say so when you ask, rather than asking as though you had not looked.
 
+## What is accepted and not delivered
+
+```sh
+wfctl debts
+```
+
+The gap for one subject is derived inside its line; this gathers them. Nothing
+is stored — a gap is a subtraction, and a stored one is a subtraction that was
+true once.
+
+There is no command that marks a debt paid. It dies when the source changes and
+the subject is read again at a new revision, which is why the workflow
+prescribes re-reading rather than accepting a claim that the work was done.
+
+Each becomes work the ordinary way. Grouping several by the outcome that would
+close them usually turns the list into one decision.
+
 ## Paths you never type
 
 Where a path follows from state, the tool creates it and prints it — promotion

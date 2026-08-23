@@ -165,6 +165,58 @@ export async function collectPages(root: string): Promise<string[]> {
   }
 }
 
+/**
+ * Links between pages, and pages nothing links to.
+ *
+ * A page checked alone can be perfectly formed and unreachable, and a reader
+ * who cannot navigate to it is a reader for whom it does not exist. The model
+ * says Area indexes link their capabilities and engineering links established
+ * product meaning, so both a dead link and an orphan are real failures rather
+ * than tidiness.
+ *
+ * The entry point is never an orphan: it is where a reader starts.
+ */
+export async function inspectLinks(root: string): Promise<PageIssue[]> {
+  const pages = await collectPages(root);
+  if (pages.length === 0) return [];
+
+  const known = new Set(pages);
+  const linkedTo = new Set<string>();
+  const issues: PageIssue[] = [];
+
+  for (const page of pages) {
+    const body = await readFile(resolve(root, KNOWLEDGE_DIR, page), "utf8").catch(() => "");
+    for (const match of body.matchAll(/\]\(([^)]+\.md)(?:#[^)]*)?\)/g)) {
+      const href = match[1] ?? "";
+      if (/^[a-z]+:\/\//.test(href)) continue;
+      const target = relative(
+        resolve(root, KNOWLEDGE_DIR),
+        resolve(root, KNOWLEDGE_DIR, page, "..", href),
+      );
+      if (!known.has(target)) {
+        issues.push({
+          path: page,
+          problem: `links to ${href}, which is not a curated page`,
+          remedy: "Repair the link, or write the page it expects",
+        });
+        continue;
+      }
+      linkedTo.add(target);
+    }
+  }
+
+  for (const page of pages) {
+    if (page === "index.md" || linkedTo.has(page)) continue;
+    issues.push({
+      path: page,
+      problem: "nothing links to it",
+      remedy: "Link it from its Area index, or from the page that owns the subject",
+    });
+  }
+
+  return issues;
+}
+
 export async function validateCurated(root: string, only?: string): Promise<PageIssue[]> {
   const pages = only ? [only] : await collectPages(root);
   const issues: PageIssue[] = [];
@@ -176,6 +228,7 @@ export async function validateCurated(root: string, only?: string): Promise<Page
     }
     issues.push(...inspectPage(page, body));
   }
+  if (!only) issues.push(...(await inspectLinks(root)));
   return issues;
 }
 

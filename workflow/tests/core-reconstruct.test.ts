@@ -29,6 +29,28 @@ async function root(): Promise<string> {
   return mkdtemp(join(tmpdir(), "wfctl-recon-"));
 }
 
+/**
+ * A real repository with real commits.
+ *
+ * Scope is derived from what the tree contained at the pinned revision rather
+ * than from paths the agent typed, so a fixture pointing at a directory that is
+ * not a repository is no longer a valid test of anything.
+ */
+async function repository(files: Record<string, string>): Promise<string> {
+  const { execFileSync } = await import("node:child_process");
+  const path = await mkdtemp(join(tmpdir(), "wfctl-leaf-"));
+  execFileSync("git", ["init", "-q"], { cwd: path });
+  execFileSync("git", ["config", "user.email", "t@example.com"], { cwd: path });
+  execFileSync("git", ["config", "user.name", "t"], { cwd: path });
+  for (const [name, body] of Object.entries(files)) {
+    await mkdir(resolve(path, name, ".."), { recursive: true });
+    await writeFile(resolve(path, name), body, "utf8");
+  }
+  execFileSync("git", ["add", "."], { cwd: path });
+  execFileSync("git", ["commit", "-qm", "fixture"], { cwd: path });
+  return path;
+}
+
 function emptyCase(): ReconstructionCase {
   return {
     id: "2026-08-23-reconstruct",
@@ -295,15 +317,12 @@ test("the whole reconstruction walks stage by stage, and each gate names its rem
   const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
   const ctx = { root: await root(), assets, actor: "agent:crawler" };
 
-  await run(["repo", "add", "o/r", "--path", "/checkouts/r"], ctx);
+  await run(["repo", "add", "o/r", "--path", await repository({ "a.ts": "1\n" })], ctx);
   const started = await run(["reconstruct", "start"], ctx);
   assert.match(started.stdout, /first baseline/);
   assert.match(started.stdout, /One question, not four/);
 
-  await run(
-    ["reconstruct", "scope", "--repository", "o/r", "--revision", "abc123", "--in", "a.ts", "--in", "b.ts"],
-    ctx,
-  );
+  await run(["reconstruct", "scope", "--repository", "o/r"], ctx);
 
   // The crawl records contradictions instead of asking about them.
   const noted = await run(
@@ -316,8 +335,8 @@ test("the whole reconstruction walks stage by stage, and each gate names its rem
   assert.equal(early.exitCode, 2);
   assert.match(early.stdout, /neither read nor excluded/);
 
-  await run(["reconstruct", "read", "a.ts"], ctx);
-  await run(["reconstruct", "exclude", "b.ts", "--reason", "generated"], ctx);
+  await run(["reconstruct", "read", "o/r:a.ts"], ctx);
+  await run(["reconstruct", "exclude", "o/r:b.ts", "--reason", "generated"], ctx);
 
   const toAssemble = await run(["reconstruct", "stage"], ctx);
   assert.equal(toAssemble.exitCode, 0);
@@ -373,9 +392,10 @@ test("closing early is refused; every stage gate runs on the way past", async ()
   const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
   const ctx = { root: await root(), assets, actor: "agent:test" };
 
-  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  const leaf = await repository({ "x.ts": "export const x = 1;\n" });
+  await run(["repo", "add", "o/r", "--path", leaf], ctx);
   await run(["reconstruct", "start"], ctx);
-  await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts"], ctx);
+  await run(["reconstruct", "scope", "--repository", "o/r"], ctx);
   await run(["reconstruct", "contradiction", "--subject", "s", "--side", "one", "--side", "two"], ctx);
 
   const early = await run(["reconstruct", "close"], ctx);
@@ -402,14 +422,16 @@ test("--raw all puts the raw material in scope", async () => {
 
   await mkdir(resolve(ctx.root, "reconstruction/raw"), { recursive: true });
   await writeFile(resolve(ctx.root, "reconstruction/raw/note.md"), "history", "utf8");
-  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  const leaf = await repository({ "x.ts": "1\n" });
+  await run(["repo", "add", "o/r", "--path", leaf], ctx);
   await run(["reconstruct", "start"], ctx);
 
   const scoped = await run(
-    ["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--raw", "all"],
+    ["reconstruct", "scope", "--repository", "o/r", "--raw", "all"],
     ctx,
   );
-  assert.match(scoped.stdout, /1 left/);
+  // One source file from the pinned tree, plus the one raw note.
+  assert.match(scoped.stdout, /2 left/);
 });
 
 test("the scope is settled once", async () => {
@@ -417,11 +439,12 @@ test("the scope is settled once", async () => {
   const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
   const ctx = { root: await root(), assets, actor: "agent:test" };
 
-  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  const leaf = await repository({ "x.ts": "1\n", "y.ts": "2\n" });
+  await run(["repo", "add", "o/r", "--path", leaf], ctx);
   await run(["reconstruct", "start"], ctx);
-  await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts", "--in", "y.ts"], ctx);
+  await run(["reconstruct", "scope", "--repository", "o/r"], ctx);
 
-  const shrink = await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts"], ctx);
+  const shrink = await run(["reconstruct", "scope", "--repository", "o/r", "--in", "x.ts"], ctx);
   assert.equal(shrink.exitCode, 2);
   assert.match(shrink.stdout, /settled when this case entered crawl/);
 });
@@ -451,11 +474,12 @@ test("an exclusion without a reason is refused", async () => {
   const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
   const ctx = { root: await root(), assets, actor: "agent:test" };
 
-  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  const leaf = await repository({ "x.ts": "export const x = 1;\n" });
+  await run(["repo", "add", "o/r", "--path", leaf], ctx);
   await run(["reconstruct", "start"], ctx);
-  await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts"], ctx);
+  await run(["reconstruct", "scope", "--repository", "o/r"], ctx);
 
-  const result = await run(["reconstruct", "exclude", "x.ts"], ctx);
+  const result = await run(["reconstruct", "exclude", "o/r:x.ts"], ctx);
   assert.equal(result.exitCode, 2);
   assert.match(result.stdout, /indistinguishable from a file nobody got to/);
 });
@@ -465,11 +489,12 @@ test("reading outside the agreed scope is refused", async () => {
   const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
   const ctx = { root: await root(), assets, actor: "agent:test" };
 
-  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  const leaf = await repository({ "x.ts": "export const x = 1;\n" });
+  await run(["repo", "add", "o/r", "--path", leaf], ctx);
   await run(["reconstruct", "start"], ctx);
-  await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts"], ctx);
+  await run(["reconstruct", "scope", "--repository", "o/r"], ctx);
 
-  const result = await run(["reconstruct", "read", "y.ts"], ctx);
+  const result = await run(["reconstruct", "read", "o/r:y.ts"], ctx);
   assert.equal(result.exitCode, 2);
   assert.match(result.stdout, /not in this case's scope/);
 });

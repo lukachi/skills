@@ -1178,6 +1178,7 @@ __export(curated_exports, {
   assertPromotable: () => assertPromotable,
   collectPages: () => collectPages,
   contentHash: () => contentHash,
+  inspectLinks: () => inspectLinks,
   inspectPage: () => inspectPage,
   renderIssues: () => renderIssues,
   stripSeal: () => stripSeal,
@@ -1276,6 +1277,42 @@ async function collectPages(root) {
     return [];
   }
 }
+async function inspectLinks(root) {
+  const pages = await collectPages(root);
+  if (pages.length === 0) return [];
+  const known = new Set(pages);
+  const linkedTo = /* @__PURE__ */ new Set();
+  const issues = [];
+  for (const page of pages) {
+    const body = await readFile6(resolve7(root, KNOWLEDGE_DIR, page), "utf8").catch(() => "");
+    for (const match of body.matchAll(/\]\(([^)]+\.md)(?:#[^)]*)?\)/g)) {
+      const href = match[1] ?? "";
+      if (/^[a-z]+:\/\//.test(href)) continue;
+      const target = relative2(
+        resolve7(root, KNOWLEDGE_DIR),
+        resolve7(root, KNOWLEDGE_DIR, page, "..", href)
+      );
+      if (!known.has(target)) {
+        issues.push({
+          path: page,
+          problem: `links to ${href}, which is not a curated page`,
+          remedy: "Repair the link, or write the page it expects"
+        });
+        continue;
+      }
+      linkedTo.add(target);
+    }
+  }
+  for (const page of pages) {
+    if (page === "index.md" || linkedTo.has(page)) continue;
+    issues.push({
+      path: page,
+      problem: "nothing links to it",
+      remedy: "Link it from its Area index, or from the page that owns the subject"
+    });
+  }
+  return issues;
+}
 async function validateCurated(root, only) {
   const pages = only ? [only] : await collectPages(root);
   const issues = [];
@@ -1287,6 +1324,7 @@ async function validateCurated(root, only) {
     }
     issues.push(...inspectPage(page, body));
   }
+  if (!only) issues.push(...await inspectLinks(root));
   return issues;
 }
 function assertPromotable(issues) {
@@ -2002,6 +2040,89 @@ var init_registry = __esm({
   }
 });
 
+// src/core/git.ts
+var git_exports = {};
+__export(git_exports, {
+  citation: () => citation,
+  filesAt: () => filesAt,
+  head: () => head,
+  isRepository: () => isRepository,
+  readAt: () => readAt,
+  resolveRevision: () => resolveRevision
+});
+import { spawnSync } from "node:child_process";
+function isRepository(path, run3 = runGit) {
+  return run3(["rev-parse", "--is-inside-work-tree"], path).status === 0;
+}
+function head(path, run3 = runGit) {
+  const revision = run3(["rev-parse", "HEAD"], path);
+  if (revision.status !== 0) {
+    throw new GateRefusal(
+      `${path} is not a Git repository, or has no commits.`,
+      `git -C ${path} init && git -C ${path} commit --allow-empty -m "initial"`,
+      revision.stderr.trim()
+    );
+  }
+  const status = run3(["status", "--porcelain"], path);
+  return { revision: revision.stdout.trim(), dirty: status.stdout.trim().length > 0 };
+}
+function resolveRevision(path, revision, run3 = runGit) {
+  const result = run3(["rev-parse", "--verify", `${revision}^{commit}`], path);
+  if (result.status !== 0) {
+    throw new GateRefusal(
+      `${revision} is not a commit in ${path}.`,
+      `git -C ${path} log --oneline -5`,
+      "A revision nobody can resolve cannot be read at, so nothing recorded against it can be checked later."
+    );
+  }
+  return result.stdout.trim();
+}
+function filesAt(path, revision, run3 = runGit) {
+  const result = run3(["ls-tree", "-r", "--name-only", revision], path);
+  if (result.status !== 0) {
+    throw new GateRefusal(
+      `Cannot list ${path} at ${revision}.`,
+      `git -C ${path} log --oneline -5`,
+      result.stderr.trim()
+    );
+  }
+  return result.stdout.split("\n").filter((line) => line.trim().length > 0).sort();
+}
+function readAt(path, revision, file, run3 = runGit) {
+  const result = run3(["show", `${revision}:${file}`], path);
+  if (result.status !== 0) {
+    throw new GateRefusal(
+      `${file} is not in ${path} at ${revision}.`,
+      `wfctl reconstruct status`,
+      "It may have been added later, or removed before this revision."
+    );
+  }
+  return result.stdout;
+}
+function citation(repository, revision, file) {
+  return `${repository}@${revision.slice(0, 12)}:${file}`;
+}
+var runGit;
+var init_git = __esm({
+  "src/core/git.ts"() {
+    "use strict";
+    init_gates();
+    runGit = (args, cwd) => {
+      const result = spawnSync("git", args, {
+        cwd,
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+        timeout: 3e4
+      });
+      return {
+        status: result.status ?? 1,
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? ""
+      };
+    };
+  }
+});
+
 // src/core/reconstruct.ts
 var reconstruct_exports = {};
 __export(reconstruct_exports, {
@@ -2201,13 +2322,35 @@ async function recordScope(root, record, options) {
     );
   }
   const raw = options.rawScope === "all" ? record.rawPaths.map((path) => `${RAW_DIR}/${path}`) : [];
-  const inScope = [.../* @__PURE__ */ new Set([...options.inScope, ...raw])].sort();
+  const fromTree = options.repositories.flatMap((repository) => {
+    const revision = resolveRevision(repository.path, repository.revision);
+    return filesAt(repository.path, revision).map(
+      (file) => `${repository.repository}:${file}`
+    );
+  });
+  const narrowed = options.inScope.length > 0 ? fromTree.filter(
+    (entry) => options.inScope.some(
+      (want) => entry === want || entry.endsWith(`:${want}`) || entry.includes(`:${want}`)
+    )
+  ) : fromTree;
+  if (options.inScope.length > 0 && narrowed.length === 0) {
+    throw new GateRefusal(
+      "Nothing in the pinned tree matches that scope.",
+      "wfctl reconstruct scope --repository <owner/name> --revision <sha>   (with no --in, for everything)",
+      `Asked for: ${options.inScope.join(", ")}`
+    );
+  }
+  const excluded = (options.exclude ?? []).map((path) => ({
+    path,
+    reason: "excluded when the scope was settled"
+  }));
+  const inScope = [.../* @__PURE__ */ new Set([...narrowed, ...raw])].sort();
   const next = {
     ...record,
     stage: "crawl",
     repositories: options.repositories,
     rawScope: options.rawScope,
-    coverage: { ...record.coverage, inScope }
+    coverage: { ...record.coverage, inScope, excluded }
   };
   await writeCase(root, next);
   return next;
@@ -2360,6 +2503,7 @@ var init_reconstruct = __esm({
   "src/core/reconstruct.ts"() {
     "use strict";
     init_gates();
+    init_git();
     init_lock();
     RECONSTRUCTION_DIR = "reconstruction/active";
     RECONSTRUCTION_ARCHIVE = "reconstruction/archive";
@@ -2383,6 +2527,60 @@ var init_reconstruct = __esm({
       promote: "maintainer"
     };
     CURRENT_POINTER2 = "reconstruction/active/current";
+  }
+});
+
+// src/core/debts.ts
+var debts_exports = {};
+__export(debts_exports, {
+  collectDebts: () => collectDebts,
+  renderDebts: () => renderDebts
+});
+async function collectDebts(root) {
+  const gaps = (await listTrajectories(root)).map((trajectory) => deriveGap(trajectory));
+  return {
+    delivery: gaps.filter((gap) => gap.delivery.length > 0),
+    direction: gaps.filter((gap) => gap.direction.length > 0)
+  };
+}
+function renderDebts(report) {
+  if (report.delivery.length === 0 && report.direction.length === 0) {
+    return [
+      "No gaps.",
+      "",
+      "Either everything recorded is delivered, or nothing has been re-read since",
+      "it changed. A gap dies when the subject is read again at a new revision \u2014",
+      "never because somebody said the work was done."
+    ].join("\n");
+  }
+  const lines = [];
+  if (report.delivery.length > 0) {
+    lines.push("Accepted and not delivered:", "");
+    for (const gap of report.delivery) {
+      lines.push(`  ${gap.subject}`);
+      for (const item of gap.delivery) lines.push(`    ${item}`);
+    }
+    lines.push("");
+  }
+  if (report.direction.length > 0) {
+    lines.push("Declared direction not yet reached:", "");
+    for (const gap of report.direction) {
+      lines.push(`  ${gap.subject}`);
+      for (const item of gap.direction) lines.push(`    ${item}`);
+    }
+    lines.push("");
+  }
+  lines.push(
+    "Each becomes work the ordinary way \u2014 put it to the maintainer and open a",
+    "flow. Grouping several of these by the outcome that would close them",
+    "usually turns the list into one decision."
+  );
+  return lines.join("\n");
+}
+var init_debts = __esm({
+  "src/core/debts.ts"() {
+    "use strict";
+    init_trajectory();
   }
 });
 
@@ -2489,7 +2687,7 @@ __export(doctor_exports, {
   renderReport: () => renderReport,
   runDoctor: () => runDoctor
 });
-import { spawnSync } from "node:child_process";
+import { spawnSync as spawnSync2 } from "node:child_process";
 import { access, readFile as readFile12, readdir as readdir8, stat as stat6 } from "node:fs/promises";
 import { resolve as resolve15 } from "node:path";
 async function exists(path) {
@@ -2692,8 +2890,8 @@ async function runDoctor(targetInput, options = {}) {
 function renderReport(report) {
   const symbol = { pass: "ok  ", warn: "warn", fail: "FAIL" };
   const lines = report.checks.map((check) => {
-    const head = `${symbol[check.status]}  ${check.name.padEnd(28)} ${check.message}`;
-    return check.status === "pass" || !check.remedy ? head : `${head}
+    const head2 = `${symbol[check.status]}  ${check.name.padEnd(28)} ${check.message}`;
+    return check.status === "pass" || !check.remedy ? head2 : `${head2}
       \u2192 ${check.remedy}`;
   });
   const failed = report.checks.filter((check) => check.status === "fail").length;
@@ -2716,7 +2914,7 @@ var init_doctor = __esm({
     init_leaves();
     init_registry();
     run = (command, args, options) => {
-      const result = spawnSync(command, args, {
+      const result = spawnSync2(command, args, {
         cwd: options?.cwd,
         encoding: "utf8",
         timeout: 2e4
@@ -3350,8 +3548,9 @@ var USAGE = `wfctl \u2014 project workflow
 
   reconstruct start            open a case over the registered repositories
   reconstruct status
-  reconstruct scope --repository <owner/name> --revision <sha> [--raw all|selected|none] [--in <path>]...
-  reconstruct read <path> | exclude <path> --reason "<why>"
+  reconstruct scope --repository <owner/name> [--revision <sha>] [--raw all|selected|none] [--in <path>]...
+  reconstruct read <path> [--at <owner/name>]   record a read, or print the file at the pinned revision
+  reconstruct exclude <path> --reason "<why>"
   reconstruct contradiction --subject ... --side ... --side ...
   reconstruct resolve <id> --resolution "<what they decided>"
   reconstruct subject <trajectory-id>
@@ -3372,6 +3571,7 @@ var USAGE = `wfctl \u2014 project workflow
 
   guide [<topic>]              detail for one topic, when the state needs it
 
+  debts                        what is accepted and not delivered, across every subject
   decided "<subject>"          what has already been settled about it, and where
   knowledge validate [--page <path>]
   knowledge hash <path>
@@ -3769,19 +3969,52 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
         }
         if (action === "status") return ok_(reconstruct.renderStatus(record));
         if (action === "scope") {
+          const { readRegistry: readRegistry3 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
+          const { head: head2, resolveRevision: resolveRevision2 } = await Promise.resolve().then(() => (init_git(), git_exports));
+          const registered = await readRegistry3(context.root);
+          const repositories = flags(args, "repository").map((name) => {
+            const entry = registered.find((candidate) => candidate.repository === name);
+            if (!entry) {
+              throw new GateRefusal(
+                `${name} is not registered, so there is no checkout to read.`,
+                `wfctl repo add ${name} --path <dir>`
+              );
+            }
+            const asked = flag(args, "revision");
+            const observed = head2(entry.path);
+            return {
+              ...entry,
+              revision: asked ? resolveRevision2(entry.path, asked) : observed.revision,
+              dirty: observed.dirty
+            };
+          });
           const next = await reconstruct.recordScope(context.root, record, {
-            repositories: flags(args, "repository").map((repository) => ({
-              repository,
-              checkout: repository,
-              path: "",
-              worktreeId: flag(args, "worktree") ?? "main",
-              revision: flag(args, "revision") ?? "",
-              dirty: args.includes("--dirty")
-            })),
+            repositories,
             rawScope: oneOf(flag(args, "raw"), ["all", "selected", "none"], "raw", "none"),
-            inScope: flags(args, "in")
+            inScope: flags(args, "in"),
+            exclude: flags(args, "not")
           });
           return ok_(reconstruct.renderStatus(next));
+        }
+        if (action === "read" && flag(args, "at")) {
+          const { citation: citation2, readAt: readAt2 } = await Promise.resolve().then(() => (init_git(), git_exports));
+          const { readRegistry: readRegistry3 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
+          const name = flag(args, "at") ?? "";
+          const entry = (await readRegistry3(context.root)).find(
+            (candidate) => candidate.repository === name
+          );
+          const pinned = record.repositories.find((candidate) => candidate.repository === name);
+          if (!entry || !pinned) {
+            throw new GateRefusal(
+              `${name} is not in this case's scope.`,
+              "wfctl reconstruct status"
+            );
+          }
+          const file = args[0] ?? "";
+          const body = readAt2(entry.path, pinned.revision, file);
+          return ok_(
+            [`${citation2(name, pinned.revision, file)}`, "", body].join("\n")
+          );
         }
         if (action === "read") {
           const next = await reconstruct.markRead(context.root, record, args[0] ?? "");
@@ -3854,6 +4087,10 @@ archived at:
 ${archived}`);
         }
         return { stdout: USAGE, exitCode: 1 };
+      }
+      case "debts": {
+        const { collectDebts: collectDebts2, renderDebts: renderDebts2 } = await Promise.resolve().then(() => (init_debts(), debts_exports));
+        return ok_(renderDebts2(await collectDebts2(context.root)));
       }
       case "decided": {
         const { findDecisions: findDecisions2, renderDecisions: renderDecisions2 } = await Promise.resolve().then(() => (init_decided(), decided_exports));
