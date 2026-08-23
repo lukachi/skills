@@ -61,6 +61,15 @@ const USAGE = `wfctl — project workflow
   repo list | repo remove <owner/name> [--worktree <id>]
 
   reconstruct start            open a case over the registered repositories
+  reconstruct status
+  reconstruct scope --repository <owner/name> --revision <sha> [--raw all|selected|none] [--in <path>]...
+  reconstruct read <path> | exclude <path> --reason "<why>"
+  reconstruct contradiction --subject ... --side ... --side ...
+  reconstruct resolve <id> --resolution "<what they decided>"
+  reconstruct subject <trajectory-id>
+  reconstruct probe --question ... --page <path> --asker <agent> [--passed]
+  reconstruct stage            advance when this stage's gate passes
+  reconstruct close
 
   trajectory append --subject ... --summary ... --axis <intent|delivery|vision>
   trajectory list | trajectory show <subject>
@@ -80,6 +89,10 @@ const USAGE = `wfctl — project workflow
 
 function ok_(stdout: string): { stdout: string; exitCode: number } {
   return { stdout, exitCode: 0 };
+}
+
+function compose_(parts: (string | undefined)[]): string {
+  return parts.filter((part): part is string => Boolean(part && part.trim())).join("\n\n");
 }
 
 function flag(argv: string[], name: string): string | undefined {
@@ -362,6 +375,9 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
             probes: [],
             hadBaseline: baseline,
           });
+          const { loadGuidance } = await import("./guidance.js");
+          const scopeGuidance = await loadGuidance({ root: context.assets }, "reconstruct/scope");
+          await reconstruct.setCurrentCase(context.root, id);
           return ok_(
             [
               `reconstruction ${id} opened`,
@@ -376,11 +392,113 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
                 ? `raw material: ${raw.length} file(s) under reconstruction/raw/`
                 : "raw material: none",
               "",
-              "Put one scope decision to the maintainer: which repositories, how much of",
-              "the raw material, and what is deliberately out. One question, not four.",
+              scopeGuidance ?? "",
             ].join("\n"),
           );
         }
+        const record = await reconstruct.currentCase(context.root);
+        if (!record) {
+          throw new GateRefusal(
+            "No reconstruction is open.",
+            "wfctl reconstruct start",
+          );
+        }
+
+        if (action === "status") return ok_(reconstruct.renderStatus(record));
+
+        if (action === "scope") {
+          const next = await reconstruct.recordScope(context.root, record, {
+            repositories: flags(args, "repository").map((repository) => ({
+              repository,
+              checkout: repository,
+              path: "",
+              worktreeId: flag(args, "worktree") ?? "main",
+              revision: flag(args, "revision") ?? "",
+              dirty: args.includes("--dirty"),
+            })),
+            rawScope: (flag(args, "raw") ?? "none") as "all" | "selected" | "none",
+            inScope: flags(args, "in"),
+          });
+          return ok_(reconstruct.renderStatus(next));
+        }
+
+        if (action === "read") {
+          const next = await reconstruct.markRead(context.root, record, args[0] ?? "");
+          return ok_(reconstruct.renderStatus(next));
+        }
+
+        if (action === "exclude") {
+          const next = await reconstruct.markExcluded(
+            context.root,
+            record,
+            args[0] ?? "",
+            flag(args, "reason") ?? "",
+          );
+          return ok_(reconstruct.renderStatus(next));
+        }
+
+        if (action === "contradiction") {
+          const next = await reconstruct.recordContradiction(context.root, record, {
+            subject: flag(args, "subject") ?? "",
+            sides: flags(args, "side"),
+          });
+          return ok_(`recorded; ${next.contradictions.length} to adjudicate after the crawl.`);
+        }
+
+        if (action === "resolve") {
+          const next = await reconstruct.resolveContradiction(
+            context.root,
+            record,
+            args[0] ?? "",
+            flag(args, "resolution") ?? "",
+          );
+          return ok_(reconstruct.renderStatus(next));
+        }
+
+        if (action === "probe") {
+          const next = await reconstruct.recordProbe(context.root, record, {
+            question: flag(args, "question") ?? "",
+            pages: flags(args, "page"),
+            asker: flag(args, "asker") ?? context.actor,
+            ...(flag(args, "answer") ? { answer: flag(args, "answer") as string } : {}),
+            passed: args.includes("--passed"),
+          });
+          return ok_(reconstruct.renderStatus(next));
+        }
+
+        if (action === "subject") {
+          const next = {
+            ...record,
+            trajectories: [...new Set([...record.trajectories, args[0] ?? ""])].filter(Boolean),
+          };
+          await reconstruct.writeCase(context.root, next);
+          return ok_(reconstruct.renderStatus(next));
+        }
+
+        if (action === "stage") {
+          const { loadGuidance } = await import("./guidance.js");
+          const advanced = await reconstruct.advanceStage(context.root, record, context.actor);
+          const slice = await loadGuidance(
+            { root: context.assets },
+            `reconstruct/${advanced.stage}` as never,
+          ).catch(() => undefined);
+          return ok_(
+            compose_([
+              slice,
+              reconstruct.renderStatus(advanced.record),
+              reconstruct.STAGE_PRESENCE[advanced.stage] === "maintainer"
+                ? "This stage needs the maintainer. Put it to them in product language."
+                : "This stage runs unattended. Do not interrupt it with questions.",
+            ]),
+          );
+        }
+
+        if (action === "close") {
+          const outcome = reconstruct.renderOutcome(record);
+          const archived = await reconstruct.closeCase(context.root, record.id);
+          return ok_(`${outcome}\narchived at:\n${archived}`);
+        }
+
         return { stdout: USAGE, exitCode: 1 };
       }
 

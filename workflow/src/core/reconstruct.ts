@@ -289,3 +289,219 @@ export async function closeCase(root: string, id: string): Promise<string> {
   await rename(from, to);
   return to;
 }
+
+/* ---------------------------------------------------------------- current */
+
+const CURRENT_POINTER = "reconstruction/active/current";
+
+export async function setCurrentCase(root: string, id: string): Promise<void> {
+  const path = resolve(root, CURRENT_POINTER);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${id}\n`, "utf8");
+}
+
+export async function currentCase(root: string): Promise<ReconstructionCase | undefined> {
+  try {
+    const id = (await readFile(resolve(root, CURRENT_POINTER), "utf8")).trim();
+    return id ? readCase(root, id) : undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+/**
+ * The scope decision, as one act.
+ *
+ * The agent inventories the registry, the raw material and any existing
+ * knowledge first, and puts a single question. Four separate asks — which
+ * repositories, then which checkout, then how much raw, then what is out — is
+ * the shape that made the maintainer answer procedure instead of scope.
+ */
+export async function recordScope(
+  root: string,
+  record: ReconstructionCase,
+  options: { repositories: PinnedRepository[]; rawScope: RawScope; inScope: string[] },
+): Promise<ReconstructionCase> {
+  if (options.repositories.length === 0) {
+    throw new GateRefusal(
+      "A scope with no repositories reads nothing.",
+      "wfctl reconstruct scope --repository <owner/name> --revision <sha>",
+    );
+  }
+  const next: ReconstructionCase = {
+    ...record,
+    stage: "crawl",
+    repositories: options.repositories,
+    rawScope: options.rawScope,
+    coverage: { ...record.coverage, inScope: options.inScope },
+  };
+  await writeCase(root, next);
+  return next;
+}
+
+export async function markRead(
+  root: string,
+  record: ReconstructionCase,
+  path: string,
+): Promise<ReconstructionCase> {
+  if (!record.coverage.inScope.includes(path)) {
+    throw new GateRefusal(
+      `${path} is not in this case's scope.`,
+      "wfctl reconstruct scope --in <path>",
+      "Reading outside the agreed scope is how a bounded pass becomes an unbounded one.",
+    );
+  }
+  const next: ReconstructionCase = {
+    ...record,
+    coverage: {
+      ...record.coverage,
+      read: [...new Set([...record.coverage.read, path])].sort(),
+    },
+  };
+  await writeCase(root, next);
+  return next;
+}
+
+export async function markExcluded(
+  root: string,
+  record: ReconstructionCase,
+  path: string,
+  reason: string,
+): Promise<ReconstructionCase> {
+  if (!reason.trim()) {
+    throw new GateRefusal(
+      "An exclusion needs its reason.",
+      'wfctl reconstruct exclude <path> --reason "<why this cannot inform the baseline>"',
+      "An unexplained exclusion is indistinguishable from a file nobody got to.",
+    );
+  }
+  const next: ReconstructionCase = {
+    ...record,
+    coverage: {
+      ...record.coverage,
+      excluded: [
+        ...record.coverage.excluded.filter((entry) => entry.path !== path),
+        { path, reason: reason.trim() },
+      ],
+    },
+  };
+  await writeCase(root, next);
+  return next;
+}
+
+/**
+ * A contradiction met while reading.
+ *
+ * It is recorded and the crawl continues. Asking now would interrupt an
+ * unattended pass with a question the maintainer cannot answer well anyway —
+ * they would be adjudicating before the rest of the material has been read.
+ */
+export async function recordContradiction(
+  root: string,
+  record: ReconstructionCase,
+  options: { subject: string; sides: string[] },
+): Promise<ReconstructionCase> {
+  if (options.sides.length < 2) {
+    throw new GateRefusal(
+      "A contradiction needs at least two sides.",
+      'wfctl reconstruct contradiction --subject "<...>" --side "<...>" --side "<...>"',
+    );
+  }
+  const id = `C${String(record.contradictions.length + 1).padStart(3, "0")}`;
+  const next: ReconstructionCase = {
+    ...record,
+    contradictions: [...record.contradictions, { id, subject: options.subject, sides: options.sides }],
+  };
+  await writeCase(root, next);
+  return next;
+}
+
+export async function resolveContradiction(
+  root: string,
+  record: ReconstructionCase,
+  id: string,
+  resolution: string,
+): Promise<ReconstructionCase> {
+  const found = record.contradictions.find((entry) => entry.id.toUpperCase() === id.toUpperCase());
+  if (!found) {
+    throw new GateRefusal(`No contradiction named ${id}.`, "wfctl reconstruct status");
+  }
+  if (!resolution.trim()) {
+    throw new GateRefusal(
+      "A resolution records what they decided.",
+      `wfctl reconstruct resolve ${id} --resolution "<what they decided>"`,
+    );
+  }
+  const next: ReconstructionCase = {
+    ...record,
+    contradictions: record.contradictions.map((entry) =>
+      entry === found ? { ...entry, resolution: resolution.trim() } : entry,
+    ),
+  };
+  await writeCase(root, next);
+  return next;
+}
+
+export async function recordProbe(
+  root: string,
+  record: ReconstructionCase,
+  probe: Probe,
+): Promise<ReconstructionCase> {
+  if (!probe.question.trim()) {
+    throw new GateRefusal(
+      "A probe needs its question.",
+      'wfctl reconstruct probe --question "<answerable only from the pages>" --asker <agent id>',
+    );
+  }
+  const next: ReconstructionCase = { ...record, probes: [...record.probes, probe] };
+  await writeCase(root, next);
+  return next;
+}
+
+export async function advanceStage(
+  root: string,
+  record: ReconstructionCase,
+  actor: string,
+): Promise<{ record: ReconstructionCase; stage: Stage }> {
+  switch (record.stage) {
+    case "crawl":
+      assertCrawlComplete(record);
+      break;
+    case "assemble":
+      assertTrajectoriesExist(record);
+      break;
+    case "adjudicate":
+      assertAdjudicated(record);
+      break;
+    case "probe":
+      assertProbed(record, actor);
+      break;
+    default:
+      break;
+  }
+
+  const following = nextStage(record.stage);
+  if (!following) {
+    throw new GateRefusal("This case is at its last stage.", `wfctl reconstruct close ${record.id}`);
+  }
+  const next: ReconstructionCase = { ...record, stage: following };
+  await writeCase(root, next);
+  return { record: next, stage: following };
+}
+
+export function renderStatus(record: ReconstructionCase): string {
+  const left = remaining(record.coverage);
+  const open = record.contradictions.filter((entry) => !entry.resolution?.trim());
+  return [
+    `${record.id}  ·  stage ${record.stage}  ·  ${STAGE_PRESENCE[record.stage]} present`,
+    record.hadBaseline
+      ? "re-checking an existing baseline"
+      : "first baseline; curated knowledge was empty",
+    "",
+    `coverage: ${record.coverage.read.length} read, ${record.coverage.excluded.length} excluded, ${left.length} left`,
+    `subjects:  ${record.trajectories.length}`,
+    `open contradictions: ${open.length}`,
+    `probes: ${record.probes.filter((probe) => probe.passed === true).length}/${record.probes.length} passed`,
+  ].join("\n");
+}

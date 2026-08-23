@@ -354,7 +354,12 @@ var init_guidance = __esm({
       quality: "curate/quality",
       routing: "curate/routing",
       discoveries: "work/discoveries",
-      wayfind: "work/wayfind"
+      wayfind: "work/wayfind",
+      scope: "reconstruct/scope",
+      crawl: "reconstruct/crawl",
+      assemble: "reconstruct/assemble",
+      adjudicate: "reconstruct/adjudicate",
+      probe: "reconstruct/probe"
     };
   }
 });
@@ -1094,18 +1099,28 @@ __export(reconstruct_exports, {
   RECONSTRUCTION_DIR: () => RECONSTRUCTION_DIR,
   STAGES: () => STAGES,
   STAGE_PRESENCE: () => STAGE_PRESENCE,
+  advanceStage: () => advanceStage,
   assertAdjudicated: () => assertAdjudicated,
   assertCrawlComplete: () => assertCrawlComplete,
   assertProbed: () => assertProbed,
   assertTrajectoriesExist: () => assertTrajectoriesExist,
   casePath: () => casePath,
   closeCase: () => closeCase,
+  currentCase: () => currentCase,
   hasBaseline: () => hasBaseline,
+  markExcluded: () => markExcluded,
+  markRead: () => markRead,
   nextStage: () => nextStage,
   rawInventory: () => rawInventory,
   readCase: () => readCase,
+  recordContradiction: () => recordContradiction,
+  recordProbe: () => recordProbe,
+  recordScope: () => recordScope,
   remaining: () => remaining,
   renderOutcome: () => renderOutcome,
+  renderStatus: () => renderStatus,
+  resolveContradiction: () => resolveContradiction,
+  setCurrentCase: () => setCurrentCase,
   writeCase: () => writeCase
 });
 import { mkdir as mkdir8, readFile as readFile7, readdir as readdir5, stat as stat3, writeFile as writeFile7 } from "node:fs/promises";
@@ -1230,7 +1245,162 @@ async function closeCase(root, id) {
   await rename2(from, to);
   return to;
 }
-var RECONSTRUCTION_DIR, RECONSTRUCTION_ARCHIVE, RAW_DIR, STAGES, STAGE_PRESENCE;
+async function setCurrentCase(root, id) {
+  const path = resolve10(root, CURRENT_POINTER2);
+  await mkdir8(dirname6(path), { recursive: true });
+  await writeFile7(path, `${id}
+`, "utf8");
+}
+async function currentCase(root) {
+  try {
+    const id = (await readFile7(resolve10(root, CURRENT_POINTER2), "utf8")).trim();
+    return id ? readCase(root, id) : void 0;
+  } catch (error) {
+    if (error.code === "ENOENT") return void 0;
+    throw error;
+  }
+}
+async function recordScope(root, record, options) {
+  if (options.repositories.length === 0) {
+    throw new GateRefusal(
+      "A scope with no repositories reads nothing.",
+      "wfctl reconstruct scope --repository <owner/name> --revision <sha>"
+    );
+  }
+  const next = {
+    ...record,
+    stage: "crawl",
+    repositories: options.repositories,
+    rawScope: options.rawScope,
+    coverage: { ...record.coverage, inScope: options.inScope }
+  };
+  await writeCase(root, next);
+  return next;
+}
+async function markRead(root, record, path) {
+  if (!record.coverage.inScope.includes(path)) {
+    throw new GateRefusal(
+      `${path} is not in this case's scope.`,
+      "wfctl reconstruct scope --in <path>",
+      "Reading outside the agreed scope is how a bounded pass becomes an unbounded one."
+    );
+  }
+  const next = {
+    ...record,
+    coverage: {
+      ...record.coverage,
+      read: [.../* @__PURE__ */ new Set([...record.coverage.read, path])].sort()
+    }
+  };
+  await writeCase(root, next);
+  return next;
+}
+async function markExcluded(root, record, path, reason) {
+  if (!reason.trim()) {
+    throw new GateRefusal(
+      "An exclusion needs its reason.",
+      'wfctl reconstruct exclude <path> --reason "<why this cannot inform the baseline>"',
+      "An unexplained exclusion is indistinguishable from a file nobody got to."
+    );
+  }
+  const next = {
+    ...record,
+    coverage: {
+      ...record.coverage,
+      excluded: [
+        ...record.coverage.excluded.filter((entry) => entry.path !== path),
+        { path, reason: reason.trim() }
+      ]
+    }
+  };
+  await writeCase(root, next);
+  return next;
+}
+async function recordContradiction(root, record, options) {
+  if (options.sides.length < 2) {
+    throw new GateRefusal(
+      "A contradiction needs at least two sides.",
+      'wfctl reconstruct contradiction --subject "<...>" --side "<...>" --side "<...>"'
+    );
+  }
+  const id = `C${String(record.contradictions.length + 1).padStart(3, "0")}`;
+  const next = {
+    ...record,
+    contradictions: [...record.contradictions, { id, subject: options.subject, sides: options.sides }]
+  };
+  await writeCase(root, next);
+  return next;
+}
+async function resolveContradiction(root, record, id, resolution) {
+  const found = record.contradictions.find((entry) => entry.id.toUpperCase() === id.toUpperCase());
+  if (!found) {
+    throw new GateRefusal(`No contradiction named ${id}.`, "wfctl reconstruct status");
+  }
+  if (!resolution.trim()) {
+    throw new GateRefusal(
+      "A resolution records what they decided.",
+      `wfctl reconstruct resolve ${id} --resolution "<what they decided>"`
+    );
+  }
+  const next = {
+    ...record,
+    contradictions: record.contradictions.map(
+      (entry) => entry === found ? { ...entry, resolution: resolution.trim() } : entry
+    )
+  };
+  await writeCase(root, next);
+  return next;
+}
+async function recordProbe(root, record, probe) {
+  if (!probe.question.trim()) {
+    throw new GateRefusal(
+      "A probe needs its question.",
+      'wfctl reconstruct probe --question "<answerable only from the pages>" --asker <agent id>'
+    );
+  }
+  const next = { ...record, probes: [...record.probes, probe] };
+  await writeCase(root, next);
+  return next;
+}
+async function advanceStage(root, record, actor) {
+  switch (record.stage) {
+    case "crawl":
+      assertCrawlComplete(record);
+      break;
+    case "assemble":
+      assertTrajectoriesExist(record);
+      break;
+    case "adjudicate":
+      assertAdjudicated(record);
+      break;
+    case "probe":
+      assertProbed(record, actor);
+      break;
+    default:
+      break;
+  }
+  const following = nextStage(record.stage);
+  if (!following) {
+    throw new GateRefusal("This case is at its last stage.", `wfctl reconstruct close ${record.id}`);
+  }
+  const next = { ...record, stage: following };
+  await writeCase(root, next);
+  return { record: next, stage: following };
+}
+function renderStatus(record) {
+  const left = remaining(record.coverage);
+  const open = record.contradictions.filter((entry) => !entry.resolution?.trim());
+  return [
+    `${record.id}  \xB7  stage ${record.stage}  \xB7  ${STAGE_PRESENCE[record.stage]} present`,
+    record.hadBaseline ? "re-checking an existing baseline" : "first baseline; curated knowledge was empty",
+    "",
+    `coverage: ${record.coverage.read.length} read, ${record.coverage.excluded.length} excluded, ${left.length} left`,
+    `subjects:  ${record.trajectories.length}`,
+    `open contradictions: ${open.length}`,
+    `probes: ${record.probes.filter((probe) => probe.passed === true).length}/${record.probes.length} passed`
+  ].join("\n");
+}
+var RECONSTRUCTION_DIR, RECONSTRUCTION_ARCHIVE, RAW_DIR, STAGES, STAGE_PRESENCE, CURRENT_POINTER2;
 var init_reconstruct = __esm({
   "src/core/reconstruct.ts"() {
     "use strict";
@@ -1256,6 +1426,7 @@ var init_reconstruct = __esm({
       probe: "nobody",
       promote: "maintainer"
     };
+    CURRENT_POINTER2 = "reconstruction/active/current";
   }
 });
 
@@ -2080,6 +2251,15 @@ var USAGE = `wfctl \u2014 project workflow
   repo list | repo remove <owner/name> [--worktree <id>]
 
   reconstruct start            open a case over the registered repositories
+  reconstruct status
+  reconstruct scope --repository <owner/name> --revision <sha> [--raw all|selected|none] [--in <path>]...
+  reconstruct read <path> | exclude <path> --reason "<why>"
+  reconstruct contradiction --subject ... --side ... --side ...
+  reconstruct resolve <id> --resolution "<what they decided>"
+  reconstruct subject <trajectory-id>
+  reconstruct probe --question ... --page <path> --asker <agent> [--passed]
+  reconstruct stage            advance when this stage's gate passes
+  reconstruct close
 
   trajectory append --subject ... --summary ... --axis <intent|delivery|vision>
   trajectory list | trajectory show <subject>
@@ -2098,6 +2278,9 @@ var USAGE = `wfctl \u2014 project workflow
 `;
 function ok_(stdout) {
   return { stdout, exitCode: 0 };
+}
+function compose_(parts) {
+  return parts.filter((part) => Boolean(part && part.trim())).join("\n\n");
 }
 function flag(argv, name) {
   const index = argv.indexOf(`--${name}`);
@@ -2354,6 +2537,9 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
             probes: [],
             hadBaseline: baseline
           });
+          const { loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
+          const scopeGuidance = await loadGuidance2({ root: context.assets }, "reconstruct/scope");
+          await reconstruct.setCurrentCase(context.root, id);
           return ok_(
             [
               `reconstruction ${id} opened`,
@@ -2364,10 +2550,101 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
               "",
               raw.length > 0 ? `raw material: ${raw.length} file(s) under reconstruction/raw/` : "raw material: none",
               "",
-              "Put one scope decision to the maintainer: which repositories, how much of",
-              "the raw material, and what is deliberately out. One question, not four."
+              scopeGuidance ?? ""
             ].join("\n")
           );
+        }
+        const record = await reconstruct.currentCase(context.root);
+        if (!record) {
+          throw new GateRefusal(
+            "No reconstruction is open.",
+            "wfctl reconstruct start"
+          );
+        }
+        if (action === "status") return ok_(reconstruct.renderStatus(record));
+        if (action === "scope") {
+          const next = await reconstruct.recordScope(context.root, record, {
+            repositories: flags(args, "repository").map((repository) => ({
+              repository,
+              checkout: repository,
+              path: "",
+              worktreeId: flag(args, "worktree") ?? "main",
+              revision: flag(args, "revision") ?? "",
+              dirty: args.includes("--dirty")
+            })),
+            rawScope: flag(args, "raw") ?? "none",
+            inScope: flags(args, "in")
+          });
+          return ok_(reconstruct.renderStatus(next));
+        }
+        if (action === "read") {
+          const next = await reconstruct.markRead(context.root, record, args[0] ?? "");
+          return ok_(reconstruct.renderStatus(next));
+        }
+        if (action === "exclude") {
+          const next = await reconstruct.markExcluded(
+            context.root,
+            record,
+            args[0] ?? "",
+            flag(args, "reason") ?? ""
+          );
+          return ok_(reconstruct.renderStatus(next));
+        }
+        if (action === "contradiction") {
+          const next = await reconstruct.recordContradiction(context.root, record, {
+            subject: flag(args, "subject") ?? "",
+            sides: flags(args, "side")
+          });
+          return ok_(`recorded; ${next.contradictions.length} to adjudicate after the crawl.`);
+        }
+        if (action === "resolve") {
+          const next = await reconstruct.resolveContradiction(
+            context.root,
+            record,
+            args[0] ?? "",
+            flag(args, "resolution") ?? ""
+          );
+          return ok_(reconstruct.renderStatus(next));
+        }
+        if (action === "probe") {
+          const next = await reconstruct.recordProbe(context.root, record, {
+            question: flag(args, "question") ?? "",
+            pages: flags(args, "page"),
+            asker: flag(args, "asker") ?? context.actor,
+            ...flag(args, "answer") ? { answer: flag(args, "answer") } : {},
+            passed: args.includes("--passed")
+          });
+          return ok_(reconstruct.renderStatus(next));
+        }
+        if (action === "subject") {
+          const next = {
+            ...record,
+            trajectories: [.../* @__PURE__ */ new Set([...record.trajectories, args[0] ?? ""])].filter(Boolean)
+          };
+          await reconstruct.writeCase(context.root, next);
+          return ok_(reconstruct.renderStatus(next));
+        }
+        if (action === "stage") {
+          const { loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
+          const advanced = await reconstruct.advanceStage(context.root, record, context.actor);
+          const slice = await loadGuidance2(
+            { root: context.assets },
+            `reconstruct/${advanced.stage}`
+          ).catch(() => void 0);
+          return ok_(
+            compose_([
+              slice,
+              reconstruct.renderStatus(advanced.record),
+              reconstruct.STAGE_PRESENCE[advanced.stage] === "maintainer" ? "This stage needs the maintainer. Put it to them in product language." : "This stage runs unattended. Do not interrupt it with questions."
+            ])
+          );
+        }
+        if (action === "close") {
+          const outcome = reconstruct.renderOutcome(record);
+          const archived = await reconstruct.closeCase(context.root, record.id);
+          return ok_(`${outcome}
+archived at:
+${archived}`);
         }
         return { stdout: USAGE, exitCode: 1 };
       }

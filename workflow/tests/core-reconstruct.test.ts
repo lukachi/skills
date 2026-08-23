@@ -279,3 +279,95 @@ test("promotion writes the pages and appends to the subject's line", async () =>
   assert.equal(trajectory.events[0]?.axis, "delivery");
   assert.match(trajectory.events[0]?.change ?? "", /work-part-refunds/);
 });
+
+test("the whole reconstruction walks stage by stage, and each gate names its remedy", async () => {
+  const { run } = await import("../src/core/cli.js");
+  const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
+  const ctx = { root: await root(), assets, actor: "agent:crawler" };
+
+  await run(["repo", "add", "o/r", "--path", "/checkouts/r"], ctx);
+  const started = await run(["reconstruct", "start"], ctx);
+  assert.match(started.stdout, /first baseline/);
+  assert.match(started.stdout, /One question, not four/);
+
+  await run(
+    ["reconstruct", "scope", "--repository", "o/r", "--revision", "abc123", "--in", "a.ts", "--in", "b.ts"],
+    ctx,
+  );
+
+  // The crawl records contradictions instead of asking about them.
+  const noted = await run(
+    ["reconstruct", "contradiction", "--subject", "refunds", "--side", "code says whole order", "--side", "note says partial"],
+    ctx,
+  );
+  assert.match(noted.stdout, /to adjudicate after the crawl/);
+
+  const early = await run(["reconstruct", "stage"], ctx);
+  assert.equal(early.exitCode, 2);
+  assert.match(early.stdout, /neither read nor excluded/);
+
+  await run(["reconstruct", "read", "a.ts"], ctx);
+  await run(["reconstruct", "exclude", "b.ts", "--reason", "generated"], ctx);
+
+  const toAssemble = await run(["reconstruct", "stage"], ctx);
+  assert.equal(toAssemble.exitCode, 0);
+  assert.match(toAssemble.stdout, /stage assemble/);
+  assert.match(toAssemble.stdout, /runs unattended/);
+
+  // Nothing may be written before a subject's line exists.
+  const noSubject = await run(["reconstruct", "stage"], ctx);
+  assert.equal(noSubject.exitCode, 2);
+  assert.match(noSubject.stdout, /before the material that contradicts it/);
+
+  await run(["trajectory", "append", "--subject", "Refunds", "--summary", "whole order only", "--axis", "delivery"], ctx);
+  await run(["reconstruct", "subject", "refunds"], ctx);
+
+  const toAdjudicate = await run(["reconstruct", "stage"], ctx);
+  assert.match(toAdjudicate.stdout, /stage adjudicate/);
+  assert.match(toAdjudicate.stdout, /needs the maintainer/);
+
+  const unresolved = await run(["reconstruct", "stage"], ctx);
+  assert.equal(unresolved.exitCode, 2);
+  assert.match(unresolved.stdout, /unresolved/);
+
+  await run(["reconstruct", "resolve", "C001", "--resolution", "the note is stale"], ctx);
+  await run(["reconstruct", "stage"], ctx);  // write
+  await run(["reconstruct", "stage"], ctx);  // probe
+
+  const selfProbe = await run(
+    ["reconstruct", "probe", "--question", "what do refunds do?", "--asker", "agent:crawler", "--passed"],
+    ctx,
+  );
+  assert.equal(selfProbe.exitCode, 0);
+  const refusedSelf = await run(["reconstruct", "stage"], ctx);
+  assert.equal(refusedSelf.exitCode, 2);
+  assert.match(refusedSelf.stdout, /returns what you already know/);
+});
+
+test("an exclusion without a reason is refused", async () => {
+  const { run } = await import("../src/core/cli.js");
+  const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
+  const ctx = { root: await root(), assets, actor: "agent:test" };
+
+  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  await run(["reconstruct", "start"], ctx);
+  await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts"], ctx);
+
+  const result = await run(["reconstruct", "exclude", "x.ts"], ctx);
+  assert.equal(result.exitCode, 2);
+  assert.match(result.stdout, /indistinguishable from a file nobody got to/);
+});
+
+test("reading outside the agreed scope is refused", async () => {
+  const { run } = await import("../src/core/cli.js");
+  const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
+  const ctx = { root: await root(), assets, actor: "agent:test" };
+
+  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  await run(["reconstruct", "start"], ctx);
+  await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts"], ctx);
+
+  const result = await run(["reconstruct", "read", "y.ts"], ctx);
+  assert.equal(result.exitCode, 2);
+  assert.match(result.stdout, /not in this case's scope/);
+});

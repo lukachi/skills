@@ -187,8 +187,25 @@ it, so the question has no subject. Eighteen behaviour evals across four suites.
 All flow commands are wired: units, captures, park and release, delegated
 verification, closure and the promotion queue.
 
-Remaining: the reconstruction case, which absorbs intake and raw, and the tests
-staged with it.
+## Reconstruction
+
+Landed: the registry as its own operation, the case with seven stages, coverage
+as plain accounting, contradictions recorded during the crawl and adjudicated in
+one round after it, adversarial probes, and trajectories as the spine both cases
+write to.
+
+Decisions taken while shaping it:
+
+- there is no baseline-or-audit mode; whether the corpus holds pages is observed;
+- a pinned revision is recorded and a dirty tree is recorded, not refused;
+- claims survive as atomising, routing lanes do not — the trajectory decides;
+- line-range reading receipts are dropped; the omission probe replaces them;
+- a pass that changed nothing still records what it checked;
+- promotion appends to the subject's line as well as writing pages;
+- exploration is guidance and tools, not a case.
+
+Remaining: the staged skills can now be deleted rather than re-cut, and
+`RECONSTRUCTION.md` rewritten against what shipped.
 
 ## Status
 

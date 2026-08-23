@@ -39,6 +39,11 @@ export const GUIDE_TOPICS: Record<string, GuidanceKey> = {
   routing: "curate/routing",
   discoveries: "work/discoveries",
   wayfind: "work/wayfind",
+  scope: "reconstruct/scope",
+  crawl: "reconstruct/crawl",
+  assemble: "reconstruct/assemble",
+  adjudicate: "reconstruct/adjudicate",
+  probe: "reconstruct/probe",
 };
 
 export type GuidanceKey =
@@ -58,6 +63,11 @@ export type GuidanceKey =
   | "curate/routing"
   | "work/discoveries"
   | "work/wayfind"
+  | "reconstruct/scope"
+  | "reconstruct/crawl"
+  | "reconstruct/assemble"
+  | "reconstruct/adjudicate"
+  | "reconstruct/probe"
   | "recall/structure"
   | "guide/wfctl"
   | "decide/interview"
@@ -70,6 +80,11 @@ export type GuidanceKey =
   | "curate/routing"
   | "work/discoveries"
   | "work/wayfind"
+  | "reconstruct/scope"
+  | "reconstruct/crawl"
+  | "reconstruct/assemble"
+  | "reconstruct/adjudicate"
+  | "reconstruct/probe"
   | "verify/adversarial"
   | "session/start";
 
