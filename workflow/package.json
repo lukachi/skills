@@ -12,11 +12,8 @@
     "README.md",
     "IDEA.md",
     "THIRD_PARTY.md",
-    "docs",
     "spec",
     "dist",
-    "evals",
-    "rules",
     "templates",
     "vendor"
   ],

@@ -1,6 +1,0 @@
-interface:
-  display_name: "Show Project Work"
-  short_description: "Draw the shape instead of describing it"
-  default_prompt: "Use this skill to answer with a call tree, component tree, file layout, diff, diagram, or focused HTML artifact rather than a paragraph."
-policy:
-  allow_implicit_invocation: false
