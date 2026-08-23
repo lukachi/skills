@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { renderBrief, renderHandoff, buildCheckpoint } from "./checkpoint.js";
 import { GateRefusal, assertNotParked, assertReached, assertRecall } from "./gates.js";
 import { compose, loadGuidance, type GuidanceKey } from "./guidance.js";
@@ -5,7 +7,7 @@ import { closeFlow, currentFlow, listFlows, openFlow, readFlow, writeFlow } from
 import { createPromotionDraft } from "./paths.js";
 import { findItem, recordAnswer, recordRoute, renderCounterLine } from "./recall.js";
 import { definitionFor, nextStep, renderStep } from "./steps.js";
-import type { FlowRecord, RecallRoute, WorkStep, WorkWeight } from "./types.js";
+import type { FlowRecord, IssueRecord, RecallRoute, WorkStep, WorkWeight } from "./types.js";
 
 /**
  * The command layer.
@@ -106,6 +108,16 @@ export async function workStart(
       title: options.title,
       weight: options.weight,
     });
+
+    /**
+     * The record's directory is created here, with the flow, and never by hand.
+     * A bundle that appears because somebody made a folder is a workload nobody
+     * agreed to, and the write guard refuses one for exactly that reason — so
+     * the only way to get one is the command the maintainer asked for.
+     */
+    await mkdir(resolve(context.root, "changes/active", flow.id), { recursive: true });
+    await writeFlow(context.root, { ...flow, members: [flow.id] });
+
     return ok(
       compose([
         `flow ${flow.id} opened`,
@@ -237,4 +249,296 @@ export async function flowClose(context: CommandContext): Promise<CommandResult>
   }
   const closed = await closeFlow(context.root, flow.id);
   return ok(`flow ${closed.id} closed; the fence is down and the checkpoint is flushed.`);
+}
+
+/* ------------------------------------------------------------------ units */
+
+/**
+ * Units carry a status and the agent's own notes, and nothing else.
+ *
+ * There is no dependency graph here on purpose. A map that came out of grilling
+ * can be worked efficiently in an order no graph would predict, and the
+ * previous implementation's blocking edges mostly encoded preference — then
+ * refused work on the strength of it. Where order genuinely matters, it is
+ * written in the notes, which is also where everything else learned about a
+ * unit goes.
+ */
+export async function issueCreate(
+  context: CommandContext,
+  options: { title: string; acceptance: string[] },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
+  }
+  if (!options.title.trim()) {
+    return refused(
+      new GateRefusal("A unit needs a title.", 'wfctl work issue create --title "<what it delivers>"'),
+    );
+  }
+
+  const id = `U${String(flow.issues.length + 1).padStart(3, "0")}`;
+  const issue: IssueRecord = {
+    id,
+    title: options.title.trim(),
+    status: "open",
+    notes: [],
+    acceptance: options.acceptance,
+  };
+  await writeFlow(context.root, { ...flow, issues: [...flow.issues, issue] });
+  return ok(`${id}  ${issue.title}`);
+}
+
+export async function issueList(context: CommandContext): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  }
+  if (flow.issues.length === 0) {
+    return ok("no units yet.");
+  }
+  const lines = flow.issues.map((issue) => {
+    const notes = issue.notes.length > 0 ? `\n      ${issue.notes.join("\n      ")}` : "";
+    const claim = issue.claim ? `  [${issue.claim.repository}/${issue.claim.worktreeId}]` : "";
+    return `${issue.id}  ${issue.status.padEnd(8)}  ${issue.title}${claim}${notes}`;
+  });
+  return ok(lines.join("\n"));
+}
+
+async function withIssue(
+  context: CommandContext,
+  id: string,
+  change: (issue: IssueRecord) => IssueRecord,
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  }
+  const found = flow.issues.find((issue) => issue.id.toUpperCase() === id.toUpperCase());
+  if (!found) {
+    return refused(new GateRefusal(`No unit named ${id}.`, "wfctl work issue list"));
+  }
+  const issues = flow.issues.map((issue) => (issue === found ? change(found) : issue));
+  await writeFlow(context.root, { ...flow, issues });
+  const next = issues.find((issue) => issue.id === found.id);
+  return ok(`${next?.id}  ${next?.status}  ${next?.title}`);
+}
+
+export async function issueNote(
+  context: CommandContext,
+  options: { id: string; note: string },
+): Promise<CommandResult> {
+  if (!options.note.trim()) {
+    return refused(new GateRefusal("An empty note records nothing.", 'wfctl work issue note <id> --note "<...>"'));
+  }
+  return withIssue(context, options.id, (issue) => ({
+    ...issue,
+    notes: [...issue.notes, options.note.trim()],
+  }));
+}
+
+/**
+ * A claim binds repository and worktree, never branch and commit.
+ *
+ * Every recorded binding deadlock in the previous implementation came from
+ * pinning a revision that then moved under the record: a claim that outlived
+ * its branch and blocked its own release, a checkpoint that could never match
+ * again, a rebind that destroyed the record's accounting on the way past. A
+ * claim is about which files are being edited.
+ */
+export async function issueClaim(
+  context: CommandContext,
+  options: { id: string; repository: string; checkout: string; worktreeId: string },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (flow) {
+    try {
+      assertNotParked(flow);
+    } catch (error) {
+      if (error instanceof GateRefusal) return refused(error);
+      throw error;
+    }
+  }
+  return withIssue(context, options.id, (issue) => ({
+    ...issue,
+    status: "claimed",
+    claim: {
+      repository: options.repository,
+      checkout: options.checkout,
+      worktreeId: options.worktreeId,
+    },
+  }));
+}
+
+export async function issueComplete(
+  context: CommandContext,
+  id: string,
+): Promise<CommandResult> {
+  const result = await withIssue(context, id, (issue) => {
+    const next: IssueRecord = { ...issue, status: "done" };
+    delete next.claim;
+    return next;
+  });
+  if (result.exitCode !== 0) return result;
+
+  const flow = await currentFlow(context.root);
+  const remaining = (flow?.issues ?? []).filter((issue) => issue.status === "open");
+  return ok(
+    compose([
+      result.stdout,
+      remaining.length > 0
+        ? `${remaining.length} unit(s) still open:\n  ${remaining.map((issue) => `${issue.id}  ${issue.title}`).join("\n  ")}\n\nFinishing a unit is not finishing. The next unit is available work, and available work is yours.`
+        : "every unit is terminal.",
+    ]),
+  );
+}
+
+/* --------------------------------------------------------------- captures */
+
+/**
+ * The one place a finding met during work can go.
+ *
+ * It exists so that noticing something is not a reason to open a second
+ * workload. Both this and the write guard refuse a new record while a flow is
+ * open, which is what actually stops it.
+ */
+export async function capture(
+  context: CommandContext,
+  options: { text: string; awaits?: "maintainer" },
+): Promise<CommandResult> {
+  if (!options.text.trim()) {
+    return refused(new GateRefusal("A capture needs its finding.", 'wfctl capture "<what you found>"'));
+  }
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const path = resolve(context.root, "changes/inbox", `${stamp}.md`);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(
+    path,
+    [
+      "---",
+      `captured_at: ${new Date().toISOString()}`,
+      `awaits: ${options.awaits ?? "nobody"}`,
+      "status: pending",
+      "---",
+      "",
+      options.text.trim(),
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return ok(compose([await guidanceFor(context, "work/capture"), `captured at:\n${path}`]));
+}
+
+/* ----------------------------------------------------------- verification */
+
+export async function verify(
+  context: CommandContext,
+  options: { review: string },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  }
+
+  try {
+    const { readReviewArtifact } = await import("./review-artifact.js");
+    const { assertReviewUsable } = await import("./verify.js");
+    const review = await readReviewArtifact(options.review, context.actor);
+    assertReviewUsable(flow, review);
+    return ok(
+      compose([
+        `review accepted from ${review.reviewer}: ${review.attacks.length} attack(s), ${review.findings.length} finding(s)`,
+        await guidanceFor(context, "work/closed"),
+      ]),
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
+}
+
+/* ------------------------------------------------------- park and release */
+
+export async function park(context: CommandContext, reason: string): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  if (!reason.trim()) {
+    return refused(
+      new GateRefusal(
+        "Parking needs their reason.",
+        'wfctl work park --reason "<why starting now is premature>"',
+      ),
+    );
+  }
+  await writeFlow(context.root, {
+    ...flow,
+    parked: { at: new Date().toISOString(), reason: reason.trim() },
+  });
+  return ok(
+    `${flow.id} is parked: ${reason.trim()}\n\n` +
+      "Approving a framing settles what the work is, never that it begins. Only " +
+      "their own word starts it — never an answer to a different question, and " +
+      "never the condition that held it having cleared.",
+  );
+}
+
+export async function release(context: CommandContext, attested: string): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  if (!flow.parked) return ok(`${flow.id} is not parked.`);
+  if (!attested.trim()) {
+    return refused(
+      new GateRefusal(
+        "A release carries their own words.",
+        'wfctl work release --attested "<what they said>"',
+        "This is one of the two places wording is recorded, because a release " +
+          "inferred from anything else is a start nobody agreed to.",
+      ),
+    );
+  }
+  const next = { ...flow };
+  delete next.parked;
+  await writeFlow(context.root, next);
+  return ok(`${flow.id} released: "${attested.trim()}"`);
+}
+
+/* ------------------------------------------------------------------ close */
+
+export async function close(
+  context: CommandContext,
+  options: { outcome: "completed" | "partial" | "abandoned" },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+
+  const open = flow.issues.filter((issue) => issue.status === "claimed");
+  if (open.length > 0) {
+    return refused(
+      new GateRefusal(
+        `${open.length} unit(s) are still claimed.`,
+        `wfctl work issue complete ${open[0]?.id}`,
+        open.map((issue) => `  ${issue.id}  ${issue.title}`).join("\n"),
+      ),
+    );
+  }
+
+  try {
+    const { closeBundle } = await import("./promotion-queue.js");
+    const bundle = flow.members[0] ?? flow.id;
+    const result = await closeBundle({
+      knowledgeRoot: context.root,
+      bundleId: bundle,
+      outcome: options.outcome,
+    });
+    await writeFlow(context.root, { ...flow, step: "closed", closedAt: new Date().toISOString() });
+    return ok(
+      result.waitingOnPromotion
+        ? `${bundle} closed as ${options.outcome} and waits in the promotion queue.\n\n` +
+            "Its pages are what the maintainer is asked about. Nothing else is."
+        : `${bundle} closed as ${options.outcome} and archived; it had nothing to say about itself.`,
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
 }

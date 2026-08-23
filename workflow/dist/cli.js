@@ -561,12 +561,280 @@ var init_paths = __esm({
   }
 });
 
+// src/core/verify.ts
+var verify_exports = {};
+__export(verify_exports, {
+  LENS_QUESTIONS: () => LENS_QUESTIONS,
+  VERIFY_LENSES: () => VERIFY_LENSES,
+  assertReviewUsable: () => assertReviewUsable,
+  renderReviewerBrief: () => renderReviewerBrief
+});
+function assertReviewUsable(flow, review) {
+  if (review.reviewer.trim().length === 0) {
+    throw new GateRefusal(
+      "The review records no reviewer.",
+      "wfctl work verify --reviewer <agent id>",
+      "The implementing agent cannot review its own work: the agent that wrote the tests can write the review that approves them."
+    );
+  }
+  if (review.attacks.length === 0 && review.findings.length === 0) {
+    throw new GateRefusal(
+      "The review is empty: no findings and no recorded attacks.",
+      "wfctl work verify --attack <file>",
+      'A reviewer that broke nothing must still say what it tried. "Looks correct" is not an allowed answer.'
+    );
+  }
+  if (review.stubSurvivors.length > 0) {
+    throw new GateRefusal(
+      `${review.stubSurvivors.length} test(s) still pass with the implementation stubbed.`,
+      "Fix the tests, then re-run the review.",
+      `Those tests assert nothing:
+  ${review.stubSurvivors.join("\n  ")}`
+    );
+  }
+  const open = review.findings.filter((finding) => finding.status === "open");
+  if (open.length > 0) {
+    throw new GateRefusal(
+      `${open.length} finding(s) are unresolved.`,
+      "Resolve them, or accept each with a recorded reason.",
+      open.map((finding) => `  [${finding.lens}] ${finding.summary}`).join("\n")
+    );
+  }
+  const silent = review.findings.filter(
+    (finding) => finding.status === "accepted" && !finding.acceptedBecause?.trim()
+  );
+  if (silent.length > 0) {
+    throw new GateRefusal(
+      `${silent.length} finding(s) were accepted without a reason.`,
+      'wfctl work finding accept <id> --because "<why this is acceptable>"',
+      "A finding may be accepted, never silently."
+    );
+  }
+  if (flow.framingDigest && flow.framingDigest !== review.framingDigest) {
+    throw new GateRefusal(
+      "The acceptance criteria have changed since the framing was approved.",
+      `wfctl work approve ${flow.id} --stage completion`,
+      "This is the one case where closure returns to the maintainer: delivery no longer matches the framing they agreed to."
+    );
+  }
+}
+function renderReviewerBrief(lens, fixedPoint) {
+  return [
+    `You are reviewing work at the fixed point ${fixedPoint}.`,
+    "",
+    `Lens: ${lens} \u2014 ${LENS_QUESTIONS[lens]}`,
+    "",
+    "Your goal is to break this work, not to confirm it.",
+    "",
+    "Every attack must be an executable test. Write it, run it, and return the",
+    "source, its output, and whether it broke the work. If you could not break",
+    "it, say exactly what you tried and why it held.",
+    "",
+    "Also read the diff backwards: for each changed file, ask what the framing",
+    "said about it. That direction finds work nobody asked for.",
+    "",
+    "You will not be given the implementer's reasoning. Do not ask for it."
+  ].join("\n");
+}
+var VERIFY_LENSES, LENS_QUESTIONS;
+var init_verify = __esm({
+  "src/core/verify.ts"() {
+    "use strict";
+    init_gates();
+    VERIFY_LENSES = [
+      "intent",
+      "correctness",
+      "contract",
+      "failure-paths",
+      "state-and-data",
+      "delivery-reality",
+      "test-integrity"
+    ];
+    LENS_QUESTIONS = {
+      intent: "Does the diff do what the framing asked, and only that?",
+      correctness: "Which input makes this produce the wrong answer?",
+      contract: "What existing caller breaks? What shape changed?",
+      "failure-paths": "What happens on error, empty, concurrent, retried, partial?",
+      "state-and-data": "What happens to data written by the previous version?",
+      "delivery-reality": "Is the only caller a test, fixture, demo, or mock?",
+      "test-integrity": "Would these tests catch a broken implementation?"
+    };
+  }
+});
+
+// src/core/review-artifact.ts
+var review_artifact_exports = {};
+__export(review_artifact_exports, {
+  readReviewArtifact: () => readReviewArtifact
+});
+import { readFile as readFile3 } from "node:fs/promises";
+function fail(message, remedy, detail) {
+  throw new GateRefusal(message, remedy, detail);
+}
+async function readReviewArtifact(path, actor) {
+  const raw = await readFile3(path, "utf8").catch(() => {
+    fail(`No review artifact at ${path}.`, "wfctl work verify --review <path to the returned artifact>");
+  });
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    fail(
+      `The review artifact at ${path} is not valid JSON.`,
+      "Have the reviewer return the artifact verbatim rather than summarizing it."
+    );
+  }
+  if (!parsed.reviewer?.trim()) {
+    fail("The review names no reviewer.", "Have the reviewer record its own identity.");
+  }
+  if (parsed.reviewer.trim() === actor) {
+    fail(
+      "The review was produced by the agent under review.",
+      "Delegate the review to a separate agent and pass back its artifact.",
+      "The agent that wrote the tests can write the review that approves them."
+    );
+  }
+  for (const [index, attack] of (parsed.attacks ?? []).entries()) {
+    if (!VERIFY_LENSES.includes(attack.lens)) {
+      fail(
+        `Attack ${index + 1} declares an unknown lens ${String(attack.lens)}.`,
+        `Use one of: ${VERIFY_LENSES.join(", ")}`
+      );
+    }
+    if (!attack.test?.trim()) {
+      fail(
+        `Attack ${index + 1} carries no test.`,
+        "Every attack is an executable test, written and run.",
+        "A prose finding is settled by whoever writes more confidently. A test is settled by running it."
+      );
+    }
+    if (!attack.output?.trim()) {
+      fail(
+        `Attack ${index + 1} carries a test that was never run.`,
+        "Run each attack and return its output."
+      );
+    }
+    if (!attack.target?.trim()) {
+      fail(`Attack ${index + 1} does not say what it tried to break.`, "Record the target of each attack.");
+    }
+  }
+  return {
+    fixedPoint: parsed.fixedPoint ?? "",
+    framingDigest: parsed.framingDigest ?? "",
+    reviewer: parsed.reviewer.trim(),
+    attacks: parsed.attacks ?? [],
+    findings: parsed.findings ?? [],
+    stubSurvivors: parsed.stubSurvivors ?? []
+  };
+}
+var init_review_artifact = __esm({
+  "src/core/review-artifact.ts"() {
+    "use strict";
+    init_gates();
+    init_verify();
+  }
+});
+
+// src/core/promotion-queue.ts
+var promotion_queue_exports = {};
+__export(promotion_queue_exports, {
+  ACTIVE: () => ACTIVE,
+  ARCHIVE: () => ARCHIVE,
+  QUEUE: () => QUEUE,
+  assertCorrectable: () => assertCorrectable,
+  closeBundle: () => closeBundle,
+  destinationFor: () => destinationFor,
+  hasDraftedPages: () => hasDraftedPages,
+  listQueue: () => listQueue,
+  promote: () => promote,
+  queuePath: () => queuePath
+});
+import { mkdir as mkdir3, readdir as readdir2, rename, stat } from "node:fs/promises";
+import { join as join2, resolve as resolve4 } from "node:path";
+function destinationFor(outcome, hasDrafts) {
+  return hasDrafts ? QUEUE : ARCHIVE;
+}
+async function isDirectory(path) {
+  return stat(path).then(
+    (entry) => entry.isDirectory(),
+    () => false
+  );
+}
+async function hasDraftedPages(knowledgeRoot, bundleId) {
+  const promotion = resolve4(knowledgeRoot, ACTIVE, bundleId, "promotion");
+  if (!await isDirectory(promotion)) return false;
+  const entries = await readdir2(promotion, { recursive: true, withFileTypes: true });
+  return entries.some((entry) => entry.isFile() && entry.name.endsWith(".md"));
+}
+async function closeBundle(options) {
+  const from = resolve4(options.knowledgeRoot, ACTIVE, options.bundleId);
+  if (!await isDirectory(from)) {
+    throw new GateRefusal(
+      `No active record named ${options.bundleId}.`,
+      "wfctl work status"
+    );
+  }
+  const drafts = await hasDraftedPages(options.knowledgeRoot, options.bundleId);
+  const destination = destinationFor(options.outcome, drafts);
+  const to = resolve4(options.knowledgeRoot, destination, options.bundleId);
+  await mkdir3(resolve4(options.knowledgeRoot, destination), { recursive: true });
+  await rename(from, to);
+  return { from, to, outcome: options.outcome, waitingOnPromotion: destination === QUEUE };
+}
+async function assertCorrectable(knowledgeRoot, bundleId) {
+  const queued = resolve4(knowledgeRoot, QUEUE, bundleId);
+  if (await isDirectory(queued)) return queued;
+  const active = resolve4(knowledgeRoot, ACTIVE, bundleId);
+  if (await isDirectory(active)) return active;
+  const archived = resolve4(knowledgeRoot, ARCHIVE, bundleId);
+  if (await isDirectory(archived)) {
+    throw new GateRefusal(
+      `${bundleId} is archived; its pages are already in curated knowledge.`,
+      "Correct the curated page through a new flow.",
+      "An archived record is history. Editing it would change what the project says it decided, without anything recording that it changed."
+    );
+  }
+  throw new GateRefusal(`No record named ${bundleId}.`, "wfctl work status");
+}
+async function listQueue(knowledgeRoot) {
+  const path = resolve4(knowledgeRoot, QUEUE);
+  if (!await isDirectory(path)) return [];
+  const entries = await readdir2(path, { withFileTypes: true });
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+}
+async function promote(options) {
+  const queued = resolve4(options.knowledgeRoot, QUEUE, options.bundleId);
+  if (!await isDirectory(queued)) {
+    throw new GateRefusal(
+      `${options.bundleId} is not waiting in the promotion queue.`,
+      "wfctl work promotion list"
+    );
+  }
+  const archived = resolve4(options.knowledgeRoot, ARCHIVE, options.bundleId);
+  await mkdir3(resolve4(options.knowledgeRoot, ARCHIVE), { recursive: true });
+  await rename(queued, archived);
+  return { archived };
+}
+function queuePath(knowledgeRoot, bundleId) {
+  return join2(resolve4(knowledgeRoot, QUEUE), bundleId);
+}
+var ACTIVE, QUEUE, ARCHIVE;
+var init_promotion_queue = __esm({
+  "src/core/promotion-queue.ts"() {
+    "use strict";
+    init_gates();
+    ACTIVE = "changes/active";
+    QUEUE = "changes/promotion";
+    ARCHIVE = "changes/archive";
+  }
+});
+
 // src/core/write-hook.ts
 var write_hook_exports = {};
 __export(write_hook_exports, {
   decideWrite: () => decideWrite
 });
-import { relative as relative3, resolve as resolve6 } from "node:path";
+import { relative as relative3, resolve as resolve7 } from "node:path";
 function decideWrite(input) {
   const { flow, knowledgeRoot, target } = input;
   try {
@@ -603,7 +871,7 @@ wfctl guide structure \u2014 searching by graph before by string`
   };
 }
 function normalize(root, path) {
-  const absolute = resolve6(root, path);
+  const absolute = resolve7(root, path);
   return relative3(root, absolute) || absolute;
 }
 var init_write_hook = __esm({
@@ -617,7 +885,11 @@ var init_write_hook = __esm({
 
 // src/core/cli.ts
 import { existsSync } from "node:fs";
-import { dirname as dirname3, resolve as resolve7 } from "node:path";
+import { dirname as dirname4, resolve as resolve8 } from "node:path";
+
+// src/core/commands.ts
+import { mkdir as mkdir4, writeFile as writeFile3 } from "node:fs/promises";
+import { dirname as dirname2, resolve as resolve5 } from "node:path";
 
 // src/core/checkpoint.ts
 init_steps();
@@ -784,6 +1056,8 @@ async function workStart(context, options) {
       title: options.title,
       weight: options.weight
     });
+    await mkdir4(resolve5(context.root, "changes/active", flow.id), { recursive: true });
+    await writeFlow(context.root, { ...flow, members: [flow.id] });
     return ok(
       compose([
         `flow ${flow.id} opened`,
@@ -889,6 +1163,221 @@ async function flowClose(context) {
   const closed = await closeFlow(context.root, flow.id);
   return ok(`flow ${closed.id} closed; the fence is down and the checkpoint is flushed.`);
 }
+async function issueCreate(context, options) {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
+  }
+  if (!options.title.trim()) {
+    return refused(
+      new GateRefusal("A unit needs a title.", 'wfctl work issue create --title "<what it delivers>"')
+    );
+  }
+  const id = `U${String(flow.issues.length + 1).padStart(3, "0")}`;
+  const issue = {
+    id,
+    title: options.title.trim(),
+    status: "open",
+    notes: [],
+    acceptance: options.acceptance
+  };
+  await writeFlow(context.root, { ...flow, issues: [...flow.issues, issue] });
+  return ok(`${id}  ${issue.title}`);
+}
+async function issueList(context) {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  }
+  if (flow.issues.length === 0) {
+    return ok("no units yet.");
+  }
+  const lines = flow.issues.map((issue) => {
+    const notes = issue.notes.length > 0 ? `
+      ${issue.notes.join("\n      ")}` : "";
+    const claim = issue.claim ? `  [${issue.claim.repository}/${issue.claim.worktreeId}]` : "";
+    return `${issue.id}  ${issue.status.padEnd(8)}  ${issue.title}${claim}${notes}`;
+  });
+  return ok(lines.join("\n"));
+}
+async function withIssue(context, id, change) {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  }
+  const found = flow.issues.find((issue) => issue.id.toUpperCase() === id.toUpperCase());
+  if (!found) {
+    return refused(new GateRefusal(`No unit named ${id}.`, "wfctl work issue list"));
+  }
+  const issues = flow.issues.map((issue) => issue === found ? change(found) : issue);
+  await writeFlow(context.root, { ...flow, issues });
+  const next = issues.find((issue) => issue.id === found.id);
+  return ok(`${next?.id}  ${next?.status}  ${next?.title}`);
+}
+async function issueNote(context, options) {
+  if (!options.note.trim()) {
+    return refused(new GateRefusal("An empty note records nothing.", 'wfctl work issue note <id> --note "<...>"'));
+  }
+  return withIssue(context, options.id, (issue) => ({
+    ...issue,
+    notes: [...issue.notes, options.note.trim()]
+  }));
+}
+async function issueClaim(context, options) {
+  const flow = await currentFlow(context.root);
+  if (flow) {
+    try {
+      assertNotParked(flow);
+    } catch (error) {
+      if (error instanceof GateRefusal) return refused(error);
+      throw error;
+    }
+  }
+  return withIssue(context, options.id, (issue) => ({
+    ...issue,
+    status: "claimed",
+    claim: {
+      repository: options.repository,
+      checkout: options.checkout,
+      worktreeId: options.worktreeId
+    }
+  }));
+}
+async function issueComplete(context, id) {
+  const result = await withIssue(context, id, (issue) => {
+    const next = { ...issue, status: "done" };
+    delete next.claim;
+    return next;
+  });
+  if (result.exitCode !== 0) return result;
+  const flow = await currentFlow(context.root);
+  const remaining = (flow?.issues ?? []).filter((issue) => issue.status === "open");
+  return ok(
+    compose([
+      result.stdout,
+      remaining.length > 0 ? `${remaining.length} unit(s) still open:
+  ${remaining.map((issue) => `${issue.id}  ${issue.title}`).join("\n  ")}
+
+Finishing a unit is not finishing. The next unit is available work, and available work is yours.` : "every unit is terminal."
+    ])
+  );
+}
+async function capture(context, options) {
+  if (!options.text.trim()) {
+    return refused(new GateRefusal("A capture needs its finding.", 'wfctl capture "<what you found>"'));
+  }
+  const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+  const path = resolve5(context.root, "changes/inbox", `${stamp}.md`);
+  await mkdir4(dirname2(path), { recursive: true });
+  await writeFile3(
+    path,
+    [
+      "---",
+      `captured_at: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      `awaits: ${options.awaits ?? "nobody"}`,
+      "status: pending",
+      "---",
+      "",
+      options.text.trim(),
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+  return ok(compose([await guidanceFor(context, "work/capture"), `captured at:
+${path}`]));
+}
+async function verify(context, options) {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  }
+  try {
+    const { readReviewArtifact: readReviewArtifact2 } = await Promise.resolve().then(() => (init_review_artifact(), review_artifact_exports));
+    const { assertReviewUsable: assertReviewUsable2 } = await Promise.resolve().then(() => (init_verify(), verify_exports));
+    const review = await readReviewArtifact2(options.review, context.actor);
+    assertReviewUsable2(flow, review);
+    return ok(
+      compose([
+        `review accepted from ${review.reviewer}: ${review.attacks.length} attack(s), ${review.findings.length} finding(s)`,
+        await guidanceFor(context, "work/closed")
+      ])
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
+}
+async function park(context, reason) {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  if (!reason.trim()) {
+    return refused(
+      new GateRefusal(
+        "Parking needs their reason.",
+        'wfctl work park --reason "<why starting now is premature>"'
+      )
+    );
+  }
+  await writeFlow(context.root, {
+    ...flow,
+    parked: { at: (/* @__PURE__ */ new Date()).toISOString(), reason: reason.trim() }
+  });
+  return ok(
+    `${flow.id} is parked: ${reason.trim()}
+
+Approving a framing settles what the work is, never that it begins. Only their own word starts it \u2014 never an answer to a different question, and never the condition that held it having cleared.`
+  );
+}
+async function release(context, attested) {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  if (!flow.parked) return ok(`${flow.id} is not parked.`);
+  if (!attested.trim()) {
+    return refused(
+      new GateRefusal(
+        "A release carries their own words.",
+        'wfctl work release --attested "<what they said>"',
+        "This is one of the two places wording is recorded, because a release inferred from anything else is a start nobody agreed to."
+      )
+    );
+  }
+  const next = { ...flow };
+  delete next.parked;
+  await writeFlow(context.root, next);
+  return ok(`${flow.id} released: "${attested.trim()}"`);
+}
+async function close(context, options) {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  const open = flow.issues.filter((issue) => issue.status === "claimed");
+  if (open.length > 0) {
+    return refused(
+      new GateRefusal(
+        `${open.length} unit(s) are still claimed.`,
+        `wfctl work issue complete ${open[0]?.id}`,
+        open.map((issue) => `  ${issue.id}  ${issue.title}`).join("\n")
+      )
+    );
+  }
+  try {
+    const { closeBundle: closeBundle2 } = await Promise.resolve().then(() => (init_promotion_queue(), promotion_queue_exports));
+    const bundle = flow.members[0] ?? flow.id;
+    const result = await closeBundle2({
+      knowledgeRoot: context.root,
+      bundleId: bundle,
+      outcome: options.outcome
+    });
+    await writeFlow(context.root, { ...flow, step: "closed", closedAt: (/* @__PURE__ */ new Date()).toISOString() });
+    return ok(
+      result.waitingOnPromotion ? `${bundle} closed as ${options.outcome} and waits in the promotion queue.
+
+Its pages are what the maintainer is asked about. Nothing else is.` : `${bundle} closed as ${options.outcome} and archived; it had nothing to say about itself.`
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
+}
 
 // src/core/cli.ts
 init_gates();
@@ -897,8 +1386,8 @@ init_recall();
 // src/core/install.ts
 init_gates();
 import { createHash } from "node:crypto";
-import { chmod, mkdir as mkdir3, readFile as readFile3, readdir as readdir2, stat, writeFile as writeFile3 } from "node:fs/promises";
-import { dirname as dirname2, join as join2, relative as relative2, resolve as resolve4 } from "node:path";
+import { chmod, mkdir as mkdir5, readFile as readFile4, readdir as readdir3, stat as stat2, writeFile as writeFile4 } from "node:fs/promises";
+import { dirname as dirname3, join as join3, relative as relative2, resolve as resolve6 } from "node:path";
 var MANAGED_BEGIN = "<!-- wfctl:begin -->";
 var MANAGED_END = "<!-- wfctl:end -->";
 var HOOK_SETTINGS = {
@@ -966,27 +1455,27 @@ function hash(content) {
 }
 async function readIfPresent(path) {
   try {
-    return await readFile3(path, "utf8");
+    return await readFile4(path, "utf8");
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
     throw error;
   }
 }
 async function collect(root, prefix = "") {
-  const entries = await readdir2(join2(root, prefix), { withFileTypes: true });
+  const entries = await readdir3(join3(root, prefix), { withFileTypes: true });
   const files = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    const rel = prefix ? join2(prefix, entry.name) : entry.name;
+    const rel = prefix ? join3(prefix, entry.name) : entry.name;
     if (entry.isDirectory()) {
       files.push(...await collect(root, rel));
       continue;
     }
-    files.push({ path: rel, content: await readFile3(join2(root, rel), "utf8") });
+    files.push({ path: rel, content: await readFile4(join3(root, rel), "utf8") });
   }
   return files;
 }
 async function readInstallState(target) {
-  const raw = await readIfPresent(resolve4(target, ".workflow/state.json"));
+  const raw = await readIfPresent(resolve6(target, ".workflow/state.json"));
   return raw ? JSON.parse(raw) : void 0;
 }
 async function planInstall(options) {
@@ -994,8 +1483,8 @@ async function planInstall(options) {
   const operations = [];
   const edited = [];
   for (const directory of KNOWLEDGE_DIRECTORIES) {
-    const path = resolve4(options.target, directory);
-    const present = await stat(path).then(
+    const path = resolve6(options.target, directory);
+    const present = await stat2(path).then(
       (entry) => entry.isDirectory(),
       () => false
     );
@@ -1007,13 +1496,13 @@ async function planInstall(options) {
   ];
   const guidance = [];
   for (const bundle of bundles) {
-    for (const file of await collect(resolve4(options.distribution, bundle.source))) {
-      guidance.push({ path: join2(bundle.prefix, file.path), content: file.content });
+    for (const file of await collect(resolve6(options.distribution, bundle.source))) {
+      guidance.push({ path: join3(bundle.prefix, file.path), content: file.content });
     }
   }
   for (const file of guidance) {
     const rel = file.path;
-    const current = await readIfPresent(resolve4(options.target, rel));
+    const current = await readIfPresent(resolve6(options.target, rel));
     const recorded = state?.files[rel]?.sha256;
     const next = hash(file.content);
     if (current === void 0) {
@@ -1046,9 +1535,9 @@ async function applyInstall(plan, options) {
   };
   state.installedVersion = options.version;
   for (const operation of plan.operations) {
-    const absolute = resolve4(plan.target, operation.path);
+    const absolute = resolve6(plan.target, operation.path);
     if (operation.kind === "create-directory") {
-      await mkdir3(absolute, { recursive: true });
+      await mkdir5(absolute, { recursive: true });
       result.created.push(operation.path);
       continue;
     }
@@ -1061,23 +1550,23 @@ async function applyInstall(plan, options) {
       continue;
     }
     const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
-    const source = resolve4(
+    const source = resolve6(
       options.distribution,
       runtime ? "templates/runtime" : "templates/guidance",
       relative2(runtime ? RUNTIME_DIR : GUIDANCE_DIR, operation.path)
     );
-    const content = await readFile3(source, "utf8");
-    await mkdir3(dirname2(absolute), { recursive: true });
-    await writeFile3(absolute, content, "utf8");
+    const content = await readFile4(source, "utf8");
+    await mkdir5(dirname3(absolute), { recursive: true });
+    await writeFile4(absolute, content, "utf8");
     if (runtime) await chmod(absolute, 493);
     state.files[operation.path] = { sha256: hash(content) };
     result.written.push(operation.path);
   }
   await installHooks(plan.target);
   await installManagedBlock(plan.target, options.distribution);
-  await mkdir3(resolve4(plan.target, ".workflow"), { recursive: true });
-  await writeFile3(
-    resolve4(plan.target, ".workflow/state.json"),
+  await mkdir5(resolve6(plan.target, ".workflow"), { recursive: true });
+  await writeFile4(
+    resolve6(plan.target, ".workflow/state.json"),
     `${JSON.stringify(state, null, 2)}
 `,
     "utf8"
@@ -1096,7 +1585,7 @@ function assertProfileSupported(profile) {
   throw new GateRefusal(`Unknown profile ${profile}.`, "wfctl init knowledge");
 }
 async function installHooks(target) {
-  const path = resolve4(target, ".claude/settings.json");
+  const path = resolve6(target, ".claude/settings.json");
   const existing = await readIfPresent(path);
   let settings = {};
   if (existing) {
@@ -1118,55 +1607,38 @@ async function installHooks(target) {
     hooks[event] = [...theirs, ...ours];
   }
   settings.hooks = hooks;
-  await mkdir3(dirname2(path), { recursive: true });
-  await writeFile3(path, `${JSON.stringify(settings, null, 2)}
+  await mkdir5(dirname3(path), { recursive: true });
+  await writeFile4(path, `${JSON.stringify(settings, null, 2)}
 `, "utf8");
 }
 async function installManagedBlock(target, distribution) {
-  const body = (await readFile3(resolve4(distribution, "templates/agents/managed.md"), "utf8")).trim();
+  const body = (await readFile4(resolve6(distribution, "templates/agents/managed.md"), "utf8")).trim();
   const block = `${MANAGED_BEGIN}
 ${body}
 ${MANAGED_END}
 `;
   for (const name of ["AGENTS.md", "CLAUDE.md"]) {
-    const path = resolve4(target, name);
+    const path = resolve6(target, name);
     const existing = await readIfPresent(path);
     if (existing === void 0) {
-      await writeFile3(path, block, "utf8");
+      await writeFile4(path, block, "utf8");
       continue;
     }
     const begin = existing.indexOf(MANAGED_BEGIN);
     const end = existing.indexOf(MANAGED_END);
     if (begin >= 0 && end > begin) {
       const next = existing.slice(0, begin) + block.trimEnd() + existing.slice(end + MANAGED_END.length);
-      await writeFile3(path, next, "utf8");
+      await writeFile4(path, next, "utf8");
       continue;
     }
-    await writeFile3(path, `${existing.trimEnd()}
+    await writeFile4(path, `${existing.trimEnd()}
 
 ${block}`, "utf8");
   }
 }
 
-// src/core/promotion-queue.ts
-init_gates();
-import { mkdir as mkdir4, readdir as readdir3, rename, stat as stat2 } from "node:fs/promises";
-import { join as join3, resolve as resolve5 } from "node:path";
-var QUEUE = "changes/promotion";
-async function isDirectory(path) {
-  return stat2(path).then(
-    (entry) => entry.isDirectory(),
-    () => false
-  );
-}
-async function listQueue(knowledgeRoot) {
-  const path = resolve5(knowledgeRoot, QUEUE);
-  if (!await isDirectory(path)) return [];
-  const entries = await readdir3(path, { withFileTypes: true });
-  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-}
-
 // src/core/cli.ts
+init_promotion_queue();
 init_types();
 var USAGE = `wfctl \u2014 project workflow
 
@@ -1176,8 +1648,16 @@ var USAGE = `wfctl \u2014 project workflow
 
   work start --title ... --weight <significant|lightweight>
   work step <step>             record that this step is reached
+  work issue create --title ... [--satisfies AC-01]...
+  work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
+  work issue complete <id>
+  work park --reason ... | work release --attested "<their words>"
+  work verify --review <artifact>
+  work close --outcome <completed|partial|abandoned>
   work promotion draft <page>  create a page draft at the path it will occupy
   work promotion list          records waiting on the maintainer
+
+  capture "<what you found>" [--awaits]
 
   recall list                  the checklist
   recall answer <item> --answer ... --route ... --source ...
@@ -1264,6 +1744,44 @@ async function run(argv, context) {
           }
           return await advance(context, step);
         }
+        if (action === "issue") {
+          const [sub, ...rest_] = args;
+          if (sub === "create") {
+            return await issueCreate(context, {
+              title: flag(rest_, "title") ?? "",
+              acceptance: flags(rest_, "satisfies")
+            });
+          }
+          if (sub === "list") return await issueList(context);
+          if (sub === "note") {
+            return await issueNote(context, {
+              id: rest_[0] ?? "",
+              note: flag(rest_, "note") ?? ""
+            });
+          }
+          if (sub === "claim") {
+            return await issueClaim(context, {
+              id: rest_[0] ?? "",
+              repository: flag(rest_, "repository") ?? "",
+              checkout: flag(rest_, "checkout") ?? "",
+              worktreeId: flag(rest_, "worktree") ?? "main"
+            });
+          }
+          if (sub === "complete") return await issueComplete(context, rest_[0] ?? "");
+          return { stdout: USAGE, exitCode: 1 };
+        }
+        if (action === "verify") {
+          return await verify(context, { review: flag(args, "review") ?? "" });
+        }
+        if (action === "park") return await park(context, flag(args, "reason") ?? "");
+        if (action === "release") return await release(context, flag(args, "attested") ?? "");
+        if (action === "close") {
+          const outcome = flag(args, "outcome") ?? "completed";
+          if (!["completed", "partial", "abandoned"].includes(outcome)) {
+            return { stdout: "outcome must be completed, partial or abandoned", exitCode: 1 };
+          }
+          return await close(context, { outcome });
+        }
         if (action === "promotion" && args[0] === "draft") {
           return await promotionDraft(context, {
             knowledgeRoot: context.root,
@@ -1321,13 +1839,18 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
         }
         return { stdout: USAGE, exitCode: 1 };
       }
+      case "capture":
+        return await capture(context, {
+          text: rest.filter((entry) => !entry.startsWith("--"))[0] ?? "",
+          ...rest.includes("--awaits") ? { awaits: "maintainer" } : {}
+        });
       case "flow":
         if (rest[0] === "close") return await flowClose(context);
         return { stdout: USAGE, exitCode: 1 };
       case "init": {
         assertProfileSupported(rest[0] ?? "");
-        const target = resolve7(flag(rest, "target") ?? process.cwd());
-        const distribution = resolve7(context.assets, "..", "..");
+        const target = resolve8(flag(rest, "target") ?? process.cwd());
+        const distribution = resolve8(context.assets, "..", "..");
         const plan = await planInstall({
           target,
           distribution,
@@ -1359,9 +1882,9 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
 function findGuidance(start) {
   let current = start;
   for (let depth = 0; depth < 6; depth += 1) {
-    const candidate = resolve7(current, "templates", "guidance");
+    const candidate = resolve8(current, "templates", "guidance");
     if (existsSync(candidate)) return candidate;
-    const parent = dirname3(current);
+    const parent = dirname4(current);
     if (parent === current) break;
     current = parent;
   }

@@ -1,6 +1,26 @@
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { brief, checkpoint, flowClose, handoff, promotionDraft, recallAnswer, recallRoute, workStart, advance } from "./commands.js";
+import {
+  advance,
+  brief,
+  capture,
+  checkpoint,
+  close,
+  flowClose,
+  handoff,
+  issueClaim,
+  issueComplete,
+  issueCreate,
+  issueList,
+  issueNote,
+  park,
+  promotionDraft,
+  recallAnswer,
+  recallRoute,
+  release,
+  verify,
+  workStart,
+} from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { GateRefusal } from "./gates.js";
 import { RECALL_ITEMS } from "./recall.js";
@@ -24,8 +44,16 @@ const USAGE = `wfctl — project workflow
 
   work start --title ... --weight <significant|lightweight>
   work step <step>             record that this step is reached
+  work issue create --title ... [--satisfies AC-01]...
+  work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
+  work issue complete <id>
+  work park --reason ... | work release --attested "<their words>"
+  work verify --review <artifact>
+  work close --outcome <completed|partial|abandoned>
   work promotion draft <page>  create a page draft at the path it will occupy
   work promotion list          records waiting on the maintainer
+
+  capture "<what you found>" [--awaits]
 
   recall list                  the checklist
   recall answer <item> --answer ... --route ... --source ...
@@ -121,6 +149,47 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           }
           return await advance(context, step);
         }
+        if (action === "issue") {
+          const [sub, ...rest_] = args;
+          if (sub === "create") {
+            return await issueCreate(context, {
+              title: flag(rest_, "title") ?? "",
+              acceptance: flags(rest_, "satisfies"),
+            });
+          }
+          if (sub === "list") return await issueList(context);
+          if (sub === "note") {
+            return await issueNote(context, {
+              id: rest_[0] ?? "",
+              note: flag(rest_, "note") ?? "",
+            });
+          }
+          if (sub === "claim") {
+            return await issueClaim(context, {
+              id: rest_[0] ?? "",
+              repository: flag(rest_, "repository") ?? "",
+              checkout: flag(rest_, "checkout") ?? "",
+              worktreeId: flag(rest_, "worktree") ?? "main",
+            });
+          }
+          if (sub === "complete") return await issueComplete(context, rest_[0] ?? "");
+          return { stdout: USAGE, exitCode: 1 };
+        }
+        if (action === "verify") {
+          return await verify(context, { review: flag(args, "review") ?? "" });
+        }
+        if (action === "park") return await park(context, flag(args, "reason") ?? "");
+        if (action === "release") return await release(context, flag(args, "attested") ?? "");
+        if (action === "close") {
+          const outcome = (flag(args, "outcome") ?? "completed") as
+            | "completed"
+            | "partial"
+            | "abandoned";
+          if (!["completed", "partial", "abandoned"].includes(outcome)) {
+            return { stdout: "outcome must be completed, partial or abandoned", exitCode: 1 };
+          }
+          return await close(context, { outcome });
+        }
         if (action === "promotion" && args[0] === "draft") {
           return await promotionDraft(context, {
             knowledgeRoot: context.root,
@@ -183,6 +252,12 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         }
         return { stdout: USAGE, exitCode: 1 };
       }
+
+      case "capture":
+        return await capture(context, {
+          text: rest.filter((entry) => !entry.startsWith("--"))[0] ?? "",
+          ...(rest.includes("--awaits") ? { awaits: "maintainer" as const } : {}),
+        });
 
       case "flow":
         if (rest[0] === "close") return await flowClose(context);

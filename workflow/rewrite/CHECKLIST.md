@@ -184,7 +184,11 @@ Specs rewritten: `ENGINE.md`, `WORK.md`, `CLI.md`, and the surfaces in
 Evals: trigger evals deleted — nothing is loaded by the model choosing to load
 it, so the question has no subject. Eighteen behaviour evals across four suites.
 
-Remaining: the reconstruction case, which absorbs intake and raw.
+All flow commands are wired: units, captures, park and release, delegated
+verification, closure and the promotion queue.
+
+Remaining: the reconstruction case, which absorbs intake and raw, and the tests
+staged with it.
 
 ## Status
 

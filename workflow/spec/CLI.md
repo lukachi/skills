@@ -35,9 +35,42 @@ nothing.
 ```sh
 wfctl work start --title "<what this is>" --weight <significant|lightweight>
 wfctl work step <opened|aligned|framed|split|implement|verified|closed|promoted>
+
+wfctl work issue create --title "<what it delivers>" [--satisfies AC-01]...
+wfctl work issue list
+wfctl work issue note <id> --note "<what you learned>"
+wfctl work issue claim <id> --repository <owner/name> [--worktree <id>]
+wfctl work issue complete <id>
+
+wfctl work park --reason "<why starting now is premature>"
+wfctl work release --attested "<their own words>"
+
+wfctl work verify --review <artifact>
+wfctl work close --outcome <completed|partial|abandoned>
 wfctl work promotion draft "<area>/<page>.md"
 wfctl work promotion list
+
+wfctl capture "<what you found>" [--awaits]
 ```
+
+A claim records repository and worktree identity and **never** branch or commit.
+Every recorded binding deadlock in the previous implementation came from pinning
+a revision that then moved under the record.
+
+Units carry a status and the agent's own notes. There are no blocking edges and
+no frontier: where order genuinely matters, it goes in the notes.
+
+`work verify` reads a review artifact produced by a **different** agent. wfctl
+does not spawn it — what the tool checks is that the reviewer was not the acting
+agent and that every attack carries a test that was actually run.
+
+`work close` refuses while a unit is claimed. A record holding drafted pages
+waits in the promotion queue whatever its outcome; one with nothing to say
+archives directly.
+
+`capture` is the only place a finding met during work can go. Opening a second
+flow is refused while one is open, and so is creating a record directory by
+hand.
 
 `work start` refuses while a flow is open, and refuses without a weight. `work
 step` refuses when the current step's recall is short, or when its precondition
