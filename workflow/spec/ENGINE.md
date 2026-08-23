@@ -34,10 +34,15 @@ seventy per cent or more. Moving the text somewhere better-loaded does not fix
 this — placement is not compliance, and the instructions already sitting in the
 loaded agent block were ignored just as often.
 
-So there are no skills. The guidance ships inside the CLI and is read from
-there, so upgrading wfctl upgrades it — there is nothing installed into a
-project to drift, refresh, or conflict on. The same content is cut by the
-**state it applies to**
+One skill remains, and it is the entry point: it says which flows exist, when to
+start one, what the maintainer decides, and where the detail is. That much has to
+be discoverable before any command runs, and a managed block is the wrong shape
+for it — a block is loaded whole, every session, so it can only ever be a
+pointer.
+
+Everything the skill points at is delivered by the tool. The guidance ships
+inside the CLI and is read from there, so upgrading wfctl upgrades it, and the
+same content is cut by the **state it applies to**
 rather than by the role performing it, and the tool delivers the slice when that
 state is true. Nothing is compacted to achieve this; the volume was never the
 problem. What changes is when the text arrives, and that it arrives again the
@@ -176,10 +181,10 @@ leaf code from there as an orchestrator, so a leaf never needed an installation
 of its own — and measurement said it never used one. Asking for a leaf install
 is refused with what replaced it.
 
-What is installed is small on purpose: the runtime guards, which the host
-executes by path from inside the project, the hook settings that point at them,
-the directories the flows write into, and one managed agent block. Guidance is
-not installed — it ships with the CLI. `wfctl` must:
+What is installed is small on purpose: the `wfctl` skill in both agent
+conventions, the runtime guards the host executes by path, the hook settings
+pointing at them, the directories the flows write into, and a managed block that
+points at the skill. Guidance is not installed — it ships with the CLI. `wfctl` must:
 
 - preview mutations and request confirmation in interactive use;
 - preserve unowned files and text, including everything outside the managed

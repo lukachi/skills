@@ -35,12 +35,15 @@ The flow openly reuses selected MIT-licensed skills from Matt Pocock's
 the tool delivers rather than skills an agent has to choose to load. See
 [provenance](THIRD_PARTY.md).
 
-## No skills
+## One skill, and it is a map
 
-Instructions do not arrive because the agent decided to load them. Each command
-prints what the current state demands, the next one refuses until that exists,
-and three hooks cover the moments no command reaches: the session opening, a
-file about to change, and a turn ending with work outstanding.
+The `wfctl` skill says which flows exist, when to start one, and what the
+maintainer decides — the part an agent needs before it runs anything.
+
+Everything else arrives from the tool. Each command prints what the current
+state demands, the next one refuses until that exists, and three hooks cover the
+moments no command reaches: the session opening, a file about to change, and a
+turn ending with work outstanding.
 
 The guidance ships inside `wfctl` and is read from there, so upgrading the tool
 upgrades what every project is told. Nothing is copied into your repositories to

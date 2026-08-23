@@ -1074,6 +1074,7 @@ __export(install_exports, {
   MANAGED_BEGIN: () => MANAGED_BEGIN,
   MANAGED_END: () => MANAGED_END,
   RUNTIME_DIR: () => RUNTIME_DIR,
+  SKILL_DIRS: () => SKILL_DIRS,
   applyInstall: () => applyInstall,
   assertProfileSupported: () => assertProfileSupported,
   guardStatus: () => guardStatus,
@@ -1131,6 +1132,11 @@ async function planInstall(options) {
   for (const file of await collect(resolve7(options.distribution, "templates/runtime"))) {
     installable.push({ path: join3(RUNTIME_DIR, file.path), content: file.content });
   }
+  for (const file of await collect(resolve7(options.distribution, "templates/skill/wfctl"))) {
+    for (const directory of SKILL_DIRS) {
+      installable.push({ path: join3(directory, file.path), content: file.content });
+    }
+  }
   for (const file of installable) {
     const rel = file.path;
     const current = await readIfPresent(resolve7(options.target, rel));
@@ -1180,15 +1186,17 @@ async function applyInstall(plan, options) {
       result.conflicts.push(operation.path);
       continue;
     }
-    const source = resolve7(
+    const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
+    const skillDir = SKILL_DIRS.find((directory) => operation.path.startsWith(`${directory}/`));
+    const source = runtime ? resolve7(options.distribution, "templates/runtime", relative2(RUNTIME_DIR, operation.path)) : resolve7(
       options.distribution,
-      "templates/runtime",
-      relative2(RUNTIME_DIR, operation.path)
+      "templates/skill/wfctl",
+      relative2(skillDir ?? "", operation.path)
     );
     const content = await readFile5(source, "utf8");
     await mkdir6(dirname4(absolute), { recursive: true });
     await writeFile5(absolute, content, "utf8");
-    await chmod(absolute, 493);
+    if (runtime) await chmod(absolute, 493);
     state.files[operation.path] = { sha256: hash(content) };
     result.written.push(operation.path);
   }
@@ -1374,7 +1382,7 @@ function renderGuards(status) {
     "mechanism that catches a turn ending on work nobody is waiting for."
   ].join("\n");
 }
-var MANAGED_BEGIN, MANAGED_END, HOOK_SETTINGS, INSTALL_SCHEMA_VERSION, RUNTIME_DIR, FLOWS_DIR, KNOWLEDGE_DIRECTORIES, GUARD_NAMES, GUARD_EVENTS;
+var MANAGED_BEGIN, MANAGED_END, HOOK_SETTINGS, INSTALL_SCHEMA_VERSION, RUNTIME_DIR, SKILL_DIRS, FLOWS_DIR, KNOWLEDGE_DIRECTORIES, GUARD_NAMES, GUARD_EVENTS;
 var init_install = __esm({
   "src/core/install.ts"() {
     "use strict";
@@ -1424,6 +1432,7 @@ var init_install = __esm({
     };
     INSTALL_SCHEMA_VERSION = 1;
     RUNTIME_DIR = ".workflow/runtime";
+    SKILL_DIRS = [".claude/skills/wfctl", ".agents/skills/wfctl"];
     FLOWS_DIR = ".workflow/flows";
     KNOWLEDGE_DIRECTORIES = [
       "knowledge",

@@ -86,6 +86,19 @@ export const INSTALL_SCHEMA_VERSION = 1;
  * the project — so those are installed.
  */
 export const RUNTIME_DIR = ".workflow/runtime";
+
+/**
+ * The skill is installed; the guidance it points at is not.
+ *
+ * They answer different questions. The skill is the map — which flow this is,
+ * when to start one, what the maintainer decides — and the agent needs it
+ * before running anything, so it has to be discoverable in the project. The
+ * guidance is what a state demands at the moment it is reached, and the tool
+ * delivers that itself.
+ *
+ * Both agent conventions get a copy, because a project may run either.
+ */
+export const SKILL_DIRS = [".claude/skills/wfctl", ".agents/skills/wfctl"];
 export const FLOWS_DIR = ".workflow/flows";
 
 /**
@@ -193,6 +206,11 @@ export async function planInstall(options: {
   for (const file of await collect(resolve(options.distribution, "templates/runtime"))) {
     installable.push({ path: join(RUNTIME_DIR, file.path), content: file.content });
   }
+  for (const file of await collect(resolve(options.distribution, "templates/skill/wfctl"))) {
+    for (const directory of SKILL_DIRS) {
+      installable.push({ path: join(directory, file.path), content: file.content });
+    }
+  }
 
   for (const file of installable) {
     const rel = file.path;
@@ -259,15 +277,19 @@ export async function applyInstall(
       continue;
     }
 
-    const source = resolve(
-      options.distribution,
-      "templates/runtime",
-      relative(RUNTIME_DIR, operation.path),
-    );
+    const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
+    const skillDir = SKILL_DIRS.find((directory) => operation.path.startsWith(`${directory}/`));
+    const source = runtime
+      ? resolve(options.distribution, "templates/runtime", relative(RUNTIME_DIR, operation.path))
+      : resolve(
+          options.distribution,
+          "templates/skill/wfctl",
+          relative(skillDir ?? "", operation.path),
+        );
     const content = await readFile(source, "utf8");
     await mkdir(dirname(absolute), { recursive: true });
     await writeFile(absolute, content, "utf8");
-    await chmod(absolute, 0o755);
+    if (runtime) await chmod(absolute, 0o755);
     state.files[operation.path] = { sha256: hash(content) };
     result.written.push(operation.path);
   }

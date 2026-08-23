@@ -105,10 +105,10 @@ There is one profile. `wfctl init leaf` is refused with what replaced it: the
 agent is bootstrapped in the knowledge repository and edits leaf code from
 there.
 
-Installation writes the runtime guards, the hook settings that point at them,
-the directories the flows use, and the managed agent block. Guidance is not
-installed: it ships inside the CLI and is read from there, so upgrading wfctl
-upgrades it. Settings entries wfctl did not write are preserved,
+Installation writes the `wfctl` skill into both agent conventions, the runtime
+guards, the hook settings that point at them, the directories the flows use, and
+a managed block that points at the skill. Guidance is not installed: it ships
+inside the CLI and is read from there, so upgrading wfctl upgrades it. Settings entries wfctl did not write are preserved,
 as is everything outside the managed markers. A file the maintainer edited is
 reported rather than replaced.
 

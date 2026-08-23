@@ -437,3 +437,77 @@ test("every internal link in the shipped guidance resolves", async () => {
   }
   assert.deepEqual(broken, [], `broken guidance links: ${broken.join(", ")}`);
 });
+
+test("the skill is installed into both agent conventions", async () => {
+  const root = await installed();
+
+  for (const base of [".claude/skills/wfctl", ".agents/skills/wfctl"]) {
+    const skill = await readFile(resolve(root, base, "SKILL.md"), "utf8");
+    assert.match(skill, /^---\nname: wfctl\ndescription: /, "the skill needs valid frontmatter");
+    for (const reference of ["changes-flow", "reconstruction", "recall", "verification", "records", "deciding", "commands"]) {
+      assert.ok(
+        existsSync(resolve(root, base, "references", `${reference}.md`)),
+        `${base} is missing references/${reference}.md`,
+      );
+    }
+  }
+});
+
+test("the managed block points at the skill and stays short", async () => {
+  const root = await installed();
+  const agents = await readFile(resolve(root, "AGENTS.md"), "utf8");
+
+  assert.match(agents, /wfctl` skill/);
+  assert.match(agents, /wfctl brief/);
+  assert.ok(agents.split("\n").length < 20, "the block is meant to be a pointer, not the guide");
+  assert.equal(agents, await readFile(resolve(root, "CLAUDE.md"), "utf8"));
+});
+
+test("every reference the skill names exists, and every link in them resolves", async () => {
+  const root = await installed();
+  const base = resolve(root, ".claude/skills/wfctl");
+  const skill = await readFile(resolve(base, "SKILL.md"), "utf8");
+
+  const broken: string[] = [];
+  for (const match of skill.matchAll(/\]\((references\/[^)]+\.md)\)/g)) {
+    if (!existsSync(resolve(base, match[1] ?? ""))) broken.push(`SKILL.md -> ${match[1]}`);
+  }
+
+  const { readdir } = await import("node:fs/promises");
+  for (const entry of await readdir(resolve(base, "references"))) {
+    const body = await readFile(resolve(base, "references", entry), "utf8");
+    for (const match of body.matchAll(/\]\(([a-z-]+\.md)\)/g)) {
+      if (!existsSync(resolve(base, "references", match[1] ?? ""))) {
+        broken.push(`references/${entry} -> ${match[1]}`);
+      }
+    }
+  }
+  assert.deepEqual(broken, [], `broken skill links: ${broken.join(", ")}`);
+});
+
+test("every command the skill names exists in the CLI", async () => {
+  const root = await installed();
+  const base = resolve(root, ".claude/skills/wfctl");
+  const { readdir } = await import("node:fs/promises");
+
+  let text = await readFile(resolve(base, "SKILL.md"), "utf8");
+  for (const entry of await readdir(resolve(base, "references"))) {
+    text += await readFile(resolve(base, "references", entry), "utf8");
+  }
+
+  const groups = new Set([
+    "brief", "handoff", "checkpoint", "work", "recall", "flow", "guide",
+    "hook", "init", "repo", "reconstruct", "trajectory", "capture", "guards",
+  ]);
+  const named = new Set(
+    [...text.matchAll(/wfctl ([a-z][a-z-]*)(?: ([a-z][a-z-]*))?/g)]
+      .filter((match) => groups.has(match[1] ?? ""))
+      .map((match) => [match[1], match[2]].filter(Boolean).join(" ")),
+  );
+
+  const unknown = [...named].filter((command) => {
+    const result = wfctl(root, command.split(" "));
+    return result.status === 1 && result.stdout.includes("wfctl — project workflow");
+  });
+  assert.deepEqual(unknown, [], `the skill names commands that do not exist: ${unknown.join(", ")}`);
+});
