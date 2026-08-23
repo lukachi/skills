@@ -50,6 +50,11 @@ Five surfaces deliver, and none of them is a model decision:
 | Code is about to change | PreToolUse on Edit/Write | host |
 | A turn ends with work outstanding | Stop guard | host |
 
+Each of the three guards can be turned off by the maintainer and is reported by
+`wfctl guards`. A guard with no switch gets disabled by hand instead, where the
+edit is indistinguishable from the maintainer's own configuration and survives
+every upgrade.
+
 Every refusal names the command that clears it. A refusal that does not costs
 the agent a turn and teaches it nothing — the previous implementation's worst
 messages named the one command that destroyed a record's accounting and not the

@@ -434,3 +434,133 @@ export async function installManagedBlock(target: string, distribution: string):
     await writeFile(path, `${existing.trimEnd()}\n\n${block}`, "utf8");
   }
 }
+
+/* ------------------------------------------------------------------ hooks */
+
+export const GUARD_NAMES = ["stop", "write", "bash"] as const;
+export type GuardName = (typeof GUARD_NAMES)[number];
+
+const GUARD_EVENTS: Record<GuardName, { event: string; matcher: string; describes: string }> = {
+  stop: {
+    event: "Stop",
+    matcher: "*",
+    describes: "re-enters a turn that ends while work still awaits the agent",
+  },
+  write: {
+    event: "PreToolUse",
+    matcher: "Edit|Write|MultiEdit",
+    describes: "delivers the unit's scope on the first write, and refuses writes by hand",
+  },
+  bash: {
+    event: "PreToolUse",
+    matcher: "Bash",
+    describes: "reports a background command that has gone silent",
+  },
+};
+
+async function readSettings(target: string): Promise<Record<string, unknown>> {
+  const raw = await readIfPresent(resolve(target, ".claude/settings.json"));
+  if (!raw) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new GateRefusal(
+      `${resolve(target, ".claude/settings.json")} is not valid JSON.`,
+      "Repair the file, then try again.",
+    );
+  }
+  if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
+    throw new GateRefusal(
+      `${resolve(target, ".claude/settings.json")} is not a JSON object.`,
+      "Repair the file, then try again.",
+    );
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * Which guards are installed, and which are turned off.
+ *
+ * A guard that cannot be turned off gets turned off by hand — by editing the
+ * settings file, which then looks like a maintainer entry and survives the next
+ * upgrade forever. Making the switch part of the tool keeps the state
+ * observable and reversible.
+ */
+export async function guardStatus(target: string): Promise<
+  { guard: GuardName; installed: boolean; describes: string }[]
+> {
+  const settings = await readSettings(target);
+  const hooks = (settings.hooks ?? {}) as Record<string, { matcher?: string; hooks?: { command?: string }[] }[]>;
+
+  return GUARD_NAMES.map((guard) => {
+    const { event, matcher, describes } = GUARD_EVENTS[guard];
+    const entries = Array.isArray(hooks[event]) ? hooks[event] : [];
+    const installed = entries.some(
+      (entry) =>
+        entry.matcher === matcher &&
+        (entry.hooks ?? []).some((hook) => (hook.command ?? "").includes(scriptFor(guard))),
+    );
+    return { guard, installed, describes };
+  });
+}
+
+function scriptFor(guard: GuardName): string {
+  return guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard}.mjs`;
+}
+
+export async function setGuard(
+  target: string,
+  guard: GuardName,
+  enabled: boolean,
+): Promise<string> {
+  const path = resolve(target, ".claude/settings.json");
+  const settings = await readSettings(target);
+  const hooks = { ...((settings.hooks ?? {}) as Record<string, unknown[]>) };
+  const { event, matcher } = GUARD_EVENTS[guard];
+  const script = scriptFor(guard);
+
+  const entries = Array.isArray(hooks[event]) ? [...(hooks[event] as unknown[])] : [];
+  const isThisGuard = (entry: unknown): boolean =>
+    ((entry as { hooks?: { command?: string }[] } | null)?.hooks ?? []).some((hook) =>
+      (hook.command ?? "").includes(script),
+    );
+
+  const others = entries.filter((entry) => !isThisGuard(entry));
+
+  if (!enabled) {
+    hooks[event] = others;
+    settings.hooks = hooks;
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+    return `${guard} guard off. Restart the session for it to take effect.`;
+  }
+
+  const ours = (HOOK_SETTINGS.hooks as Record<string, readonly unknown[]>)[event]?.find((entry) =>
+    isThisGuard(entry),
+  );
+  if (!ours) {
+    throw new GateRefusal(`No installed definition for the ${guard} guard.`, "wfctl init knowledge");
+  }
+  hooks[event] = [...others, ours];
+  settings.hooks = hooks;
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  return `${guard} guard on. Restart the session for it to take effect.`;
+}
+
+export function renderGuards(
+  status: { guard: GuardName; installed: boolean; describes: string }[],
+): string {
+  return [
+    ...status.map(
+      (entry) =>
+        `${entry.installed ? "on " : "off"}  ${entry.guard.padEnd(6)}  ${entry.describes}`,
+    ),
+    "",
+    "wfctl guards on <stop|write|bash>   ·   wfctl guards off <stop|write|bash>",
+    "",
+    "Turning one off is a decision worth recording. The stop guard is the only",
+    "mechanism that catches a turn ending on work nobody is waiting for.",
+  ].join("\n");
+}

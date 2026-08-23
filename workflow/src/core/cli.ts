@@ -85,6 +85,9 @@ const USAGE = `wfctl — project workflow
 
   guide [<topic>]              detail for one topic, when the state needs it
 
+  guards [status]              which runtime guards are on
+  guards on|off <stop|write|bash>
+
   hook write --target <path>   used by the pre-write guard, not by hand
 `;
 
@@ -628,6 +631,19 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         }
 
         return { stdout: USAGE, exitCode: 1 };
+      }
+
+      case "guards": {
+        const { GUARD_NAMES, guardStatus, renderGuards, setGuard } = await import("./install.js");
+        const [action, ...args] = rest;
+        if (action === "on" || action === "off") {
+          const guard = oneOf(args[0], GUARD_NAMES, "guard");
+          return ok_(await setGuard(context.root, guard, action === "on"));
+        }
+        if (action === undefined || action === "status") {
+          return ok_(renderGuards(await guardStatus(context.root)));
+        }
+        return { stdout: "wfctl guards [status] | on <guard> | off <guard>", exitCode: 1 };
       }
 
       case "capture": {

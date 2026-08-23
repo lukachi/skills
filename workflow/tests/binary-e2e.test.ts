@@ -357,3 +357,84 @@ test("the stop guard releases when nothing awaits the agent", async () => {
   });
   assert.equal(decision.trim(), "", "an idle repository must end the turn");
 });
+
+test("guards can be listed, turned off and turned back on", async () => {
+  const root = await installed();
+
+  const listed = wfctl(root, ["guards"]);
+  assert.equal(listed.status, 0);
+  assert.match(listed.stdout, /on\s+stop/);
+  assert.match(listed.stdout, /on\s+write/);
+  assert.match(listed.stdout, /on\s+bash/);
+
+  const off = wfctl(root, ["guards", "off", "stop"]);
+  assert.equal(off.status, 0);
+  assert.match(off.stdout, /Restart the session/);
+  assert.match(wfctl(root, ["guards"]).stdout, /off\s+stop/);
+
+  // Turning one off must not disturb the others.
+  const after = await readFile(resolve(root, ".claude/settings.json"), "utf8");
+  assert.doesNotMatch(after, /guard-stop\.mjs/);
+  assert.match(after, /guard-write\.mjs/);
+  assert.match(after, /guard-background-bash\.mjs/);
+
+  const on = wfctl(root, ["guards", "on", "stop"]);
+  assert.equal(on.status, 0);
+  assert.match(await readFile(resolve(root, ".claude/settings.json"), "utf8"), /guard-stop\.mjs/);
+
+  const unknown = wfctl(root, ["guards", "off", "nonsense"]);
+  assert.equal(unknown.status, 2);
+  assert.match(unknown.stdout, /not a valid guard/);
+});
+
+test("turning a guard off does not delete the maintainer's own hooks", async () => {
+  const root = await installed();
+  const path = resolve(root, ".claude/settings.json");
+  const settings = JSON.parse(await readFile(path, "utf8"));
+  settings.hooks.Stop.unshift({ matcher: "*", hooks: [{ type: "command", command: "my-notify" }] });
+  await writeFile(path, JSON.stringify(settings, null, 2), "utf8");
+
+  wfctl(root, ["guards", "off", "stop"]);
+  const after = await readFile(path, "utf8");
+  assert.match(after, /my-notify/, "the maintainer's own Stop hook was removed with ours");
+  assert.doesNotMatch(after, /guard-stop\.mjs/);
+});
+
+test("the guide page lists every topic the CLI serves", async () => {
+  const root = await installed();
+  const served = new Set(
+    wfctl(root, ["guide"]).stdout.replace("topics:", "").split(",").map((entry) => entry.trim()),
+  );
+  const page = wfctl(root, ["guide", "wfctl"]).stdout;
+
+  const missing = [...served].filter((topic) => topic && !page.includes(`\`${topic}\``));
+  assert.deepEqual(missing, [], `the guide page omits topics it serves: ${missing.join(", ")}`);
+});
+
+test("every topic the guide page lists actually resolves", async () => {
+  const root = await installed();
+  const page = wfctl(root, ["guide", "wfctl"]).stdout;
+  const listed = [...page.matchAll(/^\| `([a-z-]+)` \|/gm)].map((match) => match[1] ?? "");
+
+  const dead = listed.filter((topic) => wfctl(root, ["guide", topic]).status !== 0);
+  assert.deepEqual(dead, [], `the guide page lists topics that do not resolve: ${dead.join(", ")}`);
+});
+
+test("every internal link in the installed guidance resolves", async () => {
+  const root = await installed();
+  const { readdir } = await import("node:fs/promises");
+  const base = resolve(root, ".workflow/guidance");
+  const entries = await readdir(base, { recursive: true, withFileTypes: true });
+
+  const broken: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    const path = join(entry.parentPath ?? base, entry.name);
+    const body = await readFile(path, "utf8");
+    for (const match of body.matchAll(/\]\((\.[^)]+\.md)\)/g)) {
+      const target = resolve(join(entry.parentPath ?? base), match[1] ?? "");
+      if (!existsSync(target)) broken.push(`${path.slice(base.length + 1)} -> ${match[1]}`);
+    }
+  }
+  assert.deepEqual(broken, [], `broken guidance links: ${broken.join(", ")}`);
+});

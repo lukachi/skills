@@ -1063,6 +1063,413 @@ var init_trajectory = __esm({
   }
 });
 
+// src/core/install.ts
+var install_exports = {};
+__export(install_exports, {
+  FLOWS_DIR: () => FLOWS_DIR,
+  GUARD_NAMES: () => GUARD_NAMES,
+  GUIDANCE_DIR: () => GUIDANCE_DIR,
+  HOOK_SETTINGS: () => HOOK_SETTINGS,
+  INSTALL_SCHEMA_VERSION: () => INSTALL_SCHEMA_VERSION,
+  KNOWLEDGE_DIRECTORIES: () => KNOWLEDGE_DIRECTORIES,
+  MANAGED_BEGIN: () => MANAGED_BEGIN,
+  MANAGED_END: () => MANAGED_END,
+  RUNTIME_DIR: () => RUNTIME_DIR,
+  applyInstall: () => applyInstall,
+  assertProfileSupported: () => assertProfileSupported,
+  guardStatus: () => guardStatus,
+  installHooks: () => installHooks,
+  installManagedBlock: () => installManagedBlock,
+  planInstall: () => planInstall,
+  readInstallState: () => readInstallState,
+  renderGuards: () => renderGuards,
+  setGuard: () => setGuard
+});
+import { createHash as createHash2 } from "node:crypto";
+import { chmod, mkdir as mkdir6, readFile as readFile5, readdir as readdir4, stat as stat2, writeFile as writeFile5 } from "node:fs/promises";
+import { dirname as dirname4, join as join3, relative as relative2, resolve as resolve7 } from "node:path";
+function hash(content) {
+  return createHash2("sha256").update(content).digest("hex");
+}
+async function readIfPresent(path) {
+  try {
+    return await readFile5(path, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return void 0;
+    throw error;
+  }
+}
+async function collect(root, prefix = "") {
+  const entries = await readdir4(join3(root, prefix), { withFileTypes: true });
+  const files = [];
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    const rel = prefix ? join3(prefix, entry.name) : entry.name;
+    if (entry.isDirectory()) {
+      files.push(...await collect(root, rel));
+      continue;
+    }
+    files.push({ path: rel, content: await readFile5(join3(root, rel), "utf8") });
+  }
+  return files;
+}
+async function readInstallState(target) {
+  const raw = await readIfPresent(resolve7(target, ".workflow/state.json"));
+  return raw ? JSON.parse(raw) : void 0;
+}
+async function planInstall(options) {
+  const state = await readInstallState(options.target);
+  const operations = [];
+  const edited = [];
+  for (const directory of KNOWLEDGE_DIRECTORIES) {
+    const path = resolve7(options.target, directory);
+    const present = await stat2(path).then(
+      (entry) => entry.isDirectory(),
+      () => false
+    );
+    if (!present) operations.push({ kind: "create-directory", path: directory });
+  }
+  const bundles = [
+    { source: "templates/guidance", prefix: GUIDANCE_DIR },
+    { source: "templates/runtime", prefix: RUNTIME_DIR }
+  ];
+  const guidance = [];
+  for (const bundle of bundles) {
+    for (const file of await collect(resolve7(options.distribution, bundle.source))) {
+      guidance.push({ path: join3(bundle.prefix, file.path), content: file.content });
+    }
+  }
+  for (const file of guidance) {
+    const rel = file.path;
+    const current = await readIfPresent(resolve7(options.target, rel));
+    const recorded = state?.files[rel]?.sha256;
+    const next = hash(file.content);
+    if (current === void 0) {
+      operations.push({ kind: "write", path: rel });
+      continue;
+    }
+    if (hash(current) === next) {
+      operations.push({ kind: "skip-unchanged", path: rel });
+      continue;
+    }
+    if (recorded && hash(current) !== recorded) {
+      edited.push(rel);
+      operations.push({
+        kind: "conflict",
+        path: rel,
+        reason: "edited since it was installed; it will not be replaced silently"
+      });
+      continue;
+    }
+    operations.push({ kind: "write", path: rel });
+  }
+  return { target: options.target, operations, edited };
+}
+async function applyInstall(plan, options) {
+  const result = { written: [], created: [], skipped: [], conflicts: [] };
+  const state = await readInstallState(plan.target) ?? {
+    schemaVersion: INSTALL_SCHEMA_VERSION,
+    installedVersion: options.version,
+    files: {}
+  };
+  state.installedVersion = options.version;
+  for (const operation of plan.operations) {
+    const absolute = resolve7(plan.target, operation.path);
+    if (operation.kind === "create-directory") {
+      await mkdir6(absolute, { recursive: true });
+      result.created.push(operation.path);
+      continue;
+    }
+    if (operation.kind === "skip-unchanged") {
+      result.skipped.push(operation.path);
+      continue;
+    }
+    if (operation.kind === "conflict") {
+      result.conflicts.push(operation.path);
+      continue;
+    }
+    const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
+    const source = resolve7(
+      options.distribution,
+      runtime ? "templates/runtime" : "templates/guidance",
+      relative2(runtime ? RUNTIME_DIR : GUIDANCE_DIR, operation.path)
+    );
+    const content = await readFile5(source, "utf8");
+    await mkdir6(dirname4(absolute), { recursive: true });
+    await writeFile5(absolute, content, "utf8");
+    if (runtime) await chmod(absolute, 493);
+    state.files[operation.path] = { sha256: hash(content) };
+    result.written.push(operation.path);
+  }
+  await mkdir6(resolve7(plan.target, ".workflow"), { recursive: true });
+  await writeFile5(
+    resolve7(plan.target, ".workflow/state.json"),
+    `${JSON.stringify(state, null, 2)}
+`,
+    "utf8"
+  );
+  await installHooks(plan.target);
+  await installManagedBlock(plan.target, options.distribution);
+  return result;
+}
+function assertProfileSupported(profile) {
+  if (profile === "knowledge") return;
+  if (profile === "leaf") {
+    throw new GateRefusal(
+      "There is no leaf installation any more.",
+      "wfctl init knowledge   (run in the knowledge repository)",
+      "The agent is bootstrapped in the knowledge repository and edits leaf code from there. Register the repository instead of installing into it."
+    );
+  }
+  throw new GateRefusal(`Unknown profile ${profile}.`, "wfctl init knowledge");
+}
+async function installHooks(target) {
+  const path = resolve7(target, ".claude/settings.json");
+  const existing = await readIfPresent(path);
+  let settings = {};
+  if (existing) {
+    try {
+      settings = JSON.parse(existing);
+    } catch {
+      throw new GateRefusal(
+        `${path} is not valid JSON, so its hooks cannot be merged.`,
+        "Repair the file, then run init again."
+      );
+    }
+  }
+  if (Array.isArray(settings) || typeof settings !== "object" || settings === null) {
+    throw new GateRefusal(
+      `${path} is not a JSON object, so its hooks cannot be merged.`,
+      "Repair the file, then run init again.",
+      "Merging into an array would have written the hooks onto a property that JSON.stringify discards, leaving the install reporting success with no hooks at all."
+    );
+  }
+  const existingHooks = settings.hooks;
+  if (existingHooks !== void 0 && (typeof existingHooks !== "object" || existingHooks === null || Array.isArray(existingHooks))) {
+    throw new GateRefusal(
+      `${path} has a "hooks" value that is not an object.`,
+      "Repair the file, then run init again."
+    );
+  }
+  const ourCommands = new Set(
+    Object.values(HOOK_SETTINGS.hooks).flat().flatMap((entry) => entry.hooks).map((hook) => hook.command)
+  );
+  const isOurs = (entry) => {
+    const hooks2 = entry?.hooks;
+    if (!Array.isArray(hooks2) || hooks2.length === 0) return false;
+    return hooks2.every((hook) => typeof hook?.command === "string" && ourCommands.has(hook.command));
+  };
+  const hooks = { ...existingHooks ?? {} };
+  for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
+    const current = hooks[event];
+    const theirs = (Array.isArray(current) ? current : []).filter((entry) => !isOurs(entry));
+    hooks[event] = [...theirs, ...entries];
+  }
+  settings.hooks = hooks;
+  await mkdir6(dirname4(path), { recursive: true });
+  await writeFile5(path, `${JSON.stringify(settings, null, 2)}
+`, "utf8");
+}
+async function installManagedBlock(target, distribution) {
+  const body = (await readFile5(resolve7(distribution, "templates/agents/managed.md"), "utf8")).trim();
+  const block = `${MANAGED_BEGIN}
+${body}
+${MANAGED_END}
+`;
+  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
+    const path = resolve7(target, name);
+    const existing = await readIfPresent(path);
+    if (existing === void 0) {
+      await writeFile5(path, block, "utf8");
+      continue;
+    }
+    const begin = existing.indexOf(MANAGED_BEGIN);
+    const end = existing.indexOf(MANAGED_END);
+    const begins = existing.split(MANAGED_BEGIN).length - 1;
+    const ends = existing.split(MANAGED_END).length - 1;
+    if (begins !== ends || begins > 1 || begins === 1 && end < begin) {
+      throw new GateRefusal(
+        `${name} has an unbalanced wfctl marker block.`,
+        `Repair the markers in ${name} so one ${MANAGED_BEGIN} is followed by one ${MANAGED_END}, then run init again.`,
+        `Found ${begins} begin marker(s) and ${ends} end marker(s). Writing past that would move the boundary and take your own text with it.`
+      );
+    }
+    if (begin >= 0 && end > begin) {
+      const next = existing.slice(0, begin) + block.trimEnd() + existing.slice(end + MANAGED_END.length);
+      await writeFile5(path, next, "utf8");
+      continue;
+    }
+    await writeFile5(path, `${existing.trimEnd()}
+
+${block}`, "utf8");
+  }
+}
+async function readSettings(target) {
+  const raw = await readIfPresent(resolve7(target, ".claude/settings.json"));
+  if (!raw) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new GateRefusal(
+      `${resolve7(target, ".claude/settings.json")} is not valid JSON.`,
+      "Repair the file, then try again."
+    );
+  }
+  if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
+    throw new GateRefusal(
+      `${resolve7(target, ".claude/settings.json")} is not a JSON object.`,
+      "Repair the file, then try again."
+    );
+  }
+  return parsed;
+}
+async function guardStatus(target) {
+  const settings = await readSettings(target);
+  const hooks = settings.hooks ?? {};
+  return GUARD_NAMES.map((guard) => {
+    const { event, matcher, describes } = GUARD_EVENTS[guard];
+    const entries = Array.isArray(hooks[event]) ? hooks[event] : [];
+    const installed = entries.some(
+      (entry) => entry.matcher === matcher && (entry.hooks ?? []).some((hook) => (hook.command ?? "").includes(scriptFor(guard)))
+    );
+    return { guard, installed, describes };
+  });
+}
+function scriptFor(guard) {
+  return guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard}.mjs`;
+}
+async function setGuard(target, guard, enabled) {
+  const path = resolve7(target, ".claude/settings.json");
+  const settings = await readSettings(target);
+  const hooks = { ...settings.hooks ?? {} };
+  const { event, matcher } = GUARD_EVENTS[guard];
+  const script = scriptFor(guard);
+  const entries = Array.isArray(hooks[event]) ? [...hooks[event]] : [];
+  const isThisGuard = (entry) => (entry?.hooks ?? []).some(
+    (hook) => (hook.command ?? "").includes(script)
+  );
+  const others = entries.filter((entry) => !isThisGuard(entry));
+  if (!enabled) {
+    hooks[event] = others;
+    settings.hooks = hooks;
+    await mkdir6(dirname4(path), { recursive: true });
+    await writeFile5(path, `${JSON.stringify(settings, null, 2)}
+`, "utf8");
+    return `${guard} guard off. Restart the session for it to take effect.`;
+  }
+  const ours = HOOK_SETTINGS.hooks[event]?.find(
+    (entry) => isThisGuard(entry)
+  );
+  if (!ours) {
+    throw new GateRefusal(`No installed definition for the ${guard} guard.`, "wfctl init knowledge");
+  }
+  hooks[event] = [...others, ours];
+  settings.hooks = hooks;
+  await mkdir6(dirname4(path), { recursive: true });
+  await writeFile5(path, `${JSON.stringify(settings, null, 2)}
+`, "utf8");
+  return `${guard} guard on. Restart the session for it to take effect.`;
+}
+function renderGuards(status) {
+  return [
+    ...status.map(
+      (entry) => `${entry.installed ? "on " : "off"}  ${entry.guard.padEnd(6)}  ${entry.describes}`
+    ),
+    "",
+    "wfctl guards on <stop|write|bash>   \xB7   wfctl guards off <stop|write|bash>",
+    "",
+    "Turning one off is a decision worth recording. The stop guard is the only",
+    "mechanism that catches a turn ending on work nobody is waiting for."
+  ].join("\n");
+}
+var MANAGED_BEGIN, MANAGED_END, HOOK_SETTINGS, INSTALL_SCHEMA_VERSION, GUIDANCE_DIR, RUNTIME_DIR, FLOWS_DIR, KNOWLEDGE_DIRECTORIES, GUARD_NAMES, GUARD_EVENTS;
+var init_install = __esm({
+  "src/core/install.ts"() {
+    "use strict";
+    init_gates();
+    MANAGED_BEGIN = "<!-- wfctl:begin -->";
+    MANAGED_END = "<!-- wfctl:end -->";
+    HOOK_SETTINGS = {
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "*",
+            hooks: [{ type: "command", command: "wfctl brief" }]
+          }
+        ],
+        PreToolUse: [
+          {
+            matcher: "Edit|Write|MultiEdit",
+            hooks: [
+              {
+                type: "command",
+                command: '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-write.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-write.mjs" || true'
+              }
+            ]
+          },
+          {
+            matcher: "Bash",
+            hooks: [
+              {
+                type: "command",
+                command: '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true'
+              }
+            ]
+          }
+        ],
+        Stop: [
+          {
+            matcher: "*",
+            hooks: [
+              {
+                type: "command",
+                command: '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" || true'
+              }
+            ]
+          }
+        ]
+      }
+    };
+    INSTALL_SCHEMA_VERSION = 1;
+    GUIDANCE_DIR = ".workflow/guidance";
+    RUNTIME_DIR = ".workflow/runtime";
+    FLOWS_DIR = ".workflow/flows";
+    KNOWLEDGE_DIRECTORIES = [
+      "knowledge",
+      "changes/active",
+      "changes/promotion",
+      "changes/archive",
+      "changes/archive/captures",
+      "changes/inbox",
+      "reconstruction/raw",
+      "reconstruction/active",
+      "reconstruction/archive",
+      "trajectories",
+      GUIDANCE_DIR,
+      RUNTIME_DIR,
+      FLOWS_DIR
+    ];
+    GUARD_NAMES = ["stop", "write", "bash"];
+    GUARD_EVENTS = {
+      stop: {
+        event: "Stop",
+        matcher: "*",
+        describes: "re-enters a turn that ends while work still awaits the agent"
+      },
+      write: {
+        event: "PreToolUse",
+        matcher: "Edit|Write|MultiEdit",
+        describes: "delivers the unit's scope on the first write, and refuses writes by hand"
+      },
+      bash: {
+        event: "PreToolUse",
+        matcher: "Bash",
+        describes: "reports a background command that has gone silent"
+      }
+    };
+  }
+});
+
 // src/core/write-hook.ts
 var write_hook_exports = {};
 __export(write_hook_exports, {
@@ -2153,291 +2560,7 @@ ${result.archived}`,
 // src/core/cli.ts
 init_gates();
 init_recall();
-
-// src/core/install.ts
-init_gates();
-import { createHash as createHash2 } from "node:crypto";
-import { chmod, mkdir as mkdir6, readFile as readFile5, readdir as readdir4, stat as stat2, writeFile as writeFile5 } from "node:fs/promises";
-import { dirname as dirname4, join as join3, relative as relative2, resolve as resolve7 } from "node:path";
-var MANAGED_BEGIN = "<!-- wfctl:begin -->";
-var MANAGED_END = "<!-- wfctl:end -->";
-var HOOK_SETTINGS = {
-  hooks: {
-    SessionStart: [
-      {
-        matcher: "*",
-        hooks: [{ type: "command", command: "wfctl brief" }]
-      }
-    ],
-    PreToolUse: [
-      {
-        matcher: "Edit|Write|MultiEdit",
-        hooks: [
-          {
-            type: "command",
-            command: '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-write.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-write.mjs" || true'
-          }
-        ]
-      },
-      {
-        matcher: "Bash",
-        hooks: [
-          {
-            type: "command",
-            command: '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true'
-          }
-        ]
-      }
-    ],
-    Stop: [
-      {
-        matcher: "*",
-        hooks: [
-          {
-            type: "command",
-            command: '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" || true'
-          }
-        ]
-      }
-    ]
-  }
-};
-var INSTALL_SCHEMA_VERSION = 1;
-var GUIDANCE_DIR = ".workflow/guidance";
-var RUNTIME_DIR = ".workflow/runtime";
-var FLOWS_DIR = ".workflow/flows";
-var KNOWLEDGE_DIRECTORIES = [
-  "knowledge",
-  "changes/active",
-  "changes/promotion",
-  "changes/archive",
-  "changes/archive/captures",
-  "changes/inbox",
-  "reconstruction/raw",
-  "reconstruction/active",
-  "reconstruction/archive",
-  "trajectories",
-  GUIDANCE_DIR,
-  RUNTIME_DIR,
-  FLOWS_DIR
-];
-function hash(content) {
-  return createHash2("sha256").update(content).digest("hex");
-}
-async function readIfPresent(path) {
-  try {
-    return await readFile5(path, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return void 0;
-    throw error;
-  }
-}
-async function collect(root, prefix = "") {
-  const entries = await readdir4(join3(root, prefix), { withFileTypes: true });
-  const files = [];
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    const rel = prefix ? join3(prefix, entry.name) : entry.name;
-    if (entry.isDirectory()) {
-      files.push(...await collect(root, rel));
-      continue;
-    }
-    files.push({ path: rel, content: await readFile5(join3(root, rel), "utf8") });
-  }
-  return files;
-}
-async function readInstallState(target) {
-  const raw = await readIfPresent(resolve7(target, ".workflow/state.json"));
-  return raw ? JSON.parse(raw) : void 0;
-}
-async function planInstall(options) {
-  const state = await readInstallState(options.target);
-  const operations = [];
-  const edited = [];
-  for (const directory of KNOWLEDGE_DIRECTORIES) {
-    const path = resolve7(options.target, directory);
-    const present = await stat2(path).then(
-      (entry) => entry.isDirectory(),
-      () => false
-    );
-    if (!present) operations.push({ kind: "create-directory", path: directory });
-  }
-  const bundles = [
-    { source: "templates/guidance", prefix: GUIDANCE_DIR },
-    { source: "templates/runtime", prefix: RUNTIME_DIR }
-  ];
-  const guidance = [];
-  for (const bundle of bundles) {
-    for (const file of await collect(resolve7(options.distribution, bundle.source))) {
-      guidance.push({ path: join3(bundle.prefix, file.path), content: file.content });
-    }
-  }
-  for (const file of guidance) {
-    const rel = file.path;
-    const current = await readIfPresent(resolve7(options.target, rel));
-    const recorded = state?.files[rel]?.sha256;
-    const next = hash(file.content);
-    if (current === void 0) {
-      operations.push({ kind: "write", path: rel });
-      continue;
-    }
-    if (hash(current) === next) {
-      operations.push({ kind: "skip-unchanged", path: rel });
-      continue;
-    }
-    if (recorded && hash(current) !== recorded) {
-      edited.push(rel);
-      operations.push({
-        kind: "conflict",
-        path: rel,
-        reason: "edited since it was installed; it will not be replaced silently"
-      });
-      continue;
-    }
-    operations.push({ kind: "write", path: rel });
-  }
-  return { target: options.target, operations, edited };
-}
-async function applyInstall(plan, options) {
-  const result = { written: [], created: [], skipped: [], conflicts: [] };
-  const state = await readInstallState(plan.target) ?? {
-    schemaVersion: INSTALL_SCHEMA_VERSION,
-    installedVersion: options.version,
-    files: {}
-  };
-  state.installedVersion = options.version;
-  for (const operation of plan.operations) {
-    const absolute = resolve7(plan.target, operation.path);
-    if (operation.kind === "create-directory") {
-      await mkdir6(absolute, { recursive: true });
-      result.created.push(operation.path);
-      continue;
-    }
-    if (operation.kind === "skip-unchanged") {
-      result.skipped.push(operation.path);
-      continue;
-    }
-    if (operation.kind === "conflict") {
-      result.conflicts.push(operation.path);
-      continue;
-    }
-    const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
-    const source = resolve7(
-      options.distribution,
-      runtime ? "templates/runtime" : "templates/guidance",
-      relative2(runtime ? RUNTIME_DIR : GUIDANCE_DIR, operation.path)
-    );
-    const content = await readFile5(source, "utf8");
-    await mkdir6(dirname4(absolute), { recursive: true });
-    await writeFile5(absolute, content, "utf8");
-    if (runtime) await chmod(absolute, 493);
-    state.files[operation.path] = { sha256: hash(content) };
-    result.written.push(operation.path);
-  }
-  await mkdir6(resolve7(plan.target, ".workflow"), { recursive: true });
-  await writeFile5(
-    resolve7(plan.target, ".workflow/state.json"),
-    `${JSON.stringify(state, null, 2)}
-`,
-    "utf8"
-  );
-  await installHooks(plan.target);
-  await installManagedBlock(plan.target, options.distribution);
-  return result;
-}
-function assertProfileSupported(profile) {
-  if (profile === "knowledge") return;
-  if (profile === "leaf") {
-    throw new GateRefusal(
-      "There is no leaf installation any more.",
-      "wfctl init knowledge   (run in the knowledge repository)",
-      "The agent is bootstrapped in the knowledge repository and edits leaf code from there. Register the repository instead of installing into it."
-    );
-  }
-  throw new GateRefusal(`Unknown profile ${profile}.`, "wfctl init knowledge");
-}
-async function installHooks(target) {
-  const path = resolve7(target, ".claude/settings.json");
-  const existing = await readIfPresent(path);
-  let settings = {};
-  if (existing) {
-    try {
-      settings = JSON.parse(existing);
-    } catch {
-      throw new GateRefusal(
-        `${path} is not valid JSON, so its hooks cannot be merged.`,
-        "Repair the file, then run init again."
-      );
-    }
-  }
-  if (Array.isArray(settings) || typeof settings !== "object" || settings === null) {
-    throw new GateRefusal(
-      `${path} is not a JSON object, so its hooks cannot be merged.`,
-      "Repair the file, then run init again.",
-      "Merging into an array would have written the hooks onto a property that JSON.stringify discards, leaving the install reporting success with no hooks at all."
-    );
-  }
-  const existingHooks = settings.hooks;
-  if (existingHooks !== void 0 && (typeof existingHooks !== "object" || existingHooks === null || Array.isArray(existingHooks))) {
-    throw new GateRefusal(
-      `${path} has a "hooks" value that is not an object.`,
-      "Repair the file, then run init again."
-    );
-  }
-  const ourCommands = new Set(
-    Object.values(HOOK_SETTINGS.hooks).flat().flatMap((entry) => entry.hooks).map((hook) => hook.command)
-  );
-  const isOurs = (entry) => {
-    const hooks2 = entry?.hooks;
-    if (!Array.isArray(hooks2) || hooks2.length === 0) return false;
-    return hooks2.every((hook) => typeof hook?.command === "string" && ourCommands.has(hook.command));
-  };
-  const hooks = { ...existingHooks ?? {} };
-  for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
-    const current = hooks[event];
-    const theirs = (Array.isArray(current) ? current : []).filter((entry) => !isOurs(entry));
-    hooks[event] = [...theirs, ...entries];
-  }
-  settings.hooks = hooks;
-  await mkdir6(dirname4(path), { recursive: true });
-  await writeFile5(path, `${JSON.stringify(settings, null, 2)}
-`, "utf8");
-}
-async function installManagedBlock(target, distribution) {
-  const body = (await readFile5(resolve7(distribution, "templates/agents/managed.md"), "utf8")).trim();
-  const block = `${MANAGED_BEGIN}
-${body}
-${MANAGED_END}
-`;
-  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
-    const path = resolve7(target, name);
-    const existing = await readIfPresent(path);
-    if (existing === void 0) {
-      await writeFile5(path, block, "utf8");
-      continue;
-    }
-    const begin = existing.indexOf(MANAGED_BEGIN);
-    const end = existing.indexOf(MANAGED_END);
-    const begins = existing.split(MANAGED_BEGIN).length - 1;
-    const ends = existing.split(MANAGED_END).length - 1;
-    if (begins !== ends || begins > 1 || begins === 1 && end < begin) {
-      throw new GateRefusal(
-        `${name} has an unbalanced wfctl marker block.`,
-        `Repair the markers in ${name} so one ${MANAGED_BEGIN} is followed by one ${MANAGED_END}, then run init again.`,
-        `Found ${begins} begin marker(s) and ${ends} end marker(s). Writing past that would move the boundary and take your own text with it.`
-      );
-    }
-    if (begin >= 0 && end > begin) {
-      const next = existing.slice(0, begin) + block.trimEnd() + existing.slice(end + MANAGED_END.length);
-      await writeFile5(path, next, "utf8");
-      continue;
-    }
-    await writeFile5(path, `${existing.trimEnd()}
-
-${block}`, "utf8");
-  }
-}
-
-// src/core/cli.ts
+init_install();
 init_promotion_queue();
 init_types();
 var USAGE = `wfctl \u2014 project workflow
@@ -2486,6 +2609,9 @@ var USAGE = `wfctl \u2014 project workflow
   init knowledge [--target <dir>]
 
   guide [<topic>]              detail for one topic, when the state needs it
+
+  guards [status]              which runtime guards are on
+  guards on|off <stop|write|bash>
 
   hook write --target <path>   used by the pre-write guard, not by hand
 `;
@@ -2947,6 +3073,18 @@ archived at:
 ${archived}`);
         }
         return { stdout: USAGE, exitCode: 1 };
+      }
+      case "guards": {
+        const { GUARD_NAMES: GUARD_NAMES2, guardStatus: guardStatus2, renderGuards: renderGuards2, setGuard: setGuard2 } = await Promise.resolve().then(() => (init_install(), install_exports));
+        const [action, ...args] = rest;
+        if (action === "on" || action === "off") {
+          const guard = oneOf(args[0], GUARD_NAMES2, "guard");
+          return ok_(await setGuard2(context.root, guard, action === "on"));
+        }
+        if (action === void 0 || action === "status") {
+          return ok_(renderGuards2(await guardStatus2(context.root)));
+        }
+        return { stdout: "wfctl guards [status] | on <guard> | off <guard>", exitCode: 1 };
       }
       case "capture": {
         const awaits = rest.includes("--awaits");

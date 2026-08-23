@@ -110,11 +110,26 @@ and the managed agent block. Settings entries wfctl did not write are preserved,
 as is everything outside the managed markers. A file the maintainer edited is
 reported rather than replaced.
 
-## Hooks
+## Runtime guards
 
 ```sh
-wfctl hook write --target <path>    # used by the pre-write guard, not by hand
+wfctl guards [status]                # which guards are on
+wfctl guards on|off <stop|write|bash>
+wfctl hook write --target <path>     # used by the pre-write guard, not by hand
 ```
+
+Three guards fire without a command being run: the session brief, the write
+guard on the first write of a unit, and the turn guard when a turn ends while
+work still awaits the agent.
+
+Turning one off is the maintainer's decision. A guard that cannot be turned off
+gets turned off by hand — by editing the settings file, where it then looks like
+a maintainer entry and survives every upgrade. Turning one off leaves the
+maintainer's own hooks for the same event untouched.
+
+`brief --json` is what the turn guard reads. It emits the signals the guard
+filters on, and existed as a stub in the guard's own tests long before the flag
+was implemented.
 
 ## Exit codes
 

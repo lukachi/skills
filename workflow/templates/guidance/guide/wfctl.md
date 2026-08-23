@@ -52,6 +52,24 @@ brings one back on demand:
 | `quality` | the two-axis gate before a page becomes stable |
 | `discoveries` | what to preserve, and where |
 | `wayfind` | charting a route that is not visible yet |
+| `routing` | which road a claim takes into curated knowledge |
+| `scope` | settling what a reconstruction reads |
+| `crawl` | reading everything in scope without asking questions |
+| `assemble` | turning what was read into a subject's line |
+| `adjudicate` | the one round of what evidence could not settle |
+| `probe` | asking whether the pages can answer without the source |
+| `sources` | reading material that is not well-formed |
+
+## The runtime guards
+
+Three things fire without a command being run: the session brief when a session
+opens, the write guard on the first write of a unit, and the turn guard when a
+turn ends while work still awaits you.
+
+`wfctl guards` shows which are on. They can be turned off — `wfctl guards off
+<stop|write|bash>` — and that is the maintainer's call rather than yours. The
+turn guard in particular is the only thing that catches a turn ending on work
+nobody is waiting for.
 
 ## What is the maintainer's
 

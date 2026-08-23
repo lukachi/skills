@@ -38,6 +38,11 @@ for.
 **End a turn only when you are waiting on the maintainer.** If you are not, take
 the next action in the same turn. Finishing a unit is not finishing.
 
+**Three guards run without being called** — the session brief, the write guard on
+the first write of a unit, and the turn guard when a turn ends with work still
+outstanding. `wfctl guards` shows which are on. Turning one off is the
+maintainer's decision, not yours.
+
 **You are in the knowledge repository.** Code lives in the leaf repositories this
 one knows about, and you edit it from here. There is nothing to install there and
 no second session to open.
