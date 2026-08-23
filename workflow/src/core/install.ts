@@ -271,15 +271,23 @@ export async function applyInstall(
     result.written.push(operation.path);
   }
 
-  await installHooks(plan.target);
-  await installManagedBlock(plan.target, options.distribution);
-
+  /**
+   * Record what was written before anything else can refuse.
+   *
+   * Files were written first and the state recorded last, so a refusal in the
+   * hook merge left a full tree with no state.json — and a missing recorded
+   * hash reads as "safe to overwrite", which silently destroyed maintainer
+   * edits on the next run.
+   */
   await mkdir(resolve(plan.target, ".workflow"), { recursive: true });
   await writeFile(
     resolve(plan.target, ".workflow/state.json"),
     `${JSON.stringify(state, null, 2)}\n`,
     "utf8",
   );
+
+  await installHooks(plan.target);
+  await installManagedBlock(plan.target, options.distribution);
   return result;
 }
 
@@ -326,13 +334,50 @@ export async function installHooks(target: string): Promise<void> {
     }
   }
 
-  const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>;
-  for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
-    const ours = entries as unknown as { matcher: string }[];
-    const theirs = ((hooks[event] ?? []) as { matcher?: string }[]).filter(
-      (entry) => !ours.some((entry_) => entry_.matcher === entry.matcher),
+  if (Array.isArray(settings) || typeof settings !== "object" || settings === null) {
+    throw new GateRefusal(
+      `${path} is not a JSON object, so its hooks cannot be merged.`,
+      "Repair the file, then run init again.",
+      "Merging into an array would have written the hooks onto a property that " +
+        "JSON.stringify discards, leaving the install reporting success with no " +
+        "hooks at all.",
     );
-    hooks[event] = [...theirs, ...ours];
+  }
+
+  const existingHooks = settings.hooks;
+  if (existingHooks !== undefined && (typeof existingHooks !== "object" || existingHooks === null || Array.isArray(existingHooks))) {
+    throw new GateRefusal(
+      `${path} has a "hooks" value that is not an object.`,
+      "Repair the file, then run init again.",
+    );
+  }
+
+  /**
+   * Ownership is the command we install, never the matcher.
+   *
+   * Matching on the matcher string deleted any maintainer entry that happened
+   * to use `*`, `Bash` or `Edit|Write|MultiEdit` — which is most of them. What
+   * wfctl owns is the specific command it wrote, and nothing else in the file
+   * is its business.
+   */
+  const ourCommands = new Set(
+    Object.values(HOOK_SETTINGS.hooks)
+      .flat()
+      .flatMap((entry) => entry.hooks as readonly { command: string }[])
+      .map((hook) => hook.command),
+  );
+
+  const isOurs = (entry: unknown): boolean => {
+    const hooks = (entry as { hooks?: { command?: string }[] } | null)?.hooks;
+    if (!Array.isArray(hooks) || hooks.length === 0) return false;
+    return hooks.every((hook) => typeof hook?.command === "string" && ourCommands.has(hook.command));
+  };
+
+  const hooks = { ...((existingHooks ?? {}) as Record<string, unknown[]>) };
+  for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
+    const current = hooks[event];
+    const theirs = (Array.isArray(current) ? current : []).filter((entry) => !isOurs(entry));
+    hooks[event] = [...theirs, ...(entries as readonly unknown[])];
   }
   settings.hooks = hooks;
 
@@ -361,6 +406,25 @@ export async function installManagedBlock(target: string, distribution: string):
     }
     const begin = existing.indexOf(MANAGED_BEGIN);
     const end = existing.indexOf(MANAGED_END);
+
+    /**
+     * An unbalanced or duplicated marker set stops the install.
+     *
+     * Appending a second block past a begin with no end produced a file with
+     * two begins and one end; the next run then replaced everything between
+     * the first begin and that end, taking the maintainer's text with it.
+     */
+    const begins = existing.split(MANAGED_BEGIN).length - 1;
+    const ends = existing.split(MANAGED_END).length - 1;
+    if (begins !== ends || begins > 1 || (begins === 1 && end < begin)) {
+      throw new GateRefusal(
+        `${name} has an unbalanced wfctl marker block.`,
+        `Repair the markers in ${name} so one ${MANAGED_BEGIN} is followed by one ${MANAGED_END}, then run init again.`,
+        `Found ${begins} begin marker(s) and ${ends} end marker(s). Writing past ` +
+          "that would move the boundary and take your own text with it.",
+      );
+    }
+
     if (begin >= 0 && end > begin) {
       const next =
         existing.slice(0, begin) + block.trimEnd() + existing.slice(end + MANAGED_END.length);

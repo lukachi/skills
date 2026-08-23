@@ -92,7 +92,7 @@ export function assertReviewUsable(flow: FlowRecord, review: Review): void {
   if (review.reviewer.trim().length === 0) {
     throw new GateRefusal(
       "The review records no reviewer.",
-      "wfctl work verify --reviewer <agent id>",
+      "wfctl work verify --review <artifact naming its reviewer>",
       "The implementing agent cannot review its own work: the agent that wrote " +
         "the tests can write the review that approves them.",
     );
@@ -101,7 +101,7 @@ export function assertReviewUsable(flow: FlowRecord, review: Review): void {
   if (review.attacks.length === 0 && review.findings.length === 0) {
     throw new GateRefusal(
       "The review is empty: no findings and no recorded attacks.",
-      "wfctl work verify --attack <file>",
+      "wfctl work verify --review <artifact carrying its attacks>",
       'A reviewer that broke nothing must still say what it tried. "Looks ' +
         'correct" is not an allowed answer.',
     );
@@ -112,6 +112,22 @@ export function assertReviewUsable(flow: FlowRecord, review: Review): void {
       `${review.stubSurvivors.length} test(s) still pass with the implementation stubbed.`,
       "Fix the tests, then re-run the review.",
       `Those tests assert nothing:\n  ${review.stubSurvivors.join("\n  ")}`,
+    );
+  }
+
+  /**
+   * An attack whose own output says it broke the work is a finding.
+   *
+   * `broke` was never inspected, so a review could carry the evidence that the
+   * work is wrong and still be accepted — the one thing an adversarial round
+   * exists to prevent.
+   */
+  const broke = review.attacks.filter((attack) => attack.broke);
+  if (broke.length > 0) {
+    throw new GateRefusal(
+      `${broke.length} attack(s) broke the work.`,
+      "Fix what they broke, then run the review again.",
+      broke.map((attack) => `  [${attack.lens}] ${attack.target}\n    ${attack.output}`).join("\n"),
     );
   }
 
@@ -130,7 +146,7 @@ export function assertReviewUsable(flow: FlowRecord, review: Review): void {
   if (silent.length > 0) {
     throw new GateRefusal(
       `${silent.length} finding(s) were accepted without a reason.`,
-      "wfctl work finding accept <id> --because \"<why this is acceptable>\"",
+      "Record the reason in the artifact's finding, then verify again.",
       "A finding may be accepted, never silently.",
     );
   }
@@ -138,7 +154,7 @@ export function assertReviewUsable(flow: FlowRecord, review: Review): void {
   if (flow.framingDigest && flow.framingDigest !== review.framingDigest) {
     throw new GateRefusal(
       "The acceptance criteria have changed since the framing was approved.",
-      `wfctl work approve ${flow.id} --stage completion`,
+      "wfctl work close --outcome partial   (the framing they approved no longer matches)",
       "This is the one case where closure returns to the maintainer: delivery " +
         "no longer matches the framing they agreed to.",
     );

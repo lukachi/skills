@@ -70,6 +70,23 @@ export function assertRecall(flow: FlowRecord, step: WorkStep): void {
   );
 }
 
+/**
+ * `verified` needs a review on the record.
+ *
+ * Without this the adversarial round is optional: the step advances on nothing,
+ * and closure follows it.
+ */
+export function assertReviewed(flow: FlowRecord, step: WorkStep): void {
+  if (step !== "verified" && step !== "closed" && step !== "promoted") return;
+  if (flow.review) return;
+  throw new GateRefusal(
+    "No review is on record for this work.",
+    "wfctl work verify --review <artifact from a separate agent>",
+    "The agent that wrote the tests can write the review that approves them, so " +
+      "the review is produced elsewhere and this checks what came back.",
+  );
+}
+
 export function assertNotParked(flow: FlowRecord): void {
   if (!flow.parked) return;
   throw new GateRefusal(

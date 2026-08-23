@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import { GateRefusal } from "./gates.js";
@@ -24,6 +25,20 @@ export async function createPromotionDraft(
   page: string,
 ): Promise<string> {
   const normalized = page.replace(/^\/+/, "");
+  if (!normalized.trim() || normalized === "." || normalized === "..") {
+    throw new GateRefusal(
+      "A promotion draft needs the page it will become.",
+      'wfctl work promotion draft "<area>/<page>.md"',
+      "An empty name resolved to the promotion directory itself and replaced it " +
+        "with a file, after which no draft could be created in that record at all.",
+    );
+  }
+  if (!normalized.endsWith(".md")) {
+    throw new GateRefusal(
+      "A curated page is Markdown.",
+      `wfctl work promotion draft "${normalized}.md"`,
+    );
+  }
   if (normalized.split(/[\\/]/).includes("..")) {
     throw new GateRefusal(
       "A promotion page path may not climb out of the bundle.",
@@ -47,15 +62,40 @@ export async function createPromotionDraft(
  * Both refusals exist because both were done by hand, repeatedly, and the
  * result was pages that could not be promoted and bundles nobody agreed to.
  */
+/**
+ * Resolve through the filesystem before comparing.
+ *
+ * Comparing raw path segments let three things through: a case variant on a
+ * case-insensitive filesystem, a symlink pointing at the guarded directory, and
+ * the absolute path when the root itself was reached by a different alias.
+ * `realpathSync` collapses all three; the parent walk handles a target that
+ * does not exist yet, which every first write is.
+ */
+function canonical(path: string): string {
+  let current = resolve(path);
+  const trailing: string[] = [];
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      return [realpathSync.native(current), ...trailing].join(sep);
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return resolve(path);
+      trailing.unshift(current.slice(parent.length + 1));
+      current = parent;
+    }
+  }
+  return resolve(path);
+}
+
 export function assertWriteAllowed(options: {
   knowledgeRoot: string;
   target: string;
   bundleId?: string;
 }): void {
-  const target = resolve(options.target);
-  const knowledge = resolve(options.knowledgeRoot);
+  const target = canonical(options.target);
+  const knowledge = canonical(options.knowledgeRoot);
   const rel = relative(knowledge, target);
-  if (rel.startsWith("..")) return;
+  if (rel.startsWith("..") || rel === "") return;
 
   const segments = rel.split(sep);
 
@@ -65,6 +105,31 @@ export function assertWriteAllowed(options: {
       'wfctl work promotion draft "<area>/<page>.md"',
       "Pages enter curated knowledge through promotion, which is the " +
         "maintainer's decision. Drafts live in the bundle until then.",
+    );
+  }
+
+  /**
+   * The promotion queue and the archive are guarded too.
+   *
+   * Only `changes/active` was checked, so a record fabricated straight into
+   * `changes/promotion/` appeared in the queue and was promotable having never
+   * passed a flow, a recall gate or a review.
+   */
+  if (segments[0] === "changes" && (segments[1] === "promotion" || segments[1] === "archive")) {
+    throw new GateRefusal(
+      `${segments[1]} is written by the tool, not by hand.`,
+      "wfctl work close --outcome <completed|partial|abandoned>",
+      "A record that appears here without passing the flow is promotable without " +
+        "ever having been reviewed.",
+    );
+  }
+
+  /** The flow pointer and the trajectory store are the tool's own bookkeeping. */
+  if (segments[0] === ".workflow" || segments[0] === "trajectories") {
+    throw new GateRefusal(
+      `${segments[0]} is the tool's own state.`,
+      "wfctl brief",
+      "Editing it by hand is how a fence stops holding.",
     );
   }
 

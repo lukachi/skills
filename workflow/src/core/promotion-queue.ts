@@ -51,7 +51,7 @@ export async function closeBundle(options: {
   if (!(await isDirectory(from))) {
     throw new GateRefusal(
       `No active record named ${options.bundleId}.`,
-      "wfctl work status",
+      "wfctl work promotion list",
     );
   }
 
@@ -94,7 +94,7 @@ export async function assertCorrectable(knowledgeRoot: string, bundleId: string)
     );
   }
 
-  throw new GateRefusal(`No record named ${bundleId}.`, "wfctl work status");
+  throw new GateRefusal(`No record named ${bundleId}.`, "wfctl work promotion list");
 }
 
 export async function listQueue(knowledgeRoot: string): Promise<string[]> {

@@ -60,7 +60,7 @@ test("closing clears the pointer and drops the checkpoint", async () => {
 
 test("an answer without a source does not count as answered", () => {
   let recall = recordAnswer(
-    { answers: [], counters: { qmd: 0, graphify: 0, grep: 0, read: 0, maintainer: 0 }, covered: [] },
+    { answers: [], counters: { qmd: 0, graphify: 0, grep: 0, read: 0, maintainer: 0 }, covered: [], written: [] },
     { item: "E14", answer: "nothing contradicts it", route: "qmd", source: "", at: "now" },
   );
   assert.equal(isAnswered(recall, "E14"), false);
@@ -234,7 +234,7 @@ function base(): FlowRecord {
     members: [],
     repositories: [],
     issues: [],
-    recall: { answers: [], counters: { qmd: 0, graphify: 0, grep: 0, read: 0, maintainer: 0 }, covered: [] },
+    recall: { answers: [], counters: { qmd: 0, graphify: 0, grep: 0, read: 0, maintainer: 0 }, covered: [], written: [] },
   };
 }
 

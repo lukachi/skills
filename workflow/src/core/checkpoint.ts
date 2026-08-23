@@ -1,3 +1,4 @@
+import { GateRefusal } from "./gates.js";
 import { deriveBlocker } from "./steps.js";
 import type { Checkpoint, FlowRecord } from "./types.js";
 
@@ -18,27 +19,28 @@ export interface CheckpointInput {
   todo?: string[];
 }
 
-export class CheckpointError extends Error {
-  constructor(
-    message: string,
-    readonly remedy: string,
-  ) {
-    super(message);
-    this.name = "CheckpointError";
-  }
-}
+/**
+ * A checkpoint problem is a refusal like any other.
+ *
+ * It was its own error class, which the command layer's handler did not catch,
+ * so a missing field surfaced as a stack trace — and the remedy it carried
+ * named `--nextaction`, a flag the parser has never accepted.
+ */
+export class CheckpointError extends GateRefusal {}
 
 export function buildCheckpoint(input: CheckpointInput, now = new Date()): Checkpoint {
-  for (const [field, value] of Object.entries({
-    summary: input.summary,
-    handoff: input.handoff,
-    lastAction: input.lastAction,
-    nextAction: input.nextAction,
-  })) {
+  const fields: [string, string, string][] = [
+    ["summary", "--summary", input.summary],
+    ["a handoff body", "--handoff", input.handoff],
+    ["the last completed action", "--last", input.lastAction],
+    ["the exact next action", "--next", input.nextAction],
+  ];
+  for (const [label, option, value] of fields) {
     if (!value || value.trim().length === 0) {
       throw new CheckpointError(
-        `A checkpoint needs ${field}; an empty one recalls nothing.`,
-        `wfctl checkpoint --${field.toLowerCase()} "<...>"`,
+        `A checkpoint needs ${label}; an empty one recalls nothing.`,
+        `wfctl checkpoint --summary "<one line>" --handoff "<the body>" --last "<...>" --next "<...>"`,
+        `${option} was empty or absent.`,
       );
     }
   }

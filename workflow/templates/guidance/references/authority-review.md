@@ -4,7 +4,7 @@ The first of the two axes. Review whether the document is entitled to make each
 claim. Ignore elegance, tone, and readability except where an ambiguity changes the
 meaning.
 
-`wfctl knowledge validate` has already checked that the authority class matches the
+structural validation has already checked that the authority class matches the
 view, that every source resolves in the right form, and that a stable page carries
 receipts. It cannot check whether a claim is true.
 

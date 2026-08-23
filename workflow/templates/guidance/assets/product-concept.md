@@ -94,6 +94,6 @@ implementation here.
 [^delivery-source-id]: Direct pinned evidence for current delivery.
 
 Before changing `status` to `stable`, invoke `verify-knowledge-quality`, then
-run `wfctl knowledge hash --concept knowledge/.../<concept>.md`. Replace
+compute the page's content hash over its frontmatter and body. Replace
 `x-wf.quality` with a passed receipt containing `by`, `at`, `content_hash`, and
 all required checks. Add a current `verified` event with the same hash.

@@ -1,6 +1,6 @@
 # Knowledge model
 
-What `wfctl knowledge validate` cannot check. It already enforces the view for a
+What structural validation cannot check. It already enforces the view for a
 path, the purpose for a view, the required sections, the authority class a view
 demands, the source-resource formats, the realization enums, the quality checks
 and axes, reciprocal decision lineage, and reachability — and it names the file

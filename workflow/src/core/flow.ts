@@ -106,8 +106,15 @@ export class FlowOpenError extends Error {
  * command that would open a second workload will not run.
  */
 export async function openFlow(root: string, options: OpenFlowOptions): Promise<FlowRecord> {
-  const open = await currentFlow(root);
-  if (open && !open.closedAt) {
+  /**
+   * The fence reads the records, not the pointer.
+   *
+   * Consulting only `.workflow/flows/current` meant deleting that one file
+   * opened a second flow while the first was still open — and the brief then
+   * listed both, so the tool could see the state it had just refused to act on.
+   */
+  const open = (await listFlows(root)).find((flow) => !flow.closedAt);
+  if (open) {
     throw new FlowOpenError(
       `Flow ${open.id} is open; work outside it is out of scope. ` +
         `A finding found while working belongs in the capture inbox.`,
@@ -116,7 +123,18 @@ export async function openFlow(root: string, options: OpenFlowOptions): Promise<
   }
 
   const now = options.now ?? new Date();
-  const id = createFlowId(options.kind, options.title, now);
+  let id = createFlowId(options.kind, options.title, now);
+
+  /**
+   * An id that already exists gets a suffix rather than overwriting.
+   *
+   * Two same-day titles that slug identically — including any two titles with
+   * no ASCII letters at all — used to collide, and the second flow silently
+   * adopted the first's units, checkpoint and bundle.
+   */
+  for (let suffix = 2; await readFlow(root, id); suffix += 1) {
+    id = `${createFlowId(options.kind, options.title, now)}-${suffix}`;
+  }
   const flow: FlowRecord = {
     schemaVersion: FLOW_SCHEMA_VERSION,
     id,
@@ -147,7 +165,7 @@ export async function openFlow(root: string, options: OpenFlowOptions): Promise<
 export async function closeFlow(root: string, id: string): Promise<FlowRecord> {
   const flow = await readFlow(root, id);
   if (!flow) {
-    throw new FlowOpenError(`No flow named ${id}.`, "wfctl flow list");
+    throw new FlowOpenError(`No flow named ${id}.`, "wfctl brief");
   }
   const closed: FlowRecord = { ...flow, closedAt: new Date().toISOString() };
   delete closed.checkpoint;
@@ -156,6 +174,11 @@ export async function closeFlow(root: string, id: string): Promise<FlowRecord> {
   const current = await currentFlowId(root);
   if (current === id) await setCurrent(root, undefined);
   return closed;
+}
+
+/** Drop the pointer without touching the record. */
+export async function clearCurrent(root: string): Promise<void> {
+  await setCurrent(root, undefined);
 }
 
 export async function listFlows(root: string): Promise<FlowRecord[]> {

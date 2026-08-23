@@ -1,5 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   advance,
   brief,
@@ -27,7 +28,7 @@ import { GateRefusal } from "./gates.js";
 import { RECALL_ITEMS } from "./recall.js";
 import { applyInstall, assertProfileSupported, planInstall } from "./install.js";
 import { listQueue } from "./promotion-queue.js";
-import { WORK_STEPS, type RecallRoute, type WorkStep, type WorkWeight } from "./types.js";
+import { RECALL_ROUTES, WORK_STEPS, WORK_WEIGHTS, type WorkStep } from "./types.js";
 
 /**
  * The command surface.
@@ -39,7 +40,7 @@ import { WORK_STEPS, type RecallRoute, type WorkStep, type WorkWeight } from "./
  */
 const USAGE = `wfctl — project workflow
 
-  brief                        the state of this repository, and what awaits whom
+  brief [--json]               the state of this repository, and what awaits whom
   handoff [<flow>]             the full recall body for a flow
   checkpoint --summary ... --handoff ... --last ... --next ...
 
@@ -95,17 +96,66 @@ function compose_(parts: (string | undefined)[]): string {
   return parts.filter((part): part is string => Boolean(part && part.trim())).join("\n\n");
 }
 
+/**
+ * Read one flag's value.
+ *
+ * A value that is itself a flag is refused rather than accepted: `--title
+ * --weight significant` used to store the title as "--weight", producing a
+ * corrupt record from a dropped argument instead of a refusal.
+ */
 function flag(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(`--${name}`);
-  return index >= 0 ? argv[index + 1] : undefined;
+  if (index < 0) return undefined;
+  const value = argv[index + 1];
+  if (value === undefined || value.startsWith("--")) {
+    throw new GateRefusal(
+      `--${name} was given without a value.`,
+      `--${name} "<value>"`,
+      value === undefined ? undefined : `The next argument was ${value}, which is another flag.`,
+    );
+  }
+  return value;
 }
 
 function flags(argv: string[], name: string): string[] {
   const values: string[] = [];
   argv.forEach((entry, index) => {
-    if (entry === `--${name}` && argv[index + 1]) values.push(argv[index + 1] as string);
+    if (entry !== `--${name}`) return;
+    const value = argv[index + 1];
+    if (value === undefined || value.startsWith("--")) {
+      throw new GateRefusal(`--${name} was given without a value.`, `--${name} "<value>"`);
+    }
+    values.push(value);
   });
   return values;
+}
+
+/**
+ * One place where every enumerated flag is checked.
+ *
+ * `--route qmd2`, `--axis delivary` and `--weight BANANA` were all accepted and
+ * stored. Each one then behaved as something else: an unknown route satisfied
+ * the recall gate while touching no floor, a misspelt axis vanished from every
+ * gap calculation while still rendering in the line, and an unknown weight
+ * silently took the significant branch.
+ */
+function oneOf<T extends string>(
+  value: string | undefined,
+  allowed: readonly T[],
+  name: string,
+  fallback?: T,
+): T {
+  if (value === undefined) {
+    if (fallback !== undefined) return fallback;
+    throw new GateRefusal(`--${name} is required.`, `--${name} <${allowed.join("|")}>`);
+  }
+  if (!(allowed as readonly string[]).includes(value)) {
+    throw new GateRefusal(
+      `${value} is not a valid ${name}.`,
+      `--${name} <${allowed.join("|")}>`,
+    );
+  }
+  return value as T;
 }
 
 export async function run(argv: string[], context: CommandContext): Promise<{ stdout: string; exitCode: number }> {
@@ -118,8 +168,35 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
       case "--help":
         return { stdout: USAGE, exitCode: 0 };
 
-      case "brief":
+      case "brief": {
+        if (rest.includes("--json")) {
+          const { listFlows, currentFlowId } = await import("./flow.js");
+          const { deriveBlocker } = await import("./steps.js");
+          const flows = (await listFlows(context.root)).filter((flow) => !flow.closedAt);
+          const current = await currentFlowId(context.root);
+          /**
+           * The Stop guard reads this. It used to call `brief --json`, get the
+           * prose brief, fail to parse it and fall silent — so the turn-boundary
+           * half of the design did nothing at all.
+           */
+          return ok_(
+            JSON.stringify(
+              {
+                current,
+                signals: flows.flatMap((flow) => {
+                  const blocker = deriveBlocker(flow);
+                  return blocker
+                    ? [{ id: flow.id, awaits: blocker.awaits, summary: blocker.summary, remedy: blocker.remedy }]
+                    : [];
+                }),
+              },
+              null,
+              2,
+            ),
+          );
+        }
         return await brief(context);
+      }
 
       case "handoff":
         return await handoff(context, rest[0]);
@@ -145,13 +222,13 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           return await recallAnswer(context, {
             item: args[0] ?? "",
             answer: flag(args, "answer") ?? "",
-            route: (flag(args, "route") ?? "read") as RecallRoute,
+            route: oneOf(flag(args, "route"), RECALL_ROUTES, "route"),
             source: flag(args, "source") ?? "",
           });
         }
         if (action === "route") {
           return await recallRoute(context, {
-            route: (args[0] ?? "read") as RecallRoute,
+            route: oneOf(args[0], RECALL_ROUTES, "route"),
             covered: flags(args, "covered"),
           });
         }
@@ -163,7 +240,9 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         if (action === "start") {
           return await workStart(context, {
             title: flag(args, "title") ?? "",
-            ...(flag(args, "weight") ? { weight: flag(args, "weight") as WorkWeight } : {}),
+            ...(flag(args, "weight")
+              ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") }
+              : {}),
           });
         }
         if (action === "step") {
@@ -200,7 +279,22 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
             });
           }
           if (sub === "complete") return await issueComplete(context, rest_[0] ?? "");
-          return { stdout: USAGE, exitCode: 1 };
+          /**
+           * An incomplete command names its own subcommands rather than
+           * reprinting the whole usage, which reads as "this does not exist".
+           */
+          return {
+            stdout: [
+              "wfctl work issue <create|list|note|claim|complete>",
+              "",
+              '  create --title "<what it delivers>" [--satisfies AC-01]...',
+              "  list",
+              '  note <id> --note "<what you learned>"',
+              "  claim <id> --repository <owner/name> [--worktree <id>]",
+              "  complete <id>",
+            ].join("\n"),
+            exitCode: 1,
+          };
         }
         if (action === "verify") {
           return await verify(context, { review: flag(args, "review") ?? "" });
@@ -228,6 +322,17 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
             knowledgeRoot: context.root,
             page: args[1] ?? "",
           });
+        }
+        if (action === "promotion" && args[0] === undefined) {
+          return {
+            stdout: [
+              "wfctl work promotion <draft|list>",
+              "",
+              '  draft "<area>/<page>.md"   create the page where it belongs',
+              "  list                       records waiting on the maintainer",
+            ].join("\n"),
+            exitCode: 1,
+          };
         }
         if (action === "promotion" && args[0] === "list") {
           const queued = await listQueue(context.root);
@@ -267,12 +372,15 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           const { currentFlow } = await import("./flow.js");
           const { decideWrite } = await import("./write-hook.js");
           const { loadGuidance } = await import("./guidance.js");
+          const { writeFlow } = await import("./flow.js");
+          const { recordWritten } = await import("./recall.js");
           const flow = await currentFlow(context.root);
+          const target = flag(args, "target") ?? "";
           const decision = decideWrite({
             flow,
             knowledgeRoot: context.root,
-            target: flag(args, "target") ?? "",
-            writtenThisUnit: flags(args, "written"),
+            target,
+            writtenThisUnit: flow?.recall.written ?? [],
             ...(flow
               ? {
                   guidance:
@@ -281,6 +389,16 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
               : {}),
           });
           if (decision.refusal) return { stdout: decision.refusal.render(), exitCode: 2 };
+          /**
+           * Record the write, so the next edit to the same ground is silent.
+           * This is what makes "fires on scope change, not on every edit" true.
+           */
+          if (flow) {
+            await writeFlow(context.root, {
+              ...flow,
+              recall: recordWritten(flow.recall, target),
+            });
+          }
           return { stdout: decision.message ?? "", exitCode: 0 };
         }
         return { stdout: USAGE, exitCode: 1 };
@@ -324,7 +442,7 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         if (action === "append") {
           const trajectory = await appendEvent(context.root, flag(args, "subject") ?? "", {
             summary: flag(args, "summary") ?? "",
-            axis: (flag(args, "axis") ?? "delivery") as "intent" | "delivery" | "vision",
+            axis: oneOf(flag(args, "axis"), ["intent", "delivery", "vision"] as const, "axis"),
             claims: flags(args, "claim"),
             ...(flag(args, "at") ? { at: flag(args, "at") as string } : {}),
             ...(flag(args, "change") ? { change: flag(args, "change") as string } : {}),
@@ -352,6 +470,15 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         const [action, ...args] = rest;
 
         if (action === "start") {
+          const open = await reconstruct.currentCase(context.root);
+          if (open) {
+            throw new GateRefusal(
+              `Reconstruction ${open.id} is already open at stage ${open.stage}.`,
+              `wfctl reconstruct close`,
+              "Opening another would overwrite it in place, losing its coverage, " +
+                "contradictions and probes.",
+            );
+          }
           const repositories = await readRegistry(context.root);
           if (repositories.length === 0) {
             throw new GateRefusal(
@@ -416,7 +543,7 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
               revision: flag(args, "revision") ?? "",
               dirty: args.includes("--dirty"),
             })),
-            rawScope: (flag(args, "raw") ?? "none") as "all" | "selected" | "none",
+            rawScope: oneOf(flag(args, "raw"), ["all", "selected", "none"] as const, "raw", "none"),
             inScope: flags(args, "in"),
           });
           return ok_(reconstruct.renderStatus(next));
@@ -462,7 +589,7 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
             asker: flag(args, "asker") ?? context.actor,
             ...(flag(args, "answer") ? { answer: flag(args, "answer") as string } : {}),
             passed: args.includes("--passed"),
-          });
+          }, context.actor);
           return ok_(reconstruct.renderStatus(next));
         }
 
@@ -494,6 +621,7 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         }
 
         if (action === "close") {
+          reconstruct.assertClosable(record, context.actor);
           const outcome = reconstruct.renderOutcome(record);
           const archived = await reconstruct.closeCase(context.root, record.id);
           return ok_(`${outcome}\narchived at:\n${archived}`);
@@ -502,11 +630,21 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         return { stdout: USAGE, exitCode: 1 };
       }
 
-      case "capture":
+      case "capture": {
+        /**
+         * The finding is the first argument, whatever it starts with.
+         *
+         * Skipping anything beginning with `--` made a finding phrased as
+         * "--fix the parser…" unrecordable — and capture is the only sanctioned
+         * outlet while a flow is open.
+         */
+        const awaits = rest.includes("--awaits");
+        const text = rest.filter((entry) => entry !== "--awaits")[0] ?? "";
         return await capture(context, {
-          text: rest.filter((entry) => !entry.startsWith("--"))[0] ?? "",
-          ...(rest.includes("--awaits") ? { awaits: "maintainer" as const } : {}),
+          text,
+          ...(awaits ? { awaits: "maintainer" as const } : {}),
         });
+      }
 
       case "flow":
         if (rest[0] === "close") return await flowClose(context);
@@ -542,7 +680,23 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
     }
   } catch (error) {
     if (error instanceof GateRefusal) return { stdout: error.render(), exitCode: 2 };
-    throw error;
+    /**
+     * Everything else is still a refusal, not a crash.
+     *
+     * Tampered state, a malformed review artifact and an unwritable target all
+     * used to surface as raw stack traces at exit 1 — indistinguishable from a
+     * usage error, and the review artifact in particular is untrusted input
+     * produced by another agent.
+     */
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      stdout: new GateRefusal(
+        "That could not be completed.",
+        "Check the file or state this command reads; if it was edited by hand, repair it.",
+        detail,
+      ).render(),
+      exitCode: 2,
+    };
   }
 }
 
@@ -563,15 +717,35 @@ export function findGuidance(start: string): string {
     if (parent === current) break;
     current = parent;
   }
-  throw new GateRefusal(
-    "The guidance bundle is missing from this installation.",
-    "Reinstall wfctl.",
-    `Looked upward from ${start} for templates/guidance.`,
-  );
+  /**
+   * Missing guidance is reported by the commands that need it, not by the
+   * bootstrap. Throwing here made the prose load-bearing in the one way it must
+   * never be: every command, including `--help`, died with a stack trace.
+   */
+  return resolve(start, "templates", "guidance");
 }
 
 /* c8 ignore start */
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "")) {
+/**
+ * Run when invoked as a program, however the program is named.
+ *
+ * The first version compared `import.meta.url` against argv[1]'s basename. As
+ * the `wfctl` bin that is "wfctl" against "cli.js", so the body never ran and
+ * every install exited 0 in silence — taking the session hook and the write
+ * guard with it, because both shell out to `wfctl`. Resolving argv[1] through
+ * the filesystem compares the same thing on both sides.
+ */
+const invokedDirectly = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedDirectly) {
   const context: CommandContext = {
     root: process.cwd(),
     assets: findGuidance(import.meta.dirname),

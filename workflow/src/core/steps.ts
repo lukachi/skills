@@ -28,7 +28,7 @@ export const WORK_STEP_DEFINITIONS: readonly StepDefinition[] = [
       "meaning, contracts, data, or operations; lightweight work is local and preserves both " +
       "behaviour and contracts. Put the distinction to the maintainer in your own words — do " +
       "not read this out, and do not decide it yourself.",
-    command: "wfctl work start --weight <significant|lightweight>",
+    command: "wfctl work start --title \"<what this is>\" --weight <significant|lightweight>",
   },
   {
     step: "aligned",
@@ -36,27 +36,27 @@ export const WORK_STEP_DEFINITIONS: readonly StepDefinition[] = [
       "What the project already says about this subject. If nothing is written yet, record " +
       "that nothing covers it — an empty corpus passes a conflict check silently, and that " +
       "reads exactly like a check that found nothing wrong.",
-    command: "wfctl work align",
+    command: "wfctl work step aligned",
   },
   {
     step: "framed",
     demands:
       "What the work is: the outcome, the boundary, and the acceptance criteria. This is the " +
       "cheapest moment to change the scope and the last one where it is free.",
-    command: "wfctl work frame --approve",
+    command: "wfctl work step framed",
   },
   {
     step: "split",
     demands:
       "The units of delivery, sized by scope and coherence. Not by what fits in a session — " +
       "that framing made agents stop halfway through a context that was still wide open.",
-    command: "wfctl work issue create",
+    command: "wfctl work issue create --title \"<what it delivers>\"",
     optionalWhen: (flow) => flow.weight === "lightweight",
   },
   {
     step: "implement",
     demands: "One slice at a time, in the checkout the claim binds.",
-    command: "wfctl work issue claim <id>",
+    command: "wfctl work issue claim <id> --repository <owner/name>",
   },
   {
     step: "verified",
@@ -64,21 +64,21 @@ export const WORK_STEP_DEFINITIONS: readonly StepDefinition[] = [
       "An adversarial review, run by a separate agent, whose every attack is an executable " +
       "test. You cannot run it yourself: the agent that wrote the tests can write the review " +
       "that approves them.",
-    command: "wfctl work verify",
+    command: "wfctl work verify --review <artifact>",
   },
   {
     step: "closed",
     demands:
       "Nothing from anybody. Every part of 'is this done' is already answered by the checks, " +
       "and asking the maintainer to confirm arithmetic is not a decision.",
-    command: "wfctl work close",
+    command: "wfctl work close --outcome <completed|partial|abandoned>",
   },
   {
     step: "promoted",
     demands:
       "What the project now says about itself. This one is the maintainer's, and it is the " +
       "second and last thing they are asked.",
-    command: "wfctl work promote",
+    command: "wfctl work promote --subject \"<product subject>\" --summary \"<what it now does>\"",
   },
 ];
 
@@ -119,6 +119,20 @@ export function deriveBlocker(flow: FlowRecord): DerivedBlocker | undefined {
       summary: `Parked: ${flow.parked.reason}`,
       remedy: `wfctl work release ${flow.id}`,
     };
+  }
+
+  /**
+   * A step whose answer is already recorded is not what the flow is waiting on.
+   *
+   * `brief` demanded the weight on a flow opened with one, and offered to
+   * re-run `work start` on an already-open flow to supply it.
+   */
+  if (flow.step === "opened" && flow.weight) {
+    const following = nextStep("opened");
+    if (following) {
+      const next = definitionFor(following);
+      return { step: following, awaits: "agent", summary: next.demands, remedy: next.command };
+    }
   }
 
   const definition = definitionFor(flow.step);

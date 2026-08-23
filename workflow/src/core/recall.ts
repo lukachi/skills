@@ -85,7 +85,7 @@ export function emptyCounters(): RecallCounters {
 }
 
 export function emptyRecall(): RecallState {
-  return { answers: [], counters: emptyCounters(), covered: [] };
+  return { answers: [], counters: emptyCounters(), covered: [], written: [] };
 }
 
 export function itemsForGroup(group: RecallGroup): RecallItem[] {
@@ -194,4 +194,8 @@ export function recordRoute(
   counters[route] = (counters[route] ?? 0) + 1;
   const merged = new Set([...state.covered, ...covered]);
   return { ...state, counters, covered: [...merged].sort() };
+}
+
+export function recordWritten(state: RecallState, path: string): RecallState {
+  return { ...state, written: [...new Set([...(state.written ?? []), path])].sort() };
 }

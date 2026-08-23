@@ -5,7 +5,7 @@ first axis's verdict. Review whether the intended reader can recover the correct
 meaning without hidden context. Do not accept a document because its evidence is
 strong.
 
-`wfctl knowledge validate` catches code and identifiers in a product view and a
+structural validation catches code and identifiers in a product view and a
 missing section. It cannot check whether a stakeholder can act on the answer.
 
 ## Product view

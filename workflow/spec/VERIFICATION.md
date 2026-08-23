@@ -9,6 +9,29 @@ This guide tests two independent things:
 
 Passing automated tests does not prove useful agent behavior.
 
+## 0. Verify the built binary, invoked as a program
+
+Run `tests/binary-e2e.test.ts`. It exists because every module-level test passed
+while the shipped binary was broken in six ways at once — the bin's main-module
+guard, the hook wiring, and the terminal commands' gates. A test that calls a
+function directly never runs the program.
+
+The properties it holds:
+
+- the bin runs when invoked under the name npm installs it as;
+- `work close` and `reconstruct close` run every gate their step machine runs;
+- a step that needs a review refuses without one on record;
+- every command named by a refusal exists in the dispatch;
+- tampered state and a malformed review artifact refuse rather than crash;
+- an attack whose output says the work broke is not accepted;
+- the flow fence survives deletion of the current pointer;
+- `knowledge/`, the promotion queue and the archive are unreachable by hand,
+  including by case variant, symlink and absolute path;
+- the write guard goes quiet on ground it has already covered;
+- `brief --json` is what the stop guard reads;
+- installation preserves a maintainer hook that shares our matcher, refuses an
+  unbalanced marker block, and records what it wrote before anything can refuse.
+
 ## 1. Verify the package
 
 From the workflow source checkout:

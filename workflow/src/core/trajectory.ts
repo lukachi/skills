@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
@@ -107,12 +108,23 @@ export async function listTrajectories(root: string): Promise<Trajectory[]> {
   return found.sort((left, right) => left.subject.localeCompare(right.subject));
 }
 
+/**
+ * A stable id for a subject.
+ *
+ * Stripping everything outside `[a-z0-9]` mapped every subject with no ASCII
+ * letters to the empty string, so they all merged into one hidden file and one
+ * shared history; truncating at 60 characters collided too, attributing one
+ * subject's delivery to another. A short digest of the original text keeps the
+ * slug readable and the identity distinct.
+ */
 export function subjectId(subject: string): string {
-  return subject
-    .toLowerCase()
+  const normalized = subject.trim().toLowerCase();
+  const slug = normalized
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
+    .slice(0, 48);
+  const digest = createHash("sha256").update(normalized).digest("hex").slice(0, 8);
+  return slug ? `${slug}-${digest}` : digest;
 }
 
 /**
@@ -150,7 +162,10 @@ export async function appendEvent(
     updatedAt: new Date().toISOString(),
   };
 
-  trajectory.events = [...trajectory.events, event];
+  trajectory.events = [
+    ...trajectory.events,
+    { ...event, at: event.at ?? new Date().toISOString() },
+  ];
   await writeTrajectory(root, trajectory);
   return trajectory;
 }

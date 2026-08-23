@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { run } from "../src/core/cli.js";
 import type { CommandContext } from "../src/core/commands.js";
+import { walkToVerified } from "./helpers.js";
 
 const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
 
@@ -17,6 +18,7 @@ async function opened(): Promise<CommandContext> {
   await run(["work", "start", "--title", "thing", "--weight", "significant"], ctx);
   return ctx;
 }
+
 
 test("units carry a status and notes, and nothing schedules them", async () => {
   const ctx = await opened();
@@ -125,6 +127,7 @@ test("verification accepts a delegated review and hands over the closing guidanc
 
 test("closing refuses while a unit is still claimed", async () => {
   const ctx = await opened();
+  await walkToVerified(ctx);
   await run(["work", "issue", "create", "--title", "first"], ctx);
   await run(["work", "issue", "claim", "U001", "--repository", "o/r"], ctx);
 
@@ -136,6 +139,7 @@ test("closing refuses while a unit is still claimed", async () => {
 
 test("a partial close holding pages waits in the queue", async () => {
   const ctx = await opened();
+  await walkToVerified(ctx);
   await run(["work", "promotion", "draft", "areas/billing/index.md"], ctx);
   const result = await run(["work", "close", "--outcome", "partial"], ctx);
   assert.equal(result.exitCode, 0);
@@ -147,6 +151,7 @@ test("a partial close holding pages waits in the queue", async () => {
 
 test("a record with nothing to say archives instead", async () => {
   const ctx = await opened();
+  await walkToVerified(ctx);
   const result = await run(["work", "close", "--outcome", "completed"], ctx);
   assert.match(result.stdout, /nothing to say about itself/);
 });

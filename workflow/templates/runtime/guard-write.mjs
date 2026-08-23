@@ -26,22 +26,38 @@ try {
 const target = input?.tool_input?.file_path ?? input?.tool_input?.path;
 if (!target) process.exit(0);
 
-const result = spawnSync("wfctl", ["hook", "write", "--target", target], {
-  encoding: "utf8",
-  cwd: process.env.CLAUDE_PROJECT_DIR ?? process.cwd(),
-});
+// Pass what has already been written this unit, so the guard can go quiet on
+// known ground. Without it every edit was a "first write" and re-emitted the
+// whole implement page.
+const written = process.env.WFCTL_WRITTEN ? process.env.WFCTL_WRITTEN.split(":") : [];
+
+const result = spawnSync(
+  "wfctl",
+  ["hook", "write", "--target", target, ...written.flatMap((path) => ["--written", path])],
+  {
+    encoding: "utf8",
+    cwd: process.env.CLAUDE_PROJECT_DIR ?? process.cwd(),
+  },
+);
 
 // A missing or broken wfctl must never block an edit. The guard reports; it
 // does not own whether work can proceed.
+//
+// Only spawn errors were treated as "broken" before, so any wfctl that exited 2
+// for its own reasons — not installed properly, a module it could not find —
+// denied the edit. Exit 2 is trusted as a refusal only when the output looks
+// like one, which is what a real refusal always carries.
 if (result.error || result.status === null) process.exit(0);
 
 const text = (result.stdout ?? "").trim();
 if (!text) process.exit(0);
 
-if (result.status === 2) {
+if (result.status === 2 && /^remedy:/m.test(text)) {
   process.stderr.write(text);
   process.exit(2);
 }
+
+if (result.status !== 0) process.exit(0);
 
 process.stdout.write(text);
 process.exit(0);

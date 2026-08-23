@@ -207,7 +207,7 @@ export function assertTrajectoriesExist(record: ReconstructionCase): void {
   if (record.trajectories.length > 0) return;
   throw new GateRefusal(
     "No trajectory has been assembled, so nothing can be written yet.",
-    'wfctl trajectory append --subject "<the product subject>" --summary "<what happened>" --axis <intent|delivery|vision>',
+    "wfctl reconstruct subject <trajectory-id>   (append the events first with wfctl trajectory append)",
     "A claim about current truth made while reading is made before the material " +
       "that contradicts it has been read.",
   );
@@ -244,7 +244,7 @@ export function assertProbed(record: ReconstructionCase, actor: string): void {
   if (mine.length > 0) {
     throw new GateRefusal(
       "The probes were asked by the agent that wrote the pages.",
-      "Delegate the probe round to a separate agent.",
+      "wfctl reconstruct probe --question \"<...>\" --page <path> --asker <a different agent>",
       "Asking yourself what you might have missed returns what you already know.",
     );
   }
@@ -252,7 +252,7 @@ export function assertProbed(record: ReconstructionCase, actor: string): void {
   if (failed.length > 0) {
     throw new GateRefusal(
       `${failed.length} probe(s) did not pass.`,
-      "Repair the pages, then run the probe round again.",
+      "wfctl reconstruct probe --question \"<...>\" --page <path> --asker <agent> --passed   (after repairing the page)",
       failed.map((probe) => `  ${probe.question}`).join("\n"),
     );
   }
@@ -274,6 +274,27 @@ export function renderOutcome(record: ReconstructionCase): string {
   return `Nothing moved. Checked at ${revisions}.`;
 }
 
+/**
+ * Closing runs the same gates staging runs.
+ *
+ * It checked only that the directory existed, so a pass that read nothing, held
+ * an open contradiction and produced no trajectory archived as a completed
+ * provenance receipt. Skipping `stage` skipped everything it protects.
+ */
+export function assertClosable(record: ReconstructionCase, actor: string): void {
+  if (record.stage !== "promote") {
+    throw new GateRefusal(
+      `This case is at ${record.stage}; closing needs it at promote.`,
+      "wfctl reconstruct stage",
+      "Each stage's gate runs on the way past it. Closing early runs none of them.",
+    );
+  }
+  assertCrawlComplete(record);
+  assertTrajectoriesExist(record);
+  assertAdjudicated(record);
+  assertProbed(record, actor);
+}
+
 export async function closeCase(root: string, id: string): Promise<string> {
   const from = resolve(root, RECONSTRUCTION_DIR, id);
   const present = await stat(from).then(
@@ -285,8 +306,9 @@ export async function closeCase(root: string, id: string): Promise<string> {
   }
   const to = resolve(root, RECONSTRUCTION_ARCHIVE, id);
   await mkdir(resolve(root, RECONSTRUCTION_ARCHIVE), { recursive: true });
-  const { rename } = await import("node:fs/promises");
+  const { rename, rm } = await import("node:fs/promises");
   await rename(from, to);
+  await rm(resolve(root, RECONSTRUCTION_DIR, "current"), { force: true });
   return to;
 }
 
@@ -323,18 +345,43 @@ export async function recordScope(
   record: ReconstructionCase,
   options: { repositories: PinnedRepository[]; rawScope: RawScope; inScope: string[] },
 ): Promise<ReconstructionCase> {
+  /**
+   * Scope is settled once.
+   *
+   * Re-scoping was silently allowed and replaced the in-scope list, so
+   * shrinking it was a way to satisfy the crawl gate without reading anything —
+   * and the coverage counters then referred to files no longer in scope.
+   */
+  if (record.stage !== "scope") {
+    throw new GateRefusal(
+      `The scope was settled when this case entered ${record.stage}.`,
+      "wfctl reconstruct status",
+      "Widening it now would move the boundary the coverage gate measures against.",
+    );
+  }
   if (options.repositories.length === 0) {
     throw new GateRefusal(
       "A scope with no repositories reads nothing.",
       "wfctl reconstruct scope --repository <owner/name> --revision <sha>",
     );
   }
+  /**
+   * `--raw all` puts the raw material in scope, which it did not.
+   *
+   * It recorded the choice and nothing else, so the coverage counter read zero
+   * with three notes sitting unread on disk, and every path had to be listed by
+   * hand as though the inventory had never run.
+   */
+  const raw =
+    options.rawScope === "all" ? record.rawPaths.map((path) => `${RAW_DIR}/${path}`) : [];
+  const inScope = [...new Set([...options.inScope, ...raw])].sort();
+
   const next: ReconstructionCase = {
     ...record,
     stage: "crawl",
     repositories: options.repositories,
     rawScope: options.rawScope,
-    coverage: { ...record.coverage, inScope: options.inScope },
+    coverage: { ...record.coverage, inScope },
   };
   await writeCase(root, next);
   return next;
@@ -348,7 +395,7 @@ export async function markRead(
   if (!record.coverage.inScope.includes(path)) {
     throw new GateRefusal(
       `${path} is not in this case's scope.`,
-      "wfctl reconstruct scope --in <path>",
+      "wfctl reconstruct scope --repository <owner/name> --revision <sha> --in <every path, including the ones already listed>",
       "Reading outside the agreed scope is how a bounded pass becomes an unbounded one.",
     );
   }
@@ -369,6 +416,14 @@ export async function markExcluded(
   path: string,
   reason: string,
 ): Promise<ReconstructionCase> {
+  if (!record.coverage.inScope.includes(path)) {
+    throw new GateRefusal(
+      `${path} is not in this case's scope, so excluding it counts nothing.`,
+      "wfctl reconstruct status",
+      "Coverage counted exclusions of paths that were never in scope, which made " +
+        "the remaining figure smaller than the work left.",
+    );
+  }
   if (!reason.trim()) {
     throw new GateRefusal(
       "An exclusion needs its reason.",
@@ -447,11 +502,32 @@ export async function recordProbe(
   root: string,
   record: ReconstructionCase,
   probe: Probe,
+  actor: string,
 ): Promise<ReconstructionCase> {
   if (!probe.question.trim()) {
     throw new GateRefusal(
       "A probe needs its question.",
       'wfctl reconstruct probe --question "<answerable only from the pages>" --asker <agent id>',
+    );
+  }
+  /**
+   * Refuse the self-asked probe here rather than at the gate.
+   *
+   * Accepting it and refusing two commands later left the case wedged: the bad
+   * probe was on the record and nothing could remove it, so the gate refused
+   * forever however many good probes were added.
+   */
+  if (!probe.asker.trim() || probe.asker === actor) {
+    throw new GateRefusal(
+      "A probe needs an asker who did not write the pages.",
+      'wfctl reconstruct probe --question "<...>" --page <path> --asker <a different agent>',
+      "Asking yourself what you might have missed returns what you already know.",
+    );
+  }
+  if (probe.pages.length === 0) {
+    throw new GateRefusal(
+      "A probe names the pages that must answer it.",
+      'wfctl reconstruct probe --question "<...>" --page <path> --asker <agent>',
     );
   }
   const next: ReconstructionCase = { ...record, probes: [...record.probes, probe] };

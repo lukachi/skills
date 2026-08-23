@@ -23,6 +23,7 @@ import {
   type ReconstructionCase,
 } from "../src/core/reconstruct.js";
 import { appendEvent, deriveGap, listTrajectories, renderTrajectory } from "../src/core/trajectory.js";
+import { walkToVerified } from "./helpers.js";
 
 async function root(): Promise<string> {
   return mkdtemp(join(tmpdir(), "wfctl-recon-"));
@@ -259,6 +260,7 @@ test("promotion writes the pages and appends to the subject's line", async () =>
   const ctx = { root: await root(), assets, actor: "agent:test" };
 
   await run(["work", "start", "--title", "part refunds", "--weight", "significant"], ctx);
+  await walkToVerified(ctx);
   await run(["work", "promotion", "draft", "areas/billing/index.md"], ctx);
   await run(["work", "close", "--outcome", "completed"], ctx);
 
@@ -334,14 +336,106 @@ test("the whole reconstruction walks stage by stage, and each gate names its rem
   await run(["reconstruct", "stage"], ctx);  // write
   await run(["reconstruct", "stage"], ctx);  // probe
 
+  // A self-asked probe is refused where it is recorded, not two commands later
+  // at the gate — accepting it there left the case wedged with no way to remove it.
   const selfProbe = await run(
-    ["reconstruct", "probe", "--question", "what do refunds do?", "--asker", "agent:crawler", "--passed"],
+    ["reconstruct", "probe", "--question", "what do refunds do?", "--page", "p.md", "--asker", "agent:crawler", "--passed"],
     ctx,
   );
-  assert.equal(selfProbe.exitCode, 0);
-  const refusedSelf = await run(["reconstruct", "stage"], ctx);
-  assert.equal(refusedSelf.exitCode, 2);
-  assert.match(refusedSelf.stdout, /returns what you already know/);
+  assert.equal(selfProbe.exitCode, 2);
+  assert.match(selfProbe.stdout, /returns what you already know/);
+
+  const delegated = await run(
+    ["reconstruct", "probe", "--question", "what do refunds do?", "--page", "p.md", "--asker", "agent:prober", "--passed"],
+    ctx,
+  );
+  assert.equal(delegated.exitCode, 0);
+
+  const promoted = await run(["reconstruct", "stage"], ctx);
+  assert.equal(promoted.exitCode, 0);
+  assert.match(promoted.stdout, /stage promote/);
+
+  const closed = await run(["reconstruct", "close"], ctx);
+  assert.equal(closed.exitCode, 0);
+  assert.match(closed.stdout, /archived at/);
+});
+
+test("closing early is refused; every stage gate runs on the way past", async () => {
+  const { run } = await import("../src/core/cli.js");
+  const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
+  const ctx = { root: await root(), assets, actor: "agent:test" };
+
+  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  await run(["reconstruct", "start"], ctx);
+  await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts"], ctx);
+  await run(["reconstruct", "contradiction", "--subject", "s", "--side", "one", "--side", "two"], ctx);
+
+  const early = await run(["reconstruct", "close"], ctx);
+  assert.equal(early.exitCode, 2);
+  assert.match(early.stdout, /closing needs it at promote/);
+});
+
+test("a second reconstruction cannot overwrite an open one", async () => {
+  const { run } = await import("../src/core/cli.js");
+  const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
+  const ctx = { root: await root(), assets, actor: "agent:test" };
+
+  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  await run(["reconstruct", "start"], ctx);
+  const second = await run(["reconstruct", "start"], ctx);
+  assert.equal(second.exitCode, 2);
+  assert.match(second.stdout, /already open/);
+});
+
+test("--raw all puts the raw material in scope", async () => {
+  const { run } = await import("../src/core/cli.js");
+  const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
+  const ctx = { root: await root(), assets, actor: "agent:test" };
+
+  await mkdir(resolve(ctx.root, "reconstruction/raw"), { recursive: true });
+  await writeFile(resolve(ctx.root, "reconstruction/raw/note.md"), "history", "utf8");
+  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  await run(["reconstruct", "start"], ctx);
+
+  const scoped = await run(
+    ["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--raw", "all"],
+    ctx,
+  );
+  assert.match(scoped.stdout, /1 left/);
+});
+
+test("the scope is settled once", async () => {
+  const { run } = await import("../src/core/cli.js");
+  const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
+  const ctx = { root: await root(), assets, actor: "agent:test" };
+
+  await run(["repo", "add", "o/r", "--path", "/r"], ctx);
+  await run(["reconstruct", "start"], ctx);
+  await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts", "--in", "y.ts"], ctx);
+
+  const shrink = await run(["reconstruct", "scope", "--repository", "o/r", "--revision", "a", "--in", "x.ts"], ctx);
+  assert.equal(shrink.exitCode, 2);
+  assert.match(shrink.stdout, /settled when this case entered crawl/);
+});
+
+test("unknown enum values are refused rather than stored", async () => {
+  const { run } = await import("../src/core/cli.js");
+  const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
+  const ctx = { root: await root(), assets, actor: "agent:test" };
+
+  await run(["work", "start", "--title", "t", "--weight", "significant"], ctx);
+
+  const axis = await run(["trajectory", "append", "--subject", "S", "--summary", "s", "--axis", "banana"], ctx);
+  assert.equal(axis.exitCode, 2);
+  assert.match(axis.stdout, /not a valid axis/);
+
+  const route = await run(["recall", "answer", "E14", "--answer", "a", "--route", "qmd2", "--source", "s"], ctx);
+  assert.equal(route.exitCode, 2);
+  assert.match(route.stdout, /not a valid route/);
+
+  const dropped = await run(["work", "issue", "create", "--title", "--satisfies", "AC-01"], ctx);
+  assert.equal(dropped.exitCode, 2);
+  assert.match(dropped.stdout, /given without a value/);
 });
 
 test("an exclusion without a reason is refused", async () => {

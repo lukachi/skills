@@ -114,6 +114,11 @@ export interface FlowRecord {
   closedAt?: string;
   /** Digest of the acceptance criteria as approved, so a rewording is visible. */
   framingDigest?: string;
+  /**
+   * The accepted review. Its presence is what `verified` and `closed` check —
+   * validating a review and discarding it left both steps with no precondition.
+   */
+  review?: { reviewer: string; at: string; attacks: number; findings: number };
 }
 
 /* ------------------------------------------------------------------ recall */
@@ -151,4 +156,12 @@ export interface RecallState {
   counters: RecallCounters;
   /** Files a traversal or query has already covered, for the write hook. */
   covered: string[];
+  /**
+   * Files written since the current unit was claimed.
+   *
+   * The write hook needs this to go quiet on known ground. It was passed as a
+   * flag nothing ever supplied, so every edit looked like the first one and
+   * re-emitted the whole implement page.
+   */
+  written: string[];
 }

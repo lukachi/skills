@@ -1,9 +1,23 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { renderBrief, renderHandoff, buildCheckpoint } from "./checkpoint.js";
-import { GateRefusal, assertNotParked, assertReached, assertRecall } from "./gates.js";
+import {
+  GateRefusal,
+  assertNotParked,
+  assertReached,
+  assertRecall,
+  assertReviewed,
+} from "./gates.js";
 import { compose, loadGuidance, type GuidanceKey } from "./guidance.js";
-import { closeFlow, currentFlow, listFlows, openFlow, readFlow, writeFlow } from "./flow.js";
+import {
+  clearCurrent,
+  closeFlow,
+  currentFlow,
+  listFlows,
+  openFlow,
+  readFlow,
+  writeFlow,
+} from "./flow.js";
 import { createPromotionDraft } from "./paths.js";
 import { findItem, recordAnswer, recordRoute, renderCounterLine } from "./recall.js";
 import { definitionFor, nextStep, renderStep } from "./steps.js";
@@ -152,6 +166,7 @@ export async function advance(context: CommandContext, to: WorkStep): Promise<Co
     assertNotParked(flow);
     assertReached(flow, to);
     assertRecall(flow, flow.step);
+    assertReviewed(flow, to);
   } catch (error) {
     if (error instanceof GateRefusal) return refused(error);
     throw error;
@@ -245,7 +260,25 @@ export async function promotionDraft(
 export async function flowClose(context: CommandContext): Promise<CommandResult> {
   const flow = await currentFlow(context.root);
   if (!flow) {
-    return refused(new GateRefusal("No flow is open.", "wfctl flow list"));
+    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  }
+
+  /**
+   * Dropping the fence must not strand a claim.
+   *
+   * `work close` refused while a unit was claimed and `flow close` did not, so
+   * the bundle was left in `changes/active/` with no open flow that could ever
+   * close it.
+   */
+  const claimed = flow.issues.filter((issue) => issue.status === "claimed");
+  if (claimed.length > 0) {
+    return refused(
+      new GateRefusal(
+        `${claimed.length} unit(s) are still claimed.`,
+        `wfctl work issue complete ${claimed[0]?.id}`,
+        claimed.map((issue) => `  ${issue.id}  ${issue.title}`).join("\n"),
+      ),
+    );
   }
   const closed = await closeFlow(context.root, flow.id);
   return ok(`flow ${closed.id} closed; the fence is down and the checkpoint is flushed.`);
@@ -445,6 +478,25 @@ export async function verify(
     const { assertReviewUsable } = await import("./verify.js");
     const review = await readReviewArtifact(options.review, context.actor);
     assertReviewUsable(flow, review);
+
+    /**
+     * The accepted review is written to the record.
+     *
+     * It was validated and then discarded, so `work step verified` had no
+     * review precondition at all and the adversarial round was decorative.
+     * Storing it is what lets the step gate ask whether one happened.
+     */
+    await writeFlow(context.root, {
+      ...flow,
+      step: "verified",
+      review: {
+        reviewer: review.reviewer,
+        at: new Date().toISOString(),
+        attacks: review.attacks.length,
+        findings: review.findings.length,
+      },
+    });
+
     return ok(
       compose([
         `review accepted from ${review.reviewer}: ${review.attacks.length} attack(s), ${review.findings.length} finding(s)`,
@@ -504,12 +556,30 @@ export async function release(context: CommandContext, attested: string): Promis
 
 /* ------------------------------------------------------------------ close */
 
+/**
+ * Closing runs every gate the step machine runs.
+ *
+ * It did not, and that made the whole design optional: a flow at `opened` with
+ * no recall, no framing, no units and no review closed as `completed`. `close`
+ * was the one step-recording command that skipped `assertReached` and
+ * `assertRecall`, so skipping straight to it skipped everything.
+ */
 export async function close(
   context: CommandContext,
   options: { outcome: "completed" | "partial" | "abandoned" },
 ): Promise<CommandResult> {
   const flow = await currentFlow(context.root);
   if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+
+  try {
+    assertNotParked(flow);
+    assertReached(flow, "closed");
+    assertRecall(flow, flow.step);
+    assertReviewed(flow, "closed");
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
 
   const open = flow.issues.filter((issue) => issue.status === "claimed");
   if (open.length > 0) {
@@ -531,6 +601,13 @@ export async function close(
       outcome: options.outcome,
     });
     await writeFlow(context.root, { ...flow, step: "closed", closedAt: new Date().toISOString() });
+    /**
+     * Drop the fence with the closure.
+     *
+     * Only `flow close` cleared the pointer, so a closed and archived record
+     * kept accepting units, captures, steps and checkpoints.
+     */
+    await clearCurrent(context.root);
     return ok(
       result.waitingOnPromotion
         ? `${bundle} closed as ${options.outcome} and waits in the promotion queue.\n\n` +

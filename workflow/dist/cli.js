@@ -15,11 +15,12 @@ var __export = (target, all) => {
 };
 
 // src/core/types.ts
-var FLOW_SCHEMA_VERSION, WORK_STEPS, RECALL_ROUTES;
+var FLOW_SCHEMA_VERSION, WORK_WEIGHTS, WORK_STEPS, RECALL_ROUTES;
 var init_types = __esm({
   "src/core/types.ts"() {
     "use strict";
     FLOW_SCHEMA_VERSION = 1;
+    WORK_WEIGHTS = ["significant", "lightweight"];
     WORK_STEPS = [
       "opened",
       "aligned",
@@ -35,6 +36,22 @@ var init_types = __esm({
 });
 
 // src/core/recall.ts
+var recall_exports = {};
+__export(recall_exports, {
+  RECALL_ITEMS: () => RECALL_ITEMS,
+  STEP_REQUIREMENTS: () => STEP_REQUIREMENTS,
+  emptyCounters: () => emptyCounters,
+  emptyRecall: () => emptyRecall,
+  findItem: () => findItem,
+  isAnswered: () => isAnswered,
+  isSatisfied: () => isSatisfied,
+  itemsForGroup: () => itemsForGroup,
+  recordAnswer: () => recordAnswer,
+  recordRoute: () => recordRoute,
+  recordWritten: () => recordWritten,
+  renderCounterLine: () => renderCounterLine,
+  shortfallFor: () => shortfallFor
+});
 function emptyCounters() {
   return RECALL_ROUTES.reduce((counters, route) => {
     counters[route] = 0;
@@ -42,7 +59,7 @@ function emptyCounters() {
   }, {});
 }
 function emptyRecall() {
-  return { answers: [], counters: emptyCounters(), covered: [] };
+  return { answers: [], counters: emptyCounters(), covered: [], written: [] };
 }
 function itemsForGroup(group) {
   return RECALL_ITEMS.filter((item) => item.group === group);
@@ -106,6 +123,9 @@ function recordRoute(state, route, covered = []) {
   const merged = /* @__PURE__ */ new Set([...state.covered, ...covered]);
   return { ...state, counters, covered: [...merged].sort() };
 }
+function recordWritten(state, path) {
+  return { ...state, written: [.../* @__PURE__ */ new Set([...state.written ?? [], path])].sort() };
+}
 var RECALL_ITEMS, STEP_REQUIREMENTS;
 var init_recall = __esm({
   "src/core/recall.ts"() {
@@ -148,6 +168,14 @@ var init_recall = __esm({
 });
 
 // src/core/steps.ts
+var steps_exports = {};
+__export(steps_exports, {
+  WORK_STEP_DEFINITIONS: () => WORK_STEP_DEFINITIONS,
+  definitionFor: () => definitionFor,
+  deriveBlocker: () => deriveBlocker,
+  nextStep: () => nextStep,
+  renderStep: () => renderStep
+});
 function definitionFor(step) {
   const found = WORK_STEP_DEFINITIONS.find((definition) => definition.step === step);
   if (!found) throw new Error(`Unknown step ${step}`);
@@ -166,6 +194,13 @@ function deriveBlocker(flow) {
       summary: `Parked: ${flow.parked.reason}`,
       remedy: `wfctl work release ${flow.id}`
     };
+  }
+  if (flow.step === "opened" && flow.weight) {
+    const following = nextStep("opened");
+    if (following) {
+      const next = definitionFor(following);
+      return { step: following, awaits: "agent", summary: next.demands, remedy: next.command };
+    }
   }
   const definition = definitionFor(flow.step);
   const shortfall = shortfallFor(flow.step, flow.recall);
@@ -208,43 +243,43 @@ var init_steps = __esm({
       {
         step: "opened",
         demands: "Whether this work is significant or lightweight. Significant work changes behaviour, meaning, contracts, data, or operations; lightweight work is local and preserves both behaviour and contracts. Put the distinction to the maintainer in your own words \u2014 do not read this out, and do not decide it yourself.",
-        command: "wfctl work start --weight <significant|lightweight>"
+        command: 'wfctl work start --title "<what this is>" --weight <significant|lightweight>'
       },
       {
         step: "aligned",
         demands: "What the project already says about this subject. If nothing is written yet, record that nothing covers it \u2014 an empty corpus passes a conflict check silently, and that reads exactly like a check that found nothing wrong.",
-        command: "wfctl work align"
+        command: "wfctl work step aligned"
       },
       {
         step: "framed",
         demands: "What the work is: the outcome, the boundary, and the acceptance criteria. This is the cheapest moment to change the scope and the last one where it is free.",
-        command: "wfctl work frame --approve"
+        command: "wfctl work step framed"
       },
       {
         step: "split",
         demands: "The units of delivery, sized by scope and coherence. Not by what fits in a session \u2014 that framing made agents stop halfway through a context that was still wide open.",
-        command: "wfctl work issue create",
+        command: 'wfctl work issue create --title "<what it delivers>"',
         optionalWhen: (flow) => flow.weight === "lightweight"
       },
       {
         step: "implement",
         demands: "One slice at a time, in the checkout the claim binds.",
-        command: "wfctl work issue claim <id>"
+        command: "wfctl work issue claim <id> --repository <owner/name>"
       },
       {
         step: "verified",
         demands: "An adversarial review, run by a separate agent, whose every attack is an executable test. You cannot run it yourself: the agent that wrote the tests can write the review that approves them.",
-        command: "wfctl work verify"
+        command: "wfctl work verify --review <artifact>"
       },
       {
         step: "closed",
         demands: "Nothing from anybody. Every part of 'is this done' is already answered by the checks, and asking the maintainer to confirm arithmetic is not a decision.",
-        command: "wfctl work close"
+        command: "wfctl work close --outcome <completed|partial|abandoned>"
       },
       {
         step: "promoted",
         demands: "What the project now says about itself. This one is the maintainer's, and it is the second and last thing they are asked.",
-        command: "wfctl work promote"
+        command: 'wfctl work promote --subject "<product subject>" --summary "<what it now does>"'
       }
     ];
   }
@@ -273,6 +308,15 @@ function assertRecall(flow, step) {
     `${renderCounterLine(step, flow.recall)}
 
 wfctl guide recall \u2014 why this checklist exists`
+  );
+}
+function assertReviewed(flow, step) {
+  if (step !== "verified" && step !== "closed" && step !== "promoted") return;
+  if (flow.review) return;
+  throw new GateRefusal(
+    "No review is on record for this work.",
+    "wfctl work verify --review <artifact from a separate agent>",
+    "The agent that wrote the tests can write the review that approves them, so the review is produced elsewhere and this checks what came back."
   );
 }
 function assertNotParked(flow) {
@@ -369,6 +413,7 @@ var init_guidance = __esm({
 var flow_exports = {};
 __export(flow_exports, {
   FlowOpenError: () => FlowOpenError,
+  clearCurrent: () => clearCurrent,
   closeFlow: () => closeFlow,
   createFlowId: () => createFlowId,
   currentFlow: () => currentFlow,
@@ -433,15 +478,18 @@ async function setCurrent(root, id) {
 `, "utf8");
 }
 async function openFlow(root, options) {
-  const open = await currentFlow(root);
-  if (open && !open.closedAt) {
+  const open = (await listFlows(root)).find((flow2) => !flow2.closedAt);
+  if (open) {
     throw new FlowOpenError(
       `Flow ${open.id} is open; work outside it is out of scope. A finding found while working belongs in the capture inbox.`,
       `wfctl capture "<what you found>"   (or: wfctl flow close ${open.id})`
     );
   }
   const now = options.now ?? /* @__PURE__ */ new Date();
-  const id = createFlowId(options.kind, options.title, now);
+  let id = createFlowId(options.kind, options.title, now);
+  for (let suffix = 2; await readFlow(root, id); suffix += 1) {
+    id = `${createFlowId(options.kind, options.title, now)}-${suffix}`;
+  }
   const flow = {
     schemaVersion: FLOW_SCHEMA_VERSION,
     id,
@@ -463,7 +511,7 @@ async function openFlow(root, options) {
 async function closeFlow(root, id) {
   const flow = await readFlow(root, id);
   if (!flow) {
-    throw new FlowOpenError(`No flow named ${id}.`, "wfctl flow list");
+    throw new FlowOpenError(`No flow named ${id}.`, "wfctl brief");
   }
   const closed = { ...flow, closedAt: (/* @__PURE__ */ new Date()).toISOString() };
   delete closed.checkpoint;
@@ -471,6 +519,9 @@ async function closeFlow(root, id) {
   const current = await currentFlowId(root);
   if (current === id) await setCurrent(root, void 0);
   return closed;
+}
+async function clearCurrent(root) {
+  await setCurrent(root, void 0);
 }
 async function listFlows(root) {
   let entries;
@@ -508,6 +559,7 @@ var init_flow = __esm({
 });
 
 // src/core/paths.ts
+import { realpathSync } from "node:fs";
 import { mkdir as mkdir2, writeFile as writeFile2 } from "node:fs/promises";
 import { dirname, relative, resolve as resolve3, sep } from "node:path";
 function promotionDirectory(knowledgeRoot, bundleId) {
@@ -515,6 +567,19 @@ function promotionDirectory(knowledgeRoot, bundleId) {
 }
 async function createPromotionDraft(knowledgeRoot, bundleId, page) {
   const normalized = page.replace(/^\/+/, "");
+  if (!normalized.trim() || normalized === "." || normalized === "..") {
+    throw new GateRefusal(
+      "A promotion draft needs the page it will become.",
+      'wfctl work promotion draft "<area>/<page>.md"',
+      "An empty name resolved to the promotion directory itself and replaced it with a file, after which no draft could be created in that record at all."
+    );
+  }
+  if (!normalized.endsWith(".md")) {
+    throw new GateRefusal(
+      "A curated page is Markdown.",
+      `wfctl work promotion draft "${normalized}.md"`
+    );
+  }
   if (normalized.split(/[\\/]/).includes("..")) {
     throw new GateRefusal(
       "A promotion page path may not climb out of the bundle.",
@@ -528,17 +593,46 @@ async function createPromotionDraft(knowledgeRoot, bundleId, page) {
   });
   return path;
 }
+function canonical(path) {
+  let current = resolve3(path);
+  const trailing = [];
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      return [realpathSync.native(current), ...trailing].join(sep);
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return resolve3(path);
+      trailing.unshift(current.slice(parent.length + 1));
+      current = parent;
+    }
+  }
+  return resolve3(path);
+}
 function assertWriteAllowed(options) {
-  const target = resolve3(options.target);
-  const knowledge = resolve3(options.knowledgeRoot);
+  const target = canonical(options.target);
+  const knowledge = canonical(options.knowledgeRoot);
   const rel = relative(knowledge, target);
-  if (rel.startsWith("..")) return;
+  if (rel.startsWith("..") || rel === "") return;
   const segments = rel.split(sep);
   if (segments[0] === "knowledge") {
     throw new GateRefusal(
       "A curated page cannot be written directly into knowledge/.",
       'wfctl work promotion draft "<area>/<page>.md"',
       "Pages enter curated knowledge through promotion, which is the maintainer's decision. Drafts live in the bundle until then."
+    );
+  }
+  if (segments[0] === "changes" && (segments[1] === "promotion" || segments[1] === "archive")) {
+    throw new GateRefusal(
+      `${segments[1]} is written by the tool, not by hand.`,
+      "wfctl work close --outcome <completed|partial|abandoned>",
+      "A record that appears here without passing the flow is promotable without ever having been reviewed."
+    );
+  }
+  if (segments[0] === ".workflow" || segments[0] === "trajectories") {
+    throw new GateRefusal(
+      `${segments[0]} is the tool's own state.`,
+      "wfctl brief",
+      "Editing it by hand is how a fence stops holding."
     );
   }
   if (segments[0] === "changes" && segments[1] === "active") {
@@ -579,14 +673,14 @@ function assertReviewUsable(flow, review) {
   if (review.reviewer.trim().length === 0) {
     throw new GateRefusal(
       "The review records no reviewer.",
-      "wfctl work verify --reviewer <agent id>",
+      "wfctl work verify --review <artifact naming its reviewer>",
       "The implementing agent cannot review its own work: the agent that wrote the tests can write the review that approves them."
     );
   }
   if (review.attacks.length === 0 && review.findings.length === 0) {
     throw new GateRefusal(
       "The review is empty: no findings and no recorded attacks.",
-      "wfctl work verify --attack <file>",
+      "wfctl work verify --review <artifact carrying its attacks>",
       'A reviewer that broke nothing must still say what it tried. "Looks correct" is not an allowed answer.'
     );
   }
@@ -596,6 +690,15 @@ function assertReviewUsable(flow, review) {
       "Fix the tests, then re-run the review.",
       `Those tests assert nothing:
   ${review.stubSurvivors.join("\n  ")}`
+    );
+  }
+  const broke = review.attacks.filter((attack) => attack.broke);
+  if (broke.length > 0) {
+    throw new GateRefusal(
+      `${broke.length} attack(s) broke the work.`,
+      "Fix what they broke, then run the review again.",
+      broke.map((attack) => `  [${attack.lens}] ${attack.target}
+    ${attack.output}`).join("\n")
     );
   }
   const open = review.findings.filter((finding) => finding.status === "open");
@@ -612,14 +715,14 @@ function assertReviewUsable(flow, review) {
   if (silent.length > 0) {
     throw new GateRefusal(
       `${silent.length} finding(s) were accepted without a reason.`,
-      'wfctl work finding accept <id> --because "<why this is acceptable>"',
+      "Record the reason in the artifact's finding, then verify again.",
       "A finding may be accepted, never silently."
     );
   }
   if (flow.framingDigest && flow.framingDigest !== review.framingDigest) {
     throw new GateRefusal(
       "The acceptance criteria have changed since the framing was approved.",
-      `wfctl work approve ${flow.id} --stage completion`,
+      "wfctl work close --outcome partial   (the framing they approved no longer matches)",
       "This is the one case where closure returns to the maintainer: delivery no longer matches the framing they agreed to."
     );
   }
@@ -777,7 +880,7 @@ async function closeBundle(options) {
   if (!await isDirectory(from)) {
     throw new GateRefusal(
       `No active record named ${options.bundleId}.`,
-      "wfctl work status"
+      "wfctl work promotion list"
     );
   }
   const drafts = await hasDraftedPages(options.knowledgeRoot, options.bundleId);
@@ -800,7 +903,7 @@ async function assertCorrectable(knowledgeRoot, bundleId) {
       "An archived record is history. Editing it would change what the project says it decided, without anything recording that it changed."
     );
   }
-  throw new GateRefusal(`No record named ${bundleId}.`, "wfctl work status");
+  throw new GateRefusal(`No record named ${bundleId}.`, "wfctl work promotion list");
 }
 async function listQueue(knowledgeRoot) {
   const path = resolve4(knowledgeRoot, QUEUE);
@@ -849,6 +952,7 @@ __export(trajectory_exports, {
   trajectoryPath: () => trajectoryPath,
   writeTrajectory: () => writeTrajectory
 });
+import { createHash } from "node:crypto";
 import { mkdir as mkdir4, readFile as readFile4, readdir as readdir3, writeFile as writeFile3 } from "node:fs/promises";
 import { dirname as dirname2, resolve as resolve5 } from "node:path";
 function trajectoryPath(root, id) {
@@ -889,7 +993,10 @@ async function listTrajectories(root) {
   return found.sort((left, right) => left.subject.localeCompare(right.subject));
 }
 function subjectId(subject) {
-  return subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  const normalized = subject.trim().toLowerCase();
+  const slug = normalized.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  const digest = createHash("sha256").update(normalized).digest("hex").slice(0, 8);
+  return slug ? `${slug}-${digest}` : digest;
 }
 async function appendEvent(root, subject, event) {
   if (!subject.trim()) {
@@ -912,7 +1019,10 @@ async function appendEvent(root, subject, event) {
     events: [],
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
-  trajectory.events = [...trajectory.events, event];
+  trajectory.events = [
+    ...trajectory.events,
+    { ...event, at: event.at ?? (/* @__PURE__ */ new Date()).toISOString() }
+  ];
   await writeTrajectory(root, trajectory);
   return trajectory;
 }
@@ -1102,6 +1212,7 @@ __export(reconstruct_exports, {
   STAGE_PRESENCE: () => STAGE_PRESENCE,
   advanceStage: () => advanceStage,
   assertAdjudicated: () => assertAdjudicated,
+  assertClosable: () => assertClosable,
   assertCrawlComplete: () => assertCrawlComplete,
   assertProbed: () => assertProbed,
   assertTrajectoriesExist: () => assertTrajectoriesExist,
@@ -1186,7 +1297,7 @@ function assertTrajectoriesExist(record) {
   if (record.trajectories.length > 0) return;
   throw new GateRefusal(
     "No trajectory has been assembled, so nothing can be written yet.",
-    'wfctl trajectory append --subject "<the product subject>" --summary "<what happened>" --axis <intent|delivery|vision>',
+    "wfctl reconstruct subject <trajectory-id>   (append the events first with wfctl trajectory append)",
     "A claim about current truth made while reading is made before the material that contradicts it has been read."
   );
 }
@@ -1211,7 +1322,7 @@ function assertProbed(record, actor) {
   if (mine.length > 0) {
     throw new GateRefusal(
       "The probes were asked by the agent that wrote the pages.",
-      "Delegate the probe round to a separate agent.",
+      'wfctl reconstruct probe --question "<...>" --page <path> --asker <a different agent>',
       "Asking yourself what you might have missed returns what you already know."
     );
   }
@@ -1219,7 +1330,7 @@ function assertProbed(record, actor) {
   if (failed.length > 0) {
     throw new GateRefusal(
       `${failed.length} probe(s) did not pass.`,
-      "Repair the pages, then run the probe round again.",
+      'wfctl reconstruct probe --question "<...>" --page <path> --asker <agent> --passed   (after repairing the page)',
       failed.map((probe) => `  ${probe.question}`).join("\n")
     );
   }
@@ -1230,6 +1341,19 @@ function renderOutcome(record) {
   }
   const revisions = record.repositories.map((entry) => `${entry.repository}@${entry.revision}${entry.dirty ? " (dirty)" : ""}`).join(", ");
   return `Nothing moved. Checked at ${revisions}.`;
+}
+function assertClosable(record, actor) {
+  if (record.stage !== "promote") {
+    throw new GateRefusal(
+      `This case is at ${record.stage}; closing needs it at promote.`,
+      "wfctl reconstruct stage",
+      "Each stage's gate runs on the way past it. Closing early runs none of them."
+    );
+  }
+  assertCrawlComplete(record);
+  assertTrajectoriesExist(record);
+  assertAdjudicated(record);
+  assertProbed(record, actor);
 }
 async function closeCase(root, id) {
   const from = resolve10(root, RECONSTRUCTION_DIR, id);
@@ -1242,8 +1366,9 @@ async function closeCase(root, id) {
   }
   const to = resolve10(root, RECONSTRUCTION_ARCHIVE, id);
   await mkdir8(resolve10(root, RECONSTRUCTION_ARCHIVE), { recursive: true });
-  const { rename: rename2 } = await import("node:fs/promises");
+  const { rename: rename2, rm: rm2 } = await import("node:fs/promises");
   await rename2(from, to);
+  await rm2(resolve10(root, RECONSTRUCTION_DIR, "current"), { force: true });
   return to;
 }
 async function setCurrentCase(root, id) {
@@ -1262,18 +1387,27 @@ async function currentCase(root) {
   }
 }
 async function recordScope(root, record, options) {
+  if (record.stage !== "scope") {
+    throw new GateRefusal(
+      `The scope was settled when this case entered ${record.stage}.`,
+      "wfctl reconstruct status",
+      "Widening it now would move the boundary the coverage gate measures against."
+    );
+  }
   if (options.repositories.length === 0) {
     throw new GateRefusal(
       "A scope with no repositories reads nothing.",
       "wfctl reconstruct scope --repository <owner/name> --revision <sha>"
     );
   }
+  const raw = options.rawScope === "all" ? record.rawPaths.map((path) => `${RAW_DIR}/${path}`) : [];
+  const inScope = [.../* @__PURE__ */ new Set([...options.inScope, ...raw])].sort();
   const next = {
     ...record,
     stage: "crawl",
     repositories: options.repositories,
     rawScope: options.rawScope,
-    coverage: { ...record.coverage, inScope: options.inScope }
+    coverage: { ...record.coverage, inScope }
   };
   await writeCase(root, next);
   return next;
@@ -1282,7 +1416,7 @@ async function markRead(root, record, path) {
   if (!record.coverage.inScope.includes(path)) {
     throw new GateRefusal(
       `${path} is not in this case's scope.`,
-      "wfctl reconstruct scope --in <path>",
+      "wfctl reconstruct scope --repository <owner/name> --revision <sha> --in <every path, including the ones already listed>",
       "Reading outside the agreed scope is how a bounded pass becomes an unbounded one."
     );
   }
@@ -1297,6 +1431,13 @@ async function markRead(root, record, path) {
   return next;
 }
 async function markExcluded(root, record, path, reason) {
+  if (!record.coverage.inScope.includes(path)) {
+    throw new GateRefusal(
+      `${path} is not in this case's scope, so excluding it counts nothing.`,
+      "wfctl reconstruct status",
+      "Coverage counted exclusions of paths that were never in scope, which made the remaining figure smaller than the work left."
+    );
+  }
   if (!reason.trim()) {
     throw new GateRefusal(
       "An exclusion needs its reason.",
@@ -1352,11 +1493,24 @@ async function resolveContradiction(root, record, id, resolution) {
   await writeCase(root, next);
   return next;
 }
-async function recordProbe(root, record, probe) {
+async function recordProbe(root, record, probe, actor) {
   if (!probe.question.trim()) {
     throw new GateRefusal(
       "A probe needs its question.",
       'wfctl reconstruct probe --question "<answerable only from the pages>" --asker <agent id>'
+    );
+  }
+  if (!probe.asker.trim() || probe.asker === actor) {
+    throw new GateRefusal(
+      "A probe needs an asker who did not write the pages.",
+      'wfctl reconstruct probe --question "<...>" --page <path> --asker <a different agent>',
+      "Asking yourself what you might have missed returns what you already know."
+    );
+  }
+  if (probe.pages.length === 0) {
+    throw new GateRefusal(
+      "A probe names the pages that must answer it.",
+      'wfctl reconstruct probe --question "<...>" --page <path> --asker <agent>'
     );
   }
   const next = { ...record, probes: [...record.probes, probe] };
@@ -1432,34 +1586,32 @@ var init_reconstruct = __esm({
 });
 
 // src/core/cli.ts
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync as realpathSync2 } from "node:fs";
 import { dirname as dirname7, resolve as resolve11 } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // src/core/commands.ts
 import { mkdir as mkdir5, writeFile as writeFile4 } from "node:fs/promises";
 import { dirname as dirname3, resolve as resolve6 } from "node:path";
 
 // src/core/checkpoint.ts
+init_gates();
 init_steps();
-var CheckpointError = class extends Error {
-  constructor(message, remedy) {
-    super(message);
-    this.remedy = remedy;
-    this.name = "CheckpointError";
-  }
-  remedy;
+var CheckpointError = class extends GateRefusal {
 };
 function buildCheckpoint(input, now = /* @__PURE__ */ new Date()) {
-  for (const [field, value] of Object.entries({
-    summary: input.summary,
-    handoff: input.handoff,
-    lastAction: input.lastAction,
-    nextAction: input.nextAction
-  })) {
+  const fields = [
+    ["summary", "--summary", input.summary],
+    ["a handoff body", "--handoff", input.handoff],
+    ["the last completed action", "--last", input.lastAction],
+    ["the exact next action", "--next", input.nextAction]
+  ];
+  for (const [label, option, value] of fields) {
     if (!value || value.trim().length === 0) {
       throw new CheckpointError(
-        `A checkpoint needs ${field}; an empty one recalls nothing.`,
-        `wfctl checkpoint --${field.toLowerCase()} "<...>"`
+        `A checkpoint needs ${label}; an empty one recalls nothing.`,
+        `wfctl checkpoint --summary "<one line>" --handoff "<the body>" --last "<...>" --next "<...>"`,
+        `${option} was empty or absent.`
       );
     }
   }
@@ -1630,6 +1782,7 @@ async function advance(context, to) {
     assertNotParked(flow);
     assertReached(flow, to);
     assertRecall(flow, flow.step);
+    assertReviewed(flow, to);
   } catch (error) {
     if (error instanceof GateRefusal) return refused(error);
     throw error;
@@ -1706,7 +1859,17 @@ ${path}`])
 async function flowClose(context) {
   const flow = await currentFlow(context.root);
   if (!flow) {
-    return refused(new GateRefusal("No flow is open.", "wfctl flow list"));
+    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  }
+  const claimed = flow.issues.filter((issue) => issue.status === "claimed");
+  if (claimed.length > 0) {
+    return refused(
+      new GateRefusal(
+        `${claimed.length} unit(s) are still claimed.`,
+        `wfctl work issue complete ${claimed[0]?.id}`,
+        claimed.map((issue) => `  ${issue.id}  ${issue.title}`).join("\n")
+      )
+    );
   }
   const closed = await closeFlow(context.root, flow.id);
   return ok(`flow ${closed.id} closed; the fence is down and the checkpoint is flushed.`);
@@ -1844,6 +2007,16 @@ async function verify(context, options) {
     const { assertReviewUsable: assertReviewUsable2 } = await Promise.resolve().then(() => (init_verify(), verify_exports));
     const review = await readReviewArtifact2(options.review, context.actor);
     assertReviewUsable2(flow, review);
+    await writeFlow(context.root, {
+      ...flow,
+      step: "verified",
+      review: {
+        reviewer: review.reviewer,
+        at: (/* @__PURE__ */ new Date()).toISOString(),
+        attacks: review.attacks.length,
+        findings: review.findings.length
+      }
+    });
     return ok(
       compose([
         `review accepted from ${review.reviewer}: ${review.attacks.length} attack(s), ${review.findings.length} finding(s)`,
@@ -1897,6 +2070,15 @@ async function release(context, attested) {
 async function close(context, options) {
   const flow = await currentFlow(context.root);
   if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  try {
+    assertNotParked(flow);
+    assertReached(flow, "closed");
+    assertRecall(flow, flow.step);
+    assertReviewed(flow, "closed");
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
   const open = flow.issues.filter((issue) => issue.status === "claimed");
   if (open.length > 0) {
     return refused(
@@ -1916,6 +2098,7 @@ async function close(context, options) {
       outcome: options.outcome
     });
     await writeFlow(context.root, { ...flow, step: "closed", closedAt: (/* @__PURE__ */ new Date()).toISOString() });
+    await clearCurrent(context.root);
     return ok(
       result.waitingOnPromotion ? `${bundle} closed as ${options.outcome} and waits in the promotion queue.
 
@@ -1973,7 +2156,7 @@ init_recall();
 
 // src/core/install.ts
 init_gates();
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 import { chmod, mkdir as mkdir6, readFile as readFile5, readdir as readdir4, stat as stat2, writeFile as writeFile5 } from "node:fs/promises";
 import { dirname as dirname4, join as join3, relative as relative2, resolve as resolve7 } from "node:path";
 var MANAGED_BEGIN = "<!-- wfctl:begin -->";
@@ -2039,7 +2222,7 @@ var KNOWLEDGE_DIRECTORIES = [
   FLOWS_DIR
 ];
 function hash(content) {
-  return createHash("sha256").update(content).digest("hex");
+  return createHash2("sha256").update(content).digest("hex");
 }
 async function readIfPresent(path) {
   try {
@@ -2150,8 +2333,6 @@ async function applyInstall(plan, options) {
     state.files[operation.path] = { sha256: hash(content) };
     result.written.push(operation.path);
   }
-  await installHooks(plan.target);
-  await installManagedBlock(plan.target, options.distribution);
   await mkdir6(resolve7(plan.target, ".workflow"), { recursive: true });
   await writeFile5(
     resolve7(plan.target, ".workflow/state.json"),
@@ -2159,6 +2340,8 @@ async function applyInstall(plan, options) {
 `,
     "utf8"
   );
+  await installHooks(plan.target);
+  await installManagedBlock(plan.target, options.distribution);
   return result;
 }
 function assertProfileSupported(profile) {
@@ -2186,13 +2369,33 @@ async function installHooks(target) {
       );
     }
   }
-  const hooks = settings.hooks ?? {};
-  for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
-    const ours = entries;
-    const theirs = (hooks[event] ?? []).filter(
-      (entry) => !ours.some((entry_) => entry_.matcher === entry.matcher)
+  if (Array.isArray(settings) || typeof settings !== "object" || settings === null) {
+    throw new GateRefusal(
+      `${path} is not a JSON object, so its hooks cannot be merged.`,
+      "Repair the file, then run init again.",
+      "Merging into an array would have written the hooks onto a property that JSON.stringify discards, leaving the install reporting success with no hooks at all."
     );
-    hooks[event] = [...theirs, ...ours];
+  }
+  const existingHooks = settings.hooks;
+  if (existingHooks !== void 0 && (typeof existingHooks !== "object" || existingHooks === null || Array.isArray(existingHooks))) {
+    throw new GateRefusal(
+      `${path} has a "hooks" value that is not an object.`,
+      "Repair the file, then run init again."
+    );
+  }
+  const ourCommands = new Set(
+    Object.values(HOOK_SETTINGS.hooks).flat().flatMap((entry) => entry.hooks).map((hook) => hook.command)
+  );
+  const isOurs = (entry) => {
+    const hooks2 = entry?.hooks;
+    if (!Array.isArray(hooks2) || hooks2.length === 0) return false;
+    return hooks2.every((hook) => typeof hook?.command === "string" && ourCommands.has(hook.command));
+  };
+  const hooks = { ...existingHooks ?? {} };
+  for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
+    const current = hooks[event];
+    const theirs = (Array.isArray(current) ? current : []).filter((entry) => !isOurs(entry));
+    hooks[event] = [...theirs, ...entries];
   }
   settings.hooks = hooks;
   await mkdir6(dirname4(path), { recursive: true });
@@ -2214,6 +2417,15 @@ ${MANAGED_END}
     }
     const begin = existing.indexOf(MANAGED_BEGIN);
     const end = existing.indexOf(MANAGED_END);
+    const begins = existing.split(MANAGED_BEGIN).length - 1;
+    const ends = existing.split(MANAGED_END).length - 1;
+    if (begins !== ends || begins > 1 || begins === 1 && end < begin) {
+      throw new GateRefusal(
+        `${name} has an unbalanced wfctl marker block.`,
+        `Repair the markers in ${name} so one ${MANAGED_BEGIN} is followed by one ${MANAGED_END}, then run init again.`,
+        `Found ${begins} begin marker(s) and ${ends} end marker(s). Writing past that would move the boundary and take your own text with it.`
+      );
+    }
     if (begin >= 0 && end > begin) {
       const next = existing.slice(0, begin) + block.trimEnd() + existing.slice(end + MANAGED_END.length);
       await writeFile5(path, next, "utf8");
@@ -2230,7 +2442,7 @@ init_promotion_queue();
 init_types();
 var USAGE = `wfctl \u2014 project workflow
 
-  brief                        the state of this repository, and what awaits whom
+  brief [--json]               the state of this repository, and what awaits whom
   handoff [<flow>]             the full recall body for a flow
   checkpoint --summary ... --handoff ... --last ... --next ...
 
@@ -2285,14 +2497,41 @@ function compose_(parts) {
 }
 function flag(argv, name) {
   const index = argv.indexOf(`--${name}`);
-  return index >= 0 ? argv[index + 1] : void 0;
+  if (index < 0) return void 0;
+  const value = argv[index + 1];
+  if (value === void 0 || value.startsWith("--")) {
+    throw new GateRefusal(
+      `--${name} was given without a value.`,
+      `--${name} "<value>"`,
+      value === void 0 ? void 0 : `The next argument was ${value}, which is another flag.`
+    );
+  }
+  return value;
 }
 function flags(argv, name) {
   const values = [];
   argv.forEach((entry, index) => {
-    if (entry === `--${name}` && argv[index + 1]) values.push(argv[index + 1]);
+    if (entry !== `--${name}`) return;
+    const value = argv[index + 1];
+    if (value === void 0 || value.startsWith("--")) {
+      throw new GateRefusal(`--${name} was given without a value.`, `--${name} "<value>"`);
+    }
+    values.push(value);
   });
   return values;
+}
+function oneOf(value, allowed, name, fallback) {
+  if (value === void 0) {
+    if (fallback !== void 0) return fallback;
+    throw new GateRefusal(`--${name} is required.`, `--${name} <${allowed.join("|")}>`);
+  }
+  if (!allowed.includes(value)) {
+    throw new GateRefusal(
+      `${value} is not a valid ${name}.`,
+      `--${name} <${allowed.join("|")}>`
+    );
+  }
+  return value;
 }
 async function run(argv, context) {
   const [group, ...rest] = argv;
@@ -2302,8 +2541,28 @@ async function run(argv, context) {
       case "help":
       case "--help":
         return { stdout: USAGE, exitCode: 0 };
-      case "brief":
+      case "brief": {
+        if (rest.includes("--json")) {
+          const { listFlows: listFlows2, currentFlowId: currentFlowId2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
+          const { deriveBlocker: deriveBlocker2 } = await Promise.resolve().then(() => (init_steps(), steps_exports));
+          const flows = (await listFlows2(context.root)).filter((flow) => !flow.closedAt);
+          const current = await currentFlowId2(context.root);
+          return ok_(
+            JSON.stringify(
+              {
+                current,
+                signals: flows.flatMap((flow) => {
+                  const blocker = deriveBlocker2(flow);
+                  return blocker ? [{ id: flow.id, awaits: blocker.awaits, summary: blocker.summary, remedy: blocker.remedy }] : [];
+                })
+              },
+              null,
+              2
+            )
+          );
+        }
         return await brief(context);
+      }
       case "handoff":
         return await handoff(context, rest[0]);
       case "checkpoint":
@@ -2326,13 +2585,13 @@ async function run(argv, context) {
           return await recallAnswer(context, {
             item: args[0] ?? "",
             answer: flag(args, "answer") ?? "",
-            route: flag(args, "route") ?? "read",
+            route: oneOf(flag(args, "route"), RECALL_ROUTES, "route"),
             source: flag(args, "source") ?? ""
           });
         }
         if (action === "route") {
           return await recallRoute(context, {
-            route: args[0] ?? "read",
+            route: oneOf(args[0], RECALL_ROUTES, "route"),
             covered: flags(args, "covered")
           });
         }
@@ -2343,7 +2602,7 @@ async function run(argv, context) {
         if (action === "start") {
           return await workStart(context, {
             title: flag(args, "title") ?? "",
-            ...flag(args, "weight") ? { weight: flag(args, "weight") } : {}
+            ...flag(args, "weight") ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") } : {}
           });
         }
         if (action === "step") {
@@ -2380,7 +2639,18 @@ async function run(argv, context) {
             });
           }
           if (sub === "complete") return await issueComplete(context, rest_[0] ?? "");
-          return { stdout: USAGE, exitCode: 1 };
+          return {
+            stdout: [
+              "wfctl work issue <create|list|note|claim|complete>",
+              "",
+              '  create --title "<what it delivers>" [--satisfies AC-01]...',
+              "  list",
+              '  note <id> --note "<what you learned>"',
+              "  claim <id> --repository <owner/name> [--worktree <id>]",
+              "  complete <id>"
+            ].join("\n"),
+            exitCode: 1
+          };
         }
         if (action === "verify") {
           return await verify(context, { review: flag(args, "review") ?? "" });
@@ -2405,6 +2675,17 @@ async function run(argv, context) {
             knowledgeRoot: context.root,
             page: args[1] ?? ""
           });
+        }
+        if (action === "promotion" && args[0] === void 0) {
+          return {
+            stdout: [
+              "wfctl work promotion <draft|list>",
+              "",
+              '  draft "<area>/<page>.md"   create the page where it belongs',
+              "  list                       records waiting on the maintainer"
+            ].join("\n"),
+            exitCode: 1
+          };
         }
         if (action === "promotion" && args[0] === "list") {
           const queued = await listQueue(context.root);
@@ -2442,17 +2723,26 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
           const { currentFlow: currentFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
           const { decideWrite: decideWrite2 } = await Promise.resolve().then(() => (init_write_hook(), write_hook_exports));
           const { loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
+          const { writeFlow: writeFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
+          const { recordWritten: recordWritten2 } = await Promise.resolve().then(() => (init_recall(), recall_exports));
           const flow = await currentFlow2(context.root);
+          const target = flag(args, "target") ?? "";
           const decision = decideWrite2({
             flow,
             knowledgeRoot: context.root,
-            target: flag(args, "target") ?? "",
-            writtenThisUnit: flags(args, "written"),
+            target,
+            writtenThisUnit: flow?.recall.written ?? [],
             ...flow ? {
               guidance: await loadGuidance2({ root: context.assets }, "work/implement") ?? ""
             } : {}
           });
           if (decision.refusal) return { stdout: decision.refusal.render(), exitCode: 2 };
+          if (flow) {
+            await writeFlow2(context.root, {
+              ...flow,
+              recall: recordWritten2(flow.recall, target)
+            });
+          }
           return { stdout: decision.message ?? "", exitCode: 0 };
         }
         return { stdout: USAGE, exitCode: 1 };
@@ -2491,7 +2781,7 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
         if (action === "append") {
           const trajectory = await appendEvent2(context.root, flag(args, "subject") ?? "", {
             summary: flag(args, "summary") ?? "",
-            axis: flag(args, "axis") ?? "delivery",
+            axis: oneOf(flag(args, "axis"), ["intent", "delivery", "vision"], "axis"),
             claims: flags(args, "claim"),
             ...flag(args, "at") ? { at: flag(args, "at") } : {},
             ...flag(args, "change") ? { change: flag(args, "change") } : {}
@@ -2515,6 +2805,14 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
         const { readRegistry: readRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
         const [action, ...args] = rest;
         if (action === "start") {
+          const open = await reconstruct.currentCase(context.root);
+          if (open) {
+            throw new GateRefusal(
+              `Reconstruction ${open.id} is already open at stage ${open.stage}.`,
+              `wfctl reconstruct close`,
+              "Opening another would overwrite it in place, losing its coverage, contradictions and probes."
+            );
+          }
           const repositories = await readRegistry2(context.root);
           if (repositories.length === 0) {
             throw new GateRefusal(
@@ -2573,7 +2871,7 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
               revision: flag(args, "revision") ?? "",
               dirty: args.includes("--dirty")
             })),
-            rawScope: flag(args, "raw") ?? "none",
+            rawScope: oneOf(flag(args, "raw"), ["all", "selected", "none"], "raw", "none"),
             inScope: flags(args, "in")
           });
           return ok_(reconstruct.renderStatus(next));
@@ -2614,7 +2912,7 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
             asker: flag(args, "asker") ?? context.actor,
             ...flag(args, "answer") ? { answer: flag(args, "answer") } : {},
             passed: args.includes("--passed")
-          });
+          }, context.actor);
           return ok_(reconstruct.renderStatus(next));
         }
         if (action === "subject") {
@@ -2641,6 +2939,7 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
           );
         }
         if (action === "close") {
+          reconstruct.assertClosable(record, context.actor);
           const outcome = reconstruct.renderOutcome(record);
           const archived = await reconstruct.closeCase(context.root, record.id);
           return ok_(`${outcome}
@@ -2649,11 +2948,14 @@ ${archived}`);
         }
         return { stdout: USAGE, exitCode: 1 };
       }
-      case "capture":
+      case "capture": {
+        const awaits = rest.includes("--awaits");
+        const text = rest.filter((entry) => entry !== "--awaits")[0] ?? "";
         return await capture(context, {
-          text: rest.filter((entry) => !entry.startsWith("--"))[0] ?? "",
-          ...rest.includes("--awaits") ? { awaits: "maintainer" } : {}
+          text,
+          ...awaits ? { awaits: "maintainer" } : {}
         });
+      }
       case "flow":
         if (rest[0] === "close") return await flowClose(context);
         return { stdout: USAGE, exitCode: 1 };
@@ -2686,7 +2988,15 @@ ${archived}`);
     }
   } catch (error) {
     if (error instanceof GateRefusal) return { stdout: error.render(), exitCode: 2 };
-    throw error;
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      stdout: new GateRefusal(
+        "That could not be completed.",
+        "Check the file or state this command reads; if it was edited by hand, repair it.",
+        detail
+      ).render(),
+      exitCode: 2
+    };
   }
 }
 function findGuidance(start) {
@@ -2698,13 +3008,18 @@ function findGuidance(start) {
     if (parent === current) break;
     current = parent;
   }
-  throw new GateRefusal(
-    "The guidance bundle is missing from this installation.",
-    "Reinstall wfctl.",
-    `Looked upward from ${start} for templates/guidance.`
-  );
+  return resolve11(start, "templates", "guidance");
 }
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "")) {
+var invokedDirectly = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync2(entry) === realpathSync2(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (invokedDirectly) {
   const context = {
     root: process.cwd(),
     assets: findGuidance(import.meta.dirname),
