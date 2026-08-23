@@ -44,6 +44,7 @@ export const GUIDE_TOPICS: Record<string, GuidanceKey> = {
   assemble: "reconstruct/assemble",
   adjudicate: "reconstruct/adjudicate",
   probe: "reconstruct/probe",
+  sources: "reconstruct/sources",
 };
 
 export type GuidanceKey =
@@ -68,6 +69,7 @@ export type GuidanceKey =
   | "reconstruct/assemble"
   | "reconstruct/adjudicate"
   | "reconstruct/probe"
+  | "reconstruct/sources"
   | "recall/structure"
   | "guide/wfctl"
   | "decide/interview"
@@ -85,6 +87,7 @@ export type GuidanceKey =
   | "reconstruct/assemble"
   | "reconstruct/adjudicate"
   | "reconstruct/probe"
+  | "reconstruct/sources"
   | "verify/adversarial"
   | "session/start";
 

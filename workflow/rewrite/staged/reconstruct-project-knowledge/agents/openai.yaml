@@ -1,4 +1,0 @@
-interface:
-  display_name: "Reconstruct Project Knowledge"
-  short_description: "Build a verified project baseline from source"
-  default_prompt: "Use $reconstruct-project-knowledge to start or safely resume an explicit baseline or audit, resolve exact source checkouts, obtain the maintainer's raw-scope decision, choose and record a bounded single-agent or orchestrator-worker plan, let workers explore relevant read-only context while owning one durable packet, bind final evidence to pinned receipt IDs, preserve consequential discoveries, account for pinned repositories and approved raw completely, fan findings back through one semantic owner, and record the actual assurance of fresh independent review before completion."

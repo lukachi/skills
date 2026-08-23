@@ -39,7 +39,7 @@ verified against this file, not against memory.
 - [x] D1 Two cases only: `work` (changes) and `reconstruction`.
 - [x] D2 Intake is absorbed into reconstruction.
 - [x] D3 Raw material lives at `reconstruction/raw/`, owned by that module.
-- [ ] D4 `knowledge/` may never cite it; the validator's path ban moves to the new location.  _(not yet: reconstruction deferred)_
+- [x] D4 `knowledge/` may never cite it; the validator's path ban moves to the new location.
 - [x] D5 No routing or classification step. The maintainer starts a case explicitly.
 - [x] D6 Two independent state machines.
 - [x] D7 Significant vs lightweight survives inside `work start` as a recorded answer, not an inference.
@@ -204,8 +204,11 @@ Decisions taken while shaping it:
 - promotion appends to the subject's line as well as writing pages;
 - exploration is guidance and tools, not a case.
 
-Remaining: the staged skills can now be deleted rather than re-cut, and
-`RECONSTRUCTION.md` rewritten against what shipped.
+The staged skills are deleted: every one of them has been re-cut, and their
+contract is rewritten against what shipped rather than against what it replaced.
+Two sections were rescued into guidance on the way out — sources that are not
+well-formed, and what it takes to claim something is absent — because both are
+judgement the tool cannot make and neither had a home in the new structure.
 
 ## Status
 

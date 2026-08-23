@@ -359,7 +359,8 @@ var init_guidance = __esm({
       crawl: "reconstruct/crawl",
       assemble: "reconstruct/assemble",
       adjudicate: "reconstruct/adjudicate",
-      probe: "reconstruct/probe"
+      probe: "reconstruct/probe",
+      sources: "reconstruct/sources"
     };
   }
 });

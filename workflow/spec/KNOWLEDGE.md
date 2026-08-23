@@ -215,7 +215,7 @@ inherits along `part-of` from one primary parent and along no other relation.
 
 ## Reconstruction convergence
 
-> Not yet rebuilt; see [RECONSTRUCTION.md](RECONSTRUCTION.md).
+> The case itself is specified in [RECONSTRUCTION.md](RECONSTRUCTION.md).
 
 Reconstruction findings use the same candidate dimensions, routing,
 adjudication, promotion, and validation gates as raw intake. Its additional

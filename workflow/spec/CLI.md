@@ -124,8 +124,41 @@ wfctl hook write --target <path>    # used by the pre-write guard, not by hand
 | 1 | the command was not understood |
 | 2 | refused — the output names the remedy |
 
+## Repositories
+
+```sh
+wfctl repo add <owner/name> --path <dir> [--worktree <id>] [--checkout <name>]
+wfctl repo list
+wfctl repo remove <owner/name> [--worktree <id>]
+```
+
+Its own operation, run after installation and again whenever a checkout appears.
+
 ## Reconstruction
 
-Not yet rebuilt. The reconstruction case is the next pass; its previous surface
-is described in [RECONSTRUCTION.md](RECONSTRUCTION.md), which documents the
-implementation this rewrite replaced rather than what ships today.
+```sh
+wfctl reconstruct start
+wfctl reconstruct status
+wfctl reconstruct scope --repository <owner/name> --revision <sha> \
+                        [--raw all|selected|none] [--in <path>]...
+wfctl reconstruct read <path>
+wfctl reconstruct exclude <path> --reason "<why>"
+wfctl reconstruct contradiction --subject "<...>" --side "<...>" --side "<...>"
+wfctl reconstruct resolve <id> --resolution "<what they decided>"
+wfctl reconstruct subject <trajectory-id>
+wfctl reconstruct probe --question "<...>" --page <path> --asker <agent> [--passed]
+wfctl reconstruct stage
+wfctl reconstruct close
+```
+
+`stage` advances when the current stage's gate passes, and prints the guidance
+for the stage it entered.
+
+## Trajectories
+
+```sh
+wfctl trajectory append --subject "<product subject>" --summary "<what happened>" \
+                        --axis <intent|delivery|vision> [--change <id>]
+wfctl trajectory list
+wfctl trajectory show <subject>
+```

@@ -7,9 +7,7 @@ delivery, and safety. More specific contracts own their domains:
 
 - [WORK.md](WORK.md) — the changes flow, its steps, gates and records;
 - [KNOWLEDGE.md](KNOWLEDGE.md) — trust, curation and retrieval;
-- [RECONSTRUCTION.md](RECONSTRUCTION.md) — source-first completeness. **Not yet
-  rebuilt**: it describes the previous implementation and is the input to the
-  next pass, not a description of what ships today;
+- [RECONSTRUCTION.md](RECONSTRUCTION.md) — the reconstruction case;
 - [CLI.md](CLI.md) — the command surface;
 - [VERIFICATION.md](VERIFICATION.md) — how this package is evaluated.
 

@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun scripts/test.mjs",
     "check": "bun run typecheck && bun run test && bun run test:evals && bun run build",
-    "test:evals": "bun scripts/eval.mjs"
+    "test:evals": "bun scripts/eval.mjs",
+    "test:graphify": "bun tests/graphify-integration.mjs"
   },
   "packageManager": "bun@1.3.0",
   "engines": {
