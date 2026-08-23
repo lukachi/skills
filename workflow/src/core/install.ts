@@ -1,7 +1,63 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
+
+export const MANAGED_BEGIN = "<!-- wfctl:begin -->";
+export const MANAGED_END = "<!-- wfctl:end -->";
+
+/**
+ * The hooks are the half of this design the CLI cannot supply.
+ *
+ * A command can only instruct at its own call site. An agent that never runs
+ * one — that opens a session and starts editing — is reached by nothing else,
+ * which is why the session start, the write and the turn boundary are hooks and
+ * not commands.
+ */
+export const HOOK_SETTINGS = {
+  hooks: {
+    SessionStart: [
+      {
+        matcher: "*",
+        hooks: [{ type: "command", command: "wfctl brief" }],
+      },
+    ],
+    PreToolUse: [
+      {
+        matcher: "Edit|Write|MultiEdit",
+        hooks: [
+          {
+            type: "command",
+            command:
+              '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-write.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-write.mjs" || true',
+          },
+        ],
+      },
+      {
+        matcher: "Bash",
+        hooks: [
+          {
+            type: "command",
+            command:
+              '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true',
+          },
+        ],
+      },
+    ],
+    Stop: [
+      {
+        matcher: "*",
+        hooks: [
+          {
+            type: "command",
+            command:
+              '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" || true',
+          },
+        ],
+      },
+    ],
+  },
+} as const;
 
 /**
  * Installation, after the leaf profile was removed.
@@ -124,9 +180,20 @@ export async function planInstall(options: {
     if (!present) operations.push({ kind: "create-directory", path: directory });
   }
 
-  const guidance = await collect(resolve(options.distribution, "templates/guidance"));
+  const bundles: { source: string; prefix: string }[] = [
+    { source: "templates/guidance", prefix: GUIDANCE_DIR },
+    { source: "templates/runtime", prefix: RUNTIME_DIR },
+  ];
+
+  const guidance: { path: string; content: string }[] = [];
+  for (const bundle of bundles) {
+    for (const file of await collect(resolve(options.distribution, bundle.source))) {
+      guidance.push({ path: join(bundle.prefix, file.path), content: file.content });
+    }
+  }
+
   for (const file of guidance) {
-    const rel = join(GUIDANCE_DIR, file.path);
+    const rel = file.path;
     const current = await readIfPresent(resolve(options.target, rel));
     const recorded = state?.files[rel]?.sha256;
     const next = hash(file.content);
@@ -190,17 +257,22 @@ export async function applyInstall(
       continue;
     }
 
+    const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
     const source = resolve(
       options.distribution,
-      "templates/guidance",
-      relative(GUIDANCE_DIR, operation.path),
+      runtime ? "templates/runtime" : "templates/guidance",
+      relative(runtime ? RUNTIME_DIR : GUIDANCE_DIR, operation.path),
     );
     const content = await readFile(source, "utf8");
     await mkdir(dirname(absolute), { recursive: true });
     await writeFile(absolute, content, "utf8");
+    if (runtime) await chmod(absolute, 0o755);
     state.files[operation.path] = { sha256: hash(content) };
     result.written.push(operation.path);
   }
+
+  await installHooks(plan.target);
+  await installManagedBlock(plan.target, options.distribution);
 
   await mkdir(resolve(plan.target, ".workflow"), { recursive: true });
   await writeFile(
@@ -227,4 +299,74 @@ export function assertProfileSupported(profile: string): void {
     );
   }
   throw new GateRefusal(`Unknown profile ${profile}.`, "wfctl init knowledge");
+}
+
+
+/**
+ * Merge the hooks into the agent's settings without touching anything else.
+ *
+ * The file belongs to the project, not to this tool, so entries it did not
+ * write are preserved and its own are replaced by matcher. A settings file
+ * rewritten wholesale would silently drop whatever the maintainer configured,
+ * and they would find out the next time something they rely on did not run.
+ */
+export async function installHooks(target: string): Promise<void> {
+  const path = resolve(target, ".claude/settings.json");
+  const existing = await readIfPresent(path);
+
+  let settings: Record<string, unknown> = {};
+  if (existing) {
+    try {
+      settings = JSON.parse(existing) as Record<string, unknown>;
+    } catch {
+      throw new GateRefusal(
+        `${path} is not valid JSON, so its hooks cannot be merged.`,
+        "Repair the file, then run init again.",
+      );
+    }
+  }
+
+  const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>;
+  for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
+    const ours = entries as unknown as { matcher: string }[];
+    const theirs = ((hooks[event] ?? []) as { matcher?: string }[]).filter(
+      (entry) => !ours.some((entry_) => entry_.matcher === entry.matcher),
+    );
+    hooks[event] = [...theirs, ...ours];
+  }
+  settings.hooks = hooks;
+
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+}
+
+/**
+ * Write the managed block into both agent conventions.
+ *
+ * It is the one instruction that cannot arrive from a command, because it is
+ * what tells the agent that commands are where instructions come from. Content
+ * outside the markers is the maintainer's and is preserved.
+ */
+export async function installManagedBlock(target: string, distribution: string): Promise<void> {
+  const body = (await readFile(resolve(distribution, "templates/agents/managed.md"), "utf8")).trim();
+  const block = `${MANAGED_BEGIN}\n${body}\n${MANAGED_END}\n`;
+
+  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
+    const path = resolve(target, name);
+    const existing = await readIfPresent(path);
+
+    if (existing === undefined) {
+      await writeFile(path, block, "utf8");
+      continue;
+    }
+    const begin = existing.indexOf(MANAGED_BEGIN);
+    const end = existing.indexOf(MANAGED_END);
+    if (begin >= 0 && end > begin) {
+      const next =
+        existing.slice(0, begin) + block.trimEnd() + existing.slice(end + MANAGED_END.length);
+      await writeFile(path, next, "utf8");
+      continue;
+    }
+    await writeFile(path, `${existing.trimEnd()}\n\n${block}`, "utf8");
+  }
 }

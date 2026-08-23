@@ -34,6 +34,8 @@ const USAGE = `wfctl — project workflow
   flow close                   flush the checkpoint and drop the fence
 
   init knowledge [--target <dir>]
+
+  hook write --target <path>   used by the pre-write guard, not by hand
 `;
 
 function flag(argv: string[], name: string): string | undefined {
@@ -131,6 +133,31 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
               : "nothing is waiting to be promoted.",
             exitCode: 0,
           };
+        }
+        return { stdout: USAGE, exitCode: 1 };
+      }
+
+      case "hook": {
+        const [action, ...args] = rest;
+        if (action === "write") {
+          const { currentFlow } = await import("./flow.js");
+          const { decideWrite } = await import("./write-hook.js");
+          const { loadGuidance } = await import("./guidance.js");
+          const flow = await currentFlow(context.root);
+          const decision = decideWrite({
+            flow,
+            knowledgeRoot: context.root,
+            target: flag(args, "target") ?? "",
+            writtenThisUnit: flags(args, "written"),
+            ...(flow
+              ? {
+                  guidance:
+                    (await loadGuidance({ root: context.assets }, "work/implement")) ?? "",
+                }
+              : {}),
+          });
+          if (decision.refusal) return { stdout: decision.refusal.render(), exitCode: 2 };
+          return { stdout: decision.message ?? "", exitCode: 0 };
         }
         return { stdout: USAGE, exitCode: 1 };
       }
