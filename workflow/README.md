@@ -28,11 +28,19 @@ It creates two linked, first-class roads through the same project:
 Both maintainers and agents may follow either road. Neither is a derivative of
 the other, and shared Areas, changes, and decision history keep them aligned.
 
-## Built on reviewed skill practice
+## Built on reviewed practice
 
-The leaf flow openly reuses selected MIT-licensed skills from Matt Pocock's
-[`mattpocock/skills`](https://github.com/mattpocock/skills), modified and integrated as one attributed
-workflow with central knowledge, exact worktrees, and verification. See [provenance](THIRD_PARTY.md) and [setup](docs/01-setup.md).
+The flow openly reuses selected MIT-licensed skills from Matt Pocock's
+[`mattpocock/skills`](https://github.com/mattpocock/skills), re-cut into guidance
+the tool delivers rather than skills an agent has to choose to load. See
+[provenance](THIRD_PARTY.md).
+
+## No skills
+
+Instructions do not arrive because the agent decided to load them. Each command
+prints what the current state demands, the next one refuses until that exists,
+and three hooks cover the moments no command reaches: the session opening, a
+file about to change, and a turn ending with work outstanding.
 
 ## What you get
 
@@ -47,7 +55,7 @@ workflow with central knowledge, exact worktrees, and verification. See [provena
 - Safe intake for raw notes, ideas, research, and legacy specifications.
 - A pending-capture queue for useful material that has no active or curated
   owner yet, with explicit routing or discard.
-- Graphify-first source navigation, QMD retrieval, and Git-pinned evidence.
+- Graphify-first source navigation, QMD retrieval, and Git-pinned evidence, with the routes actually used counted and reported at every gate.
 - Mechanical checks that reject broken knowledge links, invalid decision
   history, stale review receipts, incomplete work records, and unaccounted raw
   intake or source reconstruction scope.
@@ -59,7 +67,7 @@ workflow with central knowledge, exact worktrees, and verification. See [provena
 | Place | What belongs there |
 | --- | --- |
 | Knowledge repository | Shared product and engineering knowledge, work records, decision history, and unreviewed intake |
-| Leaf repository | Source code, tests, implementation, and verification evidence |
+| Leaf repository | Source code, tests, implementation, and verification evidence — edited from the knowledge session, never installed into |
 
 Work moves between them in two ways:
 
@@ -78,39 +86,31 @@ results remain evidence, not project truth, until they are reviewed and curated.
 
 Install `wfctl` from source, then connect the repositories. Git, QMD 2.5.3+,
 and — for source repositories — Graphify with its native agent skill are also
-required; [setup](docs/01-setup.md) covers each.
+required.
 
 ```sh
 git clone https://github.com/lukachi/skills.git
 cd skills/workflow && bun install && bun run build && bun link
 
 cd /path/to/project-knowledge && wfctl init knowledge
-cd /path/to/source-repository && wfctl init leaf --knowledge /path/to/project-knowledge
 ```
 
-Restart your coding agent. The repository you open determines its role:
+Restart your coding agent. Everything runs from the knowledge repository: the
+agent is bootstrapped there and edits leaf code from it as an orchestrator, so
+there is nothing to install in a source repository.
 
-- **Knowledge repository:** “Help me understand this project” or “Process the
-  new raw material.” It may inspect leaves for evidence, but never implements
-  source changes.
-- **Leaf repository:** “Implement account recovery.” It writes code only in
-  that exact checkout while using the central knowledge and work record.
-
-The agent owns routine `wfctl`, Graphify, QMD, and validation commands, and it
-closes finished work by itself. You own product intent, corrections, and two
-decisions: what a piece of work is before it starts, and what the project says
-about itself afterwards. Both are recorded from your own words, or from a typed
-confirmation if you prefer one. The shared knowledge remains directly readable
-without an agent.
+You own product intent, corrections, and two decisions: what a piece of work is
+before it starts, and what the project says about itself afterwards. Closing is
+neither — the checks have already answered it. The shared knowledge remains
+directly readable without an agent.
 
 ## Read next
 
 1. [Why this workflow exists](IDEA.md)
-2. [Set it up](docs/01-setup.md)
-3. [Work in the knowledge repository](docs/02-knowledge-repository.md)
-4. [Work in a source repository](docs/03-leaf-repository.md)
-5. [Your part](docs/04-your-part.md)
+2. [The engine contract](spec/ENGINE.md)
+3. [The changes flow](spec/WORK.md)
 
 Workflow authors can continue with the [engine](spec/ENGINE.md),
-[project work](spec/WORK.md), [knowledge](spec/KNOWLEDGE.md), and
-[verification](spec/VERIFICATION.md) contracts.
+[changes flow](spec/WORK.md), [knowledge](spec/KNOWLEDGE.md), and
+[verification](spec/VERIFICATION.md) contracts. Reconstruction is the next pass
+and its contract still describes the previous implementation.

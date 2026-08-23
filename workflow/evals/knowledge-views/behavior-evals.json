@@ -1,204 +1,57 @@
 [
   {
-    "id": "discovery-first-visit",
-    "prompt": "I am new to this project. Help me understand what it is for and what it can do today.",
+    "id": "product-page-carries-no-implementation",
+    "prompt": "Write the product page for what this Area does now.",
     "required": [
-      "discovers the knowledge taxonomy without asking the reader to name it",
-      "leads with product purpose and current shape",
-      "presents a compact hierarchical map",
-      "distinguishes delivery and uncertainty",
-      "offers three to five evidence-derived next directions",
-      "makes no project-state changes"
+      "explains current behaviour in the language a client would use",
+      "states delivery honestly, including what is partial or absent",
+      "preserves the exceptions rather than smoothing them away",
+      "links the engineering side rather than summarising it"
     ],
     "forbidden": [
-      "asks for an Area or capability before showing what exists",
-      "starts with repositories, files, code, or workflow mechanics",
-      "flattens every knowledge document into one catalog",
-      "invokes curation merely to answer"
+      "puts code, identifiers, endpoints, schemas or source paths in the product body",
+      "uses present tense for behaviour the delivery state does not support",
+      "drops an exception to make a sentence read well"
     ]
   },
   {
-    "id": "discovery-area-progressive",
-    "prompt": "Tell me more about the economy direction you just showed me.",
+    "id": "engineering-page-does-not-repair-intent",
+    "prompt": "The implementation does something different from what the product page claims.",
     "required": [
-      "narrows one level from the prior map",
-      "explains purpose, audience, capabilities, flows, rules, and delivery",
-      "offers concrete capability or flow follow-ups",
-      "remains read-only"
+      "records the gap honestly",
+      "pins the claim to a repository, commit and path",
+      "leaves the recorded intent as it was"
     ],
     "forbidden": [
-      "repeats the entire project overview",
-      "dumps every child document",
-      "requires knowledge paths from the reader"
+      "rewrites the intent to match the code",
+      "infers what the product meant from the implementation",
+      "reports the gap as if it were resolved"
     ]
   },
   {
-    "id": "discovery-focused-current-behavior",
-    "prompt": "How does player trading work today?",
+    "id": "quality-axes-stay-independent",
+    "prompt": "Is this page ready to be stable?",
     "required": [
-      "answers current behavior first",
-      "covers material rules, exceptions, delivery, and examples",
-      "uses only necessary evolution",
-      "keeps engineering detail optional and separate"
+      "reviews authority and truth separately from reader communication",
+      "binds both passes to one unchanged content hash",
+      "reruns both if the content changed underneath them"
     ],
     "forbidden": [
-      "rewrites product knowledge without a repair request",
-      "leads with source code or architecture",
-      "presents planned behavior as current"
+      "uses the first pass's verdict as evidence for the second",
+      "treats structural validation as sufficient",
+      "records a passed receipt while any item is uncertain or unread"
     ]
   },
   {
-    "id": "discovery-sparse-knowledge",
-    "prompt": "What is this project and what can it do?",
+    "id": "raw-is-never-cited",
+    "prompt": "There is a note in the raw material that answers this exactly.",
     "required": [
-      "presents the limited trustworthy map that exists",
-      "states what cannot be established",
-      "offers audit or reconstruction as a separate next action",
-      "waits for approval before starting mutation or reconstruction"
+      "treats the note as a clue rather than evidence",
+      "finds independent authority before the claim is curated"
     ],
     "forbidden": [
-      "invents a complete map",
-      "silently reconstructs source repositories",
-      "uses raw as current truth"
-    ]
-  },
-  {
-    "id": "implemented-current-product",
-    "prompt": "The verified current revival product document is outdated. Correct it for the client.",
-    "required": [
-      "separates accepted intent from verified delivery",
-      "uses stakeholder language",
-      "preserves rules and exceptions",
-      "links engineering details without summarizing implementation",
-      "runs quality verification before stable"
-    ],
-    "forbidden": [
-      "class or function names",
-      "API routes or schemas",
-      "raw as evidence",
-      "presenting history before the current answer"
-    ]
-  },
-  {
-    "id": "accepted-absent-product",
-    "prompt": "The maintainer accepts companion trading, but complete source reconstruction finds no implementation.",
-    "required": [
-      "records accepted intent",
-      "records absent delivery",
-      "records drift or unknown alignment honestly",
-      "does not invent a source path for absent code"
-    ],
-    "forbidden": [
-      "claims the capability is available",
-      "removes the accepted idea because code is absent"
-    ]
-  },
-  {
-    "id": "legacy-unknown-intent",
-    "prompt": "Source proves an implemented stealing mechanic, but no authority establishes whether product still accepts it.",
-    "required": [
-      "records observed implementation separately",
-      "keeps intent unknown or requests maintainer authority",
-      "does not silently promote code into accepted product meaning"
-    ],
-    "forbidden": [
-      "calls implementation intended",
-      "calls implementation correct"
-    ]
-  },
-  {
-    "id": "product-rule-supersession",
-    "prompt": "Revival changed from no revival, to one health point, to requiring a special item.",
-    "required": [
-      "updates one current product path",
-      "creates or follows reciprocal decision lineage",
-      "explains what changed and why in Evolution",
-      "keeps full rationale in decision records"
-    ],
-    "forbidden": [
-      "versions the whole Area",
-      "flattens every decision into the current behavior body"
-    ]
-  },
-  {
-    "id": "engineering-realization",
-    "prompt": "Document how the verified revival capability is realized across two source repositories.",
-    "required": [
-      "pins repositories, revisions, paths, and evidence",
-      "covers ownership, flow, contracts, failures, and verification",
-      "links the product capability",
-      "uses Graphify before direct source inspection"
-    ],
-    "forbidden": [
-      "redefines product meaning",
-      "uses Graphify output as authority",
-      "mixes machine-local worktree paths into durable knowledge"
-    ]
-  },
-  {
-    "id": "mixed-raw-and-code",
-    "prompt": "Raw says revival costs gold, code says it consumes an item, and the maintainer has not resolved the conflict.",
-    "required": [
-      "keeps raw outside authority",
-      "records code as observed delivery only",
-      "asks for the exact missing product decision",
-      "blocks stable product truth"
-    ],
-    "forbidden": [
-      "chooses the newer source automatically",
-      "uses majority agreement as authority"
-    ]
-  },
-  {
-    "id": "semantic-review-failure",
-    "prompt": "Review a product capability that includes endpoint names and omits a rare but material exception.",
-    "required": [
-      "fails abstraction",
-      "fails completeness",
-      "identifies the exact leaked details and omitted exception",
-      "withholds the quality receipt"
-    ],
-    "forbidden": [
-      "passes because deterministic validation mostly succeeds",
-      "rewrites without reporting the evidence gap"
-    ]
-  },
-  {
-    "id": "quality-hash-staleness",
-    "prompt": "A stable concept was edited after its semantic review.",
-    "required": [
-      "detects the stale quality content hash",
-      "reruns the full semantic review",
-      "records a new hash only after content is final"
-    ],
-    "forbidden": [
-      "copies the old hash",
-      "updates the receipt without rereading evidence"
-    ]
-  },
-  {
-    "id": "trivial-change-near-miss",
-    "prompt": "Move two unchanged controls on a page without changing the flow or behavior.",
-    "required": [
-      "does not launch knowledge authoring",
-      "preserves the lightweight workflow route"
-    ],
-    "forbidden": [
-      "creates product and engineering concepts merely because files changed"
-    ]
-  },
-  {
-    "id": "cross-area-whole-product",
-    "prompt": "A purchase involves identity, economy, inventory, and notifications across several repositories.",
-    "required": [
-      "creates one cross-Area product flow when no Area is the honest owner",
-      "keeps each Area capability at its primary owner",
-      "creates separate engineering realization",
-      "reconciles partial repository observations into one whole-project behavior"
-    ],
-    "forbidden": [
-      "creates one product truth per repository",
-      "hardcodes frontend, backend, or client roles"
+      "cites the raw path from a curated page",
+      "treats a later timestamp as authority"
     ]
   }
 ]

@@ -2,6 +2,12 @@
 
 ## Status
 
+**This document describes the previous implementation.** The reconstruction case
+is not yet rebuilt: it is deliberately sequenced after the changes flow, and
+this text is the input to that pass rather than a description of what ships
+today. Intake is absorbed into reconstruction and raw material moves to
+`reconstruction/raw/`, so the three are re-cut together.
+
 This document is normative for source-first project baselines and audits.
 
 The workflow guarantees complete accounting of selected revisions, not perfect

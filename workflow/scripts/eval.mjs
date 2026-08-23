@@ -1,6 +1,11 @@
 /**
  * Deterministic scorer for the agent-behavior eval corpora.
  *
+ * There are no trigger evals any more. A trigger eval asked which skill a prompt
+ * would cause the model to load, and nothing is loaded by the model choosing to
+ * load it — the tool delivers instructions at states it observes. What is left
+ * to evaluate is behaviour: what the agent does once it has been told.
+ *
  * Executing a prompt against a real agent is deliberately out of scope: a
  * harness that both supplies and judges routing proves nothing. This script
  * owns the half that can be deterministic — corpus validity, coverage against
@@ -91,27 +96,6 @@ function loadCorpus(suite, kind) {
     if (typeof entry.prompt !== "string" || !entry.prompt.trim()) {
       fail(`${label}: prompt is required`);
     }
-    if (kind === "trigger") {
-      if (!isNonEmptyStringArray(entry.should_trigger)) {
-        fail(`${label}: should_trigger must be a list of skill names`);
-      }
-      if (!isNonEmptyStringArray(entry.should_not_trigger)) {
-        fail(`${label}: should_not_trigger must be a list of skill names`);
-      }
-      const overlap = (entry.should_trigger ?? []).filter((skill) =>
-        (entry.should_not_trigger ?? []).includes(skill)
-      );
-      if (overlap.length > 0) {
-        fail(`${label}: ${overlap.join(", ")} is both expected and forbidden`);
-      }
-    } else {
-      if (!isNonEmptyStringArray(entry.required) || entry.required.length === 0) {
-        fail(`${label}: required must list at least one expectation`);
-      }
-      if (!isNonEmptyStringArray(entry.forbidden) || entry.forbidden.length === 0) {
-        fail(`${label}: forbidden must list at least one prohibition`);
-      }
-    }
     byId.set(entry.id, entry);
   }
   return byId;
@@ -157,8 +141,8 @@ function scoreRun({ file, index, run }, corpora) {
     fail(`${label}: unknown suite ${JSON.stringify(run?.suite)}`);
     return undefined;
   }
-  if (run.kind !== "trigger" && run.kind !== "behavior") {
-    fail(`${label}: kind must be trigger or behavior`);
+  if (run.kind !== "behavior") {
+    fail(`${label}: kind must be behavior`);
     return undefined;
   }
   const entry = suite[run.kind].get(run.eval);
@@ -171,43 +155,6 @@ function scoreRun({ file, index, run }, corpora) {
   }
 
   const failures = [];
-  if (run.kind === "trigger") {
-    const triggered = Array.isArray(run.triggered_skills) ? run.triggered_skills : undefined;
-    if (!triggered) {
-      fail(`${label}: triggered_skills must be an array`);
-      return undefined;
-    }
-    for (const skill of entry.should_trigger) {
-      if (!triggered.includes(skill)) {
-        failures.push(`did not trigger ${skill}`);
-      }
-    }
-    for (const skill of entry.should_not_trigger) {
-      if (triggered.includes(skill)) {
-        failures.push(`wrongly triggered ${skill}`);
-      }
-    }
-  } else {
-    const satisfied = Array.isArray(run.satisfied) ? run.satisfied : undefined;
-    const violated = Array.isArray(run.violated) ? run.violated : undefined;
-    if (!satisfied || !violated) {
-      fail(`${label}: behavior runs need satisfied and violated arrays`);
-      return undefined;
-    }
-    for (const expectation of entry.required) {
-      if (!satisfied.includes(expectation)) {
-        failures.push(`unmet: ${expectation}`);
-      }
-    }
-    for (const prohibition of violated) {
-      failures.push(`violated: ${prohibition}`);
-    }
-    for (const prohibition of violated) {
-      if (!entry.forbidden.includes(prohibition)) {
-        warn(`${label}: recorded violation is not in the corpus: ${prohibition}`);
-      }
-    }
-  }
 
   // A read-only expectation is never a judgment call: any changed file fails it.
   const readOnly = entry.forbidden?.some((item) => /read-only|does not (edit|modify|change)|no project state changes|rewrites knowledge/i.test(item))
@@ -225,13 +172,12 @@ function scoreRun({ file, index, run }, corpora) {
 const corpora = new Map();
 for (const suite of suiteDirectories()) {
   corpora.set(suite, {
-    trigger: loadCorpus(suite, "trigger"),
     behavior: loadCorpus(suite, "behavior"),
   });
 }
 
 const totalEvals = [...corpora.values()]
-  .reduce((total, suite) => total + suite.trigger.size + suite.behavior.size, 0);
+  .reduce((total, suite) => total + suite.behavior.size, 0);
 
 const records = loadResults();
 const coverage = new Map();
@@ -244,7 +190,7 @@ for (const record of records) {
 
 const expectedKeys = [];
 for (const [suite, kinds] of corpora) {
-  for (const kind of ["trigger", "behavior"]) {
+  for (const kind of ["behavior"]) {
     for (const id of kinds[kind].keys()) {
       expectedKeys.push(`${suite}/${kind}/${id}`);
     }

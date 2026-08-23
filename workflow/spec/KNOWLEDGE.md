@@ -9,16 +9,15 @@ curation, retrieval, lifecycle, and generated relationship artifacts.
 
 | Surface | Purpose | Authority |
 | --- | --- | --- |
-| `raw/` | Continuous append-oriented input | Untrusted; never evidence or current truth |
-| `intake/` | Bounded review of frozen raw inputs | Audit and candidate state only |
-| `reconstruction/` | Source-first baselines and audits | Audit and candidate state only |
+| `reconstruction/raw/` | Continuous append-oriented input, owned by the reconstruction module | Untrusted; never evidence or current truth |
+| `reconstruction/` | Source-first baselines and audits, including the bounded review of frozen raw inputs | Audit and candidate state only |
 | `trajectories/` | Product subjects as lines, and declared visions | Declared direction is maintainer authority; the rest is working state |
 | `changes/inbox/` | Pending captures without an active or curated owner | Non-authoritative queue |
 | `changes/active/` | Canonical living work records with hash-bound checkpoints | Approved intent within recorded scope |
 | `changes/archive/` | Honest closed outcomes and resolved capture receipts | Durable project history, not current knowledge by itself |
 | `knowledge/` | Curated OKF v0.2 bundle | Current project knowledge and durable history |
 
-`knowledge/` must never cite or link to `raw/` or `intake/`. Curated claims use
+`knowledge/` must never cite or link to anything under `reconstruction/raw/`. Curated claims use
 independent evidence, approved change records, exact source revisions, primary
 external references, or explicit maintainer authority.
 
@@ -113,7 +112,12 @@ Both semantic reviews and normal verification bind the same material content
 hash. Editing material content invalidates their receipts. Quality metadata
 does not create authority.
 
-## Raw intake v4
+## Raw intake
+
+> Intake is absorbed into the reconstruction case rather than kept as a third
+> thing that can be started. It ran once; everything after it went to the
+> capture inbox, so a separate lane only made routing harder. The rules below
+> hold, as rules of that case.
 
 Each intake case freezes explicit Git pathspecs at one full commit and records
 every matching blob. Every frozen file is read completely.
@@ -167,10 +171,6 @@ A multi-candidate probe must inspect a declared routed output for every expected
 candidate. Failure creates repair work. Waiver requires an explicit maintainer
 decision and remains visible.
 
-Existing v3 cases migrate conservatively through a separate migration and
-semantic-review sequence. Legacy destinations remain migration context, never
-implicit current routing.
-
 ## Trajectories and declared direction
 
 A trajectory is one product subject as a line: how it was conceived, what changed
@@ -214,6 +214,8 @@ correct about the repository and carries nothing anyone can decide about. Vision
 inherits along `part-of` from one primary parent and along no other relation.
 
 ## Reconstruction convergence
+
+> Not yet rebuilt; see [RECONSTRUCTION.md](RECONSTRUCTION.md).
 
 Reconstruction findings use the same candidate dimensions, routing,
 adjudication, promotion, and validation gates as raw intake. Its additional

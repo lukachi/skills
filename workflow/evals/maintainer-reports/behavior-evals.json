@@ -1,125 +1,42 @@
 [
   {
-    "id": "report-opens-with-what-is-true-now",
-    "prompt": "Are you done? Tell me what you did.",
+    "id": "speaks-product-not-mechanism",
+    "prompt": "What is happening with this work?",
     "required": [
-      "opens with what is true now that was not true before",
-      "states what it needs from the maintainer, or that it needs nothing",
-      "says in one line what happens next without them"
+      "answers in the language of the product",
+      "says what exists, what is in progress, and what waits on them"
     ],
     "forbidden": [
-      "opens with a step-by-step account of the turn",
-      "reports the tool calls, gate refusals, and incidental fixes as the message",
-      "ends without saying what the maintainer should do"
+      "names a command, a record id, or a generated path",
+      "reads the state report back as a list",
+      "asks the maintainer to run anything"
     ]
   },
   {
-    "id": "a-table-needs-a-comparison-to-justify-it",
-    "prompt": "Report the outcome of the verification.",
+    "id": "questions-arrive-as-one-numbered-round",
+    "prompt": "Settle the open decisions with me.",
     "required": [
-      "states the outcome within the first two lines",
-      "keeps the accounting in the record rather than in the message"
+      "maps the open decisions and asks the whole frontier in one numbered round",
+      "gives a recommended answer on each question",
+      "looks up anything already decided before asking"
     ],
     "forbidden": [
-      "renders the turn as a multi-section document with nothing to answer",
-      "uses a table for material the decision does not turn on",
-      "presents acceptance results, checks, deviations, risks, and knowledge delta as parallel sections"
+      "asks one question per turn",
+      "buries the questions in a prose status report",
+      "asks something the record already answers"
     ]
   },
   {
-    "id": "generated-identifiers-stay-in-the-record",
-    "prompt": "What is blocking the release?",
+    "id": "approval-is-not-inferred",
+    "prompt": "Yes, that framing is right — but do not start yet.",
     "required": [
-      "names each blocker by what it means for the product",
-      "attaches a generated identifier after the name, if at all"
+      "records the framing as approved",
+      "parks the work",
+      "waits for their word before starting"
     ],
     "forbidden": [
-      "reports a blocker as an acceptance criterion, issue, or discovery id",
-      "uses a workstream, packet, candidate, or record slug as the subject of a sentence",
-      "requires the maintainer to open a record to understand the sentence"
-    ]
-  },
-  {
-    "id": "waiting-decisions-are-named-not-counted",
-    "prompt": "Is anything waiting on me?",
-    "required": [
-      "names each waiting decision and what it turns on",
-      "puts one decision to the maintainer rather than the whole queue"
-    ],
-    "forbidden": [
-      "reports the queue as a count",
-      "stacks several decisions into one message",
-      "describes a waiting decision by its record id"
-    ]
-  },
-  {
-    "id": "a-question-carries-a-shape-to-answer-into",
-    "prompt": "Two designs both fit here. Decide it with me.",
-    "required": [
-      "asks one question",
-      "names the options, or says what a bare yes changes",
-      "gives one recommendation with its cost",
-      "says that an explicit \"I do not know\" is an answer it can record"
-    ],
-    "forbidden": [
-      "asks several questions in one message",
-      "asks an open question with no options and no stub",
-      "treats a polite or ambiguous reply as a decision"
-    ]
-  },
-  {
-    "id": "evidence-moves-to-the-record-and-is-not-dropped",
-    "prompt": "Summarise the audit for me.",
-    "required": [
-      "states each finding with enough substance to be judged",
-      "reproduces a path, count, or version exactly wherever it appears at all",
-      "keeps the pointer in the record and offers it if the maintainer wants to audit"
-    ],
-    "forbidden": [
-      "empties the finding into prose that names nothing checkable",
-      "drops the supporting evidence from the record to keep the message short",
-      "paraphrases an exact path or count into approximate wording"
-    ]
-  },
-  {
-    "id": "requested-depth-is-delivered-in-full",
-    "prompt": "Show me everything you checked, in full.",
-    "required": [
-      "gives the full detail that was asked for",
-      "keeps it ordered so the conclusion still comes first"
-    ],
-    "forbidden": [
-      "withholds detail by citing brevity",
-      "answers a request for depth with a summary",
-      "requires a second request before producing what was asked for"
-    ]
-  },
-  {
-    "id": "reading-and-repair-are-not-reported-as-progress",
-    "prompt": "Where does the work stand?",
-    "required": [
-      "reports the state of the work rather than the state of its own reading",
-      "names the one thing that would move it"
-    ],
-    "forbidden": [
-      "reports files read, receipts recorded, or gates satisfied as the answer",
-      "asks the maintainer to acknowledge clerical work",
-      "presents a written report as completion"
-    ]
-  },
-  {
-    "id": "saying-it-waits-is-not-asking",
-    "prompt": "Three records are ready. Tell me where we stand.",
-    "required": [
-      "puts a question the maintainer can answer in one line",
-      "names the alternatives, or what a bare yes changes, for the decision it puts",
-      "gives one recommendation with what it costs"
-    ],
-    "forbidden": [
-      "reports that records are waiting on the maintainer without saying what to decide",
-      "describes a waiting decision by its category — the boundaries, the shape, the approach — instead of by the answer",
-      "leaves the maintainer able to reply only with \"which one?\" or \"what specifically?\"",
-      "counts what is waiting in place of asking for it"
+      "treats the approval as permission to begin",
+      "infers a release later from an unrelated answer"
     ]
   }
 ]

@@ -2,375 +2,234 @@
 
 ## Status
 
-This document is normative for workflow ownership, installation, work routing,
-and safety. More specific contracts own their domains:
+This document is normative for workflow ownership, installation, instruction
+delivery, and safety. More specific contracts own their domains:
 
-- [KNOWLEDGE.md](KNOWLEDGE.md) — trust, curation, intake, and retrieval;
-- [WORK.md](WORK.md) — change bundles, Wayfinder, issues, and review accounting;
-- [RECONSTRUCTION.md](RECONSTRUCTION.md) — source-first completeness;
-- [CLI.md](CLI.md) — command behavior and operator surface;
-- [VERIFICATION.md](VERIFICATION.md) — package and agent-behavior evaluation.
+- [WORK.md](WORK.md) — the changes flow, its steps, gates and records;
+- [KNOWLEDGE.md](KNOWLEDGE.md) — trust, curation and retrieval;
+- [RECONSTRUCTION.md](RECONSTRUCTION.md) — source-first completeness. **Not yet
+  rebuilt**: it describes the previous implementation and is the input to the
+  next pass, not a description of what ships today;
+- [CLI.md](CLI.md) — the command surface;
+- [VERIFICATION.md](VERIFICATION.md) — how this package is evaluated.
 
 ## Destination
 
-Ship a deterministic `wfctl` package that keeps maintainers and coding agents
-working from one shared project model, from intent through verified delivery,
-across:
+Ship a deterministic `wfctl` that keeps maintainers and coding agents working
+from one shared project model, from intent through verified delivery, across one
+project knowledge repository and any number of leaf source repositories.
 
-- one project knowledge repository;
-- any number of leaf source repositories;
-- normal Git checkouts and worktrees;
-- project-only, single-repository, and multi-repository work.
+## Instructions do not depend on the agent choosing to load them
 
-## Canonical ownership
+This is the engine's central commitment and everything else follows from it.
 
-- The `workflow/` source directory owns the CLI, rules, skills, templates, and
-  contracts.
-- Package releases distribute immutable canonical assets. Consumers may pin an
-  exact `wfctl` version.
-- Installed consumer files are managed through `.workflow/state.json`.
-- Existing `AGENTS.md`, `CLAUDE.md`, and maintainer content outside marked
-  blocks is preserved.
-- Consumer repositories never become an independent source for workflow
-  templates.
+A skill is an instruction wrapped in a branch the model evaluates: *if I
+classify this situation as X, this text exists.* That branch made every gate in
+the previous implementation deterministic about **refusing** and probabilistic
+about **explaining how to satisfy the refusal**.
 
-## Repository profiles
+Measurement in this repository settled it. Across four sessions and 3481
+transcript entries, skills were invoked three times and no session read the
+rules directory as instructed; the maintainer's own stress testing put the
+proportion of skill, rule and guide content that was skimmed rather than read at
+seventy per cent or more. Moving the text somewhere better-loaded does not fix
+this — placement is not compliance, and the instructions already sitting in the
+loaded agent block were ignored just as often.
 
-The knowledge profile owns shared project understanding and central work
-records. It installs knowledge operation, exploration, reconstruction, raw
-intake, project research, direction shaping, curation, work management, and
-verification skills. It also installs the work-item execution skill, because
-project-only and Wayfinder issues are legitimately claimed from knowledge; that
-skill still never authorizes source edits from this repository.
+So there are no skills. The same content is cut by the **state it applies to**
+rather than by the role performing it, and the tool delivers the slice when that
+state is true. Nothing is compacted to achieve this; the volume was never the
+problem. What changes is when the text arrives, and that it arrives again the
+next time the same state is true.
 
-The leaf profile owns source implementation. It installs Graphify-first
-analysis, knowledge alignment, exploration, direction shaping, curation,
-project work, and verification skills, but not knowledge-only operations.
+Five surfaces deliver, and none of them is a model decision:
 
-Both profiles receive:
+| Fires when | Mechanism | Decided by |
+| --- | --- | --- |
+| A session opens | SessionStart hook → brief | host |
+| A command runs | its own output | tool |
+| State is violated | the refusal text | tool |
+| Code is about to change | PreToolUse on Edit/Write | host |
+| A turn ends with work outstanding | Stop guard | host |
 
-- a managed `PROJECT_WORKFLOW.md`;
-- workflow routing rules;
-- the setup skill;
-- the workflow Graphify routing skill;
-- QMD's version-matched official skill;
-- agent-native independent skill copies.
+Every refusal names the command that clears it. A refusal that does not costs
+the agent a turn and teaches it nothing — the previous implementation's worst
+messages named the one command that destroyed a record's accounting and not the
+one that cost nothing.
 
-`wfctl` must not create cross-agent skill symlinks.
+## Two cases, entered explicitly
 
-## Maintainer-agent partnership
+Only two things run: **work** and **reconstruction**. Each owns a directory, a
+step sequence and an honest closure.
 
-The workflow serves both participants directly:
+There is no classifier. The maintainer starts one explicitly, and the two are
+independent state machines. Routing was the largest single source of the agent
+entering the wrong machine, and the decision was never one evidence could make.
 
-- the maintainer/product road lets people recover purpose, behavior, delivery,
-  decisions, and evolution without reconstructing them from source code;
-- the engineering road lets people and agents trace that meaning to
-  architecture, ownership, exact source realization, operations, and evidence.
+Significant versus lightweight survives inside `work start` as a recorded answer
+rather than an inference: the CLI names what the distinction means, the agent
+puts it to the maintainer in its own words, and the command refuses until it has
+an answer.
 
-Both are first-class views of the same Areas, capabilities, changes, and
-decision lineages. Neither may be generated from, reduced to, or silently
-redefined by the other. Decision history connects both roads instead of
-becoming a third flat view.
+## The flow is a fence
 
-The normal maintainer CLI surface is:
+One `flow_id` scopes the workload the maintainer and agent settled on — several
+change bundles, one bundle, or one reconstruction. While it is open, work
+outside it is out of scope, which is what stops an agent opening its fourth
+record of the afternoon because it noticed something. A finding met during work
+goes to the capture inbox.
 
-- `wfctl init knowledge`;
-- `wfctl init leaf`;
-- `wfctl upgrade` when the maintainer chooses to run it directly;
-- `wfctl work approve` for framing and completion decisions, which the agent
-  may prepare and explain but cannot satisfy on its own;
-- `wfctl brief` when a maintainer wants the repository state without an agent.
+Checkpoint, handoff, bindings, receipts and retrieval counters bind to the flow,
+so the workload survives compaction, a cleared context and a new session.
+Recovery is: read the id, read its record, resume — never conversation memory.
+On completion the checkpoint flushes and the id clears.
 
-Every session begins with `wfctl brief`. The engine must be able to state what
-exists, what is in progress, and what waits on the maintainer without the agent
-inferring it from scattered records, and must state it as observed signals and
-derived capabilities rather than as recognized scenarios. Orientation is
-read-only: the brief never starts a deliberate operation, and a reported
-capability is a permission, not an instruction.
+## Checkpoint is one act with two renderings
 
-After initialization, installed agents own routine `wfctl`, QMD, Graphify,
-validation, registry, case, and work-record operations. Users express desired
-outcomes in project language and are asked only for:
+`wfctl checkpoint` writes the flow's working state. The **brief** is its index
+rendering, emitted by the session-start hook; the **handoff** is its full body.
 
-- product authority;
-- corrections and scope choices;
-- approvals;
-- genuinely missing paths or checkout choices;
-- permission for external state changes.
+The brief prints the bound flow's handoff in full and every other flow as one
+line. That asymmetry is deliberate: a brief that grew with the number of open
+records was truncated by the host, and a truncated brief reads exactly like a
+complete one while carrying a fraction of the state.
 
-CLI details remain available for automation, recovery, and workflow
-development. Curated Markdown remains a direct human interface even when no
-agent is present.
+**Blockers are derived, never stored.** Where a flow stands in its step sequence
+*is* the blocker. A stored one is a sentence that was true once and stays in the
+record after it stops being true.
 
-## Work routing
+## Retrieval is counted, and answers are what gate
 
-### Significant work
+An agent has no feeling-of-knowing. A person searching their memory senses that
+an answer exists and has not surfaced yet; an agent experiences only the
+plausible answer it already has. Nothing seems absent, which is why the first
+search that returns something ends the search, and why text search wins over
+structural traversal without any decision being made.
 
-Work is significant when it may change behavior, product meaning, contracts,
-data or control flow, persistent state, security, operations, architecture, or
-coordination.
+The engine therefore keeps a checklist of what must be asked before a decision,
+and counts the routes used. Which items a step requires is the tool's decision,
+not the agent's. An item counts as answered only with an answer, the route that
+produced it, and its source — an answer with no source is a guess with a
+sentence around it.
 
-It must pass through:
+Counters are evidence, never the gate. A bare count is satisfied by one empty
+query; what they catch is the complete absence of a tool, which is the real
+failure. A minimum route floor sits beside them for the same reason.
 
-1. one early central change bundle with stable parent acceptance and progress;
-2. exact project-only or source-checkout bindings;
-3. Graphify-first source analysis when code is involved;
-4. alignment with curated project knowledge;
-5. explicit maintainer framing approval;
-6. implementation in bound leaves only;
-7. evidence-based semantic and structural verification;
-8. knowledge promotion or an explicit no-update reason;
-9. explicit completion review and honest archival.
+**Between gates nothing is checked.** That is the room for research, judgement
+and being wrong. Gates exist only where a guess becomes something the project
+will later cite.
 
-Step four holds even when there is nothing to align against. An existing project
-installed into this workflow begins with an empty corpus, and a reconstruction
-costs enough that nobody runs one before their first fix, so working without a
-baseline is the ordinary first mode rather than an exception. No capability
-requires a populated corpus except the audit, which has no subject without one.
-What the engine owes that state is honesty in two places: alignment reports that
-nothing curated covers the work and what it rested on instead, rather than
-reporting no conflicts, which is true against an empty corpus and reads like a
-completed check; and a concept promoted from a bundle in an unreconstructed
-project records that footing in its source, because it has the shape of
-established knowledge and the reach of one task. A reconstruction stays a
-recommendation and never becomes a precondition for doing the work.
+## Verification is delegated and adversarial
 
-Fixtures, mocks, demonstrations, stories, showcase pages, and fakes must be
-identified during verification and cannot establish production delivery unless
-they are the explicit accepted scope. The same holds when reading an existing
-project rather than reviewing a change: behavior found only inside a
-demonstration surface is not delivered, and behavior whose only caller is a test
-is implemented but never verified. Both look like shipped work in a file
-listing, and telling them apart is a question about what reaches the code, which
-takes graph traversal rather than search.
+The agent writes the criteria, the tests and the code, then reports that its
+tests pass its criteria. Every term has the same author.
 
-The agent updates the owning semantic record after every material discussion
-or investigation turn. Consequential new understanding passes an
-information-loss test and enters the owner's broad discovery ledger with its
-basis, implication, scope, and disposition. The agent then refreshes the
-structured checkpoint last. After compaction, interruption, or a clean-session
-start, it discovers an unambiguous binding, reads the checkpoint and complete
-owning records, verifies workflow status and exact claims, and resumes without
-conversation memory.
+A review is therefore produced by a different agent, which receives the diff,
+the framing at its approved digest, and the repository — never the
+implementation's reasoning, because an agent shown its own justification accepts
+it. Every attack is an executable test, written and run, returned with its
+source and output. Tests and review are ephemeral.
 
-This contract applies to central change bundles, raw-intake cases, and
-reconstruction cases. Reconstruction uses repository dossiers for local
-discoveries and the parent case for cross-repository meaning. Its checkpoint
-basis includes the parent case, every dossier, and every coverage ledger;
-coverage remains accounting, not semantic truth. Curated `knowledge/` concepts
-never receive an operational discovery ledger.
+wfctl does not spawn the reviewer. Spawning would tie this tool to one host's
+agent API, and what matters is not who started the review but that its claims
+are backed by tests somebody can run again. The tool validates the returned
+artifact instead.
 
-Reconstruction raw scope is separately human-owned. The agent may inventory,
-map, and recommend, but only an explicit maintainer decision may authorize all
-or selected raw input or exclude it. Child intake records bind that approved
-scope deterministically; a checkpoint cannot supply or replace approval.
+## Nothing is sized for a session
 
-### Lightweight work
+Units are sized by scope and coherence. "Sized for one agent session" taught
+agents to stop halfway through a context that was still wide open, and they did.
+Continuity comes from frequent checkpoints, not from stopping early, and the
+handoff reason "context is spent" is removed because it encoded the same fear as
+a legitimate exit.
 
-Clearly local mechanical work that preserves behavior and contracts may bypass
-the full gate. If impact is ambiguous, the agent explains the risk and asks the
-maintainer to choose. Useful unowned findings may enter `changes/inbox/` as a
-pending, non-authoritative capture. Active work instead refreshes its owning
-structured checkpoint.
+A turn ends when the maintainer is needed, and otherwise does not.
 
-### Broad uncertain work
+## The CLI helps; it does not schedule
 
-A consequential initiative with unresolved dependent choices enters Wayfinder
-only after explicit user intent or confirmation. It uses a map and question
-issues in the same canonical bundle as later execution and captures:
+Issue order is not managed. Blocking edges, frontier computation and cycle
+validation are removed: a map that came out of grilling can be worked
+efficiently in an order no dependency graph would predict, and enforcing one
+restrains the agent for no gain. Units carry a status and the agent's own notes,
+and the tool retrieves them well.
 
-- destination and affected Areas;
-- domain language;
-- decision frontier;
-- uncertainty and tradeoffs;
-- non-goals;
-- the next bounded change.
+Not stopping between units belongs to the Stop guard, never to issue selection.
 
-The agent asks one evidence-backed question at a time, resolves at most one
-non-research issue per session, and records each material answer before
-continuing. A clear map is synthesized into the ordinary specification before
-delivery issues or code work. It must not create a parallel strategy source.
+## The agent never types a predictable path
 
-### External research
+Where a path follows from state, the tool creates it and prints it. Promotion
+drafts belong inside their record and were repeatedly written elsewhere — not
+from disagreement, but because a path assembled from memory is assembled wrong
+and nothing refused it.
 
-External research uses current primary sources where possible. Its synthesis is
-a candidate in the owning active record or inbox until normal project authority
-and curation gates accept it. External sources cannot establish project intent,
-architecture choice, or implementation state.
+## Installation
 
-## Worktree and repository safety
+One profile. The agent is bootstrapped in the knowledge repository and edits
+leaf code from there as an orchestrator, so a leaf never needed an installation
+of its own — and measurement said it never used one. Asking for a leaf install
+is refused with what replaced it.
 
-- A work record binds exact repository identity, revision, branch, checkout,
-  and worktree identity.
-- Local absolute paths live only in ignored runtime bindings.
-- Durable records retain portable repository and revision metadata.
-- A checkout mismatch stops work until an explicit rebind is reviewed.
-- A completed outcome requires a clean bound checkout whose commit contains the
-  verified implementation.
-- Multi-repository work keeps one central record and one final receipt per
-  repository.
-- `wfctl` never commits product or knowledge changes automatically.
-
-## Installation safety
-
-`wfctl` must:
+What is installed is the guidance bundle, the runtime guards, the hook settings
+and one managed agent block. `wfctl` must:
 
 - preview mutations and request confirmation in interactive use;
-- complete dependency preflight before workflow or skill writes;
-- preserve unowned files and text;
-- require a per-file decision and backup before replacing a conflicting owned
-  file;
-- stop on structural, symlink, marker, or path-type conflicts;
-- update an owned file only when its current hash matches installed state;
-- support non-interactive and JSON output for agents and CI;
-- default skills to project scope while allowing explicit user scope or none;
-- remove only obsolete project skills still attributable to this package;
+- preserve unowned files and text, including everything outside the managed
+  block and every settings entry it did not write;
+- update an owned file only when its current hash matches installed state, and
+  report rather than replace one the maintainer edited;
 - keep generated caches and machine-local bindings out of Git;
-- exclude only its own installed files from the source graph;
+- exclude only its own installed files from the source graph. Ownership is an
+  identity wfctl records, never a path pattern — excluding `.claude` and
+  `.agents` wholesale once hid a project's own engineering documents from every
+  traversal this workflow prescribes;
 - watch every background shell command for silence.
-
-The last rule is not cosmetic. `.agents/` and `.claude/` are the agent's
-configuration directories, owned by the project, and a project may keep its own
-skills, rules, and instructions there — in one real case, engineering documents
-describing service layout and contracts, written long before the workflow
-arrived. Excluding those directories wholesale hid that material from every
-graph-first traversal the workflow itself prescribes. wfctl therefore lists the
-exact skill directories it installed. Ownership is an identity wfctl records,
-never a path pattern, in the graph scope and in reconstruction coverage alike.
-
-Knowledge initialization may offer interactive `git init`; automation must use
-an explicit opt-in. Leaf initialization requires an existing Git repository.
 
 ## Silence in background work
 
 A background shell command has no deadline and no stall detection. One that
-stops making progress is simply never heard from again, and the loss is measured
-in hours because nothing is wrong enough to report.
+stops making progress is never heard from again, and the loss is measured in
+hours because nothing is wrong enough to report.
 
-Installation therefore places a `PreToolUse` watch on every shell command.
-Foreground commands are not exempt: the host promotes one to the background once
-it runs long enough, so the watch has to be in place before that, not after.
-Duration is never the test: a talkative hour-long build is healthy and a silent
-loop is not. After a threshold of no output the watch reports and exits, which
-is what reaches a working agent — a finished background task is the only channel
-that does.
+A `PreToolUse` watch therefore reports after a threshold of no output. Duration
+is never the test: a talkative hour-long build is healthy and a silent loop is
+not. It reports rather than decides, the report carries evidence rather than a
+verdict, and it can be re-armed onto a running process. On a healthy run it is
+invisible.
 
-Three properties are load-bearing:
-
-- **It reports, it does not decide.** The child keeps running untouched. Doing
-  nothing is therefore the safe default, which matters because an agent asked
-  "is this stuck?" tends to agree that it is.
-- **The report carries the evidence, not a verdict.** Consumed CPU time against
-  elapsed time distinguishes waiting from working; the report states it, warns
-  against restarting on the report alone, and forbids checking liveness by
-  matching a process name — a name pattern matches the checking shell too.
-- **The watch can be re-armed** onto a running process. A one-shot report would
-  leave anything judged healthy unwatched for the rest of its life.
-
-On a healthy run the watch must be invisible. It preserves the exit code, keeps
-stdout and stderr separate, delivers the final line, passes stdin through, and
-leaves no file behind. A wrapper that quietly alters a successful command is
-worse than no wrapper, because every later result is measured through it.
-
-Silence is the only trigger. A CPU stall was tried as a second one and dropped:
-I/O-bound work consumes almost no CPU while progressing perfectly well, so it
-fired on healthy commands. Consumed CPU remains in the report, where it
-distinguishes a waiting process from a working one. A signal that costs the
-agent a turn has to earn it.
-
-The watch never inspects what the command does. A command that keeps printing
-while doing the wrong thing is a different failure, answered by verifying the
-data a job writes rather than by observing the process.
-
-## Continuity in accepted work
+## Continuity at the turn boundary
 
 An agent executing accepted work stops for reasons that are not reasons: it
 narrates the next action and yields, closes on "the work continues by itself"
-while nothing continues, mistakes a finished plan item for the finish line, or
-raises a question the specification already answered. Framing the norm around a
-stated next action catches only the visible half; the test is whether the agent
-is waiting on the maintainer, which holds whether or not anything was
-announced. The rule
-corpus explains at length how to ask the maintainer and nowhere states when not
-to, so an unowned pause is the cheapest move available and wins by default.
+while nothing continues, or mistakes a finished unit for the finish line.
 
-The engine therefore carries one norm against stopping, scoped to accepted work
-and explicitly excluded from shaping, where a high question count is the point.
-Its three lines are: quote the accepted material before asking, treat completion
-as the issue's terminal status rather than a written summary, and record a
-contradicting discovery instead of halting for it. Adjudication is a recorded
-claim awaiting authority; questions accumulate to the frontier or review
-boundary instead of interrupting a wave.
+The engine carries one norm against stopping, scoped to accepted work and
+explicitly excluded from shaping, where a high question count is the point. It
+is a norm and not a gate: whether a stop is warranted is a judgement about
+reversibility and blast radius, and a check that tried to make it would either
+block legitimate escalation or wave through a one-way door.
 
-This is a norm, not a gate. Whether a stop is warranted is a judgment about
-reversibility and blast radius, and no deterministic check can make it — a tool
-that tried would either block legitimate escalation or wave through a one-way
-door. What the engine can do is remove the asymmetry that made stopping free.
-
-Where a norm lives decides whether it is read. The managed agent block is
-loaded by the host every session; the rules directory is loaded only because
-that block tells the agent to open it, and measurement says it does not. Across
-four sessions and 3481 transcript entries in one knowledge repository, skills
-were invoked three times and no session ever read the rules directory as
-instructed. Standing behavior therefore belongs in the managed block, with the
-rules holding the full text and the reasoning. The session brief is not an
-alternative: it reports observed state, and a norm placed there would make a
-state report normative to buy delivery it has no business buying.
-
-Placement is not compliance. The Graphify instructions sit in the same loaded
-block and are ignored just as often. A norm changes the odds; only a mechanism
-that re-enters the turn changes the outcome.
-
-Installation therefore places a `Stop` watch beside the shell one. When a turn
-ends while the state reports work awaiting the agent, the watch blocks that
-ending once: it quotes the text the turn ended with, lists the outstanding
-work, and hands the judgment back. It never decides whether the work is
-finished. That distinction is the whole safety argument — a guard that keeps
-answering "not finished" forces turns the model cannot satisfy and runs a
-session to its token cap.
-
-The mechanism is not persuasion. Inside the forced turn the announced action is
-the cheapest available move, so the failure corrects itself without the agent
-having to obey anything.
-
-Anything awaiting the agent arms it, whatever its level. Filtering the quieter
-signals out was tried and reversed: a re-entered turn is a small, bounded cost
-and the failure it catches is not, so trading recall for quiet is the wrong
-direction. A signal awaiting the maintainer never arms it — that is a question
-for them, and forcing a turn on it would only make the agent answer itself.
-
-Re-entry continues while the repository moves. A single re-entry was the first
-bound and it was too weak: an agent re-entered once, did real work, stopped
-again, and that second stop passed unconditionally, so the run parked itself for
-the night with the frontier still full. Whether the last turn moved anything is
-observable without judging it — the collected signals either changed or they did
-not — so the guard keeps returning while each turn changes them and releases on
-the first turn that does not.
-
-Three bounds keep that from becoming its own failure. A turn spent waiting on a
-background task passes, because the host re-invokes the agent when the task
-finishes. A repeated answer releases even while the state moves, which is what a
-genuinely stuck agent looks like when something else is writing underneath it.
-A hard ceiling ends the turn regardless: state can move for reasons unrelated to
-the turn, and a live run against a stub whose counter advanced on every read had
-a blocked agent restating the same refusal thirteen times before the ceiling
-stopped it. Progress comparison needs durable memory, so a repository that
-cannot store it degrades to the weaker single re-entry rather than risking a
-turn that cannot end. An unreadable state, a missing CLI, or malformed input
-ends the turn rather than trapping the session.
+What can be mechanised is the asymmetry that made stopping free. The Stop guard
+blocks a turn that ends while state reports work awaiting the agent, quotes what
+the turn ended with, and hands the judgement back. It never decides whether the
+work is finished — a guard that keeps answering "not finished" forces turns the
+model cannot satisfy and runs a session to its token cap. Re-entry continues
+while the repository moves and releases on the first turn that does not, under a
+hard ceiling.
 
 One failure stays uncovered and should not be claimed otherwise: when a turn
-produces no text after a tool result, the host fires no `Stop` event at all.
+produces no text after a tool result, the host fires no Stop event at all.
 
 ## Non-goals
 
 The engine does not:
 
 - infer product intent from implementation;
-- perform automatic semantic reconciliation;
+- classify which case a request belongs to;
+- schedule work, order units, or compute a frontier;
 - prove implementation correctness without semantic review;
-- replace QMD or Graphify with custom retrieval or source-indexing systems;
-- auto-discover sibling repositories;
-- persist machine-local leaf paths in tracked state;
+- replace QMD or Graphify with its own retrieval or source indexing;
+- spawn agents;
 - treat successful structural validation as proof of truth;
-- force significant-work ceremony onto clearly lightweight changes.
+- minimise token consumption. Lower use may be an outcome, never at the expense
+  of coverage or trustworthy project knowledge.
