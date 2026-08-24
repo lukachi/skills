@@ -133,7 +133,8 @@ test("a malformed review artifact refuses rather than crashing", async () => {
 
 test("an attack that broke the work is not accepted", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "broke", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "broke", "--weight", "significant"]);
+  await walkToImplementE2E(root);
   await writeFile(
     resolve(root, "r.json"),
     JSON.stringify({
@@ -374,7 +375,7 @@ test("guards can be listed, turned off and turned back on", async () => {
 
   const off = wfctl(root, ["guards", "off", "stop"]);
   assert.equal(off.status, 0);
-  assert.match(off.stdout, /Restart the session/);
+  assert.match(off.stdout, /stays off across upgrades/);
   assert.match(wfctl(root, ["guards"]).stdout, /off\s+stop/);
 
   // Turning one off must not disturb the others.
@@ -740,6 +741,26 @@ test("decided reports where an answer already lives", async () => {
   assert.match(nothing.stdout, /Nothing recorded/);
 });
 
+/** Everything up to, but not including, the review. */
+async function walkToImplementE2E(root: string): Promise<void> {
+  const { RECALL_ITEMS } = await import("../src/core/recall.js");
+  const answer = (group: string, route: string) => {
+    for (const item of RECALL_ITEMS.filter((entry) => entry.group === group)) {
+      wfctl(root, ["recall", "answer", item.id, "--answer", "x", "--route", route, "--source", "s"]);
+    }
+  };
+  wfctl(root, ["work", "step", "aligned"]);
+  answer("E", "qmd");
+  wfctl(root, ["work", "step", "framed"]);
+  answer("A", "qmd");
+  answer("B", "qmd");
+  answer("C", "qmd");
+  wfctl(root, ["work", "step", "split"]);
+  wfctl(root, ["work", "step", "implement"]);
+  answer("D", "graphify");
+  answer("G", "read");
+}
+
 async function walkToVerifiedE2E(root: string): Promise<void> {
   const { RECALL_ITEMS } = await import("../src/core/recall.js");
   wfctl(root, ["work", "step", "aligned"]);
@@ -1004,4 +1025,214 @@ test("the shipped page templates pass the shipped validator", async () => {
       `the shipped ${template} fails the shipped validator: ${result.stdout}`,
     );
   }
+});
+
+test("a dangling symlink cannot write into a guarded directory", async () => {
+  const root = await installed();
+  const { symlinkSync: link } = await import("node:fs");
+
+  /**
+   * `canonical()` resolved the whole path with realpath, which throws when the
+   * last component does not exist — and that is every file an agent is about to
+   * create. The fallback returned the link's own location, so a dangling link
+   * wrote wherever it pointed, with no output at all.
+   */
+  for (const [name, target] of [
+    ["dlink", resolve(root, "knowledge/fabricated.md")],
+    ["dlink2", resolve(root, "changes/promotion/fake-record")],
+    ["dlink3", resolve(root, "trajectories/fake.json")],
+  ] as const) {
+    link(target, resolve(root, name));
+    const result = wfctl(root, ["hook", "write", "--target", resolve(root, name)]);
+    assert.equal(result.status, 2, `${name} reached ${target} with exit ${result.status}`);
+  }
+});
+
+test("a dangling symlink cannot escape a registered checkout", async () => {
+  const root = await installed();
+  const leaf = await mkdtemp(join(tmpdir(), "wfctl-leaf-"));
+  const outside = await mkdtemp(join(tmpdir(), "wfctl-outside-"));
+  await mkdir(resolve(leaf, "graphify-out"), { recursive: true });
+  await writeFile(resolve(leaf, "graphify-out/graph.json"), "{}", "utf8");
+
+  const { symlinkSync: link } = await import("node:fs");
+  link(resolve(outside, "PWNED"), resolve(leaf, "escape"));
+
+  wfctl(root, ["repo", "add", "acme/a", "--path", leaf]);
+  wfctl(root, ["work", "start", "--title", "sym", "--weight", "lightweight"]);
+  wfctl(root, ["recall", "route", "graphify", "--covered", resolve(leaf, "a.ts")]);
+
+  const escaped = wfctl(root, ["hook", "write", "--target", resolve(leaf, "escape")]);
+  assert.equal(escaped.status, 2, "a dangling link reached outside the checkout");
+});
+
+test("the fences hold from a subdirectory", async () => {
+  const root = await installed();
+  const { execFileSync: exec } = await import("node:child_process");
+
+  /**
+   * Every fence compared against `process.cwd()` with no root discovery, so
+   * running one directory down removed all of them at once.
+   */
+  const result = (() => {
+    try {
+      exec(process.execPath, [binary, "hook", "write", "--target", resolve(root, "knowledge/x.md")], {
+        cwd: resolve(root, "changes"),
+        encoding: "utf8",
+      });
+      return 0;
+    } catch (error) {
+      return (error as { status?: number }).status ?? 1;
+    }
+  })();
+  assert.equal(result, 2, "the knowledge fence vanished from a subdirectory");
+});
+
+test("work verify runs the step chain", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "ship it all", "--weight", "significant"]);
+  await writeFile(
+    resolve(root, "r.json"),
+    JSON.stringify({
+      reviewer: "agent:other",
+      attacks: [{ lens: "intent", target: "t", test: "x", output: "held", broke: false }],
+      findings: [],
+      stubSurvivors: [],
+    }),
+    "utf8",
+  );
+
+  // It wrote step: verified directly — the one step-recording command that was
+  // not advance(), so a significant flow closed as completed in six commands.
+  const early = wfctl(root, ["work", "verify", "--review", resolve(root, "r.json")]);
+  assert.equal(early.status, 2, "verify skipped the chain");
+  assert.match(early.stdout, /needs implement recorded first|Recall is incomplete/);
+});
+
+test("a parked flow accepts nothing material", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "held", "--weight", "significant"]);
+  wfctl(root, ["work", "issue", "create", "--title", "u"]);
+  wfctl(root, ["work", "park", "--reason", "maintainer said hold"]);
+
+  for (const command of [
+    ["work", "issue", "create", "--title", "sneaky"],
+    ["work", "issue", "complete", "U001"],
+    ["work", "promotion", "draft", "a/b.md"],
+  ]) {
+    const result = wfctl(root, command);
+    assert.equal(result.status, 2, `parked flow allowed: ${command.join(" ")}`);
+  }
+});
+
+test("promote names its record when the queue is ambiguous", async () => {
+  const root = await installed();
+
+  for (const title of ["alpha subject", "zeta subject"]) {
+    wfctl(root, ["work", "start", "--title", title, "--weight", "significant"]);
+    await walkToVerifiedE2E(root);
+    const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+    wfctl(root, ["work", "promotion", "draft", `${title.split(" ")[0]}/page.md`]);
+    await writeFile(
+      resolve(root, "changes/active", id, `promotion/${title.split(" ")[0]}/page.md`),
+      "---\nview: product\npurpose: p\naudience: a\n---\n\n# P\n\nx\n",
+      "utf8",
+    );
+    wfctl(root, ["work", "close", "--outcome", "completed"]);
+    wfctl(root, ["flow", "close"]);
+  }
+
+  // It took queued[0], so one record's pages entered the corpus on another's
+  // authority and the wrong subject's line recorded it forever.
+  const ambiguous = wfctl(root, ["work", "promote", "--subject", "Zeta", "--summary", "zeta works"]);
+  assert.equal(ambiguous.status, 2);
+  assert.match(ambiguous.stdout, /name the one they answered about/);
+
+  const named = wfctl(root, [
+    "work", "promote", "--bundle", "2026-08-24-work-zeta-subject",
+    "--subject", "Zeta", "--summary", "zeta works",
+  ]);
+  assert.equal(named.status, 0, named.stdout);
+  assert.ok(existsSync(resolve(root, "knowledge/zeta/page.md")));
+});
+
+test("abandoned work is not recorded as a delivery", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "given up", "--weight", "significant"]);
+  await walkToVerifiedE2E(root);
+  const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+  wfctl(root, ["work", "promotion", "draft", "a/b.md"]);
+  await writeFile(
+    resolve(root, "changes/active", id, "promotion/a/b.md"),
+    "---\nview: product\npurpose: p\naudience: a\n---\n\n# B\n\nx\n",
+    "utf8",
+  );
+  wfctl(root, ["work", "close", "--outcome", "abandoned"]);
+  wfctl(root, ["work", "promote", "--subject", "Given up", "--summary", "it now does the thing"]);
+
+  const line = wfctl(root, ["trajectory", "show", "Given up"]).stdout;
+  assert.doesNotMatch(line, /delivery/, "abandoned work was recorded as delivered");
+  assert.match(line, /abandoned/);
+});
+
+test("work close states its outcome rather than defaulting to the best one", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "silent", "--weight", "significant"]);
+  await walkToVerifiedE2E(root);
+
+  const bare = wfctl(root, ["work", "close"]);
+  assert.equal(bare.status, 2, "a bare close silently recorded completed");
+  assert.match(bare.stdout, /--outcome/);
+});
+
+test("a guard turned off stays off across an upgrade", async () => {
+  const root = await installed();
+  wfctl(root, ["guards", "off", "stop"]);
+  wfctl(root, ["init", "knowledge", "--target", root]);
+
+  const after = wfctl(root, ["guards"]).stdout;
+  assert.match(after, /off\s+stop/, "init silently re-armed a guard the maintainer turned off");
+
+  // And the guard itself agrees — one switch, not two.
+  const guard = resolve(root, ".workflow/runtime/guard-stop.mjs");
+  const decision = execFileSync(process.execPath, [guard], {
+    cwd: root,
+    encoding: "utf8",
+    input: JSON.stringify({ cwd: root, session_id: "s", prompt_id: "p", last_assistant_message: "x" }),
+    env: { ...process.env, PATH: `${resolve(root, "bin")}:${process.env.PATH}` },
+  });
+  assert.equal(decision.trim(), "", "the guard fired while reported off");
+});
+
+test("concurrent captures all survive", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "cap", "--weight", "lightweight"]);
+
+  await Promise.all(
+    Array.from({ length: 20 }, (_, index) =>
+      new Promise<void>((done) => {
+        wfctl(root, ["capture", `finding number ${index}`]);
+        done();
+      }),
+    ),
+  );
+
+  const { readdir } = await import("node:fs/promises");
+  const files = (await readdir(resolve(root, "changes/inbox"))).filter((n) => n.endsWith(".md"));
+  assert.equal(files.length, 20, "captures overwrote each other");
+});
+
+test("decided finds a subject whose words are short", async () => {
+  const root = await installed();
+  await mkdir(resolve(root, "knowledge/auth"), { recursive: true });
+  await writeFile(
+    resolve(root, "knowledge/auth/sso.md"),
+    "---\nview: product\npurpose: p\naudience: a\n---\n\n# SSO\n\nOn 2026-01-04 we decided SSO is delivered by the API gateway.\n",
+    "utf8",
+  );
+
+  // Words of three characters or fewer were dropped, so SSO, API, CLI and MFA
+  // were unsearchable — and the empty result was reported as authoritative.
+  const found = wfctl(root, ["decided", "SSO"]);
+  assert.match(found.stdout, /already say something/, found.stdout);
 });

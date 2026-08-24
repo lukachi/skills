@@ -11,6 +11,29 @@ import { RECALL_ITEMS } from "../src/core/recall.js";
  * exactly the hole six test agents found: closure skipped every gate. Now that
  * it does not, a test that wants a closable flow has to earn one.
  */
+/** Everything up to, but not including, the review. */
+export async function walkToImplement(ctx: CommandContext): Promise<void> {
+  await run(["work", "step", "aligned"], ctx);
+  for (const group of ["E"]) {
+    for (const item of RECALL_ITEMS.filter((entry) => entry.group === group)) {
+      await run(["recall", "answer", item.id, "--answer", "checked", "--route", "qmd", "--source", "k"], ctx);
+    }
+  }
+  await run(["work", "step", "framed"], ctx);
+  for (const group of ["A", "B", "C"]) {
+    for (const item of RECALL_ITEMS.filter((entry) => entry.group === group)) {
+      await run(["recall", "answer", item.id, "--answer", "checked", "--route", "qmd", "--source", "k"], ctx);
+    }
+  }
+  await run(["work", "step", "split"], ctx);
+  await run(["work", "step", "implement"], ctx);
+  for (const group of ["D", "G"]) {
+    for (const item of RECALL_ITEMS.filter((entry) => entry.group === group)) {
+      await run(["recall", "answer", item.id, "--answer", "checked", "--route", group === "D" ? "graphify" : "read", "--source", "s"], ctx);
+    }
+  }
+}
+
 export async function walkToVerified(ctx: CommandContext): Promise<void> {
   await run(["work", "step", "aligned"], ctx);
   for (const item of RECALL_ITEMS.filter((entry) => entry.group === "E")) {

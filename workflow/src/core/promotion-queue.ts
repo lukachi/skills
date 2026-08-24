@@ -42,6 +42,22 @@ export interface CloseResult {
   waitingOnPromotion: boolean;
 }
 
+/**
+ * How a queued record closed.
+ *
+ * Written beside it at closure, because promotion happens later and in a
+ * different session, and the trajectory event it appends depends on it.
+ */
+export async function readOutcome(knowledgeRoot: string, bundleId: string): Promise<Outcome> {
+  const { readFile } = await import("node:fs/promises");
+  const raw = await readFile(
+    resolve(knowledgeRoot, QUEUE, bundleId, "outcome"),
+    "utf8",
+  ).catch(() => "completed");
+  const outcome = raw.trim();
+  return outcome === "partial" || outcome === "abandoned" ? outcome : "completed";
+}
+
 export async function closeBundle(options: {
   knowledgeRoot: string;
   bundleId: string;
@@ -61,6 +77,8 @@ export async function closeBundle(options: {
 
   await mkdir(resolve(options.knowledgeRoot, destination), { recursive: true });
   await rename(from, to);
+  const { writeFile } = await import("node:fs/promises");
+  await writeFile(resolve(to, "outcome"), `${options.outcome}\n`, "utf8");
 
   return { from, to, outcome: options.outcome, waitingOnPromotion: destination === QUEUE };
 }

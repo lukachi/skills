@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 import { GateRefusal } from "./gates.js";
+import { canonical, contains } from "./paths-resolve.js";
 
 /**
  * The agent never types a path.
@@ -62,30 +63,6 @@ export async function createPromotionDraft(
  * Both refusals exist because both were done by hand, repeatedly, and the
  * result was pages that could not be promoted and bundles nobody agreed to.
  */
-/**
- * Resolve through the filesystem before comparing.
- *
- * Comparing raw path segments let three things through: a case variant on a
- * case-insensitive filesystem, a symlink pointing at the guarded directory, and
- * the absolute path when the root itself was reached by a different alias.
- * `realpathSync` collapses all three; the parent walk handles a target that
- * does not exist yet, which every first write is.
- */
-function canonical(path: string): string {
-  let current = resolve(path);
-  const trailing: string[] = [];
-  for (let depth = 0; depth < 64; depth += 1) {
-    try {
-      return [realpathSync.native(current), ...trailing].join(sep);
-    } catch {
-      const parent = dirname(current);
-      if (parent === current) return resolve(path);
-      trailing.unshift(current.slice(parent.length + 1));
-      current = parent;
-    }
-  }
-  return resolve(path);
-}
 
 export function assertWriteAllowed(options: {
   knowledgeRoot: string;
@@ -116,12 +93,27 @@ export function assertWriteAllowed(options: {
    * passed a flow, a recall gate or a review.
    */
   if (segments[0] === "changes" && (segments[1] === "promotion" || segments[1] === "archive")) {
-    throw new GateRefusal(
-      `${segments[1]} is written by the tool, not by hand.`,
-      "wfctl work close --outcome <completed|partial|abandoned>",
-      "A record that appears here without passing the flow is promotable without " +
-        "ever having been reviewed.",
-    );
+    /**
+     * A queued record's drafts stay correctable.
+     *
+     * `promotion-queue.ts` says so — it is the one lifecycle state where
+     * further edits are expected, and refusing them is what made three receipts
+     * get hand-written. This module refused every write to the queue, so the
+     * two directly contradicted, and a queued record whose page failed
+     * validation could not be repaired by any command.
+     */
+    const correctable =
+      segments[1] === "promotion" && segments[3] === "promotion" && segments.length > 4;
+    if (!correctable) {
+      throw new GateRefusal(
+        `${segments[1]} is written by the tool, not by hand.`,
+        segments[1] === "promotion"
+          ? 'Edit the drafted page under <record>/promotion/, or: wfctl work promotion draft "<area>/<page>.md"'
+          : "wfctl work close --outcome <completed|partial|abandoned>",
+        "A record that appears here without passing the flow is promotable " +
+          "without ever having been reviewed.",
+      );
+    }
   }
 
   /** The flow pointer and the trajectory store are the tool's own bookkeeping. */

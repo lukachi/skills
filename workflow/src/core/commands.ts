@@ -141,6 +141,16 @@ export async function workStart(
   options: { title: string; weight?: WorkWeight },
 ): Promise<CommandResult> {
   try {
+    /** The fence spans both cases, in this direction too. */
+    const { currentCase } = await import("./reconstruct.js");
+    const open = await currentCase(context.root).catch(() => undefined);
+    if (open && !open.abandoned) {
+      throw new GateRefusal(
+        `Reconstruction ${open.id} is open at stage ${open.stage}; work outside it is out of scope.`,
+        `wfctl reconstruct abandon --reason "<why this pass is not finishing>"`,
+      );
+    }
+
     if (!options.weight) {
       const definition = definitionFor("opened");
       throw new GateRefusal(
@@ -280,6 +290,12 @@ export async function promotionDraft(
   if (!flow) {
     return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
   }
+  try {
+    assertNotParked(flow);
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
   const bundle = flow.members[0] ?? flow.id;
   const path = await createPromotionDraft(options.knowledgeRoot, bundle, options.page);
   return ok(
@@ -332,7 +348,7 @@ export async function flowClose(context: CommandContext, id?: string): Promise<C
    * close it.
    */
   const unfinished = flow.issues.filter(
-    (issue) => issue.status === "claimed" || issue.status === "open",
+    (issue) => issue.status !== "done" && issue.status !== "dropped",
   );
   if (unfinished.length > 0) {
     return refused(
@@ -368,6 +384,12 @@ export async function issueCreate(
   const flow = await currentFlow(context.root);
   if (!flow) {
     return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
+  }
+  try {
+    assertNotParked(flow);
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
   }
   if (!options.title.trim()) {
     return refused(
@@ -425,6 +447,17 @@ async function withIssue(
   const bound = await currentFlow(context.root);
   if (!bound) {
     return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  }
+  /**
+   * A park stops the work, not only the claim. The agent could mark every unit
+   * done and draft every page while the maintainer was holding it, so release
+   * landed on a record that said it had been delivered.
+   */
+  try {
+    assertNotParked(bound);
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
   }
   if (!bound.issues.some((issue) => issue.id.toUpperCase() === id.toUpperCase())) {
     return refused(new GateRefusal(`No unit named ${id}.`, "wfctl work issue list"));
@@ -582,9 +615,35 @@ export async function capture(
   if (!options.text.trim()) {
     return refused(new GateRefusal("A capture needs its finding.", 'wfctl capture "<what you found>"'));
   }
+  /**
+   * A unique name, created exclusively.
+   *
+   * Millisecond timestamps collided: twenty concurrent captures produced
+   * sixteen files and twenty successes. Capture is the only sanctioned outlet
+   * for a finding met during work, so a lost one is a finding nobody will meet
+   * again.
+   */
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const path = resolve(context.root, "changes/inbox", `${stamp}.md`);
-  await mkdir(dirname(path), { recursive: true });
+  await mkdir(resolve(context.root, "changes/inbox"), { recursive: true });
+
+  let path = "";
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const suffix = attempt === 0 ? "" : `-${attempt}`;
+    const candidate = resolve(context.root, "changes/inbox", `${stamp}${suffix}.md`);
+    try {
+      await writeFile(candidate, "", { flag: "wx" });
+      path = candidate;
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
+  if (!path) {
+    return refused(
+      new GateRefusal("Could not create a capture file.", "wfctl doctor"),
+    );
+  }
+
   await writeFile(
     path,
     [
@@ -614,6 +673,18 @@ export async function verify(
   }
 
   try {
+    /**
+     * Verification is a step, and every step runs the chain.
+     *
+     * It wrote `step: "verified"` directly and called neither `assertReached`
+     * nor `assertRecall` — the one step-recording command that was not
+     * `advance()`. A significant flow closed as completed in six commands with
+     * no alignment, no framing, no units and no traversals.
+     */
+    assertNotParked(flow);
+    assertReached(flow, "verified");
+    assertRecall(flow, flow.step);
+
     const { readReviewArtifact } = await import("./review-artifact.js");
     const { assertReviewUsable } = await import("./verify.js");
     const review = await readReviewArtifact(options.review, context.actor);
@@ -738,8 +809,12 @@ export async function close(
    * closed as `completed` because only a claim was checked, and an open unit is
    * exactly the work nobody got to.
    */
+  /**
+   * Terminal is an allowlist. Filtering for `open` and `claimed` let anything
+   * else through — the same denylist mistake the finding-status check had.
+   */
   const unfinished = flow.issues.filter(
-    (issue) => issue.status === "claimed" || issue.status === "open",
+    (issue) => issue.status !== "done" && issue.status !== "dropped",
   );
   if (unfinished.length > 0) {
     return refused(
@@ -760,7 +835,12 @@ export async function close(
       bundleId: bundle,
       outcome: options.outcome,
     });
-    await writeFlow(context.root, { ...flow, step: "closed", closedAt: new Date().toISOString() });
+    await writeFlow(context.root, {
+      ...flow,
+      step: "closed",
+      closedAt: new Date().toISOString(),
+      outcome: options.outcome,
+    });
     /**
      * Drop the fence with the closure.
      *
@@ -791,16 +871,41 @@ export async function close(
  */
 export async function promote(
   context: CommandContext,
-  options: { subject: string; summary: string },
+  options: { subject: string; summary: string; bundle?: string; settles?: string },
 ): Promise<CommandResult> {
-  const { listQueue, promote: movePages } = await import("./promotion-queue.js");
+  const { listQueue, promote: movePages, readOutcome } = await import("./promotion-queue.js");
   const { appendEvent, renderTrajectory } = await import("./trajectory.js");
 
   const queued = await listQueue(context.root);
-  const bundle = queued[0];
-  if (!bundle) {
+  if (queued.length === 0) {
     return refused(
       new GateRefusal("Nothing is waiting to be promoted.", "wfctl work promotion list"),
+    );
+  }
+
+  /**
+   * The maintainer answers about one record. Taking `queued[0]` promoted
+   * whichever sorted first — one record's pages entered the corpus on another's
+   * authority, and the wrong subject's line recorded it forever. A single
+   * queued record needs no naming; more than one does.
+   */
+  const bundle = options.bundle ?? (queued.length === 1 ? queued[0] : undefined);
+  if (!bundle) {
+    return refused(
+      new GateRefusal(
+        `${queued.length} records are waiting; name the one they answered about.`,
+        `wfctl work promote --bundle ${queued[0]} --subject "<...>" --summary "<...>"`,
+        queued.map((id) => `  ${id}`).join("\n"),
+      ),
+    );
+  }
+  if (!queued.includes(bundle)) {
+    return refused(
+      new GateRefusal(
+        `${bundle} is not waiting to be promoted.`,
+        "wfctl work promotion list",
+        queued.map((id) => `  ${id}`).join("\n"),
+      ),
     );
   }
 
@@ -836,12 +941,22 @@ export async function promote(
     }
     assertPromotable(issues);
 
+    /**
+     * Abandoned work is not a delivery. The outcome was returned and dropped,
+     * so a record closed as `abandoned` appended `axis: delivery` to the
+     * subject's line — the one layer the maintainer is shown.
+     */
+    const outcome = await readOutcome(context.root, bundle);
     const trajectory = await appendEvent(context.root, options.subject, {
-      summary: options.summary.trim() || options.subject.trim(),
-      axis: "delivery",
+      summary:
+        outcome === "abandoned"
+          ? `abandoned: ${options.summary.trim() || options.subject.trim()}`
+          : options.summary.trim() || options.subject.trim(),
+      axis: outcome === "abandoned" ? "intent" : "delivery",
       claims: [],
       change: bundle,
       at: new Date().toISOString(),
+      ...(options.settles ? { settles: options.settles } : {}),
     });
     const result = await movePages({ knowledgeRoot: context.root, bundleId: bundle });
     return ok(

@@ -250,7 +250,11 @@ test("a lock whose holder is gone does not wedge the repository", async () => {
   const target = await root();
   const path = resolve(target, "record.json");
   await mkdir(`${path}.lock`, { recursive: true });
-  await writeFile(`${path}.lock/holder.json`, JSON.stringify({ pid: 999_999, at: Date.now() }), "utf8");
+  await writeFile(
+    `${path}.lock/holder.json`,
+    JSON.stringify({ pid: 999_999, token: "gone", at: Date.now() }),
+    "utf8",
+  );
 
   let ran = false;
   await withLock(path, async () => {
@@ -259,13 +263,13 @@ test("a lock whose holder is gone does not wedge the repository", async () => {
   assert.ok(ran, "a dead holder's lock was never reclaimed");
 });
 
-test("a live holder is waited for, then refused with a reason", { timeout: 15_000 }, async () => {
+test("a live holder is waited for, then refused with a reason", { timeout: 20_000 }, async () => {
   const target = await root();
   const path = resolve(target, "held.json");
   await mkdir(`${path}.lock`, { recursive: true });
   await writeFile(
     `${path}.lock/holder.json`,
-    JSON.stringify({ pid: process.pid, at: Date.now() }),
+    JSON.stringify({ pid: process.pid, token: "held", at: Date.now() }),
     "utf8",
   );
 

@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { run } from "../src/core/cli.js";
 import type { CommandContext } from "../src/core/commands.js";
-import { walkToVerified } from "./helpers.js";
+import { walkToImplement, walkToVerified } from "./helpers.js";
 
 const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
 
@@ -95,6 +95,7 @@ test("a capture is written to the inbox and never becomes a record", async () =>
 
 test("verification refuses a review the acting agent produced", async () => {
   const ctx = await opened();
+  await walkToVerified(ctx).catch(() => undefined);
   const review = resolve(ctx.root, "review.json");
   await writeFile(
     review,
@@ -108,6 +109,7 @@ test("verification refuses a review the acting agent produced", async () => {
 
 test("verification accepts a delegated review and hands over the closing guidance", async () => {
   const ctx = await opened();
+  await walkToImplement(ctx);
   const review = resolve(ctx.root, "review.json");
   await writeFile(
     review,

@@ -55,6 +55,7 @@ const USAGE = `wfctl — project workflow
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
   work promote --subject "<product subject>" --summary "<what it now does>"
+               [--bundle <record>] [--settles <event-id>]
   work promotion draft <page>  create a page draft at the path it will occupy
   work promotion list          records waiting on the maintainer
 
@@ -179,7 +180,7 @@ function oneOf<T extends string>(
  * intended — the same class as a dropped argument.
  */
 const KNOWN_FLAGS = new Set([
-  "path", "json", "title", "weight", "summary", "handoff", "last", "next", "todo",
+  "bundle", "path", "json", "title", "weight", "summary", "handoff", "last", "next", "todo",
   "answer", "route", "source", "covered", "written", "target", "review",
   "reason", "attested", "outcome", "subject", "satisfies", "note", "repository",
   "checkout", "worktree", "page", "at", "axis", "change", "settles", "claim",
@@ -368,19 +369,24 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         if (action === "park") return await park(context, flag(args, "reason") ?? "");
         if (action === "release") return await release(context, flag(args, "attested") ?? "");
         if (action === "close") {
-          const outcome = (flag(args, "outcome") ?? "completed") as
-            | "completed"
-            | "partial"
-            | "abandoned";
-          if (!["completed", "partial", "abandoned"].includes(outcome)) {
-            return { stdout: "outcome must be completed, partial or abandoned", exitCode: 1 };
-          }
+          /**
+           * The outcome is stated. It defaulted to `completed` — the most
+           * favourable of the three — so a bare `work close` recorded the best
+           * possible result silently.
+           */
+          const outcome = oneOf(
+            flag(args, "outcome"),
+            ["completed", "partial", "abandoned"] as const,
+            "outcome",
+          );
           return await close(context, { outcome });
         }
         if (action === "promote") {
           return await promote(context, {
             subject: flag(args, "subject") ?? "",
             summary: flag(args, "summary") ?? "",
+            ...(flag(args, "bundle") ? { bundle: flag(args, "bundle") as string } : {}),
+            ...(flag(args, "settles") ? { settles: flag(args, "settles") as string } : {}),
           });
         }
         if (action === "promotion" && args[0] === "draft") {
@@ -558,6 +564,18 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         const [action, ...args] = rest;
 
         if (action === "start") {
+          /**
+           * The fence spans both cases. An agent told "work outside this flow
+           * is out of scope" simply opened a reconstruction instead.
+           */
+          const { listFlows } = await import("./flow.js");
+          const openFlows = (await listFlows(context.root)).filter((entry) => !entry.closedAt);
+          if (openFlows[0]) {
+            throw new GateRefusal(
+              `Flow ${openFlows[0].id} is open; work outside it is out of scope.`,
+              `wfctl flow close ${openFlows[0].id}`,
+            );
+          }
           const open = await reconstruct.currentCase(context.root);
           if (open) {
             throw new GateRefusal(
@@ -576,7 +594,13 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           }
           const raw = await reconstruct.rawInventory(context.root);
           const baseline = await reconstruct.hasBaseline(context.root);
-          const id = `${new Date().toISOString().slice(0, 10)}-reconstruct`;
+          /**
+           * Unique per case, not per day. Date-only ids meant the second
+           * reconstruction of a day collided with the first in the archive and
+           * could never be closed or abandoned.
+           */
+          const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+          const id = `${stamp}-reconstruct`;
           await reconstruct.writeCase(context.root, {
             id,
             stage: "scope",
@@ -773,9 +797,13 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
               'wfctl reconstruct abandon --reason "<why this pass is not finishing>"',
             );
           }
+          /**
+           * Abandoning records why and keeps the stage it actually reached.
+           * Rewriting it to `promote` made an abandoned pass read, in the
+           * archive and in the brief, as one that had reached the maintainer.
+           */
           await reconstruct.writeCase(context.root, {
             ...record,
-            stage: "promote",
             abandoned: { at: new Date().toISOString(), reason: reason.trim() },
           });
           const archived = await reconstruct.closeCase(context.root, record.id);
@@ -1012,8 +1040,14 @@ const invokedDirectly = (() => {
 })();
 
 if (invokedDirectly) {
+  const { findRepositoryRoot } = await import("./paths-resolve.js");
   const context: CommandContext = {
-    root: process.cwd(),
+    /**
+     * The repository, not the directory the command was typed in. Every fence
+     * is relative to this, and taking it from cwd meant `cd changes && wfctl …`
+     * removed all of them.
+     */
+    root: process.argv[2] === "init" ? process.cwd() : findRepositoryRoot(process.cwd()),
     assets: findGuidance(import.meta.dirname),
     actor: process.env.WFCTL_ACTOR ?? "agent:unknown",
   };

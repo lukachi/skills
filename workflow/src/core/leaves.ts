@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { GateRefusal } from "./gates.js";
+import { canonical, contains } from "./paths-resolve.js";
 import type { RegisteredRepository } from "./registry.js";
 
 /**
@@ -97,13 +98,7 @@ export function graphSetup(path: string): string {
  * unblock it, because the real cause was the flow's step.
  */
 export function assertTraversable(leaves: LeafState[], target?: string): void {
-  const relevant = target
-    ? leaves.filter((leaf) => {
-        const base = canonical(leaf.path);
-        const real = canonical(target);
-        return real === base || real.startsWith(`${base}${sep}`);
-      })
-    : leaves;
+  const relevant = target ? leaves.filter((leaf) => contains(leaf.path, target)) : leaves;
 
   const blocked = relevant.filter((leaf) => leaf.graph === "missing" || leaf.graph === "unreachable");
   if (blocked.length === 0) return;
@@ -197,11 +192,7 @@ export function assertInsideClaim(options: {
    * inside a registered checkout point anywhere on disk — `src/etclink → /etc`
    * made `/etc/passwd` a legitimate write target.
    */
-  const real = canonical(target);
-  const containing = options.leaves.find((leaf) => {
-    const base = canonical(leaf.path);
-    return real === base || real.startsWith(`${base}${sep}`);
-  });
+  const containing = options.leaves.find((leaf) => contains(leaf.path, target));
 
   if (!containing) {
     throw new GateRefusal(
@@ -230,19 +221,3 @@ export function assertInsideClaim(options: {
 }
 
 
-/** Resolve through the filesystem, tolerating a target that does not exist yet. */
-function canonical(path: string): string {
-  let current = resolve(path);
-  const trailing: string[] = [];
-  for (let depth = 0; depth < 64; depth += 1) {
-    try {
-      return [realpathSync.native(current), ...trailing].join(sep);
-    } catch {
-      const parent = dirname(current);
-      if (parent === current) return resolve(path);
-      trailing.unshift(current.slice(parent.length + 1));
-      current = parent;
-    }
-  }
-  return resolve(path);
-}

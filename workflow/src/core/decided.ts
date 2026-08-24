@@ -33,11 +33,26 @@ const LANES = [
   { dir: "changes/inbox", label: "a capture" },
 ] as const;
 
+/**
+ * The words worth matching on.
+ *
+ * Dropping everything of three characters or fewer made SSO, API, CLI, MFA,
+ * TLS and RPC permanently unsearchable — and the empty result was then reported
+ * as "nobody has settled this", which is the opposite of the truth. Only
+ * ordinary filler is dropped, and never the whole subject.
+ */
+const FILLER = new Set([
+  "the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "is", "it",
+  "we", "our", "be", "do", "does", "how", "what", "why", "should",
+]);
+
 function terms(subject: string): string[] {
-  return subject
+  const words = subject
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter((term) => term.length > 3);
+    .filter((term) => term.length > 0);
+  const meaningful = words.filter((term) => !FILLER.has(term));
+  return meaningful.length > 0 ? meaningful : words;
 }
 
 function score(body: string, want: string[]): number {

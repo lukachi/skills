@@ -371,6 +371,7 @@ test("the whole reconstruction walks stage by stage, and each gate names its rem
   // A probe names a page that exists; one naming a page nobody wrote asks nothing.
   await mkdir(resolve(ctx.root, "knowledge"), { recursive: true });
   await writeFile(resolve(ctx.root, "knowledge/p.md"), "# Refunds\n", "utf8");
+  await run(["reconstruct", "stage"], ctx);  // → probe
 
   const selfProbe = await run(
     ["reconstruct", "probe", "--question", "what do refunds do?", "--page", "p.md", "--asker", "agent:crawler", "--passed"],

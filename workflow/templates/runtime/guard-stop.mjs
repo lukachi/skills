@@ -176,10 +176,16 @@ function recordBlock(cwd, entry) {
   }
 }
 
+// One switch, and `wfctl guards` owns it.
+//
+// This used to read its own marker file, which `wfctl guards` and `wfctl
+// doctor` could not see — so a guard the maintainer had disabled was reported
+// as armed by every surface while doing nothing. The choice now lives where the
+// tool records it.
 function disabled(cwd) {
   try {
-    readFileSync(join(cwd, ".workflow/current/hooks/stop-guard.disabled"), "utf8");
-    return true;
+    const choices = JSON.parse(readFileSync(join(cwd, ".workflow/guards.json"), "utf8"));
+    return choices.stop === false;
   } catch {
     return false;
   }

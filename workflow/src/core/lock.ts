@@ -1,55 +1,71 @@
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
 
 /**
  * Serialize writes to one record.
  *
- * Every mutation here is read-modify-write on a JSON file. Six concurrent
- * `issue create` calls all reported success and three units survived — with
- * their ids reused, so a claim recorded against `U002` afterwards pointed at
- * different work. Nothing was lost loudly; it was lost silently, which is the
- * only kind that matters.
+ * Every mutation here is read-modify-write on a JSON file, and without this,
+ * concurrent callers each read the same state and the last one wins — units
+ * lost with their ids reused, coverage understated, captures overwritten.
+ * Nothing failed loudly; it was lost silently, which is the only kind that
+ * matters.
+ *
+ * The previous version did not actually exclude. Two mistakes:
+ *
+ * - a lock whose directory vanished between the `EEXIST` and the check was read
+ *   as abandoned, and the reclaim then deleted a *third* process's fresh lock;
+ * - the release deleted whichever lock was present rather than its own, so a
+ *   holder that had already been stolen from deleted the thief's.
+ *
+ * Both are fixed by identity: the holder writes a token, the release removes
+ * the lock only while that token is still its own, and reclaiming requires a
+ * holder that is present and provably gone.
  *
  * This is a local advisory lock and nothing more. Teams sharing a knowledge
- * repository through Git still coordinate through Git: pretending a lock file
+ * repository through Git still coordinate through Git; pretending a lock file
  * is a distributed lock would be a worse lie than having none.
  */
 const STALE_AFTER_MS = 30_000;
-const RETRY_MS = 15;
-const WAIT_MS = 5_000;
+const RETRY_MS = 10;
+const WAIT_MS = 10_000;
 
 interface Holder {
   pid: number;
+  token: string;
   at: number;
 }
 
 function lockPath(target: string): string {
-  return `${target}.lock`;
+  return `${resolve(target)}.lock`;
 }
 
 function holderPath(target: string): string {
   return `${lockPath(target)}/holder.json`;
 }
 
-async function readHolder(path: string): Promise<Holder | undefined> {
+async function readHolder(target: string): Promise<Holder | undefined> {
   try {
-    return JSON.parse(await readFile(path, "utf8")) as Holder;
+    const parsed = JSON.parse(await readFile(holderPath(target), "utf8")) as Holder;
+    return typeof parsed?.token === "string" ? parsed : undefined;
   } catch {
     return undefined;
   }
 }
 
 /**
- * A lock whose holder died is not a lock.
+ * A holder is abandoned only when it is *there* and its process is gone.
  *
- * Crashing mid-write must not wedge the repository for everyone after — the
- * fix would be deleting a file nobody documented, which is exactly the sort of
- * hand-repair this workflow refuses elsewhere.
+ * An absent holder file means the lock was taken microseconds ago and has not
+ * described itself yet — treating that as abandoned is what let two callers in.
+ * The one case that must not wedge the repository forever is a process that
+ * died between creating the directory and writing the file, which the age bound
+ * covers.
  */
-function stale(holder: Holder | undefined, now: number): boolean {
-  if (!holder) return false;
-  if (now - holder.at > STALE_AFTER_MS) return true;
+async function abandoned(target: string, since: number): Promise<boolean> {
+  const holder = await readHolder(target);
+  if (!holder) return Date.now() - since > STALE_AFTER_MS;
+  if (Date.now() - holder.at > STALE_AFTER_MS) return true;
   try {
     process.kill(holder.pid, 0);
     return false;
@@ -58,36 +74,36 @@ function stale(holder: Holder | undefined, now: number): boolean {
   }
 }
 
-/**
- * The lock is a directory, not a file.
- *
- * A file created with `wx` is atomic to create and *not* atomic to fill, so a
- * waiter could open it in the window before its contents landed, read nothing,
- * conclude the holder was dead, and delete a live lock. Both writers then
- * proceeded and one update disappeared — the exact failure this exists to
- * prevent, reintroduced by the mechanism preventing it.
- *
- * `mkdir` without `recursive` is atomic and carries no contents to race on. The
- * holder is written inside afterwards, and its absence means "just taken",
- * never "abandoned".
- */
 export async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
-  const path = lockPath(resolve(target));
+  const path = lockPath(target);
+  const token = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   const deadline = Date.now() + WAIT_MS;
+  const waitingSince = Date.now();
   await mkdir(dirname(path), { recursive: true });
 
   for (;;) {
     try {
+      // Atomic: exactly one caller creates the directory.
       await mkdir(path);
-      await writeFile(holderPath(target), JSON.stringify({ pid: process.pid, at: Date.now() }));
+      await writeFile(holderPath(target), JSON.stringify({ pid: process.pid, token, at: Date.now() }));
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 
-      if (await abandoned(target)) {
-        await rm(path, { recursive: true, force: true });
+      if (await abandoned(target, waitingSince)) {
+        /**
+         * Reclaim only the holder we judged. Deleting the directory outright
+         * would take whatever a live caller had created in the meantime.
+         */
+        const stale = await readHolder(target);
+        await rm(holderPath(target), { force: true }).catch(() => undefined);
+        const now = await readHolder(target);
+        if (!now || now.token === stale?.token) {
+          await rm(path, { recursive: true, force: true }).catch(() => undefined);
+        }
         continue;
       }
+
       if (Date.now() > deadline) {
         throw new GateRefusal(
           `${target} is being written by another session.`,
@@ -96,44 +112,30 @@ export async function withLock<T>(target: string, work: () => Promise<T>): Promi
             "being told.",
         );
       }
-      await new Promise((wake) => setTimeout(wake, RETRY_MS));
+      await new Promise((wake) => setTimeout(wake, RETRY_MS + Math.floor(Math.random() * RETRY_MS)));
     }
   }
 
   try {
     return await work();
   } finally {
-    await rm(path, { recursive: true, force: true });
+    // Release only while the lock is still ours.
+    const holder = await readHolder(target);
+    if (!holder || holder.token === token) {
+      await rm(path, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 }
 
 /**
- * A holder that has not written itself yet is holding, not gone.
- *
- * Falling back on the directory's own age covers the case where a process died
- * between creating it and describing itself.
- */
-async function abandoned(target: string): Promise<boolean> {
-  const holder = await readHolder(holderPath(target));
-  if (holder) return stale(holder, Date.now());
-
-  const created = await stat(lockPath(target)).catch(() => undefined);
-  if (!created) return true;
-  return Date.now() - created.mtimeMs > STALE_AFTER_MS;
-}
-
-
-/**
  * Write a file so no reader ever sees it half-written.
  *
- * A bare `writeFile` truncates and then fills, so a concurrent reader could
- * observe an empty or partial file — two of forty-eight units were lost that
- * way, and a crash mid-write would have truncated the record permanently.
- * Rename is atomic within a filesystem, so a reader sees either the old file or
- * the new one.
+ * A bare `writeFile` truncates and then fills, so a concurrent reader can
+ * observe an empty or partial file and a crash mid-write truncates the record
+ * permanently. Rename is atomic within a filesystem.
  */
 export async function writeAtomic(path: string, body: string): Promise<void> {
-  const temporary = `${path}.${process.pid}.tmp`;
+  const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   await writeFile(temporary, body, "utf8");
   const { rename } = await import("node:fs/promises");
   await rename(temporary, path);

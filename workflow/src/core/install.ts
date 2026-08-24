@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
+import { withLock, writeAtomic } from "./lock.js";
 
 export const MANAGED_BEGIN = "<!-- wfctl:begin -->";
 export const MANAGED_END = "<!-- wfctl:end -->";
@@ -342,6 +343,10 @@ export function assertProfileSupported(profile: string): void {
  * and they would find out the next time something they rely on did not run.
  */
 export async function installHooks(target: string): Promise<void> {
+  return withLock(resolve(target, ".claude/settings.json"), () => installHooksLocked(target));
+}
+
+async function installHooksLocked(target: string): Promise<void> {
   const path = resolve(target, ".claude/settings.json");
   const existing = await readIfPresent(path);
 
@@ -396,16 +401,28 @@ export async function installHooks(target: string): Promise<void> {
     return hooks.every((hook) => typeof hook?.command === "string" && ourCommands.has(hook.command));
   };
 
+  const off = new Set(await disabledGuards(target));
+  const skip = new Set(
+    [...off].map((guard) => (guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard}.mjs`)),
+  );
+
   const hooks = { ...((existingHooks ?? {}) as Record<string, unknown[]>) };
   for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
     const current = hooks[event];
     const theirs = (Array.isArray(current) ? current : []).filter((entry) => !isOurs(entry));
-    hooks[event] = [...theirs, ...(entries as readonly unknown[])];
+    /**
+     * An upgrade never re-arms a guard the maintainer turned off. Doing so
+     * silently reversed their decision on every install.
+     */
+    const ours = (entries as readonly { hooks: readonly { command: string }[] }[]).filter(
+      (entry) => !entry.hooks.some((hook) => [...skip].some((name) => hook.command.includes(name))),
+    );
+    hooks[event] = [...theirs, ...ours];
   }
   settings.hooks = hooks;
 
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  await writeAtomic(path, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
 /**
@@ -516,14 +533,19 @@ export async function guardStatus(target: string): Promise<
   const settings = await readSettings(target);
   const hooks = (settings.hooks ?? {}) as Record<string, { matcher?: string; hooks?: { command?: string }[] }[]>;
 
+  const choices = await readGuardChoices(target);
+
   return GUARD_NAMES.map((guard) => {
     const { event, matcher, describes } = GUARD_EVENTS[guard];
     const entries = Array.isArray(hooks[event]) ? hooks[event] : [];
-    const installed = entries.some(
+    const armed = entries.some(
       (entry) =>
         entry.matcher === matcher &&
         (entry.hooks ?? []).some((hook) => (hook.command ?? "").includes(scriptFor(guard))),
     );
+    // The recorded choice wins where the two disagree: a guard turned off is
+    // off even if a settings entry is still present.
+    const installed = choices[guard] === false ? false : armed;
     return { guard, installed, describes };
   });
 }
@@ -537,6 +559,16 @@ export async function setGuard(
   guard: GuardName,
   enabled: boolean,
 ): Promise<string> {
+  return withLock(resolve(target, ".claude/settings.json"), () =>
+    setGuardLocked(target, guard, enabled),
+  );
+}
+
+async function setGuardLocked(
+  target: string,
+  guard: GuardName,
+  enabled: boolean,
+): Promise<string> {
   const path = resolve(target, ".claude/settings.json");
   const settings = await readSettings(target);
   const hooks = { ...((settings.hooks ?? {}) as Record<string, unknown[]>) };
@@ -544,19 +576,38 @@ export async function setGuard(
   const script = scriptFor(guard);
 
   const entries = Array.isArray(hooks[event]) ? [...(hooks[event] as unknown[])] : [];
+
+  /**
+   * Ours is the exact command we install, never a substring.
+   *
+   * Matching on `includes` deleted a maintainer hook that merely mentioned our
+   * script path — theirs vanished and `guards on` did not bring it back.
+   */
+  const ourCommand = ((HOOK_SETTINGS.hooks as Record<string, readonly { hooks: readonly { command: string }[] }[]>)[event] ?? [])
+    .flatMap((entry) => entry.hooks.map((hook) => hook.command))
+    .find((command) => command.includes(script));
   const isThisGuard = (entry: unknown): boolean =>
-    ((entry as { hooks?: { command?: string }[] } | null)?.hooks ?? []).some((hook) =>
-      (hook.command ?? "").includes(script),
+    ((entry as { hooks?: { command?: string }[] } | null)?.hooks ?? []).some(
+      (hook) => hook.command === ourCommand,
     );
 
   const others = entries.filter((entry) => !isThisGuard(entry));
+
+  /**
+   * The decision is recorded durably, not implied by an absent entry.
+   *
+   * "Off" meant removing the settings entry, which the next `init` unhelpfully
+   * put back — the guard's own comment predicted exactly that. The record is
+   * what both `init` and the guards themselves consult now.
+   */
+  await recordGuardChoice(target, guard, enabled);
 
   if (!enabled) {
     hooks[event] = others;
     settings.hooks = hooks;
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
-    return `${guard} guard off. Restart the session for it to take effect.`;
+    await writeAtomic(path, `${JSON.stringify(settings, null, 2)}\n`);
+    return `${guard} guard off, and it stays off across upgrades.`;
   }
 
   const ours = (HOOK_SETTINGS.hooks as Record<string, readonly unknown[]>)[event]?.find((entry) =>
@@ -568,8 +619,37 @@ export async function setGuard(
   hooks[event] = [...others, ours];
   settings.hooks = hooks;
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  await writeAtomic(path, `${JSON.stringify(settings, null, 2)}\n`);
   return `${guard} guard on. Restart the session for it to take effect.`;
+}
+
+export const GUARD_CHOICES = ".workflow/guards.json";
+
+async function readGuardChoices(target: string): Promise<Record<string, boolean>> {
+  const raw = await readIfPresent(resolve(target, GUARD_CHOICES));
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+async function recordGuardChoice(
+  target: string,
+  guard: GuardName,
+  enabled: boolean,
+): Promise<void> {
+  const choices = { ...(await readGuardChoices(target)), [guard]: enabled };
+  const path = resolve(target, GUARD_CHOICES);
+  await mkdir(dirname(path), { recursive: true });
+  await writeAtomic(path, `${JSON.stringify(choices, null, 2)}\n`);
+}
+
+/** Guards the maintainer turned off, which an upgrade must not re-arm. */
+export async function disabledGuards(target: string): Promise<GuardName[]> {
+  const choices = await readGuardChoices(target);
+  return GUARD_NAMES.filter((guard) => choices[guard] === false);
 }
 
 export function renderGuards(

@@ -5,6 +5,7 @@ import { assertWriteAllowed } from "./paths.js";
 import { renderCounterLine } from "./recall.js";
 import type { FlowRecord } from "./types.js";
 import { GateRefusal } from "./gates.js";
+import { canonical, contains } from "./paths-resolve.js";
 
 /**
  * The write hook.
@@ -74,14 +75,7 @@ export function decideWrite(input: WriteHookInput): WriteHookDecision {
    * against structure nobody read. Applying them here refused the promotion
    * draft the tool had created one command earlier.
    */
-  const insideKnowledge = (() => {
-    // Resolve both sides: on macOS the repository is reached as /tmp and the
-    // target as /private/tmp, and a lexical compare of the two never matches.
-    const base = canonicalPath(knowledgeRoot);
-    const path = canonicalPath(target);
-    return path === base || path.startsWith(`${base}${sep}`);
-  })();
-  if (insideKnowledge) return {};
+  if (contains(knowledgeRoot, target)) return {};
 
   const claimed = flow.issues.find((issue) => issue.status === "claimed")?.claim;
   try {
@@ -151,19 +145,3 @@ function normalize(root: string, path: string): string {
 }
 
 
-/** Resolve through the filesystem, tolerating a path that does not exist yet. */
-function canonicalPath(path: string): string {
-  let current = resolve(path);
-  const trailing: string[] = [];
-  for (let depth = 0; depth < 64; depth += 1) {
-    try {
-      return [realpathSync.native(current), ...trailing].join(sep);
-    } catch {
-      const parent = dirname(current);
-      if (parent === current) return resolve(path);
-      trailing.unshift(current.slice(parent.length + 1));
-      current = parent;
-    }
-  }
-  return resolve(path);
-}

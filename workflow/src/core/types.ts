@@ -112,6 +112,11 @@ export interface FlowRecord {
   /** Set when the maintainer approved the framing but said not to start yet. */
   parked?: { at: string; reason: string };
   closedAt?: string;
+  /**
+   * How it closed. Nothing stored it, so promotion recorded abandoned work as a
+   * `delivery` on the subject's line — the one layer the maintainer is shown.
+   */
+  outcome?: "completed" | "partial" | "abandoned";
   /** Digest of the acceptance criteria as approved, so a rewording is visible. */
   framingDigest?: string;
   /**

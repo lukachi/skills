@@ -353,9 +353,27 @@ export async function closeCase(root: string, id: string): Promise<string> {
   if (!present) {
     throw new GateRefusal(`No active reconstruction named ${id}.`, "wfctl reconstruct status");
   }
-  const to = resolve(root, RECONSTRUCTION_ARCHIVE, id);
+  /**
+   * An archive name that is already taken gets a suffix.
+   *
+   * Case ids were date-only and the rename was bare, so the second
+   * reconstruction of any calendar day could be neither closed nor abandoned —
+   * `ENOTEMPTY`, with a remedy blaming the maintainer for hand-editing. The
+   * abandon path had already rewritten the stage before failing, so the wedged
+   * case then advertised itself as awaiting the maintainer.
+   */
+  const { rename, rm, stat: statPath } = await import("node:fs/promises");
   await mkdir(resolve(root, RECONSTRUCTION_ARCHIVE), { recursive: true });
-  const { rename, rm } = await import("node:fs/promises");
+
+  let to = resolve(root, RECONSTRUCTION_ARCHIVE, id);
+  for (let suffix = 2; suffix < 100; suffix += 1) {
+    const taken = await statPath(to).then(
+      () => true,
+      () => false,
+    );
+    if (!taken) break;
+    to = resolve(root, RECONSTRUCTION_ARCHIVE, `${id}-${suffix}`);
+  }
   await rename(from, to);
   await rm(resolve(root, RECONSTRUCTION_DIR, "current"), { force: true });
   return to;
@@ -463,11 +481,23 @@ export async function recordScope(
     );
   }
 
-  const excluded = (options.exclude ?? []).map((path) => ({
-    path,
-    reason: "excluded when the scope was settled",
-  }));
   const inScope = [...new Set([...narrowed, ...raw])].sort();
+
+  /**
+   * A scope-time exclusion is still an exclusion, so it answers to the same two
+   * rules: it must name something in scope, and it must say why. `--not`
+   * bypassed both and stamped a canned reason, which inflated the excluded
+   * count past the size of the scope.
+   */
+  const excluded = (options.exclude ?? []).map((path) => {
+    if (!inScope.includes(path)) {
+      throw new GateRefusal(
+        `${path} is not in the pinned tree, so excluding it counts nothing.`,
+        "wfctl reconstruct scope --repository <owner/name>",
+      );
+    }
+    return { path, reason: "excluded when the scope was settled" };
+  });
 
   const next: ReconstructionCase = {
     ...record,
@@ -645,24 +675,25 @@ export async function recordProbe(
    * with an empty corpus, which is the whole round satisfied having written
    * nothing.
    */
+  /**
+   * The page has to be a curated page.
+   *
+   * Checking only that *some file* existed let a probe pass against
+   * `/etc/passwd`, an installed asset, or the case's own JSON — the round is
+   * meant to ask whether the corpus can answer, and any of those satisfied it.
+   */
+  const { collectPages } = await import("./curated.js");
+  const curated = new Set(await collectPages(root));
   for (const page of probe.pages) {
-    const candidates = [resolve(root, page), resolve(root, "knowledge", page)];
-    const present = await Promise.all(
-      candidates.map((candidate) =>
-        stat(candidate).then(
-          (entry) => entry.isFile(),
-          () => false,
-        ),
-      ),
+    const named = page.replace(/^knowledge\//, "");
+    if (curated.has(named)) continue;
+    throw new GateRefusal(
+      `${page} is not a curated page.`,
+      "wfctl knowledge validate",
+      curated.size > 0
+        ? `Pages in the corpus:\n${[...curated].map((entry) => `  ${entry}`).join("\n")}`
+        : "The corpus is empty; the write stage has not produced anything yet.",
     );
-    if (!present.some(Boolean)) {
-      throw new GateRefusal(
-        `${page} is not a page that exists.`,
-        "wfctl knowledge validate",
-        "A probe asks whether the written pages can answer without the source. " +
-          "One naming a page nobody wrote asks nothing.",
-      );
-    }
   }
   /**
    * A second answer to the same question supersedes the first.
@@ -676,6 +707,29 @@ export async function recordProbe(
     ...current,
     probes: [...current.probes.filter((entry) => entry.question !== probe.question), probe],
   }));
+}
+
+/**
+ * Pages have to exist before a probe can ask anything of them.
+ *
+ * `advanceStage` had no `write` case at all, so the stage that produces the
+ * corpus advanced with `knowledge/` empty — and the probe round then passed
+ * against files that were not pages. Together they closed a "completed"
+ * baseline that had written nothing.
+ */
+export async function assertPagesWritten(
+  root: string,
+  record: ReconstructionCase,
+): Promise<void> {
+  const { collectPages } = await import("./curated.js");
+  const pages = await collectPages(root);
+  if (pages.length > 0) return;
+  throw new GateRefusal(
+    "No page has been written, so there is nothing to probe.",
+    "Write the pages this pass established into knowledge/, then: wfctl reconstruct stage",
+    `${record.trajectories.length} subject(s) were assembled. A pass that ` +
+      "assembled lines and wrote nothing has established nothing anyone can read.",
+  );
 }
 
 export async function advanceStage(
@@ -707,6 +761,9 @@ export async function advanceStage(
     case "adjudicate":
       assertAdjudicated(record);
       break;
+    case "write":
+      await assertPagesWritten(root, record);
+      break;
     case "probe":
       assertProbed(record, actor);
       break;
@@ -726,8 +783,16 @@ export async function advanceStage(
 export function renderStatus(record: ReconstructionCase): string {
   const left = remaining(record.coverage);
   const open = record.contradictions.filter((entry) => !entry.resolution?.trim());
+  const pinned = record.repositories
+    .map((entry) => `${entry.repository}@${entry.revision.slice(0, 12)}${entry.dirty ? " (dirty)" : ""}`)
+    .join(", ");
   return [
-    `${record.id}  ·  stage ${record.stage}  ·  ${STAGE_PRESENCE[record.stage]} present`,
+    record.abandoned
+      ? `${record.id}  ·  ABANDONED: ${record.abandoned.reason}`
+      : `${record.id}  ·  stage ${record.stage}  ·  ${STAGE_PRESENCE[record.stage]} present`,
+    // Provenance was recorded and never shown, so every pass closed without
+    // naming the revision or the dirtiness it read at.
+    ...(pinned ? [`read at: ${pinned}`, `raw scope: ${record.rawScope ?? "none"}`] : []),
     record.hadBaseline
       ? "re-checking an existing baseline"
       : "first baseline; curated knowledge was empty",
