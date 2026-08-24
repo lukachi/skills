@@ -823,3 +823,29 @@ test("guidance: the bundle is found inside this install and not above it", async
   const found = findGuidanceForTest(resolve(distributionRoot, "dist"));
   assert.ok(found.startsWith(distributionRoot), `guidance resolved outside the package: ${found}`);
 });
+
+test("refusals: a printed remedy is a command that runs, not one that only exists", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "held", "--weight", "significant", "--attested", "go"]);
+  wfctl(root, ["work", "park", "--reason", "waiting on them"]);
+
+  /**
+   * `work release` takes `--attested`, and the park remedy printed the flow id
+   * as a positional — a form the command does not accept. The existing check
+   * only asked whether the command exists.
+   */
+  const briefed = wfctl(root, ["brief"]);
+  const remedies = [...briefed.stdout.matchAll(/^\s*remedy: (wfctl .+)$/gm)].map((m) => m[1] as string);
+  assert.ok(remedies.length > 0, "the brief printed no remedy to check");
+
+  for (const remedy of remedies) {
+    // Run it with its placeholders emptied: a wrong *shape* refuses with a
+    // usage banner, while a right one refuses on the missing value.
+    const argv = remedy.replace(/^wfctl /, "").split(/\s+/).filter((part) => !part.startsWith("<"));
+    const result = wfctl(root, argv);
+    assert.ok(
+      !(result.status === 1 && result.stdout.includes("wfctl — project workflow")),
+      `a printed remedy is not a form this CLI accepts: ${remedy}`,
+    );
+  }
+});

@@ -192,7 +192,7 @@ function deriveBlocker(flow) {
       step: flow.step,
       awaits: "maintainer",
       summary: `Parked: ${flow.parked.reason}`,
-      remedy: `wfctl work release ${flow.id}`
+      remedy: 'wfctl work release --attested "<what they said>"'
     };
   }
   if (flow.step === "opened" && flow.weight) {
@@ -342,7 +342,7 @@ function assertNotParked(flow) {
   if (!flow.parked) return;
   throw new GateRefusal(
     `Flow ${flow.id} is parked: ${flow.parked.reason}`,
-    `wfctl work release ${flow.id}`,
+    'wfctl work release --attested "<what they said>"',
     "Approving a framing settles what the work is, never that it begins. The condition that held it ending is not the same as being told to go."
   );
 }
@@ -567,7 +567,7 @@ var init_guidance = __esm({
 });
 
 // src/core/lock.ts
-import { mkdir, readFile as readFile2, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile as readFile2, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve as resolve2 } from "node:path";
 function lockPath(target) {
   return `${resolve2(target)}.lock`;
@@ -576,11 +576,25 @@ function holderPath(target) {
   return `${lockPath(target)}/holder.json`;
 }
 async function readHolder(target) {
+  return readHolderAt(lockPath(target));
+}
+async function readHolderAt(lockDirectory) {
   try {
-    const parsed = JSON.parse(await readFile2(holderPath(target), "utf8"));
+    const parsed = JSON.parse(
+      await readFile2(`${lockDirectory}/holder.json`, "utf8")
+    );
     return typeof parsed?.token === "string" ? parsed : void 0;
   } catch {
     return void 0;
+  }
+}
+function isAbandonedHolder(holder) {
+  if (Date.now() - holder.at > STALE_AFTER_MS) return true;
+  try {
+    process.kill(holder.pid, 0);
+    return false;
+  } catch {
+    return true;
   }
 }
 async function undescribedFor(target) {
@@ -593,13 +607,25 @@ async function undescribedFor(target) {
 async function abandoned(target) {
   const holder = await readHolder(target);
   if (!holder) return await undescribedFor(target) > UNDESCRIBED_AFTER_MS;
-  if (Date.now() - holder.at > STALE_AFTER_MS) return true;
+  return isAbandonedHolder(holder);
+}
+async function reclaim(target, token) {
+  const path = lockPath(target);
+  const aside = `${path}.stale.${token}`;
   try {
-    process.kill(holder.pid, 0);
-    return false;
+    await rename(path, aside);
   } catch {
-    return true;
+    return;
   }
+  const taken = await readHolderAt(aside);
+  if (taken && !isAbandonedHolder(taken)) {
+    try {
+      await rename(aside, path);
+      return;
+    } catch {
+    }
+  }
+  await rm(aside, { recursive: true, force: true }).catch(() => void 0);
 }
 async function withLock(target, work) {
   const path = lockPath(target);
@@ -621,12 +647,7 @@ async function withLock(target, work) {
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
       if (await abandoned(target)) {
-        const stale = await readHolder(target);
-        await rm(holderPath(target), { force: true }).catch(() => void 0);
-        const now = await readHolder(target);
-        if (!now || now.token === stale?.token) {
-          await rm(path, { recursive: true, force: true }).catch(() => void 0);
-        }
+        await reclaim(target, token);
         continue;
       }
       if (Date.now() > deadline) {
@@ -651,8 +672,8 @@ async function withLock(target, work) {
 async function writeAtomic(path, body) {
   const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   await writeFile(temporary, body, "utf8");
-  const { rename: rename2 } = await import("node:fs/promises");
-  await rename2(temporary, path);
+  const { rename: rename3 } = await import("node:fs/promises");
+  await rename3(temporary, path);
 }
 var STALE_AFTER_MS, UNDESCRIBED_AFTER_MS, RETRY_MS, WAIT_MS;
 var init_lock = __esm({
@@ -1013,7 +1034,7 @@ __export(promotion_queue_exports, {
   queuePath: () => queuePath,
   readOutcome: () => readOutcome
 });
-import { copyFile, mkdir as mkdir4, readdir as readdir2, rename, stat as stat2 } from "node:fs/promises";
+import { copyFile, mkdir as mkdir4, readdir as readdir2, rename as rename2, stat as stat2 } from "node:fs/promises";
 import { dirname as dirname4, join as join2, relative as relative2, resolve as resolve6 } from "node:path";
 function destinationFor(outcome, hasDrafts) {
   return hasDrafts ? QUEUE : ARCHIVE;
@@ -1051,7 +1072,7 @@ async function closeBundle(options) {
   const destination = destinationFor(options.outcome, drafts);
   const to = resolve6(options.knowledgeRoot, destination, options.bundleId);
   await mkdir4(resolve6(options.knowledgeRoot, destination), { recursive: true });
-  await rename(from, to);
+  await rename2(from, to);
   const { writeFile: writeFile10 } = await import("node:fs/promises");
   await writeFile10(resolve6(to, "outcome"), `${options.outcome}
 `, "utf8");
@@ -1107,7 +1128,7 @@ async function promote(options) {
   }
   const archived = resolve6(options.knowledgeRoot, ARCHIVE, options.bundleId);
   await mkdir4(resolve6(options.knowledgeRoot, ARCHIVE), { recursive: true });
-  await rename(queued, archived);
+  await rename2(queued, archived);
   return { archived, pages };
 }
 function queuePath(knowledgeRoot, bundleId) {
@@ -1622,7 +1643,7 @@ async function closeCase(root, id) {
   if (!present) {
     throw new GateRefusal(`No active reconstruction named ${id}.`, "wfctl reconstruct status");
   }
-  const { rename: rename2, rm: rm3, stat: statPath } = await import("node:fs/promises");
+  const { rename: rename3, rm: rm3, stat: statPath } = await import("node:fs/promises");
   await mkdir5(resolve8(root, RECONSTRUCTION_ARCHIVE), { recursive: true });
   let to = resolve8(root, RECONSTRUCTION_ARCHIVE, id);
   for (let suffix = 2; suffix < 100; suffix += 1) {
@@ -1633,7 +1654,7 @@ async function closeCase(root, id) {
     if (!taken) break;
     to = resolve8(root, RECONSTRUCTION_ARCHIVE, `${id}-${suffix}`);
   }
-  await rename2(from, to);
+  await rename3(from, to);
   await rm3(resolve8(root, RECONSTRUCTION_DIR, "current"), { force: true });
   return to;
 }

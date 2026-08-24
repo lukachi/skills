@@ -91,7 +91,7 @@ export function assertNotParked(flow: FlowRecord): void {
   if (!flow.parked) return;
   throw new GateRefusal(
     `Flow ${flow.id} is parked: ${flow.parked.reason}`,
-    `wfctl work release ${flow.id}`,
+    'wfctl work release --attested "<what they said>"',
     "Approving a framing settles what the work is, never that it begins. The " +
       "condition that held it ending is not the same as being told to go.",
   );

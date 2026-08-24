@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
 
@@ -54,11 +54,28 @@ function holderPath(target: string): string {
 }
 
 async function readHolder(target: string): Promise<Holder | undefined> {
+  return readHolderAt(lockPath(target));
+}
+
+async function readHolderAt(lockDirectory: string): Promise<Holder | undefined> {
   try {
-    const parsed = JSON.parse(await readFile(holderPath(target), "utf8")) as Holder;
+    const parsed = JSON.parse(
+      await readFile(`${lockDirectory}/holder.json`, "utf8"),
+    ) as Holder;
     return typeof parsed?.token === "string" ? parsed : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/** Whether a holder we are already holding was dead when we took it. */
+function isAbandonedHolder(holder: Holder): boolean {
+  if (Date.now() - holder.at > STALE_AFTER_MS) return true;
+  try {
+    process.kill(holder.pid, 0);
+    return false;
+  } catch {
+    return true;
   }
 }
 
@@ -93,13 +110,65 @@ async function abandoned(target: string): Promise<boolean> {
   if (!holder) return (await undescribedFor(target)) > UNDESCRIBED_AFTER_MS;
   // A pid the OS has since handed to an unrelated process would otherwise look
   // alive forever; the age bound is the backstop for that and nothing else.
-  if (Date.now() - holder.at > STALE_AFTER_MS) return true;
+  return isAbandonedHolder(holder);
+}
+
+/**
+ * Take an abandoned lock out of the way, atomically.
+ *
+ * Reclaiming used to delete the holder file and then the directory, which is
+ * two steps and therefore not exclusive: two callers both judged the same lock
+ * abandoned, both deleted its holder, and the slower one's directory delete
+ * landed *after* the faster one had created a fresh lock and entered the
+ * critical section. A live lock disappeared out from under its holder, a third
+ * caller walked straight in, and two increments became one. It surfaced as a
+ * lock test that lost a write about one run in three.
+ *
+ * `rename` is one step and exactly one caller can win it. The loser fails, and
+ * whatever it would have deleted is a directory it no longer has a name for.
+ * The holder is re-read immediately beforehand so a lock that came alive in the
+ * meantime is left alone.
+ */
+async function reclaim(target: string, token: string): Promise<void> {
+  const path = lockPath(target);
+  const aside = `${path}.stale.${token}`;
+
+  /**
+   * Take it first, then check what was taken.
+   *
+   * Checking first cannot work. Eight callers judging one dead holder all
+   * decide to reclaim at the same instant; the first succeeds and a second then
+   * takes the lock for real, and the third — whose judgment was made before
+   * that lock existed — reclaims the live one. Re-reading the holder before the
+   * rename does not help, because the read that mattered happened earlier.
+   *
+   * `rename` is atomic and single-winner, so the winner is the only caller
+   * holding this directory and can inspect it at leisure. If it turns out to
+   * have been alive, it goes back where it came from.
+   */
   try {
-    process.kill(holder.pid, 0);
-    return false;
+    await rename(path, aside);
   } catch {
-    return true;
+    // Somebody else took it, or its holder finished. Either way it is not ours.
+    return;
   }
+
+  const taken = await readHolderAt(aside);
+  if (taken && !isAbandonedHolder(taken)) {
+    try {
+      await rename(aside, path);
+      return;
+    } catch {
+      /**
+       * The slot was refilled while we held its contents. Nothing can put this
+       * back without overwriting whoever refilled it, and overwriting a live
+       * lock is the failure being fixed. Drop what we took: its holder will
+       * find its directory gone, fail to release something that is not there,
+       * and its next call goes round again.
+       */
+    }
+  }
+  await rm(aside, { recursive: true, force: true }).catch(() => undefined);
 }
 
 export async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
@@ -138,16 +207,7 @@ export async function withLock<T>(target: string, work: () => Promise<T>): Promi
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 
       if (await abandoned(target)) {
-        /**
-         * Reclaim only the holder we judged. Deleting the directory outright
-         * would take whatever a live caller had created in the meantime.
-         */
-        const stale = await readHolder(target);
-        await rm(holderPath(target), { force: true }).catch(() => undefined);
-        const now = await readHolder(target);
-        if (!now || now.token === stale?.token) {
-          await rm(path, { recursive: true, force: true }).catch(() => undefined);
-        }
+        await reclaim(target, token);
         continue;
       }
 

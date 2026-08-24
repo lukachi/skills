@@ -117,7 +117,7 @@ export function deriveBlocker(flow: FlowRecord): DerivedBlocker | undefined {
       step: flow.step,
       awaits: "maintainer",
       summary: `Parked: ${flow.parked.reason}`,
-      remedy: `wfctl work release ${flow.id}`,
+      remedy: 'wfctl work release --attested "<what they said>"',
     };
   }
 
