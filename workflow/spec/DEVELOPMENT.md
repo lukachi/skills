@@ -50,7 +50,8 @@ It covers:
 
 - TypeScript type checking;
 - isolated unit tests;
-- eval corpus validity and any recorded agent-behavior runs;
+- the regression suite, written against defects found by adversarial review and
+  by scoring real sessions;
 - a rebuilt bundle that matches the committed `dist/`;
 - preflight integration;
 - real QMD behavior;
@@ -67,7 +68,7 @@ Focused suites:
 ```sh
 bun test tests/knowledge.test.ts
 bun test tests/core-install.test.ts
-bun run test:evals
+bun run score <session.jsonl>
 ```
 
 `dist/cli.js` is committed and shipped. `bun run build` overwrites it, so
@@ -86,7 +87,7 @@ The package includes:
 - user guides under `docs/`;
 - normative contracts under `spec/`;
 - bundled CLI under `dist/`;
-- the guidance bundle, runtime guards, templates, and eval corpora;
+- the guidance bundle, runtime guards, and templates;
 - third-party provenance, pinned source mappings, and retained licenses.
 
 The package is the only canonical distribution source. Do not make consumer
@@ -115,7 +116,8 @@ When behavior changes:
 1. update the owning contract;
 2. update the guidance bundle, templates, and code together;
 3. add deterministic regression coverage;
-4. add or update hidden behavior evals when routing or agent judgment changes;
+4. score a real session with `bun run score` when agent-facing behaviour changes,
+   and add a regression test for anything it reports;
 5. run the complete gate;
 6. test the packed package, not only the source checkout.
 

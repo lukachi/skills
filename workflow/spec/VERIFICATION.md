@@ -44,14 +44,13 @@ bun run check
 Expected:
 
 - type checking and isolated unit tests pass;
-- the eval corpora are structurally valid and every recorded behavior run
-  passed;
+- unit and end-to-end tests pass, including the regression suite written
+  against defects found by adversarial review and by reading real sessions;
 - the committed `dist/` bundle matches the rebuilt one;
 - QMD and Graphify integrations pass;
 - every guidance slice referenced by a state exists, and no state references one that does not;
 - the CLI runs under Bun, Node.js, and Deno;
-- the packed artifact includes the guidance bundle, contracts, evals, and
-  templates.
+- the packed artifact includes the guidance bundle, contracts, and templates.
 
 CI runs the same gate on every push and pull request touching `workflow/`.
 
@@ -62,7 +61,7 @@ bun test tests/knowledge.test.ts
 bun test tests/knowledge-skills.test.ts
 ```
 
-These prove routing metadata, view structure, content-hash receipts, and eval
+These prove routing metadata, view structure, content-hash receipts, and gate
 corpus invariants. They do not prove semantic understanding.
 
 ## 2. Verify installation
@@ -142,7 +141,7 @@ without a question; later raw must remain a new generation.
 Inspect the raw tool trace, not only the final answer. A command invocation or
 hash receipt proves accounting, not comprehension; bottom canaries and
 questions whose answers require the omitted paragraphs expose partial reads.
-Run this eval at least three times per supported agent and version.
+Run this at least three times per supported agent and version.
 
 ## 4. Run adversarial cases
 
@@ -159,16 +158,34 @@ At minimum, cover:
 - trivial work that must not trigger curation;
 - an unaccepted proposal that must remain outside current knowledge.
 
-Execute each trigger prompt at least three times per agent and version. Record:
+## 4a. Score the sessions that already happened
 
-- model, agent version, and workflow version;
-- triggered skills;
-- files read and changed;
-- validator output;
-- failures;
-- token and time cost.
+A machine-checkable corpus of these cases was tried and removed. Ninety-four of
+its criteria were prose judgments — "preserves the exceptions rather than
+smoothing them away" — that no script can check and only a model could, and a
+harness that both supplies the prompt and judges the answer proves nothing. It
+sat at zero recorded runs and warned on every build, which is worse than absent:
+a warning nobody can clear teaches you to skip warnings.
 
-Do not reveal hidden assertions to the tested agent.
+What replaced it reads the sessions that happen anyway:
+
+```sh
+bun run score <session.jsonl | directory>
+```
+
+It reports commands the agent invented, flags it put on the wrong command, steps
+that took more than two attempts, writes that a command should have made, turns
+that ended with work done since the last checkpoint, and whether each turn the
+guard forced produced anything.
+
+Every finding is a claim about the tool rather than about the agent. A step that
+took five attempts means the tool made that step hard, and each one found so far
+has been a defect in the tool: a command that did not exist where the agent
+looked for it, a flag accepted by the wrong command, a step whose own gate
+invalidated the checkpoint it had just demanded.
+
+Record for each scored session: model, agent version, workflow version, the
+findings, and what changed as a result.
 
 ## 5. Review as a maintainer
 
@@ -191,5 +208,5 @@ For engineering:
 - Are flow, contracts, failures, operations, and verification covered?
 - Does engineering link product meaning instead of redefining it?
 
-Any “no” is a failed behavior eval even when the CLI is green. Add the failure
-as a regression case before changing the skill or validator.
+Any “no” is a failure even when the CLI is green. Add it as a regression test
+before changing the tool.
