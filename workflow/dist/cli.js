@@ -2905,6 +2905,7 @@ ${known.map((n) => `  ${n}`).join("\n")}` : void 0
           "flow that reports checks nobody ran is the green gate the review exists to",
           "stop."
         ].join("\n"),
+        adoptedCheckpointDemand(bundle),
         await guidanceFor(context, "work/aligned"),
         renderStep({ ...flow, step: "aligned" })
       ])
@@ -2934,6 +2935,19 @@ function unsettledNotice(trajectory, settled) {
     "",
     `  wfctl trajectory append --subject "${trajectory.subject}" \\`,
     `    --summary "<what the source does now>" --axis delivery --settles <id>`
+  ].join("\n");
+}
+function adoptedCheckpointDemand(bundle) {
+  return [
+    "Read what is in that record, then write the checkpoint. It is the only",
+    "thing a fresh session recovers from, and this flow has none \u2014 everything",
+    `known about this work is in changes/active/${bundle}/ and nothing points a`,
+    "later session at it.",
+    "",
+    '  wfctl checkpoint --summary "<what this work is, in one line>" \\',
+    '    --handoff "<the substance: what was found, what it rests on, what is open>" \\',
+    '    --last "<the last thing actually completed>" \\',
+    '    --next "<the exact next action>"'
   ].join("\n");
 }
 async function workList(context) {

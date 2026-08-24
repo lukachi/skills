@@ -569,6 +569,7 @@ export async function workAdopt(
           "flow that reports checks nobody ran is the green gate the review exists to",
           "stop.",
         ].join("\n"),
+        adoptedCheckpointDemand(bundle),
         await guidanceFor(context, "work/aligned"),
         renderStep({ ...flow, step: "aligned" }),
       ]),
@@ -621,6 +622,33 @@ function unsettledNotice(
     "",
     `  wfctl trajectory append --subject "${trajectory.subject}" \\`,
     `    --summary "<what the source does now>" --axis delivery --settles <id>`,
+  ].join("\n");
+}
+
+/**
+ * Where the assembled details go.
+ *
+ * Adoption gathers what is known about work that already exists, and until this
+ * was here it gathered it into nothing: the flow opened with no checkpoint, so
+ * a fresh session asking what was being worked on got the title, the fence and
+ * the hold — and not one word of the substance, which was still sitting in the
+ * source nobody was told to open.
+ *
+ * This is text and only text. Nothing here opens that record, parses it or
+ * copies out of it; adoption reads no source and never has. The agent does the
+ * reading and writes what it found.
+ */
+function adoptedCheckpointDemand(bundle: string): string {
+  return [
+    "Read what is in that record, then write the checkpoint. It is the only",
+    "thing a fresh session recovers from, and this flow has none — everything",
+    `known about this work is in changes/active/${bundle}/ and nothing points a`,
+    "later session at it.",
+    "",
+    '  wfctl checkpoint --summary "<what this work is, in one line>" \\',
+    '    --handoff "<the substance: what was found, what it rests on, what is open>" \\',
+    '    --last "<the last thing actually completed>" \\',
+    '    --next "<the exact next action>"',
   ].join("\n");
 }
 

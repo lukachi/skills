@@ -849,3 +849,36 @@ test("refusals: a printed remedy is a command that runs, not one that only exist
     );
   }
 });
+
+test("adopt: the assembled details are demanded, not dropped", async () => {
+  const root = await installed();
+  await strandedBundle(root, "2026-08-23-old-work");
+
+  const adopted = wfctl(root, [
+    "work", "adopt", "2026-08-23-old-work", "--weight", "significant", "--attested", "resume it",
+  ]);
+  // Adoption gathers what is known about existing work, and a flow that opens
+  // with no checkpoint has gathered it into nothing: a fresh session gets the
+  // fence and the title and none of the substance.
+  assert.match(adopted.stdout, /wfctl checkpoint/,
+    "adoption never said where the details it assembled should go");
+  assert.match(adopted.stdout, /changes\/active\/2026-08-23-old-work/,
+    "it did not name the record the substance is still sitting in");
+});
+
+test("adopt: the assembled details are demanded, not dropped", async () => {
+  const root = await installed();
+  await strandedBundle(root, "2026-08-23-old-work");
+
+  const adopted = wfctl(root, [
+    "work", "adopt", "2026-08-23-old-work", "--weight", "significant", "--attested", "resume it",
+  ]);
+  // Adoption gathers what is known about existing work, and a flow that opens
+  // with no checkpoint has gathered it into nothing: a fresh session gets the
+  // fence and the title and none of the substance. The demand is text; nothing
+  // here reads the record or copies out of it.
+  assert.match(adopted.stdout, /wfctl checkpoint/,
+    "adoption never said where the details it assembled should go");
+  assert.match(adopted.stdout, /changes\/active\/2026-08-23-old-work/,
+    "it did not name the record the substance is still sitting in");
+});
