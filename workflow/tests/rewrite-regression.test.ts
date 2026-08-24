@@ -1138,3 +1138,18 @@ test("verify: the tool says who authorises it, because silence was read as the m
   assert.match(refused, /Nobody authorises it/,
     "the demand text still leaves who starts verification unsaid");
 });
+
+test("promotion: a page named from the repository root does not land one level deep", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "deep", "--weight", "lightweight", "--attested", "go"]);
+
+  // The natural mistake: `knowledge/areas/world.md` is the path the agent has
+  // been reading all session. It used to draft at promotion/knowledge/areas/…,
+  // which promotion filed at knowledge/knowledge/areas/… — silently misplaced,
+  // and not overwriting the page it was written to replace.
+  const drafted = wfctl(root, ["work", "promotion", "draft", "knowledge/areas/world.md"]);
+  assert.equal(drafted.status, 0, drafted.stdout);
+  assert.doesNotMatch(drafted.stdout, /promotion\/knowledge\//,
+    "the corpus prefix was kept and the page will be filed one level too deep");
+  assert.match(drafted.stdout, /promotion\/areas\/world\.md/);
+});

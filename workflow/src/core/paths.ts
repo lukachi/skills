@@ -25,7 +25,22 @@ export async function createPromotionDraft(
   bundleId: string,
   page: string,
 ): Promise<string> {
-  const normalized = page.replace(/^\/+/, "");
+  /**
+   * A page is named from inside the corpus, not from the repository root.
+   *
+   * `wfctl work promotion draft "knowledge/areas/world.md"` is the natural
+   * mistake — it is the path the agent has been reading all session — and it
+   * used to produce a draft at `promotion/knowledge/areas/world.md`, which
+   * promotion then filed at `knowledge/knowledge/areas/world.md`: silently one
+   * level deep, not overwriting the page it was written to replace.
+   *
+   * This is what is left of a fault the maintainer recorded in 0.8.0, where the
+   * same disagreement about a leading `knowledge/` made promotion validate one
+   * path, write another, and roll back by deleting four curated pages it had
+   * overwritten. The rollback is gone; the confusion that fed it was not.
+   */
+  const withoutRoot = page.replace(/^\/+/, "").replace(/^knowledge\//, "");
+  const normalized = withoutRoot;
   if (!normalized.trim() || normalized === "." || normalized === "..") {
     throw new GateRefusal(
       "A promotion draft needs the page it will become.",

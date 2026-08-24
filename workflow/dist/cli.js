@@ -997,7 +997,8 @@ function promotionDirectory(knowledgeRoot, bundleId) {
   return resolve5(knowledgeRoot, "changes", "active", bundleId, "promotion");
 }
 async function createPromotionDraft(knowledgeRoot, bundleId, page) {
-  const normalized = page.replace(/^\/+/, "");
+  const withoutRoot = page.replace(/^\/+/, "").replace(/^knowledge\//, "");
+  const normalized = withoutRoot;
   if (!normalized.trim() || normalized === "." || normalized === "..") {
     throw new GateRefusal(
       "A promotion draft needs the page it will become.",
