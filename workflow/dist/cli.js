@@ -558,7 +558,7 @@ var init_guidance = __esm({
 });
 
 // src/core/lock.ts
-import { mkdir, readFile as readFile2, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile as readFile2, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve as resolve2 } from "node:path";
 function lockPath(target) {
   return `${resolve2(target)}.lock`;
@@ -574,9 +574,16 @@ async function readHolder(target) {
     return void 0;
   }
 }
-async function abandoned(target, since) {
+async function undescribedFor(target) {
+  try {
+    return Date.now() - (await stat(lockPath(target))).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+async function abandoned(target) {
   const holder = await readHolder(target);
-  if (!holder) return Date.now() - since > STALE_AFTER_MS;
+  if (!holder) return await undescribedFor(target) > UNDESCRIBED_AFTER_MS;
   if (Date.now() - holder.at > STALE_AFTER_MS) return true;
   try {
     process.kill(holder.pid, 0);
@@ -589,7 +596,6 @@ async function withLock(target, work) {
   const path = lockPath(target);
   const token = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   const deadline = Date.now() + WAIT_MS;
-  const waitingSince = Date.now();
   await mkdir(dirname(path), { recursive: true });
   for (; ; ) {
     try {
@@ -598,7 +604,7 @@ async function withLock(target, work) {
       break;
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
-      if (await abandoned(target, waitingSince)) {
+      if (await abandoned(target)) {
         const stale = await readHolder(target);
         await rm(holderPath(target), { force: true }).catch(() => void 0);
         const now = await readHolder(target);
@@ -632,12 +638,13 @@ async function writeAtomic(path, body) {
   const { rename: rename2 } = await import("node:fs/promises");
   await rename2(temporary, path);
 }
-var STALE_AFTER_MS, RETRY_MS, WAIT_MS;
+var STALE_AFTER_MS, UNDESCRIBED_AFTER_MS, RETRY_MS, WAIT_MS;
 var init_lock = __esm({
   "src/core/lock.ts"() {
     "use strict";
     init_gates();
     STALE_AFTER_MS = 3e4;
+    UNDESCRIBED_AFTER_MS = 1e3;
     RETRY_MS = 10;
     WAIT_MS = 1e4;
   }
@@ -821,10 +828,24 @@ __export(paths_resolve_exports, {
 });
 import { lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname as dirname2, isAbsolute, resolve as resolve4, sep } from "node:path";
+function settle(from, trailing) {
+  let node = from;
+  const rest = [...trailing];
+  for (; ; ) {
+    try {
+      return [realpathSync.native(node), ...rest].join(sep);
+    } catch {
+      const parent = dirname2(node);
+      if (parent === node) return [node, ...rest].join(sep);
+      rest.unshift(node.slice(parent.length + 1));
+      node = parent;
+    }
+  }
+}
 function canonical(path) {
   let current = resolve4(path);
   const trailing = [];
-  for (let depth = 0; depth < 64; depth += 1) {
+  for (let depth = 0; depth < MAX_LINKS; depth += 1) {
     try {
       if (lstatSync(current).isSymbolicLink()) {
         const target = readlinkSync(current);
@@ -833,16 +854,9 @@ function canonical(path) {
       }
     } catch {
     }
-    try {
-      return [realpathSync.native(current), ...trailing].join(sep);
-    } catch {
-      const parent = dirname2(current);
-      if (parent === current) return [current, ...trailing].join(sep);
-      trailing.unshift(current.slice(parent.length + 1));
-      current = parent;
-    }
+    return settle(current, trailing);
   }
-  return resolve4(path);
+  return settle(current, trailing);
 }
 function contains(base, target) {
   const root = canonical(base);
@@ -850,29 +864,28 @@ function contains(base, target) {
   return path === root || path.startsWith(`${root}${sep}`);
 }
 function findRepositoryRoot(from) {
-  const { existsSync: existsSync2 } = requireFs();
   let current = canonical(from);
   for (let depth = 0; depth < 32; depth += 1) {
-    if (existsSync2(resolve4(current, ".workflow/state.json"))) return current;
+    if (exists(resolve4(current, ".workflow/state.json"))) return current;
     const parent = dirname2(current);
     if (parent === current) break;
     current = parent;
   }
   return canonical(from);
 }
-function requireFs() {
-  return { existsSync: (path) => {
-    try {
-      lstatSync(path);
-      return true;
-    } catch {
-      return false;
-    }
-  } };
+function exists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
+var MAX_LINKS;
 var init_paths_resolve = __esm({
   "src/core/paths-resolve.ts"() {
     "use strict";
+    MAX_LINKS = 64;
   }
 });
 
@@ -982,13 +995,13 @@ __export(promotion_queue_exports, {
   queuePath: () => queuePath,
   readOutcome: () => readOutcome
 });
-import { copyFile, mkdir as mkdir4, readdir as readdir2, rename, stat } from "node:fs/promises";
+import { copyFile, mkdir as mkdir4, readdir as readdir2, rename, stat as stat2 } from "node:fs/promises";
 import { dirname as dirname4, join as join2, relative as relative2, resolve as resolve6 } from "node:path";
 function destinationFor(outcome, hasDrafts) {
   return hasDrafts ? QUEUE : ARCHIVE;
 }
 async function isDirectory(path) {
-  return stat(path).then(
+  return stat2(path).then(
     (entry) => entry.isDirectory(),
     () => false
   );
@@ -1425,7 +1438,7 @@ __export(reconstruct_exports, {
   setCurrentCase: () => setCurrentCase,
   writeCase: () => writeCase
 });
-import { mkdir as mkdir5, readFile as readFile5, readdir as readdir4, stat as stat2 } from "node:fs/promises";
+import { mkdir as mkdir5, readFile as readFile5, readdir as readdir4, stat as stat3 } from "node:fs/promises";
 import { dirname as dirname5, join as join4, resolve as resolve8 } from "node:path";
 function casePath(root, id) {
   return resolve8(root, RECONSTRUCTION_DIR, id, "case.json");
@@ -1572,7 +1585,7 @@ function assertClosable(record, actor) {
 }
 async function closeCase(root, id) {
   const from = resolve8(root, RECONSTRUCTION_DIR, id);
-  const present = await stat2(from).then(
+  const present = await stat3(from).then(
     (entry) => entry.isDirectory(),
     () => false
   );
@@ -3018,7 +3031,7 @@ __export(install_exports, {
   setGuard: () => setGuard
 });
 import { createHash as createHash3 } from "node:crypto";
-import { chmod, mkdir as mkdir9, readFile as readFile10, readdir as readdir6, stat as stat3, writeFile as writeFile8 } from "node:fs/promises";
+import { chmod, mkdir as mkdir9, readFile as readFile10, readdir as readdir6, stat as stat4, writeFile as writeFile8 } from "node:fs/promises";
 import { dirname as dirname9, join as join5, relative as relative4, resolve as resolve12 } from "node:path";
 function hash(content) {
   return createHash3("sha256").update(content).digest("hex");
@@ -3054,7 +3067,7 @@ async function planInstall(options) {
   const edited = [];
   for (const directory of KNOWLEDGE_DIRECTORIES) {
     const path = resolve12(options.target, directory);
-    const present = await stat3(path).then(
+    const present = await stat4(path).then(
       (entry) => entry.isDirectory(),
       () => false
     );
@@ -3454,7 +3467,7 @@ __export(leaves_exports, {
   inspectLeaves: () => inspectLeaves,
   renderLeaves: () => renderLeaves
 });
-import { stat as stat4 } from "node:fs/promises";
+import { stat as stat5 } from "node:fs/promises";
 import { resolve as resolve13, sep as sep3 } from "node:path";
 async function inspectLeaf(entry, now = /* @__PURE__ */ new Date()) {
   const base = {
@@ -3463,12 +3476,12 @@ async function inspectLeaf(entry, now = /* @__PURE__ */ new Date()) {
     path: entry.path,
     graph: "unreachable"
   };
-  const reachable = await stat4(entry.path).then(
+  const reachable = await stat5(entry.path).then(
     (found) => found.isDirectory(),
     () => false
   );
   if (!reachable) return base;
-  const graph = await stat4(resolve13(entry.path, GRAPH_PATH)).catch(() => void 0);
+  const graph = await stat5(resolve13(entry.path, GRAPH_PATH)).catch(() => void 0);
   if (!graph) return { ...base, graph: "missing" };
   const ageDays = Math.floor((now.getTime() - graph.mtimeMs) / 864e5);
   return { ...base, graph: ageDays > STALE_AFTER_DAYS ? "stale" : "ready", ageDays };
@@ -3824,9 +3837,9 @@ __export(doctor_exports, {
   runDoctor: () => runDoctor
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { access, readFile as readFile12, readdir as readdir8, stat as stat5 } from "node:fs/promises";
+import { access, readFile as readFile12, readdir as readdir8, stat as stat6 } from "node:fs/promises";
 import { resolve as resolve16 } from "node:path";
-async function exists(path) {
+async function exists2(path) {
   return access(path).then(
     () => true,
     () => false
@@ -3877,7 +3890,7 @@ async function runDoctor(targetInput, options = {}) {
   }
   const missing = [];
   for (const path of Object.keys(state.files)) {
-    if (!await exists(resolve16(target, path))) missing.push(path);
+    if (!await exists2(resolve16(target, path))) missing.push(path);
   }
   checks.push({
     name: "installed-files",
@@ -3894,7 +3907,7 @@ async function runDoctor(targetInput, options = {}) {
   });
   const absentDirs = [];
   for (const directory of KNOWLEDGE_DIRECTORIES) {
-    const found = await stat5(resolve16(target, directory)).then(
+    const found = await stat6(resolve16(target, directory)).then(
       (entry) => entry.isDirectory(),
       () => false
     );
@@ -3908,7 +3921,7 @@ async function runDoctor(targetInput, options = {}) {
   });
   for (const directory of SKILL_DIRS) {
     const skill = resolve16(target, directory, "SKILL.md");
-    const present = await exists(skill);
+    const present = await exists2(skill);
     const frontmatter2 = present ? (await readFile12(skill, "utf8")).startsWith("---\nname: wfctl") : false;
     checks.push({
       name: `skill:${directory.split("/")[0]}`,
@@ -3925,7 +3938,7 @@ async function runDoctor(targetInput, options = {}) {
     ...block.includes("wfctl:begin") ? {} : { remedy: "wfctl init knowledge" }
   });
   for (const guard of await guardStatus(target)) {
-    const script = await exists(
+    const script = await exists2(
       resolve16(target, RUNTIME_DIR, guard.guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard.guard}.mjs`)
     );
     checks.push({

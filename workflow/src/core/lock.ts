@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
 
@@ -27,6 +27,15 @@ import { GateRefusal } from "./gates.js";
  * is a distributed lock would be a worse lie than having none.
  */
 const STALE_AFTER_MS = 30_000;
+/**
+ * How long a lock may exist without saying who holds it.
+ *
+ * The gap between creating the directory and writing the holder file is a
+ * couple of syscalls; a second is many orders of magnitude of headroom. It has
+ * to be well inside `WAIT_MS`, because a bound a waiting caller never reaches
+ * is not a bound at all — see `abandoned`.
+ */
+const UNDESCRIBED_AFTER_MS = 1_000;
 const RETRY_MS = 10;
 const WAIT_MS = 10_000;
 
@@ -59,12 +68,31 @@ async function readHolder(target: string): Promise<Holder | undefined> {
  * An absent holder file means the lock was taken microseconds ago and has not
  * described itself yet — treating that as abandoned is what let two callers in.
  * The one case that must not wedge the repository forever is a process that
- * died between creating the directory and writing the file, which the age bound
- * covers.
+ * died between creating the directory and writing the file.
+ *
+ * That case *did* wedge it. The age of an undescribed lock was measured from
+ * when the current caller started waiting rather than from when the lock was
+ * created, and the bound (30s) sat outside the wait bound (10s) — so every
+ * caller gave up before its own clock could ever reach it. A directory left by
+ * a process killed at the wrong microsecond made the record permanently
+ * unwritable by anything, with a refusal blaming a session that no longer
+ * existed. The lock's own mtime answers the question the caller's stopwatch
+ * cannot: how long has this thing been here without describing itself.
  */
-async function abandoned(target: string, since: number): Promise<boolean> {
+async function undescribedFor(target: string): Promise<number> {
+  try {
+    return Date.now() - (await stat(lockPath(target))).mtimeMs;
+  } catch {
+    // Gone between the EEXIST and here: not abandoned, just finished.
+    return 0;
+  }
+}
+
+async function abandoned(target: string): Promise<boolean> {
   const holder = await readHolder(target);
-  if (!holder) return Date.now() - since > STALE_AFTER_MS;
+  if (!holder) return (await undescribedFor(target)) > UNDESCRIBED_AFTER_MS;
+  // A pid the OS has since handed to an unrelated process would otherwise look
+  // alive forever; the age bound is the backstop for that and nothing else.
   if (Date.now() - holder.at > STALE_AFTER_MS) return true;
   try {
     process.kill(holder.pid, 0);
@@ -78,7 +106,6 @@ export async function withLock<T>(target: string, work: () => Promise<T>): Promi
   const path = lockPath(target);
   const token = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   const deadline = Date.now() + WAIT_MS;
-  const waitingSince = Date.now();
   await mkdir(dirname(path), { recursive: true });
 
   for (;;) {
@@ -90,7 +117,7 @@ export async function withLock<T>(target: string, work: () => Promise<T>): Promi
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 
-      if (await abandoned(target, waitingSince)) {
+      if (await abandoned(target)) {
         /**
          * Reclaim only the holder we judged. Deleting the directory outright
          * would take whatever a live caller had created in the meantime.

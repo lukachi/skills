@@ -16,11 +16,41 @@ import { dirname, isAbsolute, resolve, sep } from "node:path";
  * The last component is therefore resolved with `lstat`/`readlink`, which
  * answer for a link whether or not its target exists.
  */
+const MAX_LINKS = 64;
+
+/**
+ * Resolve the deepest ancestor that exists and re-attach the rest.
+ *
+ * This is the whole answer for a path that is about to be created, and it is
+ * also the only honest answer when link-following gives out. The exhaustion
+ * branch used to return `resolve(path)` — lexical, never canonicalised — so a
+ * symlink cycle anywhere in a path produced an answer in the *unresolved*
+ * namespace. On any host where the repository sits under a symlinked prefix
+ * (`/tmp` -> `/private/tmp`, `/var` -> `/private/var`) that answer compares
+ * unequal to every canonical base, `relative()` returns a `..` path, and the
+ * write guard reads it as outside the repository and allows it. A cycle made
+ * every fence fail open.
+ */
+function settle(from: string, trailing: readonly string[]): string {
+  let node = from;
+  const rest = [...trailing];
+  for (;;) {
+    try {
+      return [realpathSync.native(node), ...rest].join(sep);
+    } catch {
+      const parent = dirname(node);
+      if (parent === node) return [node, ...rest].join(sep);
+      rest.unshift(node.slice(parent.length + 1));
+      node = parent;
+    }
+  }
+}
+
 export function canonical(path: string): string {
   let current = resolve(path);
   const trailing: string[] = [];
 
-  for (let depth = 0; depth < 64; depth += 1) {
+  for (let depth = 0; depth < MAX_LINKS; depth += 1) {
     // A symlink is followed even when it dangles; that is the whole point.
     try {
       if (lstatSync(current).isSymbolicLink()) {
@@ -31,17 +61,13 @@ export function canonical(path: string): string {
     } catch {
       // Not there at all: fall through and resolve what is.
     }
-
-    try {
-      return [realpathSync.native(current), ...trailing].join(sep);
-    } catch {
-      const parent = dirname(current);
-      if (parent === current) return [current, ...trailing].join(sep);
-      trailing.unshift(current.slice(parent.length + 1));
-      current = parent;
-    }
+    return settle(current, trailing);
   }
-  return resolve(path);
+
+  // Out of link budget: a cycle, or a chain deeper than any real tree. Answer
+  // in the canonical namespace anyway — `realpathSync` fails on the cycle and
+  // `settle` climbs to the nearest ancestor that resolves.
+  return settle(current, trailing);
 }
 
 /** Whether `target` is `base` or sits underneath it, both fully resolved. */
@@ -50,7 +76,6 @@ export function contains(base: string, target: string): boolean {
   const path = canonical(target);
   return path === root || path.startsWith(`${root}${sep}`);
 }
-
 
 /**
  * Find the knowledge repository this invocation belongs to.
@@ -62,10 +87,9 @@ export function contains(base: string, target: string): boolean {
  * the state file the installer writes.
  */
 export function findRepositoryRoot(from: string): string {
-  const { existsSync } = requireFs();
   let current = canonical(from);
   for (let depth = 0; depth < 32; depth += 1) {
-    if (existsSync(resolve(current, ".workflow/state.json"))) return current;
+    if (exists(resolve(current, ".workflow/state.json"))) return current;
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
@@ -73,7 +97,11 @@ export function findRepositoryRoot(from: string): string {
   return canonical(from);
 }
 
-function requireFs(): { existsSync: (path: string) => boolean } {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  return { existsSync: (path: string) => { try { lstatSync(path); return true; } catch { return false; } } };
+function exists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
