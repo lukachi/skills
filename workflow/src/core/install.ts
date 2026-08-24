@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
+import { canonical } from "./paths-resolve.js";
 import { withLock, writeAtomic } from "./lock.js";
 
 export const MANAGED_BEGIN = "<!-- wfctl:begin -->";
@@ -552,8 +553,22 @@ export async function installManagedBlock(target: string, distribution: string):
   const body = (await readFile(resolve(distribution, "templates/agents/managed.md"), "utf8")).trim();
   const block = `${MANAGED_BEGIN}\n${body}\n${MANAGED_END}\n`;
 
+  /**
+   * Two names, one file when the maintainer has linked them.
+   *
+   * `CLAUDE.md` symlinked to `AGENTS.md` is a common way to keep one set of
+   * instructions, and writing both names turned the link into a second regular
+   * file — so the two drifted from the next edit onward, silently, and the
+   * maintainer's arrangement was undone by an upgrade. Writing through the link
+   * keeps it: the second name resolves to the first and is already done.
+   */
+  const written = new Set<string>();
   for (const name of ["AGENTS.md", "CLAUDE.md"]) {
     const path = resolve(target, name);
+    const real = canonical(path);
+    if (written.has(real)) continue;
+    written.add(real);
+
     const existing = await readIfPresent(path);
 
     if (existing === undefined) {

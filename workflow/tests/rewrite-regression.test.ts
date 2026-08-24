@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -1075,4 +1075,33 @@ test("brief: the JSON surface reports what the prose surface reports", async () 
   assert.ok(json.signals.some((s) => s.id === "2026-08-23-stranded"),
     "brief --json said the repository held nothing while brief listed unreachable work");
   assert.ok(json.signals.some((s) => /capture/.test(s.summary)));
+});
+
+test("install: a CLAUDE.md symlinked to AGENTS.md stays a symlink", async () => {
+  const root = await installed();
+  const claude = join(root, "CLAUDE.md");
+  await rm(claude, { force: true });
+  symlinkSync("AGENTS.md", claude);
+
+  wfctl(root, ["init", "knowledge", "--target", root]);
+
+  assert.ok(lstatSync(claude).isSymbolicLink(),
+    "an upgrade replaced the maintainer's symlink with a second regular file");
+  assert.equal(
+    await readFile(claude, "utf8"),
+    await readFile(join(root, "AGENTS.md"), "utf8"),
+  );
+});
+
+test("install: the ignore file matches what the runtime actually writes", async () => {
+  const root = await installed();
+  const ignore = await readFile(join(root, ".workflow/.gitignore"), "utf8");
+
+  // `*.lock/` was a directory pattern and the advisory lock is a file, so every
+  // lock a session took showed up in `git status`.
+  assert.match(ignore, /^\*\.lock$/m);
+  // The pointer is a machine-local binding and the one file two branches always
+  // both write; tracking it turned an ordinary merge into a conflict whose
+  // resolution dropped a flow's whole handoff.
+  assert.match(ignore, /^flows\/current$/m);
 });

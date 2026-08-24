@@ -3,4 +3,17 @@
 # knowledge, and committing it makes every session dirty the tree.
 current/
 backups/
-*.lock/
+
+# The advisory lock is a file, not a directory. `*.lock/` matched nothing and
+# left every lock a session took sitting in `git status`.
+*.lock
+*.lock.stale.*
+*.tmp
+
+# Which flow this checkout is bound to is a property of this machine, not of the
+# project. It is also the one file two branches always both write, so tracking
+# it made an ordinary merge conflict on work that had nothing to do with it —
+# and the resolution dropped a flow's whole handoff to a single line, with a
+# destructive command as the only remedy offered. The records themselves are
+# shared state and stay tracked.
+flows/current

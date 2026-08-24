@@ -3758,8 +3758,12 @@ async function installManagedBlock(target, distribution) {
 ${body}
 ${MANAGED_END}
 `;
+  const written = /* @__PURE__ */ new Set();
   for (const name of ["AGENTS.md", "CLAUDE.md"]) {
     const path = resolve13(target, name);
+    const real = canonical(path);
+    if (written.has(real)) continue;
+    written.add(real);
     const existing = await readIfPresent(path);
     if (existing === void 0) {
       await writeFile9(path, block, "utf8");
@@ -3900,6 +3904,7 @@ var init_install = __esm({
   "src/core/install.ts"() {
     "use strict";
     init_gates();
+    init_paths_resolve();
     init_lock();
     MANAGED_BEGIN = "<!-- wfctl:begin -->";
     MANAGED_END = "<!-- wfctl:end -->";
