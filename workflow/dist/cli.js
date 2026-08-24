@@ -1336,24 +1336,30 @@ function frontmatter(body) {
   }
   return fields;
 }
+function isMap(path) {
+  const name = path.split("/").pop() ?? "";
+  return name === "index.md" || name === "log.md";
+}
 function inspectPage(path, body) {
   const issues = [];
   const fields = frontmatter(body);
-  for (const required of ["view", "purpose", "audience"]) {
-    if (!fields[required]) {
-      issues.push({
-        path,
-        problem: `no ${required} declared`,
-        remedy: `Add ${required}: to the frontmatter`
-      });
+  if (!isMap(path)) {
+    for (const required of ["view", "purpose", "audience"]) {
+      if (!fields[required]) {
+        issues.push({
+          path,
+          problem: `no ${required} declared`,
+          remedy: `Add ${required}: to the frontmatter`
+        });
+      }
     }
   }
   const view = fields.view;
-  if (view && view !== "product" && view !== "engineering") {
+  if (view && !VIEWS.has(view)) {
     issues.push({
       path,
-      problem: `view is ${view}; the roads are product and engineering`,
-      remedy: "Set view: product or view: engineering"
+      problem: `view is ${view}; a page is on the product road, the engineering road, or is a decision serving both`,
+      remedy: "Set view: product, view: engineering, or view: decision"
     });
   }
   const cited = UNTRUSTED.find((untrusted) => body.includes(untrusted));
@@ -1505,13 +1511,14 @@ function renderIssues(issues, pages = 1) {
     "is true or whether a reader can act on it \u2014 that is the semantic gate's job."
   ].join("\n");
 }
-var KNOWLEDGE_DIR, UNTRUSTED;
+var KNOWLEDGE_DIR, UNTRUSTED, VIEWS;
 var init_curated = __esm({
   "src/core/curated.ts"() {
     "use strict";
     init_gates();
     KNOWLEDGE_DIR = "knowledge";
     UNTRUSTED = ["reconstruction/raw/", "reconstruction/active/", "intake/", "raw/"];
+    VIEWS = /* @__PURE__ */ new Set(["product", "engineering", "decision"]);
   }
 });
 

@@ -103,6 +103,22 @@ Three things hold:
   elsewhere is a check this tool never ran, and a flow reporting checks nobody
   ran is the green gate the review exists to stop.
 
+## Two roads over one project
+
+Curated knowledge explains the same project twice, and every page says which
+explanation it is. Neither road is derived from the other.
+
+| `view:` | Explains | To |
+| --- | --- | --- |
+| `product` | behaviour, audience, capabilities, rules, exceptions, delivery | a client or product manager, without source knowledge |
+| `engineering` | implementation, ownership, contracts, failures, operations | an engineer, linking product meaning rather than redefining it |
+| `decision` | why a hard-to-reverse choice was made, in their words, dated | both — a decision is not on a road, it is the history they share |
+
+A product page carrying code or a source path is refused: a product page
+explaining implementation has stopped being the product road. `wfctl guide
+curate-product` and `wfctl guide curate-engineering` carry each road's contract,
+and the tool prints this again when you draft a page.
+
 ## The two decisions that are the maintainer's
 
 **What the work is**, before it starts. **What the project says about itself**,

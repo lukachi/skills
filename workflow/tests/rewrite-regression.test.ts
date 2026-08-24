@@ -1153,3 +1153,39 @@ test("promotion: a page named from the repository root does not land one level d
     "the corpus prefix was kept and the page will be filed one level too deep");
   assert.match(drafted.stdout, /promotion\/areas\/world\.md/);
 });
+
+test("knowledge: a map is not a concept, and a decision is not on a road", async () => {
+  const root = await installed();
+  await mkdir(join(root, "knowledge/areas/combat/decisions"), { recursive: true });
+
+  // The contract asks `view`, `purpose` and `audience` of every *concept*, and
+  // says separately that indexes are maps. It also says a decision serves both
+  // roads rather than forming a third stream — so asking it to pick one asks it
+  // to be what the contract says it is not. Both rules existed only in the
+  // validator, and between them they reported 86 problems across two real
+  // corpora that were not problems.
+  await writeFile(join(root, "knowledge/index.md"), "# Knowledge\n\n- [combat](areas/combat/index.md)\n", "utf8");
+  await writeFile(join(root, "knowledge/areas/combat/index.md"),
+    "# Combat\n\n- [a call](decisions/a-call.md)\n", "utf8");
+  await writeFile(join(root, "knowledge/areas/combat/decisions/a-call.md"),
+    "---\nview: decision\npurpose: decision-history\naudience:\n  - maintainer\n  - engineer\n---\n\n# A call\n\nThey said so on a date.\n",
+    "utf8");
+
+  const result = wfctl(root, ["knowledge", "validate"]);
+  assert.doesNotMatch(result.stdout, /no (view|purpose|audience) declared/,
+    "an index was asked for the frontmatter of a concept");
+  assert.doesNotMatch(result.stdout, /view is decision/,
+    "a decision was asked to pick a road the contract says it is not on");
+});
+
+test("knowledge: the roads are delivered where the page is created", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "road", "--weight", "lightweight", "--attested", "go"]);
+
+  // They lived in two guide topics no command printed — an instruction behind a
+  // branch the model may not take, which is the shape this tool exists to
+  // remove. Drafting a page is the moment the road is chosen.
+  const drafted = wfctl(root, ["work", "promotion", "draft", "areas/x.md"]).stdout;
+  assert.match(drafted, /Which road the page is on/);
+  assert.match(drafted, /view: engineering|`engineering`/);
+});

@@ -81,26 +81,56 @@ function frontmatter(body: string): Record<string, string> {
  * whether the claim holds and whether a reader can act on it — are the two the
  * semantic gate exists for.
  */
+/**
+ * A map is not a concept.
+ *
+ * The knowledge contract requires `view`, `purpose` and `audience` of every
+ * *concept*, and says separately that `knowledge/index.md` is the entry point
+ * and Area indexes are the primary maps. This check demanded all three of every
+ * file, so twenty-four index and log pages across two real repositories were
+ * reported as broken against a rule the contract does not state. They were not
+ * broken; the check was.
+ */
+function isMap(path: string): boolean {
+  const name = path.split("/").pop() ?? "";
+  return name === "index.md" || name === "log.md";
+}
+
+/**
+ * A decision is not on a road.
+ *
+ * The contract says decision records "provide rationale and durable history to
+ * both roads rather than forming a third flat document stream" — so asking a
+ * decision to pick `product` or `engineering` asks it to be something the
+ * contract says it is not. Fourteen decision pages across two repositories
+ * already declared `view: decision` with `purpose: decision-history` and an
+ * audience naming every role, which is that same statement in the corpus's own
+ * words. The rule that rejected them existed only here.
+ */
+const VIEWS = new Set(["product", "engineering", "decision"]);
+
 export function inspectPage(path: string, body: string): PageIssue[] {
   const issues: PageIssue[] = [];
   const fields = frontmatter(body);
 
-  for (const required of ["view", "purpose", "audience"]) {
-    if (!fields[required]) {
-      issues.push({
-        path,
-        problem: `no ${required} declared`,
-        remedy: `Add ${required}: to the frontmatter`,
-      });
+  if (!isMap(path)) {
+    for (const required of ["view", "purpose", "audience"]) {
+      if (!fields[required]) {
+        issues.push({
+          path,
+          problem: `no ${required} declared`,
+          remedy: `Add ${required}: to the frontmatter`,
+        });
+      }
     }
   }
 
   const view = fields.view;
-  if (view && view !== "product" && view !== "engineering") {
+  if (view && !VIEWS.has(view)) {
     issues.push({
       path,
-      problem: `view is ${view}; the roads are product and engineering`,
-      remedy: "Set view: product or view: engineering",
+      problem: `view is ${view}; a page is on the product road, the engineering road, or is a decision serving both`,
+      remedy: "Set view: product, view: engineering, or view: decision",
     });
   }
 
