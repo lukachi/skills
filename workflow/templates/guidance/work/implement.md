@@ -106,3 +106,17 @@ source evidence, the limitations, the placeholders, and any unresolved risk. A
 partial outcome is not marked complete.
 
 Ask before you commit. Nothing here commits on its own.
+
+## When the last unit is delivered, verify
+
+Do not ask first. Verification is the second half of implementing — deliver,
+verify, fix what the review broke — and permission to check your own work is an
+answer that is "yes" every time. The maintainer decides what the work is and
+what the project then says about itself; whether the work gets checked is not
+one of their two decisions, and putting it to them spends a turn and delays the
+one step that can still find the change wrong.
+
+  wfctl work verify --review <artifact>
+
+It is delegated to a separate agent because you cannot review your own work, not
+because somebody has to open it.

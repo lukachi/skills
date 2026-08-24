@@ -288,7 +288,7 @@ var init_steps = __esm({
       },
       {
         step: "verified",
-        demands: "An adversarial review, run by a separate agent, whose every attack is an executable test. You cannot run it yourself: the agent that wrote the tests can write the review that approves them.",
+        demands: "An adversarial review, run by a separate agent, whose every attack is an executable test. You cannot run it yourself: the agent that wrote the tests can write the review that approves them. Nobody authorises it \u2014 verification is the second half of implementing, not a milestone the maintainer grants, and asking spends a turn on an answer that is yes every time. Start it as soon as the units are delivered.",
         command: "wfctl work verify --review <artifact>"
       },
       {

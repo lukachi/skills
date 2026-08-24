@@ -108,11 +108,19 @@ Three things hold:
 **What the work is**, before it starts. **What the project says about itself**,
 afterwards.
 
-Closing is neither. Every part of "is this done" is already checked — criteria,
-receipts, revisions, terminal units — and asking them to confirm arithmetic they
-cannot check better than the tool costs a night. It returns to them in exactly
-one case, and the tool names it: delivery no longer matches the framing they
-approved.
+**Verification is neither, and closing is neither.**
+
+Verification is part of the work, not a milestone to be granted: implement,
+verify, fix what the review broke. Start it the moment the units are delivered,
+the way you would run a test suite. Asking permission to check your own work
+spends a turn on an answer that is "yes" every time, and the one time it is not,
+they will have said so already.
+
+Closing is neither either. Every part of "is this done" is already checked —
+criteria, receipts, revisions, terminal units — and asking them to confirm
+arithmetic they cannot check better than the tool costs a night. It returns to
+them in exactly one case, and the tool names it: delivery no longer matches the
+framing they approved.
 
 Approving a framing settles what the work is, never that it begins. If they
 approve and say not yet, park it; only their own word releases it.

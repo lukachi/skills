@@ -1124,3 +1124,17 @@ test("steps: re-recording the current step does not invalidate its checkpoint", 
   assert.equal(advanced.status, 0,
     `re-recording the current step invalidated a fresh checkpoint:\n${advanced.stdout}`);
 });
+
+test("verify: the tool says who authorises it, because silence was read as the maintainer", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "who", "--weight", "significant", "--attested", "go"]);
+
+  // The docs named the maintainer's two decisions and said closing was neither,
+  // and never mentioned verification at all — so an agent filled the gap the
+  // conservative way and waited for permission it did not need.
+  // The refusal for a step that needs `verified` first is where its demand text
+  // reaches the agent.
+  const refused = wfctl(root, ["work", "close", "--outcome", "completed"]).stdout;
+  assert.match(refused, /Nobody authorises it/,
+    "the demand text still leaves who starts verification unsaid");
+});

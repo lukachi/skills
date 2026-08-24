@@ -96,6 +96,11 @@ wfctl work verify --review <path>
 }
 ```
 
+Nobody authorises this. Verification runs on your own initiative as soon as the
+units are delivered — it is the second half of implementing, not a gate the
+maintainer opens. The review is delegated because you cannot review your own
+work, not because someone else has to permit it.
+
 `lens` is one of `intent`, `correctness`, `contract`, `failure-paths`,
 `state-and-data`, `delivery-reality`, `test-integrity` — hyphenated exactly.
 
