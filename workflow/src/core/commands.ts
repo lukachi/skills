@@ -269,10 +269,21 @@ export async function advance(context: CommandContext, to: WorkStep): Promise<Co
     throw error;
   }
 
+  /**
+   * Re-recording the step the flow is already on does not move it.
+   *
+   * Stamping unconditionally restarted the clock the checkpoint gate measures
+   * against, so a flow that had just been checkpointed was told its checkpoint
+   * was stale — and the only way out was another checkpoint, which the next
+   * re-run invalidated again. A real session spent four attempts on `aligned`
+   * and five on `framed` inside that loop. The step is idempotent; the clock is
+   * for movement.
+   */
+  const moved = flow.step !== to;
   const advanced = await mutateFlow(context.root, flow.id, (current) => ({
     ...current,
     step: to,
-    steppedAt: new Date().toISOString(),
+    ...(moved ? { steppedAt: new Date().toISOString() } : {}),
   }));
 
   const following = nextStep(to) ?? to;

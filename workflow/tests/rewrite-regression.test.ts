@@ -1105,3 +1105,22 @@ test("install: the ignore file matches what the runtime actually writes", async 
   // resolution dropped a flow's whole handoff.
   assert.match(ignore, /^flows\/current$/m);
 });
+
+test("steps: re-recording the current step does not invalidate its checkpoint", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "loop", "--weight", "significant", "--attested", "go"]);
+  wfctl(root, ["work", "step", "aligned"]);
+  for (const item of ["E14", "E15", "E16"]) {
+    wfctl(root, ["recall", "answer", item, "--answer", "x", "--route", "qmd", "--source", "k"]);
+  }
+  wfctl(root, ["checkpoint", "--summary", "s", "--handoff", "h", "--last", "l", "--next", "n"]);
+
+  // Stamping unconditionally restarted the clock the checkpoint gate measures
+  // against, so the only way out was another checkpoint, which the next re-run
+  // invalidated again. A real session spent four attempts on `aligned` and five
+  // on `framed` inside that loop.
+  wfctl(root, ["work", "step", "aligned"]);
+  const advanced = wfctl(root, ["work", "step", "framed"]);
+  assert.equal(advanced.status, 0,
+    `re-recording the current step invalidated a fresh checkpoint:\n${advanced.stdout}`);
+});

@@ -2750,10 +2750,11 @@ async function advance(context, to) {
     if (error instanceof GateRefusal) return refused(error);
     throw error;
   }
+  const moved = flow.step !== to;
   const advanced = await mutateFlow(context.root, flow.id, (current) => ({
     ...current,
     step: to,
-    steppedAt: (/* @__PURE__ */ new Date()).toISOString()
+    ...moved ? { steppedAt: (/* @__PURE__ */ new Date()).toISOString() } : {}
   }));
   const following = nextStep(to) ?? to;
   const owed = (advanced.checkpoint?.updatedAt ?? "") < (advanced.steppedAt ?? "");
