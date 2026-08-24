@@ -998,7 +998,13 @@ test("unknown commands and flags are named", async () => {
 
   const flag = wfctl(root, ["brief", "--banana"]);
   assert.equal(flag.status, 2, "an unknown flag was silently ignored");
-  assert.match(flag.stdout, /Unknown flag\(s\): --banana/);
+  assert.match(flag.stdout, /brief does not read --banana/);
+
+  // A flag real elsewhere is the more common mistake, and the refusal says
+  // where it is read rather than only that it is wrong here.
+  const misplaced = wfctl(root, ["capture", "--worktree", "x", "something"]);
+  assert.equal(misplaced.status, 2, "a flag from another command was accepted");
+  assert.match(misplaced.stdout, /--worktree belongs to: /);
 });
 
 test("knowledge validate does not report an all-clear on an empty corpus", async () => {

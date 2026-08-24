@@ -3611,10 +3611,10 @@ function decideWrite(input) {
     if (error instanceof GateRefusal) return { refusal: error };
     throw error;
   }
-  const normalized = normalize(knowledgeRoot, target);
+  const normalized = normalize2(knowledgeRoot, target);
   const first = input.writtenThisUnit.length === 0;
   const covered = flow.recall.covered.some(
-    (entry) => normalize(knowledgeRoot, entry) === normalized
+    (entry) => normalize2(knowledgeRoot, entry) === normalized
   );
   if (!first && covered) return {};
   if (first && (flow.recall.counters.graphify ?? 0) === 0) {
@@ -3639,7 +3639,7 @@ wfctl guide structure \u2014 searching by graph before by string`
     message: [`[wfctl] ${reason}`, input.guidance, renderCounterLine(flow.step, flow.recall)].filter((part) => Boolean(part)).join("\n\n")
   };
 }
-function normalize(root, path) {
+function normalize2(root, path) {
   const absolute = resolve14(root, path);
   return relative5(root, absolute) || absolute;
 }
@@ -4080,14 +4080,160 @@ var init_doctor = __esm({
 // src/core/cli.ts
 init_commands();
 init_gates();
-init_recall();
-init_install();
-init_promotion_queue();
-init_types();
 import { existsSync, realpathSync as realpathSync2 } from "node:fs";
 import { readFile as readFile13 } from "node:fs/promises";
 import { dirname as dirname12, resolve as resolve17 } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// src/core/flags.ts
+init_gates();
+var NONE = { value: [], boolean: [] };
+var COMMAND_FLAGS = {
+  "brief": { value: [], boolean: ["json"] },
+  "handoff": NONE,
+  "checkpoint": { value: ["summary", "handoff", "last", "next", "todo"], boolean: [] },
+  "work start": { value: ["title", "weight", "attested"], boolean: [] },
+  "work adopt": { value: ["attested", "from", "reason"], boolean: [] },
+  "work list": NONE,
+  "work step": NONE,
+  "work issue create": { value: ["title", "satisfies"], boolean: [] },
+  "work issue list": NONE,
+  "work issue note": { value: ["note"], boolean: [] },
+  "work issue claim": { value: ["repository", "worktree"], boolean: [] },
+  "work issue complete": NONE,
+  "work issue drop": { value: ["reason"], boolean: [] },
+  "work park": { value: ["reason"], boolean: [] },
+  "work release": { value: ["attested"], boolean: [] },
+  "work verify": { value: ["review"], boolean: [] },
+  "work close": { value: ["outcome"], boolean: [] },
+  "work promote": { value: ["subject", "summary", "bundle", "settles"], boolean: [] },
+  "work promotion draft": NONE,
+  "work promotion list": NONE,
+  "capture": { value: [], boolean: ["awaits"] },
+  "repo add": { value: ["path", "worktree", "checkout"], boolean: [] },
+  "repo list": NONE,
+  "repo remove": { value: ["worktree"], boolean: [] },
+  "reconstruct start": NONE,
+  "reconstruct status": NONE,
+  "reconstruct scope": {
+    value: ["repository", "revision", "raw", "in", "not"],
+    boolean: []
+  },
+  "reconstruct read": { value: ["at"], boolean: [] },
+  "reconstruct exclude": { value: ["reason"], boolean: [] },
+  "reconstruct contradiction": { value: ["subject", "side"], boolean: [] },
+  "reconstruct resolve": { value: ["resolution"], boolean: [] },
+  "reconstruct subject": NONE,
+  "reconstruct probe": {
+    value: ["question", "page", "asker", "answer"],
+    boolean: ["passed"]
+  },
+  "reconstruct stage": NONE,
+  "reconstruct abandon": { value: ["reason"], boolean: [] },
+  "reconstruct close": NONE,
+  "trajectory append": {
+    value: ["subject", "summary", "axis", "claim", "at", "change", "settles"],
+    boolean: []
+  },
+  "trajectory list": NONE,
+  "trajectory show": NONE,
+  "recall list": NONE,
+  "recall answer": { value: ["answer", "route", "source"], boolean: [] },
+  "recall route": { value: ["covered"], boolean: [] },
+  "flow close": NONE,
+  "init": { value: ["target"], boolean: [] },
+  "guide": NONE,
+  "debts": NONE,
+  "decided": NONE,
+  "knowledge validate": { value: ["page"], boolean: [] },
+  "knowledge hash": { value: ["page"], boolean: [] },
+  "doctor": NONE,
+  "guards": NONE,
+  "hook write": { value: ["target"], boolean: [] },
+  "help": NONE
+};
+var ANYWHERE = /* @__PURE__ */ new Map();
+for (const [command, spec] of Object.entries(COMMAND_FLAGS)) {
+  for (const name of [...spec.value, ...spec.boolean]) {
+    ANYWHERE.set(name, [...ANYWHERE.get(name) ?? [], command]);
+  }
+}
+function resolveCommand(argv) {
+  for (let length = Math.min(3, argv.length); length >= 1; length -= 1) {
+    const key = argv.slice(0, length).join(" ");
+    const spec = COMMAND_FLAGS[key];
+    if (spec) return { key, spec };
+  }
+  return void 0;
+}
+function flagName(token) {
+  return token.slice(2).split("=")[0] ?? "";
+}
+var FLAG_SHAPED = /^--[a-z][a-z0-9-]*(=.*)?$/;
+function isCaptureBody(argv, index) {
+  if (argv[0] !== "capture" || index === 0) return false;
+  return !FLAG_SHAPED.test(argv[index] ?? "");
+}
+function normalize(argv) {
+  const resolved = resolveCommand(argv);
+  if (!resolved) return argv;
+  const { spec } = resolved;
+  const out = [];
+  for (const [index, token] of argv.entries()) {
+    if (!token.startsWith("--") || !token.includes("=") || isCaptureBody(argv, index)) {
+      out.push(token);
+      continue;
+    }
+    const name = flagName(token);
+    const value = token.slice(name.length + 3);
+    if (spec.boolean.includes(name)) {
+      throw new GateRefusal(
+        `--${name} takes no value.`,
+        `--${name}`,
+        `It was given as ${token}. Its presence is the whole meaning; a value attached to it is read by nobody.`
+      );
+    }
+    if (spec.value.includes(name)) {
+      if (!value) {
+        throw new GateRefusal(`--${name} was given without a value.`, `--${name} "<value>"`);
+      }
+      out.push(`--${name}`, value);
+      continue;
+    }
+    out.push(token);
+  }
+  return out;
+}
+function validate(argv) {
+  const resolved = resolveCommand(argv);
+  if (!resolved) return;
+  const { key, spec } = resolved;
+  const unknown = [];
+  for (const [index, token] of argv.entries()) {
+    if (!token.startsWith("--") || isCaptureBody(argv, index)) continue;
+    const name = flagName(token);
+    if (!name || spec.value.includes(name) || spec.boolean.includes(name)) continue;
+    unknown.push(name);
+  }
+  if (unknown.length === 0) return;
+  const detail = unknown.map((name) => {
+    const elsewhere = ANYWHERE.get(name);
+    return elsewhere ? `  --${name} belongs to: ${elsewhere.join(", ")}` : `  --${name} is read by no command`;
+  }).join("\n");
+  throw new GateRefusal(
+    `${key} does not read ${unknown.map((name) => `--${name}`).join(", ")}.`,
+    "wfctl help",
+    `${detail}
+
+A flag nobody reads is a command running with a meaning you did not intend.`
+  );
+}
+
+// src/core/cli.ts
+init_recall();
+init_install();
+init_promotion_queue();
+init_types();
 var USAGE = `wfctl \u2014 project workflow
 
   brief [--json]               the state of this repository, and what awaits whom
@@ -4195,71 +4341,25 @@ function oneOf(value, allowed, name, fallback) {
   }
   return value;
 }
-var KNOWN_FLAGS = /* @__PURE__ */ new Set([
-  "bundle",
-  "path",
-  "json",
-  "title",
-  "weight",
-  "summary",
-  "handoff",
-  "last",
-  "next",
-  "todo",
-  "answer",
-  "route",
-  "source",
-  "covered",
-  "written",
-  "target",
-  "review",
-  "reason",
-  "attested",
-  "outcome",
-  "subject",
-  "satisfies",
-  "note",
-  "repository",
-  "checkout",
-  "worktree",
-  "page",
-  "at",
-  "axis",
-  "change",
-  "settles",
-  "claim",
-  "in",
-  "not",
-  "raw",
-  "revision",
-  "question",
-  "asker",
-  "passed",
-  "awaits",
-  "dirty",
-  "resolution",
-  "side",
-  "help"
-]);
 async function run2(argv, context) {
-  const scanned = argv[0] === "capture" ? argv.filter((entry) => entry === "--awaits") : argv;
-  const unknown = scanned.filter((entry) => entry.startsWith("--")).map((entry) => entry.slice(2).split("=")[0] ?? "").filter((name) => name && !KNOWN_FLAGS.has(name));
-  if (unknown.length > 0) {
-    return {
-      stdout: new GateRefusal(
-        `Unknown flag(s): ${unknown.map((name) => `--${name}`).join(", ")}`,
-        "wfctl help",
-        "A flag nobody reads is a command running with a meaning you did not intend."
-      ).render(),
-      exitCode: 2
-    };
+  if (argv.includes("--help")) {
+    return { stdout: USAGE, exitCode: 0 };
   }
-  const [group, ...rest] = argv;
+  let scanned;
+  try {
+    scanned = normalize(argv);
+    validate(scanned);
+  } catch (error) {
+    if (error instanceof GateRefusal) {
+      return { stdout: error.render(), exitCode: 2 };
+    }
+    throw error;
+  }
+  const [group, ...rest] = scanned;
   try {
     switch (group) {
       case void 0:
       case "help":
-      case "--help":
         return { stdout: USAGE, exitCode: 0 };
       case "brief": {
         if (rest.includes("--json")) {

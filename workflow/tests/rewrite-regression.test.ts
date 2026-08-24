@@ -420,3 +420,56 @@ test("lock: many processes racing one dead holder still admit exactly one at a t
   const final = JSON.parse(await readFile(target, "utf8")) as { value: number };
   assert.equal(final.value, RACERS, "concurrent reclaim let two callers in");
 });
+
+// ---------------------------------------------------------------------------
+// 5. Arguments
+// ---------------------------------------------------------------------------
+
+test("flags: --name=value reaches the command instead of becoming a positional", async () => {
+  const root = await installed();
+  const created = wfctl(root, ["work", "start", "--title=equals form", "--weight=lightweight"]);
+  assert.equal(created.status, 0, created.stdout);
+
+  const brief = wfctl(root, ["brief"]);
+  assert.match(brief.stdout, /equals form/, "the value was dropped");
+});
+
+test("flags: a boolean flag given a value is refused, not silently recorded", async () => {
+  const root = await installed();
+  const captured = wfctl(root, ["capture", "--awaits=true", "a real finding"]);
+  assert.equal(captured.status, 2, "--awaits=true was accepted");
+  assert.match(captured.stdout, /--awaits takes no value/);
+
+  const { readdir } = await import("node:fs/promises");
+  const inbox = await readdir(join(root, "changes/inbox")).catch(() => [] as string[]);
+  assert.equal(inbox.length, 0, "a refused command still wrote a record");
+});
+
+test("flags: a flag belonging to another command is refused, and named", async () => {
+  const root = await installed();
+  const wrong = wfctl(root, ["capture", "--worktree", "x", "something"]);
+  assert.equal(wrong.status, 2, "a flag from another command was accepted");
+  assert.match(wrong.stdout, /--worktree belongs to: /);
+});
+
+test("flags: a capture whose text opens with dashes is still recordable", async () => {
+  const root = await installed();
+  const body = "--fix the parser, it drops the last token";
+  const captured = wfctl(root, ["capture", body]);
+  assert.equal(captured.status, 0, captured.stdout);
+
+  const { readdir, readFile: read } = await import("node:fs/promises");
+  const inbox = await readdir(join(root, "changes/inbox"));
+  assert.equal(inbox.length, 1);
+  const written = await read(join(root, "changes/inbox", inbox[0] as string), "utf8");
+  assert.match(written, /--fix the parser/, "the body was mangled");
+});
+
+test("flags: --help never performs the command", async () => {
+  const root = await scratch("wfctl-help-");
+  const asked = wfctl(root, ["init", "knowledge", "--target", root, "--help"]);
+  assert.equal(asked.status, 0);
+  assert.match(asked.stdout, /wfctl — project workflow/);
+  assert.equal(existsSync(join(root, ".workflow/state.json")), false,
+    "--help performed the installation");
+});

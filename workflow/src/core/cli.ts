@@ -27,6 +27,7 @@ import {
 } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { GateRefusal } from "./gates.js";
+import { normalize as normalizeFlags, validate as validateFlags } from "./flags.js";
 import { RECALL_ITEMS } from "./recall.js";
 import { applyInstall, assertProfileSupported, planInstall } from "./install.js";
 import { listQueue } from "./promotion-queue.js";
@@ -175,48 +176,40 @@ function oneOf<T extends string>(
 }
 
 /**
- * Flags this CLI accepts anywhere. Anything else is a typo or an obsolete
- * option, and silently ignoring one lets a command run with a meaning nobody
- * intended — the same class as a dropped argument.
+ * Every command enters here, and every command's arguments are normalised and
+ * checked against what that command actually reads before anything runs. See
+ * `flags.ts` for why both halves exist.
  */
-const KNOWN_FLAGS = new Set([
-  "bundle", "path", "json", "title", "weight", "summary", "handoff", "last", "next", "todo",
-  "answer", "route", "source", "covered", "written", "target", "review",
-  "reason", "attested", "outcome", "subject", "satisfies", "note", "repository",
-  "checkout", "worktree", "page", "at", "axis", "change", "settles", "claim",
-  "in", "not", "raw", "revision", "question", "asker", "passed", "awaits",
-  "dirty", "resolution", "side", "help",
-]);
-
 export async function run(argv: string[], context: CommandContext): Promise<{ stdout: string; exitCode: number }> {
   /**
-   * A capture's text is an argument even when it opens with dashes — a finding
-   * phrased "--fix the parser" has to be recordable, and capture is the only
-   * sanctioned outlet while a flow is open.
+   * `--help` is answered before anything runs.
+   *
+   * It used to be a name in the global flag set and nothing more, so
+   * `wfctl init knowledge --help` passed the check, reached `init`, and
+   * performed the installation. A request to be told what a command does must
+   * never be the command.
    */
-  const scanned = argv[0] === "capture" ? argv.filter((entry) => entry === "--awaits") : argv;
-  const unknown = scanned
-    .filter((entry) => entry.startsWith("--"))
-    .map((entry) => entry.slice(2).split("=")[0] ?? "")
-    .filter((name) => name && !KNOWN_FLAGS.has(name));
-  if (unknown.length > 0) {
-    return {
-      stdout: new GateRefusal(
-        `Unknown flag(s): ${unknown.map((name) => `--${name}`).join(", ")}`,
-        "wfctl help",
-        "A flag nobody reads is a command running with a meaning you did not intend.",
-      ).render(),
-      exitCode: 2,
-    };
+  if (argv.includes("--help")) {
+    return { stdout: USAGE, exitCode: 0 };
   }
 
-  const [group, ...rest] = argv;
+  let scanned: string[];
+  try {
+    scanned = normalizeFlags(argv);
+    validateFlags(scanned);
+  } catch (error) {
+    if (error instanceof GateRefusal) {
+      return { stdout: error.render(), exitCode: 2 };
+    }
+    throw error;
+  }
+
+  const [group, ...rest] = scanned;
 
   try {
     switch (group) {
       case undefined:
       case "help":
-      case "--help":
         return { stdout: USAGE, exitCode: 0 };
 
       case "brief": {
