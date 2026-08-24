@@ -521,11 +521,13 @@ export async function workAdopt(
       }));
       return ok(
         compose([
-          `${bundle} absorbed into ${canonical}.`,
-          `It stays in changes/active, marked superseded — the duplicate is the`,
-          `evidence of whatever produced it, and deleting it would take that with it.`,
-          "",
-          `Flow ${updated.id} now spans ${updated.members.length} bundle(s).`,
+          [
+            `${bundle} absorbed into ${canonical}.`,
+            "It stays in changes/active, marked superseded — the duplicate is the",
+            "evidence of whatever produced it, and deleting it would take that with it.",
+            "",
+            `Flow ${updated.id} now spans ${updated.members.length} bundle(s).`,
+          ].join("\n"),
           renderStep(updated),
         ]),
       );
@@ -561,11 +563,12 @@ export async function workAdopt(
     return ok(
       compose([
         `flow ${flow.id} opened around ${bundle}`,
-        "",
-        "Nothing about where it stopped is carried over. Every gate is walked here,",
-        "because a step recorded elsewhere is a check this tool never ran — and a",
-        "flow that reports checks nobody ran is the green gate the review exists to",
-        "stop.",
+        [
+          "Nothing about where it stopped is carried over. Every gate is walked here,",
+          "because a step recorded elsewhere is a check this tool never ran — and a",
+          "flow that reports checks nobody ran is the green gate the review exists to",
+          "stop.",
+        ].join("\n"),
         await guidanceFor(context, "work/aligned"),
         renderStep({ ...flow, step: "aligned" }),
       ]),
