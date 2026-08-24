@@ -3082,6 +3082,10 @@ async function planInstall(options) {
       installable.push({ path: join5(directory, file.path), content: file.content });
     }
   }
+  installable.push({
+    path: ".workflow/.gitignore",
+    content: await readFile10(resolve12(options.distribution, "templates/workflow/gitignore"), "utf8")
+  });
   for (const file of installable) {
     const rel = file.path;
     const current = await readIfPresent(resolve12(options.target, rel));
@@ -3106,10 +3110,46 @@ async function planInstall(options) {
     }
     operations.push({ kind: "write", path: rel });
   }
-  return { target: options.target, operations, edited };
+  const shipped = new Set(installable.map((file) => file.path));
+  const obsolete = [];
+  for (const rel of Object.keys(state?.files ?? {})) {
+    if (shipped.has(rel)) continue;
+    if (await readIfPresent(resolve12(options.target, rel)) === void 0) continue;
+    obsolete.push(rel);
+  }
+  obsolete.push(...await strandedSkills(options.target));
+  return { target: options.target, operations, edited, obsolete: obsolete.sort() };
+}
+async function strandedSkills(target) {
+  const found = [];
+  const parents = new Set(SKILL_DIRS.map((directory) => dirname9(directory)));
+  const ours = new Set(SKILL_DIRS.map((directory) => directory.split("/").pop()));
+  for (const parent of parents) {
+    let entries;
+    try {
+      entries = await readdir6(resolve12(target, parent), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || ours.has(entry.name)) continue;
+      found.push(join5(parent, entry.name));
+    }
+  }
+  if (await readIfPresent(resolve12(target, "skills-lock.json")) !== void 0) {
+    found.push("skills-lock.json");
+  }
+  return found.sort();
 }
 async function applyInstall(plan, options) {
-  const result = { written: [], created: [], skipped: [], conflicts: [] };
+  const result = {
+    written: [],
+    created: [],
+    skipped: [],
+    conflicts: [],
+    obsolete: plan.obsolete,
+    replacedHooks: []
+  };
   const state = await readInstallState(plan.target) ?? {
     schemaVersion: INSTALL_SCHEMA_VERSION,
     installedVersion: options.version,
@@ -3133,7 +3173,7 @@ async function applyInstall(plan, options) {
     }
     const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
     const skillDir = SKILL_DIRS.find((directory) => operation.path.startsWith(`${directory}/`));
-    const source = runtime ? resolve12(options.distribution, "templates/runtime", relative4(RUNTIME_DIR, operation.path)) : resolve12(
+    const source = operation.path === ".workflow/.gitignore" ? resolve12(options.distribution, "templates/workflow/gitignore") : runtime ? resolve12(options.distribution, "templates/runtime", relative4(RUNTIME_DIR, operation.path)) : resolve12(
       options.distribution,
       "templates/skill/wfctl",
       relative4(skillDir ?? "", operation.path)
@@ -3152,7 +3192,7 @@ async function applyInstall(plan, options) {
 `,
     "utf8"
   );
-  await installHooks(plan.target);
+  result.replacedHooks = await installHooks(plan.target);
   await installManagedBlock(plan.target, options.distribution);
   return result;
 }
@@ -3169,6 +3209,9 @@ function assertProfileSupported(profile) {
 }
 async function installHooks(target) {
   return withLock(resolve12(target, ".claude/settings.json"), () => installHooksLocked(target));
+}
+function looksInstalled(command) {
+  return /(^|[;&|\s])wfctl\s/.test(command) || command.includes(`$CLAUDE_PROJECT_DIR/${RUNTIME_DIR}/`);
 }
 async function installHooksLocked(target) {
   const path = resolve12(target, ".claude/settings.json");
@@ -3201,11 +3244,17 @@ async function installHooksLocked(target) {
   const ourCommands = new Set(
     Object.values(HOOK_SETTINGS.hooks).flat().flatMap((entry) => entry.hooks).map((hook) => hook.command)
   );
-  const isOurs = (entry) => {
+  const commandsOf = (entry) => {
     const hooks2 = entry?.hooks;
-    if (!Array.isArray(hooks2) || hooks2.length === 0) return false;
-    return hooks2.every((hook) => typeof hook?.command === "string" && ourCommands.has(hook.command));
+    if (!Array.isArray(hooks2) || hooks2.length === 0) return [];
+    return hooks2.map((hook) => hook?.command).filter((command) => typeof command === "string");
   };
+  const isOurs = (entry) => {
+    const commands = commandsOf(entry);
+    if (commands.length === 0) return false;
+    return commands.every((command) => ourCommands.has(command) || looksInstalled(command));
+  };
+  const replaced = [];
   const off = new Set(await disabledGuards(target));
   const skip = new Set(
     [...off].map((guard) => guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard}.mjs`)
@@ -3213,6 +3262,12 @@ async function installHooksLocked(target) {
   const hooks = { ...existingHooks ?? {} };
   for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
     const current = hooks[event];
+    const mine = (Array.isArray(current) ? current : []).filter((entry) => isOurs(entry));
+    for (const entry of mine) {
+      for (const command of commandsOf(entry)) {
+        if (!ourCommands.has(command)) replaced.push(`${event}: ${command}`);
+      }
+    }
     const theirs = (Array.isArray(current) ? current : []).filter((entry) => !isOurs(entry));
     const ours = entries.filter(
       (entry) => !entry.hooks.some((hook) => [...skip].some((name) => hook.command.includes(name)))
@@ -3223,6 +3278,7 @@ async function installHooksLocked(target) {
   await mkdir9(dirname9(path), { recursive: true });
   await writeAtomic(path, `${JSON.stringify(settings, null, 2)}
 `);
+  return replaced;
 }
 async function installManagedBlock(target, distribution) {
   const body = (await readFile10(resolve12(distribution, "templates/agents/managed.md"), "utf8")).trim();
@@ -4975,9 +5031,38 @@ ${archived}`);
           `installed into ${target}`,
           `  ${result.created.length} directories, ${result.written.length} files written, ${result.skipped.length} unchanged`
         ];
+        const outstanding = [];
         if (result.conflicts.length) {
-          lines.push(`  ${result.conflicts.length} left alone because they were edited:`);
-          for (const path of result.conflicts) lines.push(`    ${path}`);
+          outstanding.push(
+            `${result.conflicts.length} file(s) were edited after they were installed, and were left alone:`,
+            ...result.conflicts.map((path) => `  ${path}`),
+            "  Compare each against the shipped version and keep the edit or drop it.",
+            "  Nothing here is replaced without you deciding that."
+          );
+        }
+        if (result.obsolete.length) {
+          const groups = /* @__PURE__ */ new Map();
+          for (const path of result.obsolete) {
+            const segments = path.split("/");
+            const key = segments.length > 1 ? segments.slice(0, 2).join("/") : path;
+            groups.set(key, [...groups.get(key) ?? [], path]);
+          }
+          outstanding.push(
+            `${result.obsolete.length} file(s) belong to an older wfctl and are no longer part of it:`,
+            ...[...groups].map(([key, members]) => members.length > 1 ? `  ${key}/  (${members.length} entries)` : `  ${key}`),
+            "  They are not read by anything and are not removed for you.",
+            "  Delete them once you have checked nothing local depends on them."
+          );
+        }
+        if (result.replacedHooks.length) {
+          outstanding.push(
+            `${result.replacedHooks.length} hook entr(ies) from an older wfctl were replaced:`,
+            ...result.replacedHooks.map((entry) => `  ${entry}`),
+            "  Reported because a hook you did not expect to change is worth knowing about."
+          );
+        }
+        if (outstanding.length) {
+          lines.push("", ...outstanding);
         }
         lines.push(
           "",
@@ -4986,7 +5071,8 @@ ${archived}`);
           "",
           "Restart the agent session so the new instructions load."
         );
-        return { stdout: lines.join("\n"), exitCode: 0 };
+        const unresolved = result.conflicts.length + result.obsolete.length;
+        return { stdout: lines.join("\n"), exitCode: unresolved > 0 ? 3 : 0 };
       }
       default:
         return {

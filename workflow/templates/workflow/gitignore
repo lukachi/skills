@@ -1,0 +1,6 @@
+# Written by the tool and by the runtime guards, per machine and per session:
+# hook memory, rebuilt retrieval artifacts, advisory locks. None of it is
+# knowledge, and committing it makes every session dirty the tree.
+current/
+backups/
+*.lock/

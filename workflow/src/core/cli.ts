@@ -945,10 +945,59 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           `installed into ${target}`,
           `  ${result.created.length} directories, ${result.written.length} files written, ${result.skipped.length} unchanged`,
         ];
+
+        /**
+         * What the install could not settle is printed as work, not swallowed.
+         *
+         * Nothing here is force-replaced and nothing is silently kept either.
+         * A file this tool cannot cleanly own becomes a line the agent meets
+         * during the install, with what it is and what resolves it — which is
+         * the only place the instruction can arrive in time to be acted on.
+         */
+        const outstanding: string[] = [];
+
         if (result.conflicts.length) {
-          lines.push(`  ${result.conflicts.length} left alone because they were edited:`);
-          for (const path of result.conflicts) lines.push(`    ${path}`);
+          outstanding.push(
+            `${result.conflicts.length} file(s) were edited after they were installed, and were left alone:`,
+            ...result.conflicts.map((path) => `  ${path}`),
+            "  Compare each against the shipped version and keep the edit or drop it.",
+            "  Nothing here is replaced without you deciding that.",
+          );
         }
+
+        if (result.obsolete.length) {
+          /**
+           * Grouped, because the list is the point and its length is not.
+           * Upgrading one real repository produced sixty-six lines, which is a
+           * wall an agent skims — the exact failure this tool exists to avoid.
+           */
+          const groups = new Map<string, string[]>();
+          for (const path of result.obsolete) {
+            const segments = path.split("/");
+            const key = segments.length > 1 ? segments.slice(0, 2).join("/") : path;
+            groups.set(key, [...(groups.get(key) ?? []), path]);
+          }
+          outstanding.push(
+            `${result.obsolete.length} file(s) belong to an older wfctl and are no longer part of it:`,
+            ...[...groups].map(([key, members]) =>
+              members.length > 1 ? `  ${key}/  (${members.length} entries)` : `  ${key}`),
+            "  They are not read by anything and are not removed for you.",
+            "  Delete them once you have checked nothing local depends on them.",
+          );
+        }
+
+        if (result.replacedHooks.length) {
+          outstanding.push(
+            `${result.replacedHooks.length} hook entr(ies) from an older wfctl were replaced:`,
+            ...result.replacedHooks.map((entry) => `  ${entry}`),
+            "  Reported because a hook you did not expect to change is worth knowing about.",
+          );
+        }
+
+        if (outstanding.length) {
+          lines.push("", ...outstanding);
+        }
+
         lines.push(
           "",
           "Guidance is not installed — it ships with wfctl and is read from there,",
@@ -956,7 +1005,11 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           "",
           "Restart the agent session so the new instructions load.",
         );
-        return { stdout: lines.join("\n"), exitCode: 0 };
+
+        // Non-zero while anything is outstanding: an install that reports work
+        // and exits clean is an install nobody finishes.
+        const unresolved = result.conflicts.length + result.obsolete.length;
+        return { stdout: lines.join("\n"), exitCode: unresolved > 0 ? 3 : 0 };
       }
 
       default:

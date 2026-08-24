@@ -18,13 +18,18 @@ followed it. Verified against, not remembered.
 
 ## B — The installer reports; it never forces
 
-- [ ] B1 A file it cannot cleanly own becomes a conflict line, not a write.
-- [ ] B2 Files a previous version owned that this one no longer ships are
+- [x] B1 A file it cannot cleanly own becomes a conflict line, not a write.
+- [x] B2 Files a previous version owned that this one no longer ships are
       reported. (25 obsolete skills survived a fresh install this morning.)
-- [ ] B3 Hook ownership by stable slot identity, not the exact command string.
+- [x] B3 Hook ownership by stable slot identity, not the exact command string.
       0.8.0's SessionStart hook survived and 0.9.0 appended its own.
 - [x] B4 `init knowledge --help` must not perform the install.
-- [ ] B5 Non-zero exit while conflicts are outstanding.
+- [x] B5 Non-zero exit while conflicts are outstanding.
+
+- [x] B6 `.workflow/.gitignore` was dropped in 0.9.0. The stop guard writes
+      session memory under `.workflow/current/` and its own comment calls that
+      directory gitignored; nothing ignored it, so every session dirtied the
+      tree.
 
 ## C — Records that arrive wrong
 

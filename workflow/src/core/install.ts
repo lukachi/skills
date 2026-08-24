@@ -137,6 +137,16 @@ export interface InstallPlan {
   operations: InstallOperation[];
   /** Files whose recorded hash no longer matches what is on disk. */
   edited: string[];
+  /**
+   * Files a previous version installed that this one no longer ships.
+   *
+   * They are reported, never deleted. Twenty-five obsolete skills and a rules
+   * directory survived a fresh install of the version that removed them,
+   * because nothing compared what was recorded against what is shipped — and
+   * an install that quietly leaves a predecessor behind is indistinguishable
+   * from one that never ran.
+   */
+  obsolete: string[];
 }
 
 export interface InstallState {
@@ -212,6 +222,17 @@ export async function planInstall(options: {
       installable.push({ path: join(directory, file.path), content: file.content });
     }
   }
+  /**
+   * The runtime guards keep per-session memory under `.workflow/current/`, and
+   * `wfctl knowledge build` puts its rebuilt artifacts there. 0.8.0 shipped the
+   * ignore file and this version dropped it, so every session dirtied the tree
+   * with hook state — while the guard's own comment still said the directory
+   * was ignored.
+   */
+  installable.push({
+    path: ".workflow/.gitignore",
+    content: await readFile(resolve(options.distribution, "templates/workflow/gitignore"), "utf8"),
+  });
 
   for (const file of installable) {
     const rel = file.path;
@@ -239,7 +260,56 @@ export async function planInstall(options: {
     operations.push({ kind: "write", path: rel });
   }
 
-  return { target: options.target, operations, edited };
+  /**
+   * Anything the recorded state owns that this version does not ship. Checked
+   * against disk, because a maintainer who already removed one does not need
+   * to be told about it again.
+   */
+  const shipped = new Set(installable.map((file) => file.path));
+  const obsolete: string[] = [];
+  for (const rel of Object.keys(state?.files ?? {})) {
+    if (shipped.has(rel)) continue;
+    if ((await readIfPresent(resolve(options.target, rel))) === undefined) continue;
+    obsolete.push(rel);
+  }
+  obsolete.push(...(await strandedSkills(options.target)));
+
+  return { target: options.target, operations, edited, obsolete: obsolete.sort() };
+}
+
+/**
+ * Skills a previous version installed, which its state file never recorded.
+ *
+ * 0.8.0 installed twenty-four skills and tracked them in `skills-lock.json`
+ * rather than in `state.json`, so comparing recorded files against shipped
+ * files could not see them and every one survived a fresh install of the
+ * version that deleted the concept. This version installs exactly one skill
+ * into each convention, so any sibling is either a predecessor's or the
+ * project's own — which is precisely why they are reported and never removed.
+ */
+async function strandedSkills(target: string): Promise<string[]> {
+  const found: string[] = [];
+  const parents = new Set(SKILL_DIRS.map((directory) => dirname(directory)));
+  const ours = new Set(SKILL_DIRS.map((directory) => directory.split("/").pop()));
+
+  for (const parent of parents) {
+    let entries;
+    try {
+      entries = await readdir(resolve(target, parent), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || ours.has(entry.name)) continue;
+      found.push(join(parent, entry.name));
+    }
+  }
+
+  // Unambiguously a predecessor's: nothing else writes it.
+  if ((await readIfPresent(resolve(target, "skills-lock.json"))) !== undefined) {
+    found.push("skills-lock.json");
+  }
+  return found.sort();
 }
 
 export interface ApplyResult {
@@ -247,13 +317,20 @@ export interface ApplyResult {
   created: string[];
   skipped: string[];
   conflicts: string[];
+  /** Owned by a previous version and no longer shipped. Reported, not removed. */
+  obsolete: string[];
+  /** Hook entries a previous version wrote, which this install replaced. */
+  replacedHooks: string[];
 }
 
 export async function applyInstall(
   plan: InstallPlan,
   options: { distribution: string; version: string },
 ): Promise<ApplyResult> {
-  const result: ApplyResult = { written: [], created: [], skipped: [], conflicts: [] };
+  const result: ApplyResult = {
+    written: [], created: [], skipped: [], conflicts: [],
+    obsolete: plan.obsolete, replacedHooks: [],
+  };
   const state: InstallState = (await readInstallState(plan.target)) ?? {
     schemaVersion: INSTALL_SCHEMA_VERSION,
     installedVersion: options.version,
@@ -280,13 +357,15 @@ export async function applyInstall(
 
     const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
     const skillDir = SKILL_DIRS.find((directory) => operation.path.startsWith(`${directory}/`));
-    const source = runtime
-      ? resolve(options.distribution, "templates/runtime", relative(RUNTIME_DIR, operation.path))
-      : resolve(
-          options.distribution,
-          "templates/skill/wfctl",
-          relative(skillDir ?? "", operation.path),
-        );
+    const source = operation.path === ".workflow/.gitignore"
+      ? resolve(options.distribution, "templates/workflow/gitignore")
+      : runtime
+        ? resolve(options.distribution, "templates/runtime", relative(RUNTIME_DIR, operation.path))
+        : resolve(
+            options.distribution,
+            "templates/skill/wfctl",
+            relative(skillDir ?? "", operation.path),
+          );
     const content = await readFile(source, "utf8");
     await mkdir(dirname(absolute), { recursive: true });
     await writeFile(absolute, content, "utf8");
@@ -310,7 +389,7 @@ export async function applyInstall(
     "utf8",
   );
 
-  await installHooks(plan.target);
+  result.replacedHooks = await installHooks(plan.target);
   await installManagedBlock(plan.target, options.distribution);
   return result;
 }
@@ -342,11 +421,30 @@ export function assertProfileSupported(profile: string): void {
  * rewritten wholesale would silently drop whatever the maintainer configured,
  * and they would find out the next time something they rely on did not run.
  */
-export async function installHooks(target: string): Promise<void> {
+export async function installHooks(target: string): Promise<string[]> {
   return withLock(resolve(target, ".claude/settings.json"), () => installHooksLocked(target));
 }
 
-async function installHooksLocked(target: string): Promise<void> {
+/**
+ * Whether a hook entry was written by any version of this tool.
+ *
+ * Ownership used to be the exact command string of the version doing the
+ * installing, so no upgrade ever recognised its predecessor's hook: 0.8.0's
+ * `wfctl brief --hook` survived a 0.9.0 install, which then appended
+ * `wfctl brief` beside it and briefed twice every session. An identity that
+ * changes whenever the command text changes is not an identity.
+ *
+ * Both families are narrow on purpose. A hook that invokes `wfctl` itself, or
+ * one that runs a guard out of the runtime directory this tool installs, is
+ * ours whatever version wrote it. Anything else in the file belongs to the
+ * project and is never touched.
+ */
+function looksInstalled(command: string): boolean {
+  return /(^|[;&|\s])wfctl\s/.test(command)
+    || command.includes(`$CLAUDE_PROJECT_DIR/${RUNTIME_DIR}/`);
+}
+
+async function installHooksLocked(target: string): Promise<string[]> {
   const path = resolve(target, ".claude/settings.json");
   const existing = await readIfPresent(path);
 
@@ -395,11 +493,22 @@ async function installHooksLocked(target: string): Promise<void> {
       .map((hook) => hook.command),
   );
 
-  const isOurs = (entry: unknown): boolean => {
+  const commandsOf = (entry: unknown): string[] => {
     const hooks = (entry as { hooks?: { command?: string }[] } | null)?.hooks;
-    if (!Array.isArray(hooks) || hooks.length === 0) return false;
-    return hooks.every((hook) => typeof hook?.command === "string" && ourCommands.has(hook.command));
+    if (!Array.isArray(hooks) || hooks.length === 0) return [];
+    return hooks
+      .map((hook) => hook?.command)
+      .filter((command): command is string => typeof command === "string");
   };
+
+  const isOurs = (entry: unknown): boolean => {
+    const commands = commandsOf(entry);
+    if (commands.length === 0) return false;
+    return commands.every((command) => ourCommands.has(command) || looksInstalled(command));
+  };
+
+  /** Ours, but not what this version writes: a predecessor's, and reported. */
+  const replaced: string[] = [];
 
   const off = new Set(await disabledGuards(target));
   const skip = new Set(
@@ -409,6 +518,12 @@ async function installHooksLocked(target: string): Promise<void> {
   const hooks = { ...((existingHooks ?? {}) as Record<string, unknown[]>) };
   for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
     const current = hooks[event];
+    const mine = (Array.isArray(current) ? current : []).filter((entry) => isOurs(entry));
+    for (const entry of mine) {
+      for (const command of commandsOf(entry)) {
+        if (!ourCommands.has(command)) replaced.push(`${event}: ${command}`);
+      }
+    }
     const theirs = (Array.isArray(current) ? current : []).filter((entry) => !isOurs(entry));
     /**
      * An upgrade never re-arms a guard the maintainer turned off. Doing so
@@ -423,6 +538,7 @@ async function installHooksLocked(target: string): Promise<void> {
 
   await mkdir(dirname(path), { recursive: true });
   await writeAtomic(path, `${JSON.stringify(settings, null, 2)}\n`);
+  return replaced;
 }
 
 /**

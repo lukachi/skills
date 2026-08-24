@@ -473,3 +473,112 @@ test("flags: --help never performs the command", async () => {
   assert.equal(existsSync(join(root, ".workflow/state.json")), false,
     "--help performed the installation");
 });
+
+// ---------------------------------------------------------------------------
+// 6. Upgrading over a predecessor
+// ---------------------------------------------------------------------------
+
+/**
+ * Built from what a real 0.8.0 install leaves behind: a state file recording
+ * files this version no longer ships, skills it tracked somewhere else
+ * entirely, and a SessionStart hook whose command text has since changed.
+ */
+async function legacyInstall(): Promise<string> {
+  const root = await scratch("wfctl-legacy-");
+  await mkdir(join(root, ".workflow/rules"), { recursive: true });
+  await mkdir(join(root, ".claude/rules"), { recursive: true });
+  await mkdir(join(root, ".claude/skills/process-raw-intake"), { recursive: true });
+  await mkdir(join(root, ".agents/skills/verify-project-work"), { recursive: true });
+
+  await writeFile(join(root, ".workflow/rules/evidence-first.md"), "old rule\n", "utf8");
+  await writeFile(join(root, ".claude/rules/evidence-first.md"), "old rule\n", "utf8");
+  await writeFile(join(root, ".claude/skills/process-raw-intake/SKILL.md"), "old skill\n", "utf8");
+  await writeFile(join(root, ".agents/skills/verify-project-work/SKILL.md"), "old skill\n", "utf8");
+  await writeFile(join(root, "skills-lock.json"), "{}\n", "utf8");
+
+  await writeFile(
+    join(root, ".workflow/state.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      installedVersion: "0.8.0",
+      files: {
+        ".workflow/rules/evidence-first.md": { sha256: "x" },
+        ".claude/rules/evidence-first.md": { sha256: "x" },
+      },
+    }),
+    "utf8",
+  );
+  await mkdir(join(root, ".claude"), { recursive: true });
+  await writeFile(
+    join(root, ".claude/settings.json"),
+    JSON.stringify({
+      hooks: {
+        SessionStart: [{ matcher: "*", hooks: [{ type: "command", command: "wfctl brief --hook" }] }],
+        // Not ours, and must survive untouched.
+        PreCompact: [{ matcher: "*", hooks: [{ type: "command", command: "make notes" }] }],
+      },
+    }),
+    "utf8",
+  );
+  return root;
+}
+
+test("install: a predecessor's hook is replaced, not duplicated", async () => {
+  const root = await legacyInstall();
+  const result = wfctl(root, ["init", "knowledge", "--target", root]);
+
+  const settings = JSON.parse(await readFile(join(root, ".claude/settings.json"), "utf8")) as {
+    hooks: Record<string, { hooks: { command: string }[] }[]>;
+  };
+  const starts = settings.hooks.SessionStart ?? [];
+  assert.equal(starts.length, 1, "the old SessionStart hook survived alongside the new one");
+  assert.equal(starts[0]?.hooks[0]?.command, "wfctl brief");
+  assert.match(result.stdout, /wfctl brief --hook/, "the replacement was not reported");
+});
+
+test("install: hooks the project owns are never touched", async () => {
+  const root = await legacyInstall();
+  wfctl(root, ["init", "knowledge", "--target", root]);
+
+  const settings = JSON.parse(await readFile(join(root, ".claude/settings.json"), "utf8")) as {
+    hooks: Record<string, { hooks: { command: string }[] }[]>;
+  };
+  assert.equal(settings.hooks.PreCompact?.[0]?.hooks[0]?.command, "make notes",
+    "a hook this tool does not own was removed");
+});
+
+test("install: a predecessor's files are reported and left in place", async () => {
+  const root = await legacyInstall();
+  const result = wfctl(root, ["init", "knowledge", "--target", root]);
+
+  assert.equal(result.status, 3, "an install with outstanding work exited clean");
+  assert.match(result.stdout, /belong to an older wfctl/);
+  for (const path of [".workflow/rules", ".claude/rules", ".claude/skills", ".agents/skills", "skills-lock.json"]) {
+    assert.match(result.stdout, new RegExp(path.replace(/[.]/g, "\\.")), `${path} was not reported`);
+  }
+  // Reported, never removed: deciding what a project still depends on is not
+  // an installer's call.
+  assert.ok(existsSync(join(root, ".claude/skills/process-raw-intake/SKILL.md")));
+  assert.ok(existsSync(join(root, "skills-lock.json")));
+});
+
+test("install: the obsolete report is grouped, not a wall", async () => {
+  const root = await legacyInstall();
+  for (let index = 0; index < 20; index += 1) {
+    await mkdir(join(root, `.claude/skills/legacy-${index}`), { recursive: true });
+  }
+  const result = wfctl(root, ["init", "knowledge", "--target", root]);
+
+  const listed = result.stdout.split("\n").filter((line) => /^ {2}\.?[a-z]/.test(line));
+  assert.ok(listed.length < 12, `the report printed ${listed.length} lines; it should group them`);
+  assert.match(result.stdout, /\.claude\/skills\/\s+\(2[0-9] entries\)/);
+});
+
+test("install: the runtime's own scratch directory is ignored by Git", async () => {
+  const root = await scratch("wfctl-ignore-");
+  wfctl(root, ["init", "knowledge", "--target", root]);
+
+  const ignore = await readFile(join(root, ".workflow/.gitignore"), "utf8");
+  assert.match(ignore, /^current\/$/m,
+    "the stop guard writes session memory under .workflow/current/, which its own comment calls gitignored");
+});
