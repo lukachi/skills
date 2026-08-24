@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { GateRefusal } from "./gates.js";
 import { canonical, contains } from "./paths-resolve.js";
+import { label } from "./registry.js";
 import type { RegisteredRepository } from "./registry.js";
 
 /**
@@ -22,6 +23,8 @@ export type GraphState = "ready" | "missing" | "stale" | "unreachable";
 export interface LeafState {
   repository: string;
   worktreeId: string;
+  /** The name this checkout is referred to by, which is what gets printed. */
+  checkout: string;
   path: string;
   graph: GraphState;
   /** How old the graph is, in whole days, when there is one. */
@@ -37,6 +40,7 @@ export async function inspectLeaf(
   const base: LeafState = {
     repository: entry.repository,
     worktreeId: entry.worktreeId,
+    checkout: entry.checkout,
     path: entry.path,
     graph: "unreachable",
   };
@@ -135,7 +139,7 @@ export function renderLeaves(leaves: LeafState[]): string {
   const rows = leaves.map((leaf) => {
     const age =
       leaf.graph === "ready" || leaf.graph === "stale" ? `${leaf.ageDays}d` : "";
-    return `${leaf.graph.padEnd(11)} ${age.padEnd(5)} ${leaf.repository}  ${leaf.worktreeId.padEnd(10)}  ${leaf.path}`;
+    return `${leaf.graph.padEnd(11)} ${age.padEnd(5)} ${leaf.repository}  ${label(leaf).padEnd(14)}  ${leaf.path}`;
   });
 
   const needing = leaves.filter((leaf) => leaf.graph === "missing" || leaf.graph === "stale");
@@ -200,7 +204,7 @@ export function assertInsideClaim(options: {
       'wfctl repo add <owner/name> --path <dir> [--worktree <id>]',
       options.leaves.length === 0
         ? "Nothing is registered, so there is nowhere this write could legitimately land."
-        : `Registered:\n${options.leaves.map((leaf) => `  ${leaf.repository}  ${leaf.worktreeId}  ${leaf.path}`).join("\n")}`,
+        : `Registered:\n${options.leaves.map((leaf) => `  ${leaf.repository}  ${label(leaf)}  ${leaf.path}`).join("\n")}`,
     );
   }
 

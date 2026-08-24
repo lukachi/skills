@@ -73,12 +73,38 @@ export async function runDoctor(
 
   /* ---------------------------------------------------------- installation */
 
-  const state = await readInstallState(target);
+  /**
+   * A corrupt state file is the most likely thing wrong with an installation,
+   * and it made this command abort with a bare parse error and no report at
+   * all. Diagnosing a broken install is the entire job; dying on the first
+   * broken thing is the one behaviour it cannot have.
+   */
+  let state: Awaited<ReturnType<typeof readInstallState>>;
+  try {
+    state = await readInstallState(target);
+  } catch (error) {
+    checks.push({
+      name: "installation",
+      status: "fail",
+      message: `.workflow/state.json cannot be read: ${(error as Error).message}`,
+      remedy: "wfctl init knowledge   (after moving the unreadable file aside)",
+    });
+    return { target, checks };
+  }
   if (!state) {
     checks.push({
       name: "installation",
       status: "fail",
       message: "This is not an initialized knowledge repository",
+      remedy: "wfctl init knowledge",
+    });
+    return { target, checks };
+  }
+  if (typeof state.files !== "object" || state.files === null) {
+    checks.push({
+      name: "installation",
+      status: "fail",
+      message: ".workflow/state.json has no file record, so nothing owned can be checked",
       remedy: "wfctl init knowledge",
     });
     return { target, checks };
@@ -189,7 +215,23 @@ export async function runDoctor(
 
   /* ------------------------------------------------------------- guards */
 
-  for (const guard of await guardStatus(target)) {
+  /**
+   * Same rule as the state file: settings.json is a thing that gets edited by
+   * hand and by other tools, and an unreadable one is a finding to report, not
+   * a reason to abandon every remaining check.
+   */
+  let guards: Awaited<ReturnType<typeof guardStatus>> = [];
+  try {
+    guards = await guardStatus(target);
+  } catch (error) {
+    checks.push({
+      name: "guards",
+      status: "fail",
+      message: `.claude/settings.json cannot be read: ${(error as Error).message}`,
+      remedy: "Repair the file, then: wfctl init knowledge",
+    });
+  }
+  for (const guard of guards) {
     const script = await exists(
       resolve(target, RUNTIME_DIR, guard.guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard.guard}.mjs`),
     );

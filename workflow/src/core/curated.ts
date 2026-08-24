@@ -246,13 +246,28 @@ export async function inspectLinks(root: string): Promise<PageIssue[]> {
  * either absolute or repository-relative, so following the tool's own output
  * produced "cannot be read → check the path".
  */
+/**
+ * A curated page's path, relative to `knowledge/`, or a refusal.
+ *
+ * A path that resolved outside the corpus used to be returned unchanged, and
+ * both callers then joined it back onto `knowledge/` — so `../../etc/hosts` and
+ * any absolute path were read and hashed as though they were curated pages.
+ * Nothing here is a page unless it is under `knowledge/`.
+ */
 export function normalizePage(root: string, page: string): string {
   const base = resolve(root, KNOWLEDGE_DIR);
   const absolute = resolve(root, page);
   const inside = relative(base, absolute);
-  if (!inside.startsWith("..")) return inside;
+  if (!inside.startsWith("..") && inside !== "") return inside;
+
   const fromRoot = relative(base, resolve(base, page));
-  return fromRoot.startsWith("..") ? page : fromRoot;
+  if (!fromRoot.startsWith("..") && fromRoot !== "") return fromRoot;
+
+  throw new GateRefusal(
+    `${page} is not a curated page.`,
+    "wfctl knowledge validate",
+    `Curated pages live under ${KNOWLEDGE_DIR}/. This path resolves outside it.`,
+  );
 }
 
 export async function validateCurated(root: string, only?: string): Promise<PageIssue[]> {

@@ -38,20 +38,22 @@ followed it. Verified against, not remembered.
 
 ## D — Smaller
 
-- [ ] D1 `repo add` labels every non-worktree checkout `main` whatever its
+- [x] D1 `repo add` labels every non-worktree checkout `main` whatever its
       branch. `--checkout` is accepted and undocumented.
 
 ## E — Round three, still standing
 
-- [ ] E1 `--raw selected` is dead code
-- [ ] E2 the crawl gate is satisfied by one read however large the scope
-- [ ] E3 `knowledge hash` / `validate --page` accept files outside the corpus
+- [x] E1 `--raw selected` is dead code
+- [x] E2 the crawl gate is satisfied by one read however large the scope
+      (stale: `assertCrawlComplete` already requires every in-scope file, and
+      the empty-scope hole was closed. No change needed.)
+- [x] E3 `knowledge hash` / `validate --page` accept files outside the corpus
 - [x] E4 `KNOWN_FLAGS` is global rather than per-command
-- [ ] E5 `doctor` exits 2 instead of reporting when state is corrupt
-- [ ] E6 `findGuidance` climbs six ancestors
-- [ ] E7 `recall route graphify` with no `--covered` satisfies the floor
-- [ ] E8 `decided` cannot see reconstruction adjudications
-- [ ] E9 `--settles` is not wired from the changes flow's own delivery
+- [x] E5 `doctor` exits 2 instead of reporting when state is corrupt
+- [x] E6 `findGuidance` climbs six ancestors
+- [x] E7 `recall route graphify` with no `--covered` satisfies the floor
+- [x] E8 `decided` cannot see reconstruction adjudications
+- [x] E9 `--settles` is not wired from the changes flow's own delivery
 
 ## F — The skill
 

@@ -26,6 +26,18 @@ export interface RegisteredRepository {
   worktreeId: string;
 }
 
+/**
+ * What to call this checkout on screen.
+ *
+ * `worktreeId` is the lookup key and defaults to `main`, so printing it
+ * labelled a checkout sitting on `brand/icons` as `main` — and the label is how
+ * the agent names the checkout it is about to write in. The checkout name is
+ * the label; it falls back to the key when the two are the same.
+ */
+export function label(entry: { checkout: string; worktreeId: string }): string {
+  return entry.checkout || entry.worktreeId;
+}
+
 export async function readRegistry(root: string): Promise<RegisteredRepository[]> {
   try {
     const raw = await readFile(resolve(root, REGISTRY_PATH), "utf8");
@@ -110,6 +122,6 @@ export function renderRegistry(repositories: RegisteredRepository[]): string {
     ].join("\n");
   }
   return repositories
-    .map((entry) => `${entry.repository}  ${entry.worktreeId.padEnd(12)}  ${entry.path}`)
+    .map((entry) => `${entry.repository}  ${label(entry).padEnd(14)}  ${entry.path}`)
     .join("\n");
 }

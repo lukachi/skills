@@ -151,7 +151,7 @@ test("the write hook refuses a first write with no traversal, then goes silent o
   const leaves = [
     {
       repository: "acme/a",
-      worktreeId: "main",
+      worktreeId: "main", checkout: "main",
       path: "/leaf",
       graph: "ready" as const,
       ageDays: 0,

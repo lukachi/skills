@@ -445,8 +445,36 @@ export async function recordScope(
    * with three notes sitting unread on disk, and every path had to be listed by
    * hand as though the inventory had never run.
    */
-  const raw =
-    options.rawScope === "all" ? record.rawPaths.map((path) => `${RAW_DIR}/${path}`) : [];
+  /**
+   * `selected` was a silent alias for `none`.
+   *
+   * Three scopes are specified — all frozen raw, selected themes mapped to
+   * paths, or exclusion — and only `all` was implemented. `--raw selected` was
+   * accepted, recorded, and put nothing in scope, so a case could report that
+   * raw had been selected while the coverage ledger held not one raw path. It
+   * now means what it says: the raw files the declared `--in` scope names, and
+   * it refuses without one, because selecting nothing is `none` and saying so
+   * is the honest form.
+   */
+  const allRaw = record.rawPaths.map((path) => `${RAW_DIR}/${path}`);
+  let raw: string[] = [];
+  if (options.rawScope === "all") {
+    raw = allRaw;
+  } else if (options.rawScope === "selected") {
+    const chosen = options.inScope ?? [];
+    if (chosen.length === 0) {
+      throw new GateRefusal(
+        "`--raw selected` names which raw material is in scope, and nothing named it.",
+        'wfctl reconstruct scope --repository <owner/name> --raw selected --in "<path>"...',
+        "Selecting nothing is `--raw none`, and saying so leaves a record that is " +
+          "true. A case that reports raw as selected while no raw path is in " +
+          "scope reads as coverage that was checked.",
+      );
+    }
+    raw = allRaw.filter((path) =>
+      chosen.some((prefix) => path === prefix || path.startsWith(`${prefix.replace(/\/+$/, "")}/`)),
+    );
+  }
 
   /**
    * What the repository contained at the pinned revision, not what the agent

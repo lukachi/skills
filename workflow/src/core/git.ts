@@ -118,3 +118,18 @@ export function readAt(
 export function citation(repository: string, revision: string, file: string): string {
   return `${repository}@${revision.slice(0, 12)}:${file}`;
 }
+
+/**
+ * The branch a checkout is on, or "" when it is detached or not a repository.
+ *
+ * Used for the label a registered checkout is referred to by. That label used
+ * to default to the worktree id, which defaults to `main`, so a checkout on
+ * `brand/icons` was registered and listed as `main` — and the label is how the
+ * agent names the checkout it is about to write in.
+ */
+export function currentBranch(path: string, run: GitRunner = runGit): string {
+  const result = run(["rev-parse", "--abbrev-ref", "HEAD"], path);
+  if (result.status !== 0) return "";
+  const name = result.stdout.trim();
+  return name === "HEAD" ? "" : name;
+}

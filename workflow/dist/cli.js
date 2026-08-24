@@ -385,10 +385,10 @@ function buildCheckpoint(input, now = /* @__PURE__ */ new Date()) {
     ["the last completed action", "--last", input.lastAction],
     ["the exact next action", "--next", input.nextAction]
   ];
-  for (const [label, option, value] of fields) {
+  for (const [label2, option, value] of fields) {
     if (!value || value.trim().length === 0) {
       throw new CheckpointError(
-        `A checkpoint needs ${label}; an empty one recalls nothing.`,
+        `A checkpoint needs ${label2}; an empty one recalls nothing.`,
         `wfctl checkpoint --summary "<one line>" --handoff "<the body>" --last "<...>" --next "<...>"`,
         `${option} was empty or absent.`
       );
@@ -1128,6 +1128,7 @@ var init_promotion_queue = __esm({
 var git_exports = {};
 __export(git_exports, {
   citation: () => citation,
+  currentBranch: () => currentBranch,
   filesAt: () => filesAt,
   head: () => head,
   isRepository: () => isRepository,
@@ -1185,6 +1186,12 @@ function readAt(path, revision, file, run3 = runGit) {
 }
 function citation(repository, revision, file) {
   return `${repository}@${revision.slice(0, 12)}:${file}`;
+}
+function currentBranch(path, run3 = runGit) {
+  const result = run3(["rev-parse", "--abbrev-ref", "HEAD"], path);
+  if (result.status !== 0) return "";
+  const name = result.stdout.trim();
+  return name === "HEAD" ? "" : name;
 }
 var runGit;
 var init_git = __esm({
@@ -1363,9 +1370,14 @@ function normalizePage(root, page) {
   const base = resolve7(root, KNOWLEDGE_DIR);
   const absolute = resolve7(root, page);
   const inside = relative3(base, absolute);
-  if (!inside.startsWith("..")) return inside;
+  if (!inside.startsWith("..") && inside !== "") return inside;
   const fromRoot = relative3(base, resolve7(base, page));
-  return fromRoot.startsWith("..") ? page : fromRoot;
+  if (!fromRoot.startsWith("..") && fromRoot !== "") return fromRoot;
+  throw new GateRefusal(
+    `${page} is not a curated page.`,
+    "wfctl knowledge validate",
+    `Curated pages live under ${KNOWLEDGE_DIR}/. This path resolves outside it.`
+  );
 }
 async function validateCurated(root, only) {
   const pages = only ? [normalizePage(root, only)] : await collectPages(root);
@@ -1654,7 +1666,23 @@ async function recordScope(root, record, options) {
       "wfctl reconstruct scope --repository <owner/name> --revision <sha>"
     );
   }
-  const raw = options.rawScope === "all" ? record.rawPaths.map((path) => `${RAW_DIR}/${path}`) : [];
+  const allRaw = record.rawPaths.map((path) => `${RAW_DIR}/${path}`);
+  let raw = [];
+  if (options.rawScope === "all") {
+    raw = allRaw;
+  } else if (options.rawScope === "selected") {
+    const chosen = options.inScope ?? [];
+    if (chosen.length === 0) {
+      throw new GateRefusal(
+        "`--raw selected` names which raw material is in scope, and nothing named it.",
+        'wfctl reconstruct scope --repository <owner/name> --raw selected --in "<path>"...',
+        "Selecting nothing is `--raw none`, and saying so leaves a record that is true. A case that reports raw as selected while no raw path is in scope reads as coverage that was checked."
+      );
+    }
+    raw = allRaw.filter(
+      (path) => chosen.some((prefix) => path === prefix || path.startsWith(`${prefix.replace(/\/+$/, "")}/`))
+    );
+  }
   const fromTree = options.repositories.flatMap((repository) => {
     const revision = resolveRevision(repository.path, repository.revision);
     return filesAt(repository.path, revision).map(
@@ -2033,6 +2061,7 @@ var registry_exports = {};
 __export(registry_exports, {
   REGISTRY_PATH: () => REGISTRY_PATH,
   addRepository: () => addRepository,
+  label: () => label,
   readRegistry: () => readRegistry,
   removeRepository: () => removeRepository,
   renderRegistry: () => renderRegistry,
@@ -2040,6 +2069,9 @@ __export(registry_exports, {
 });
 import { mkdir as mkdir6, readFile as readFile7, writeFile as writeFile6 } from "node:fs/promises";
 import { dirname as dirname6, resolve as resolve10 } from "node:path";
+function label(entry) {
+  return entry.checkout || entry.worktreeId;
+}
 async function readRegistry(root) {
   try {
     const raw = await readFile7(resolve10(root, REGISTRY_PATH), "utf8");
@@ -2102,7 +2134,7 @@ function renderRegistry(repositories) {
       "  wfctl repo add <owner/name> --path <dir> [--worktree <id>]"
     ].join("\n");
   }
-  return repositories.map((entry) => `${entry.repository}  ${entry.worktreeId.padEnd(12)}  ${entry.path}`).join("\n");
+  return repositories.map((entry) => `${entry.repository}  ${label(entry).padEnd(14)}  ${entry.path}`).join("\n");
 }
 var REGISTRY_PATH;
 var init_registry = __esm({
@@ -2673,9 +2705,19 @@ async function recallRoute(context, options) {
   if (!flow) {
     return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
   }
+  const covered = (options.covered ?? []).filter((path) => path.trim().length > 0);
+  if (covered.length === 0) {
+    return refused(
+      new GateRefusal(
+        `A ${options.route} route records what it covered, and nothing named it.`,
+        `wfctl recall route ${options.route} --covered "<path>" [--covered "<path>"...]`,
+        "Raising a counter without saying what it traversed satisfies the floor with one empty query, which is the reading this checklist exists to distinguish from the real thing."
+      )
+    );
+  }
   const next = await mutateFlow(context.root, flow.id, (current) => ({
     ...current,
-    recall: recordRoute(current.recall, options.route, options.covered ?? [])
+    recall: recordRoute(current.recall, options.route, covered)
   }));
   return ok(renderCounterLine(next.step, next.recall));
 }
@@ -2850,6 +2892,25 @@ ${known.map((n) => `  ${n}`).join("\n")}` : void 0
     }
     throw error;
   }
+}
+function unsettledNotice(trajectory, settled) {
+  const closed = new Set(
+    trajectory.events.filter((event) => event.axis === "delivery" && event.settles).map((event) => event.settles)
+  );
+  const open = trajectory.events.filter(
+    (event) => event.axis === "intent" && !closed.has(event.id)
+  );
+  if (open.length === 0) return void 0;
+  return [
+    settled ? `${open.length} intent(s) on this subject are still outstanding:` : `This delivery settled nothing. ${open.length} intent(s) on this subject remain outstanding:`,
+    ...open.map((event) => `  ${event.id}  ${event.summary}`),
+    "",
+    "A debt closes when a delivery names the intent it settles, and nothing else",
+    "closes it. If one of these is what you just delivered, say so:",
+    "",
+    `  wfctl trajectory append --subject "${trajectory.subject}" \\`,
+    `    --summary "<what the source does now>" --axis delivery --settles <id>`
+  ].join("\n");
 }
 async function workList(context) {
   const { listBundles: listBundles2, renderBundles: renderBundles2 } = await Promise.resolve().then(() => (init_bundles(), bundles_exports));
@@ -3254,7 +3315,8 @@ async function promote2(context, options) {
         result.pages.map((page) => `  knowledge/${page}`).join("\n"),
         `${bundle} archived at:
 ${result.archived}`,
-        renderTrajectory2(trajectory)
+        renderTrajectory2(trajectory),
+        unsettledNotice(trajectory, options.settles)
       ])
     );
   } catch (error) {
@@ -3798,6 +3860,7 @@ async function inspectLeaf(entry, now = /* @__PURE__ */ new Date()) {
   const base = {
     repository: entry.repository,
     worktreeId: entry.worktreeId,
+    checkout: entry.checkout,
     path: entry.path,
     graph: "unreachable"
   };
@@ -3857,7 +3920,7 @@ function renderLeaves(leaves) {
   }
   const rows = leaves.map((leaf) => {
     const age = leaf.graph === "ready" || leaf.graph === "stale" ? `${leaf.ageDays}d` : "";
-    return `${leaf.graph.padEnd(11)} ${age.padEnd(5)} ${leaf.repository}  ${leaf.worktreeId.padEnd(10)}  ${leaf.path}`;
+    return `${leaf.graph.padEnd(11)} ${age.padEnd(5)} ${leaf.repository}  ${label(leaf).padEnd(14)}  ${leaf.path}`;
   });
   const needing = leaves.filter((leaf) => leaf.graph === "missing" || leaf.graph === "stale");
   return [
@@ -3881,7 +3944,7 @@ function assertInsideClaim(options) {
       `${options.target} is not inside any registered repository.`,
       "wfctl repo add <owner/name> --path <dir> [--worktree <id>]",
       options.leaves.length === 0 ? "Nothing is registered, so there is nowhere this write could legitimately land." : `Registered:
-${options.leaves.map((leaf) => `  ${leaf.repository}  ${leaf.worktreeId}  ${leaf.path}`).join("\n")}`
+${options.leaves.map((leaf) => `  ${leaf.repository}  ${label(leaf)}  ${leaf.path}`).join("\n")}`
     );
   }
   if (!options.claim) return;
@@ -3899,6 +3962,7 @@ var init_leaves = __esm({
     "use strict";
     init_gates();
     init_paths_resolve();
+    init_registry();
     GRAPH_PATH = "graphify-out/graph.json";
     STALE_AFTER_DAYS = 30;
   }
@@ -4055,6 +4119,39 @@ function excerpt(body, want) {
   const best = lines.map((line) => ({ line: line.trim(), hits: score(line, want) })).filter((entry) => entry.hits > 0).sort((left, right) => right.hits - left.hits)[0];
   return best?.line.replace(/^[-*#>|\s]+/, "").slice(0, 300) ?? "";
 }
+async function adjudications(root) {
+  const { RECONSTRUCTION_ARCHIVE: RECONSTRUCTION_ARCHIVE2, RECONSTRUCTION_DIR: RECONSTRUCTION_DIR2 } = await Promise.resolve().then(() => (init_reconstruct(), reconstruct_exports));
+  const out = [];
+  for (const dir of [RECONSTRUCTION_DIR2, RECONSTRUCTION_ARCHIVE2]) {
+    let cases = [];
+    try {
+      cases = (await readdir8(resolve16(root, dir), { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    } catch {
+      continue;
+    }
+    for (const id of cases) {
+      const path = join7(dir, id, "case.json");
+      let record;
+      try {
+        record = JSON.parse(await readFile12(resolve16(root, path), "utf8"));
+      } catch {
+        continue;
+      }
+      const contradictions = Array.isArray(record.contradictions) ? record.contradictions : [];
+      for (const entry of contradictions) {
+        const resolution = entry.resolution?.trim();
+        if (!resolution) continue;
+        out.push({
+          subject: entry.subject ?? "",
+          resolution,
+          path,
+          ...record.startedAt ? { at: record.startedAt.slice(0, 10) } : {}
+        });
+      }
+    }
+  }
+  return out;
+}
 async function walk(root, dir) {
   const base = resolve16(root, dir);
   try {
@@ -4077,6 +4174,15 @@ async function findDecisions(root, subject) {
       const at = /\b(20\d{2}-\d{2}-\d{2})/.exec(body)?.[1];
       found.push({ where: lane.label, said, path, ...at ? { at } : {} });
     }
+  }
+  for (const adjudication of await adjudications(root)) {
+    if (score(`${adjudication.subject} ${adjudication.resolution}`, want) === 0) continue;
+    found.push({
+      where: "an adjudicated contradiction",
+      said: adjudication.resolution,
+      path: adjudication.path,
+      ...adjudication.at ? { at: adjudication.at } : {}
+    });
   }
   for (const trajectory of await listTrajectories(root)) {
     if (score(trajectory.subject, want) === 0) continue;
@@ -4174,12 +4280,32 @@ async function runDoctor(targetInput, options = {}) {
   const target = resolve17(targetInput);
   const runner = options.runner ?? run;
   const checks = [];
-  const state = await readInstallState(target);
+  let state;
+  try {
+    state = await readInstallState(target);
+  } catch (error) {
+    checks.push({
+      name: "installation",
+      status: "fail",
+      message: `.workflow/state.json cannot be read: ${error.message}`,
+      remedy: "wfctl init knowledge   (after moving the unreadable file aside)"
+    });
+    return { target, checks };
+  }
   if (!state) {
     checks.push({
       name: "installation",
       status: "fail",
       message: "This is not an initialized knowledge repository",
+      remedy: "wfctl init knowledge"
+    });
+    return { target, checks };
+  }
+  if (typeof state.files !== "object" || state.files === null) {
+    checks.push({
+      name: "installation",
+      status: "fail",
+      message: ".workflow/state.json has no file record, so nothing owned can be checked",
       remedy: "wfctl init knowledge"
     });
     return { target, checks };
@@ -4262,7 +4388,18 @@ async function runDoctor(targetInput, options = {}) {
     message: block.includes("wfctl:begin") ? "Present in AGENTS.md" : "Absent \u2014 nothing points the agent at the skill",
     ...block.includes("wfctl:begin") ? {} : { remedy: "wfctl init knowledge" }
   });
-  for (const guard of await guardStatus(target)) {
+  let guards = [];
+  try {
+    guards = await guardStatus(target);
+  } catch (error) {
+    checks.push({
+      name: "guards",
+      status: "fail",
+      message: `.claude/settings.json cannot be read: ${error.message}`,
+      remedy: "Repair the file, then: wfctl init knowledge"
+    });
+  }
+  for (const guard of guards) {
     const script = await exists2(
       resolve17(target, RUNTIME_DIR, guard.guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard.guard}.mjs`)
     );
@@ -4584,7 +4721,7 @@ var USAGE = `wfctl \u2014 project workflow
 
   capture "<what you found>" [--awaits]
 
-  repo add <owner/name> --path <dir> [--worktree <id>]
+  repo add <owner/name> --path <dir> [--worktree <id>] [--checkout <name>]
   repo list | repo remove <owner/name> [--worktree <id>]
 
   reconstruct start            open a case over the registered repositories
@@ -4606,7 +4743,7 @@ var USAGE = `wfctl \u2014 project workflow
 
   recall list                  the checklist
   recall answer <item> --answer ... --route ... --source ...
-  recall route <route> [--covered <path>...]
+  recall route <route> --covered <path> [--covered <path>]...
 
   flow close [<flow-id>]       flush the checkpoint and drop the fence
 
@@ -4942,12 +5079,9 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
           const repository = args[0] ?? "";
           const path = flag(args, "path") ?? "";
           const worktreeId = flag(args, "worktree") ?? "main";
-          const entry = {
-            repository,
-            checkout: flag(args, "checkout") ?? worktreeId,
-            path,
-            worktreeId
-          };
+          const { currentBranch: currentBranch2 } = await Promise.resolve().then(() => (init_git(), git_exports));
+          const checkout = flag(args, "checkout") ?? (flag(args, "worktree") ? worktreeId : currentBranch2(path) || worktreeId);
+          const entry = { repository, checkout, path, worktreeId };
           const entries = await addRepository2(context.root, entry);
           const state = await inspectLeaf2(entry);
           return ok_(
@@ -5400,7 +5534,7 @@ ${USAGE}`,
 }
 function findGuidance(start) {
   let current = start;
-  for (let depth = 0; depth < 6; depth += 1) {
+  for (let depth = 0; depth < 3; depth += 1) {
     const candidate = resolve18(current, "templates", "guidance");
     if (existsSync(candidate)) return candidate;
     const parent = dirname12(current);

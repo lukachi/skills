@@ -75,6 +75,46 @@ function excerpt(body: string, want: string[]): string {
   return best?.line.replace(/^[-*#>|\s]+/, "").slice(0, 300) ?? "";
 }
 
+/** Resolved contradictions from every reconstruction case, open or archived. */
+async function adjudications(
+  root: string,
+): Promise<{ subject: string; resolution: string; path: string; at?: string }[]> {
+  const { RECONSTRUCTION_ARCHIVE, RECONSTRUCTION_DIR } = await import("./reconstruct.js");
+  const out: { subject: string; resolution: string; path: string; at?: string }[] = [];
+
+  for (const dir of [RECONSTRUCTION_DIR, RECONSTRUCTION_ARCHIVE]) {
+    let cases: string[] = [];
+    try {
+      cases = (await readdir(resolve(root, dir), { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+    } catch {
+      continue;
+    }
+    for (const id of cases) {
+      const path = join(dir, id, "case.json");
+      let record: { contradictions?: unknown; startedAt?: string };
+      try {
+        record = JSON.parse(await readFile(resolve(root, path), "utf8")) as typeof record;
+      } catch {
+        continue;
+      }
+      const contradictions = Array.isArray(record.contradictions) ? record.contradictions : [];
+      for (const entry of contradictions as { subject?: string; resolution?: string }[]) {
+        const resolution = entry.resolution?.trim();
+        if (!resolution) continue;
+        out.push({
+          subject: entry.subject ?? "",
+          resolution,
+          path,
+          ...(record.startedAt ? { at: record.startedAt.slice(0, 10) } : {}),
+        });
+      }
+    }
+  }
+  return out;
+}
+
 async function walk(root: string, dir: string): Promise<string[]> {
   const base = resolve(root, dir);
   try {
@@ -102,6 +142,30 @@ export async function findDecisions(root: string, subject: string): Promise<Deci
       const at = /\b(20\d{2}-\d{2}-\d{2})/.exec(body)?.[1];
       found.push({ where: lane.label, said, path, ...(at ? { at } : {}) });
     }
+  }
+
+  /**
+   * Adjudicated contradictions, which nothing here could see.
+   *
+   * A reconstruction records what the maintainer decided when two sources
+   * disagreed — `reconstruct resolve <id> --resolution "<what they decided>"`
+   * is one of their answers, in their words — and it lives in `case.json`
+   * rather than in Markdown, so both the lane walk and its `.md` filter missed
+   * it twice over. A settled question reported as unsettled is the failure this
+   * command exists to prevent.
+   *
+   * `reconstruction/raw/` is deliberately not a source. It is untrusted by the
+   * knowledge contract, and reporting it as something that was settled would
+   * hand a clue the authority of a decision.
+   */
+  for (const adjudication of await adjudications(root)) {
+    if (score(`${adjudication.subject} ${adjudication.resolution}`, want) === 0) continue;
+    found.push({
+      where: "an adjudicated contradiction",
+      said: adjudication.resolution,
+      path: adjudication.path,
+      ...(adjudication.at ? { at: adjudication.at } : {}),
+    });
   }
 
   /**

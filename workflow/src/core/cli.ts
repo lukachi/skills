@@ -66,7 +66,7 @@ const USAGE = `wfctl — project workflow
 
   capture "<what you found>" [--awaits]
 
-  repo add <owner/name> --path <dir> [--worktree <id>]
+  repo add <owner/name> --path <dir> [--worktree <id>] [--checkout <name>]
   repo list | repo remove <owner/name> [--worktree <id>]
 
   reconstruct start            open a case over the registered repositories
@@ -88,7 +88,7 @@ const USAGE = `wfctl — project workflow
 
   recall list                  the checklist
   recall answer <item> --answer ... --route ... --source ...
-  recall route <route> [--covered <path>...]
+  recall route <route> --covered <path> [--covered <path>]...
 
   flow close [<flow-id>]       flush the checkpoint and drop the fence
 
@@ -504,12 +504,17 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           const repository = args[0] ?? "";
           const path = flag(args, "path") ?? "";
           const worktreeId = flag(args, "worktree") ?? "main";
-          const entry = {
-            repository,
-            checkout: flag(args, "checkout") ?? worktreeId,
-            path,
-            worktreeId,
-          };
+          /**
+           * The label defaulted to the worktree id, which defaults to "main" —
+           * so a checkout sitting on `brand/icons` was registered, listed and
+           * referred to as `main`. The label is how the agent names the
+           * checkout it is about to write in; one that names the wrong branch
+           * is worse than one that names nothing.
+           */
+          const { currentBranch } = await import("./git.js");
+          const checkout = flag(args, "checkout")
+            ?? (flag(args, "worktree") ? worktreeId : currentBranch(path) || worktreeId);
+          const entry = { repository, checkout, path, worktreeId };
           const entries = await addRepository(context.root, entry);
 
           /**
@@ -1086,9 +1091,18 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
  * them. Walking up until the directory is actually there is correct in both,
  * and fails loudly rather than installing an empty bundle.
  */
+/**
+ * The guidance bundle inside this installation.
+ *
+ * `start` is the directory this module was loaded from, so the layout is known:
+ * `dist/cli.js` sits one level under the package root, and a source run sits
+ * two. It climbed six, which walks a global install out of its own package and
+ * into `node_modules`, the install root and the home directory — where any
+ * unrelated `templates/guidance/` would be read as this tool's own instructions.
+ */
 export function findGuidance(start: string): string {
   let current = start;
-  for (let depth = 0; depth < 6; depth += 1) {
+  for (let depth = 0; depth < 3; depth += 1) {
     const candidate = resolve(current, "templates", "guidance");
     if (existsSync(candidate)) return candidate;
     const parent = dirname(current);

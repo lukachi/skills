@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +11,7 @@ import { assertWriteAllowed } from "../src/core/paths.js";
 import { GateRefusal, assertReached } from "../src/core/gates.js";
 import { WORK_STEP_DEFINITIONS } from "../src/core/steps.js";
 import { WORK_STEPS } from "../src/core/types.js";
+import { findGuidance as findGuidanceForTest } from "../src/core/cli.js";
 import type { FlowRecord } from "../src/core/types.js";
 
 /**
@@ -297,7 +298,8 @@ test("steps: the chain has no unreachable step and no gap", () => {
  * exercised. Everything above asserts about a function. Everything below
  * asserts about `wfctl`.
  */
-const binary = resolve(import.meta.dirname, "../dist/cli.js");
+const distributionRoot = resolve(import.meta.dirname, "..");
+const binary = resolve(distributionRoot, "dist/cli.js");
 
 function wfctl(cwd: string, args: string[]): { stdout: string; status: number } {
   const result = spawnSync(process.execPath, [binary, ...args], {
@@ -752,4 +754,72 @@ test("brief: a stranded bundle is reported as awaiting the maintainer", async ()
   wfctl(root, ["work", "adopt", "2026-08-23-forgotten", "--weight", "significant", "--attested", "go"]);
   const after = wfctl(root, ["brief"]);
   assert.doesNotMatch(after.stdout, /has no flow/);
+});
+
+// ---------------------------------------------------------------------------
+// 9. The round-three leftovers
+// ---------------------------------------------------------------------------
+
+test("knowledge: a path outside the corpus is not a curated page", async () => {
+  const root = await installed();
+  await writeFile(join(root, "secret.md"), "# not curated\n", "utf8");
+
+  for (const target of ["../secret.md", "/etc/hosts", join(root, "secret.md")]) {
+    const hashed = wfctl(root, ["knowledge", "hash", target]);
+    assert.equal(hashed.status, 2, `${target} was hashed as a curated page`);
+    assert.match(hashed.stdout, /not a curated page|No page at/);
+  }
+});
+
+test("recall: a route with nothing behind it does not raise the floor", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "route", "--weight", "significant", "--attested", "go"]);
+
+  const bare = wfctl(root, ["recall", "route", "graphify"]);
+  assert.equal(bare.status, 2, "a bare route raised a counter with no evidence");
+  assert.match(bare.stdout, /records what it covered/);
+
+  const covered = wfctl(root, ["recall", "route", "graphify", "--covered", "src/parser.ts"]);
+  assert.equal(covered.status, 0, covered.stdout);
+});
+
+test("doctor: a corrupt state file is reported, not a reason to abort", async () => {
+  const root = await installed();
+  await writeFile(join(root, ".workflow/state.json"), "{ broken", "utf8");
+
+  const report = wfctl(root, ["doctor"]);
+  assert.match(report.stdout, /state\.json cannot be read/);
+  assert.match(report.stdout, /remedy|→/, "the failure named no way out");
+  assert.doesNotMatch(report.stdout, /could not be completed/,
+    "doctor aborted instead of reporting; diagnosing a broken install is its whole job");
+});
+
+test("doctor: corrupt settings do not take the rest of the report with them", async () => {
+  const root = await installed();
+  await writeFile(join(root, ".claude/settings.json"), "nope", "utf8");
+
+  const report = wfctl(root, ["doctor"]);
+  assert.match(report.stdout, /settings\.json cannot be read/);
+  assert.match(report.stdout, /installed-files/, "the checks after the corrupt one never ran");
+});
+
+test("repo: a checkout is labelled by the branch it is on, not by 'main'", async () => {
+  const root = await installed();
+  const leaf = await scratch("wfctl-leaf-");
+  execFileSync("git", ["init", "-q", "-b", "brand/icons", leaf]);
+  await writeFile(join(leaf, "README.md"), "x\n", "utf8");
+  execFileSync("git", ["-C", leaf, "add", "."]);
+  execFileSync("git", ["-C", leaf, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"]);
+
+  wfctl(root, ["repo", "add", "owner/leaf", "--path", leaf]);
+  const listed = wfctl(root, ["repo", "list"]);
+  assert.match(listed.stdout, /brand\/icons/,
+    "a checkout on brand/icons was registered under a label that names another branch");
+});
+
+test("guidance: the bundle is found inside this install and not above it", async () => {
+  // Climbing six ancestors walks a global install out of its own package and
+  // into node_modules, the install root, and the home directory.
+  const found = findGuidanceForTest(resolve(distributionRoot, "dist"));
+  assert.ok(found.startsWith(distributionRoot), `guidance resolved outside the package: ${found}`);
 });

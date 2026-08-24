@@ -320,9 +320,30 @@ export async function recallRoute(
   if (!flow) {
     return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
   }
+  /**
+   * A route with nothing behind it is a counter and nothing else.
+   *
+   * The recall gate's own note says it counts answers rather than operations,
+   * because an operation count is satisfied by one empty query and an agent in
+   * a hurry produces exactly that. This command counted operations: a bare
+   * `wfctl recall route graphify` raised the graphify floor with no evidence
+   * that anything had been traversed at all.
+   */
+  const covered = (options.covered ?? []).filter((path) => path.trim().length > 0);
+  if (covered.length === 0) {
+    return refused(
+      new GateRefusal(
+        `A ${options.route} route records what it covered, and nothing named it.`,
+        `wfctl recall route ${options.route} --covered "<path>" [--covered "<path>"...]`,
+        "Raising a counter without saying what it traversed satisfies the floor " +
+          "with one empty query, which is the reading this checklist exists to " +
+          "distinguish from the real thing.",
+      ),
+    );
+  }
   const next = await mutateFlow(context.root, flow.id, (current) => ({
     ...current,
-    recall: recordRoute(current.recall, options.route, options.covered ?? []),
+    recall: recordRoute(current.recall, options.route, covered),
   }));
   return ok(renderCounterLine(next.step, next.recall));
 }
@@ -556,6 +577,48 @@ export async function workAdopt(
     }
     throw error;
   }
+}
+
+/**
+ * Which intents this delivery left standing.
+ *
+ * A debt is closed only by a delivery naming the intent it settles, and nothing
+ * ever asked for that name — so every delivery recorded without `--settles`
+ * left its intent outstanding permanently and the debt list only ever grew.
+ * The link is the agent's to make, because only the reader of the source can
+ * say that this observation settles that intention, but it cannot be made by
+ * an agent that was never told the intents were there.
+ *
+ * Reported rather than refused: a delivery on a new subject genuinely settles
+ * nothing, and a gate that cannot be satisfied is a gate that gets worked
+ * around.
+ */
+function unsettledNotice(
+  trajectory: { id: string; subject: string; events: { id: string; axis: string; summary: string; settles?: string }[] },
+  settled: string | undefined,
+): string | undefined {
+  const closed = new Set(
+    trajectory.events
+      .filter((event) => event.axis === "delivery" && event.settles)
+      .map((event) => event.settles as string),
+  );
+  const open = trajectory.events.filter(
+    (event) => event.axis === "intent" && !closed.has(event.id),
+  );
+  if (open.length === 0) return undefined;
+
+  return [
+    settled
+      ? `${open.length} intent(s) on this subject are still outstanding:`
+      : `This delivery settled nothing. ${open.length} intent(s) on this subject remain outstanding:`,
+    ...open.map((event) => `  ${event.id}  ${event.summary}`),
+    "",
+    "A debt closes when a delivery names the intent it settles, and nothing else",
+    "closes it. If one of these is what you just delivered, say so:",
+    "",
+    `  wfctl trajectory append --subject "${trajectory.subject}" \\`,
+    `    --summary "<what the source does now>" --axis delivery --settles <id>`,
+  ].join("\n");
 }
 
 /** Every bundle, and whether anything can still reach it. */
@@ -1164,6 +1227,7 @@ export async function promote(
         result.pages.map((page) => `  knowledge/${page}`).join("\n"),
         `${bundle} archived at:\n${result.archived}`,
         renderTrajectory(trajectory),
+        unsettledNotice(trajectory, options.settles),
       ]),
     );
   } catch (error) {
