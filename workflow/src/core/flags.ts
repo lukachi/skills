@@ -37,8 +37,8 @@ export const COMMAND_FLAGS: Readonly<Record<string, CommandFlags>> = {
   "handoff": NONE,
   "checkpoint": { value: ["summary", "handoff", "last", "next", "todo"], boolean: [] },
 
-  "work start": { value: ["title", "weight", "attested"], boolean: [] },
-  "work adopt": { value: ["attested", "from", "reason"], boolean: [] },
+  "work start": { value: ["title", "weight", "attested", "from"], boolean: [] },
+  "work adopt": { value: ["attested", "weight", "title", "from"], boolean: [] },
   "work list": NONE,
   "work step": NONE,
   "work issue create": { value: ["title", "satisfies"], boolean: [] },

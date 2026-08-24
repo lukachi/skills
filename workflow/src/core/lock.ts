@@ -112,7 +112,27 @@ export async function withLock<T>(target: string, work: () => Promise<T>): Promi
     try {
       // Atomic: exactly one caller creates the directory.
       await mkdir(path);
-      await writeFile(holderPath(target), JSON.stringify({ pid: process.pid, token, at: Date.now() }));
+      try {
+        await writeFile(
+          holderPath(target),
+          JSON.stringify({ pid: process.pid, token, at: Date.now() }),
+        );
+      } catch {
+        /**
+         * The directory went away between creating it and describing it.
+         *
+         * A caller reclaiming an abandoned lock cannot tell "the stale holder
+         * I just deleted" from "a new holder that has not written itself yet",
+         * so it removes a directory this call had just created — and the write
+         * then failed with ENOENT and crashed the command. Under load that
+         * surfaced as a lock test that failed roughly one run in three, at
+         * twenty milliseconds, which reads as a broken test rather than as the
+         * race it is.
+         *
+         * Losing the lock is not an error. Go round again.
+         */
+        continue;
+      }
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;

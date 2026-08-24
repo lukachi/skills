@@ -25,10 +25,10 @@ async function root(): Promise<string> {
 
 test("a second flow is refused while one is open, and the refusal names the capture route", async () => {
   const target = await root();
-  await openFlow(target, { kind: "work", title: "first thing" });
+  await openFlow(target, { kind: "work", title: "first thing", attested: "they asked for it" });
 
   await assert.rejects(
-    () => openFlow(target, { kind: "work", title: "a bug I noticed" }),
+    () => openFlow(target, { kind: "work", title: "a bug I noticed", attested: "they asked for it" }),
     (error: unknown) => {
       assert.ok(error instanceof FlowOpenError);
       assert.match(error.message, /out of scope/);
@@ -40,7 +40,7 @@ test("a second flow is refused while one is open, and the refusal names the capt
 
 test("closing clears the pointer and drops the checkpoint", async () => {
   const target = await root();
-  const flow = await openFlow(target, { kind: "work", title: "something" });
+  const flow = await openFlow(target, { kind: "work", title: "something", attested: "they asked for it" });
   await writeFlow(target, {
     ...flow,
     checkpoint: buildCheckpoint({
@@ -228,6 +228,7 @@ function base(): FlowRecord {
     id: "2026-08-23-work-thing",
     kind: "work",
     title: "thing",
+    attested: { words: "they asked for it", at: "now" },
     step: "opened",
     createdAt: "now",
     updatedAt: "now",

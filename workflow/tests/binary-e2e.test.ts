@@ -57,7 +57,7 @@ test("the binary runs when invoked under a different program name", async () => 
 
 test("closing runs every gate the step machine runs", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "skip test", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "skip test", "--weight", "significant", "--attested", "they asked for it"]);
 
   const closed = wfctl(root, ["work", "close", "--outcome", "completed"]);
   assert.equal(closed.status, 2, "close skipped the entire step chain");
@@ -66,7 +66,7 @@ test("closing runs every gate the step machine runs", async () => {
 
 test("a step cannot be reached without a review on record", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "no review", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "no review", "--weight", "significant", "--attested", "they asked for it"]);
   wfctl(root, ["work", "step", "aligned"]);
   for (const item of ["E14", "E15", "E16"]) {
     wfctl(root, ["recall", "answer", item, "--answer", "x", "--route", "qmd", "--source", "k"]);
@@ -111,7 +111,7 @@ test("every command a refusal names actually exists", async () => {
 
 test("tampered state refuses rather than crashing", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "tamper", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "tamper", "--weight", "lightweight", "--attested", "they asked for it"]);
   const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
   await writeFile(resolve(root, ".workflow/flows", `${id}.json`), "{ not json", "utf8");
 
@@ -123,7 +123,7 @@ test("tampered state refuses rather than crashing", async () => {
 
 test("a malformed review artifact refuses rather than crashing", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "review", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "review", "--weight", "lightweight", "--attested", "they asked for it"]);
   await writeFile(resolve(root, "r.json"), "null", "utf8");
 
   const result = wfctl(root, ["work", "verify", "--review", resolve(root, "r.json")]);
@@ -133,7 +133,7 @@ test("a malformed review artifact refuses rather than crashing", async () => {
 
 test("an attack that broke the work is not accepted", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "broke", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "broke", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToImplementE2E(root);
   await writeFile(
     resolve(root, "r.json"),
@@ -155,20 +155,20 @@ test("an attack that broke the work is not accepted", async () => {
 
 test("the fence survives deletion of the current pointer", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "first", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "first", "--weight", "lightweight", "--attested", "they asked for it"]);
   await writeFile(resolve(root, ".workflow/flows/current"), "", "utf8");
 
-  const second = wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight"]);
+  const second = wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight", "--attested", "they asked for it"]);
   assert.equal(second.status, 2, "a second flow opened once the pointer was gone");
   assert.match(second.stdout, /out of scope/);
 });
 
 test("two titles that slug alike do not overwrite each other", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "日本語", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "日本語", "--weight", "lightweight", "--attested", "they asked for it"]);
   wfctl(root, ["work", "close", "--outcome", "abandoned"]);
   wfctl(root, ["flow", "close"]);
-  wfctl(root, ["work", "start", "--title", "русский", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "русский", "--weight", "lightweight", "--attested", "they asked for it"]);
 
   const { readdir } = await import("node:fs/promises");
   const flows = (await readdir(resolve(root, ".workflow/flows"))).filter((n) => n.endsWith(".json"));
@@ -177,7 +177,7 @@ test("two titles that slug alike do not overwrite each other", async () => {
 
 test("knowledge/ cannot be reached by case, symlink or the absolute path", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "guard", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "guard", "--weight", "lightweight", "--attested", "they asked for it"]);
   wfctl(root, ["recall", "route", "graphify", "--covered", "/leaf/a.ts"]);
 
   for (const target of ["knowledge/p.md", "Knowledge/p.md", resolve(root, "knowledge/p.md")]) {
@@ -198,7 +198,7 @@ test("the write hook goes quiet on ground it has already covered", async () => {
   await writeFile(resolve(leaf, "graphify-out/graph.json"), "{}", "utf8");
   wfctl(root, ["repo", "add", "acme/a", "--path", leaf]);
 
-  wfctl(root, ["work", "start", "--title", "quiet", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "quiet", "--weight", "lightweight", "--attested", "they asked for it"]);
   wfctl(root, ["recall", "route", "graphify", "--covered", resolve(leaf, "a.ts")]);
 
   const first = wfctl(root, ["hook", "write", "--target", resolve(leaf, "a.ts")]);
@@ -213,7 +213,7 @@ test("the write hook goes quiet on ground it has already covered", async () => {
 
 test("brief --json is what the stop guard reads", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "signals", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "signals", "--weight", "significant", "--attested", "they asked for it"]);
 
   const result = wfctl(root, ["brief", "--json"]);
   assert.equal(result.status, 0);
@@ -225,7 +225,7 @@ test("brief --json is what the stop guard reads", async () => {
 
 test("a promotion draft with no page name is refused", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "draft", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "draft", "--weight", "lightweight", "--attested", "they asked for it"]);
 
   const empty = wfctl(root, ["work", "promotion", "draft"]);
   assert.equal(empty.status, 2);
@@ -294,14 +294,14 @@ test("a refused install still records what it wrote", async () => {
 
 test("a dropped argument refuses instead of storing the next flag as a value", async () => {
   const root = await installed();
-  const result = wfctl(root, ["work", "start", "--title", "--weight", "significant"]);
+  const result = wfctl(root, ["work", "start", "--title", "--weight", "significant", "--attested", "they asked for it"]);
   assert.equal(result.status, 2);
   assert.match(result.stdout, /given without a value/);
 });
 
 test("a capture beginning with dashes is still recordable", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "cap", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "cap", "--weight", "lightweight", "--attested", "they asked for it"]);
 
   const result = wfctl(root, ["capture", "--fix the parser, it drops the last token"]);
   assert.equal(result.status, 0, result.stdout);
@@ -314,7 +314,7 @@ test("brief --json satisfies the stop guard's contract, not just a stub's", asyn
    * This checks the two sides against each other.
    */
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "contract", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "contract", "--weight", "significant", "--attested", "they asked for it"]);
 
   const report = JSON.parse(wfctl(root, ["brief", "--json"]).stdout);
   const awaiting = (report.signals ?? []).filter(
@@ -524,7 +524,7 @@ test("a traversal gate distinguishes 'not traversed' from 'nothing to traverse'"
   await mkdir(resolve(leaf, "src"), { recursive: true });
 
   wfctl(root, ["repo", "add", "acme/api", "--path", leaf]);
-  wfctl(root, ["work", "start", "--title", "leaf work", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "leaf work", "--weight", "significant", "--attested", "they asked for it"]);
 
   /**
    * The instruction "traverse the graph first" was unfollowable in exactly the
@@ -571,7 +571,7 @@ test("a write outside the registered checkouts is refused", async () => {
   await writeFile(resolve(leaf, "graphify-out/graph.json"), "{}", "utf8");
 
   wfctl(root, ["repo", "add", "acme/a", "--path", leaf]);
-  wfctl(root, ["work", "start", "--title", "w", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "w", "--weight", "significant", "--attested", "they asked for it"]);
   wfctl(root, ["recall", "route", "graphify", "--covered", resolve(leaf, "src/a.ts")]);
 
   const stray = wfctl(root, ["hook", "write", "--target", "/tmp/nowhere-registered/x.ts"]);
@@ -590,7 +590,7 @@ test("a write into a sibling checkout is refused while another is claimed", asyn
 
   wfctl(root, ["repo", "add", "acme/a", "--path", a]);
   wfctl(root, ["repo", "add", "acme/b", "--path", b]);
-  wfctl(root, ["work", "start", "--title", "w", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "w", "--weight", "significant", "--attested", "they asked for it"]);
   wfctl(root, ["recall", "route", "graphify", "--covered", resolve(a, "src/a.ts")]);
   wfctl(root, ["work", "issue", "create", "--title", "unit"]);
   wfctl(root, ["work", "issue", "claim", "U001", "--repository", "acme/a", "--worktree", "main"]);
@@ -664,7 +664,7 @@ test("doctor refuses outside an initialized repository", async () => {
 
 test("doctor notices an unresolved capture queue", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "t", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "t", "--weight", "lightweight", "--attested", "they asked for it"]);
   wfctl(root, ["capture", "something worth keeping"]);
 
   const report = wfctl(root, ["doctor"]);
@@ -674,7 +674,7 @@ test("doctor notices an unresolved capture queue", async () => {
 
 test("concurrent unit creation does not lose units or reuse ids", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "race", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "race", "--weight", "significant", "--attested", "they asked for it"]);
 
   /**
    * Six concurrent calls all reported success and three units survived, with
@@ -697,7 +697,7 @@ test("concurrent unit creation does not lose units or reuse ids", async () => {
 
 test("promotion refuses a page that would not validate, and writes nothing", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "pages", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "pages", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToVerifiedE2E(root);
   wfctl(root, ["work", "promotion", "draft", "areas/billing/index.md"]);
   wfctl(root, ["work", "close", "--outcome", "completed"]);
@@ -795,7 +795,7 @@ async function walkToVerifiedE2E(root: string): Promise<void> {
 
 test("promote actually writes the pages into curated knowledge", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "retry", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "retry", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToVerifiedE2E(root);
   wfctl(root, ["work", "promotion", "draft", "networking/retry.md"]);
 
@@ -824,7 +824,7 @@ test("promote actually writes the pages into curated knowledge", async () => {
 
 test("promoting with nothing drafted is refused", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "empty", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "empty", "--weight", "lightweight", "--attested", "they asked for it"]);
   await walkToVerifiedE2E(root);
   wfctl(root, ["work", "close", "--outcome", "completed"]);
 
@@ -838,7 +838,7 @@ test("parallel work start opens exactly one flow", async () => {
   await Promise.all(
     Array.from({ length: 6 }, (_, index) =>
       new Promise<void>((done) => {
-        wfctl(root, ["work", "start", "--title", `race ${index}`, "--weight", "lightweight"]);
+        wfctl(root, ["work", "start", "--title", `race ${index}`, "--weight", "lightweight", "--attested", "they asked for it"]);
         done();
       }),
     ),
@@ -851,23 +851,23 @@ test("parallel work start opens exactly one flow", async () => {
 
 test("flow close takes the id its own refusal prints", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "orphan", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "orphan", "--weight", "lightweight", "--attested", "they asked for it"]);
   const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
   await writeFile(resolve(root, ".workflow/flows/current"), "", "utf8");
 
-  const blocked = wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight"]);
+  const blocked = wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight", "--attested", "they asked for it"]);
   assert.equal(blocked.status, 2);
   assert.match(blocked.stdout, new RegExp(`flow close ${id}`));
 
   // The remedy used to ignore its argument, so the repository stayed fenced forever.
   const closed = wfctl(root, ["flow", "close", id]);
   assert.equal(closed.status, 0, closed.stdout);
-  assert.equal(wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight"]).status, 0);
+  assert.equal(wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight", "--attested", "they asked for it"]).status, 0);
 });
 
 test("flow close runs the gates work close runs", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "parked", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "parked", "--weight", "lightweight", "--attested", "they asked for it"]);
   wfctl(root, ["work", "park", "--reason", "not yet"]);
 
   const parked = wfctl(root, ["flow", "close"]);
@@ -884,7 +884,7 @@ test("flow close runs the gates work close runs", async () => {
 
 test("the next line names the step after this one, not the one just run", async () => {
   const root = await installed();
-  const started = wfctl(root, ["work", "start", "--title", "next", "--weight", "significant"]);
+  const started = wfctl(root, ["work", "start", "--title", "next", "--weight", "significant", "--attested", "they asked for it"]);
   assert.doesNotMatch(started.stdout, /next: wfctl work start/);
 
   const aligned = wfctl(root, ["work", "step", "aligned"]);
@@ -893,7 +893,7 @@ test("the next line names the step after this one, not the one just run", async 
 
 test("brief names the promotion queue, an awaiting capture and an open reconstruction", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "queued", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "queued", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToVerifiedE2E(root);
   wfctl(root, ["work", "promotion", "draft", "a/b.md"]);
   const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
@@ -915,7 +915,7 @@ test("brief names the promotion queue, an awaiting capture and an open reconstru
 
 test("brief at verified points forward, not back at the review it accepted", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "forward", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "forward", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToVerifiedE2E(root);
 
   const brief = wfctl(root, ["brief"]);
@@ -925,7 +925,7 @@ test("brief at verified points forward, not back at the review it accepted", asy
 
 test("a review keeps its whole artifact, and a finding with an odd status is refused", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "review", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "review", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToVerifiedE2E(root);
 
   const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
@@ -950,7 +950,7 @@ test("a review keeps its whole artifact, and a finding with an odd status is ref
 
 test("a claim names a registered checkout", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "claim", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "claim", "--weight", "significant", "--attested", "they asked for it"]);
   wfctl(root, ["work", "issue", "create", "--title", "u"]);
 
   const invented = wfctl(root, ["work", "issue", "claim", "U001", "--repository", "acme/nope"]);
@@ -967,7 +967,7 @@ test("a symlink inside a registered checkout cannot reach outside it", async () 
   link("/etc", resolve(leaf, "etclink"));
 
   wfctl(root, ["repo", "add", "acme/a", "--path", leaf]);
-  wfctl(root, ["work", "start", "--title", "sym", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "sym", "--weight", "lightweight", "--attested", "they asked for it"]);
   wfctl(root, ["recall", "route", "graphify", "--covered", resolve(leaf, "a.ts")]);
 
   const escaped = wfctl(root, ["hook", "write", "--target", resolve(leaf, "etclink/passwd")]);
@@ -976,7 +976,7 @@ test("a symlink inside a registered checkout cannot reach outside it", async () 
 
 test("the knowledge repository's own files are not governed by the claim rule", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "draft", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "draft", "--weight", "lightweight", "--attested", "they asked for it"]);
   const created = wfctl(root, ["work", "promotion", "draft", "a/b.md"]);
   assert.equal(created.status, 0);
 
@@ -1065,7 +1065,7 @@ test("a dangling symlink cannot escape a registered checkout", async () => {
   link(resolve(outside, "PWNED"), resolve(leaf, "escape"));
 
   wfctl(root, ["repo", "add", "acme/a", "--path", leaf]);
-  wfctl(root, ["work", "start", "--title", "sym", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "sym", "--weight", "lightweight", "--attested", "they asked for it"]);
   wfctl(root, ["recall", "route", "graphify", "--covered", resolve(leaf, "a.ts")]);
 
   const escaped = wfctl(root, ["hook", "write", "--target", resolve(leaf, "escape")]);
@@ -1096,7 +1096,7 @@ test("the fences hold from a subdirectory", async () => {
 
 test("work verify runs the step chain", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "ship it all", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "ship it all", "--weight", "significant", "--attested", "they asked for it"]);
   await writeFile(
     resolve(root, "r.json"),
     JSON.stringify({
@@ -1117,7 +1117,7 @@ test("work verify runs the step chain", async () => {
 
 test("a parked flow accepts nothing material", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "held", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "held", "--weight", "significant", "--attested", "they asked for it"]);
   wfctl(root, ["work", "issue", "create", "--title", "u"]);
   wfctl(root, ["work", "park", "--reason", "maintainer said hold"]);
 
@@ -1135,7 +1135,7 @@ test("promote names its record when the queue is ambiguous", async () => {
   const root = await installed();
 
   for (const title of ["alpha subject", "zeta subject"]) {
-    wfctl(root, ["work", "start", "--title", title, "--weight", "significant"]);
+    wfctl(root, ["work", "start", "--title", title, "--weight", "significant", "--attested", "they asked for it"]);
     await walkToVerifiedE2E(root);
     const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
     wfctl(root, ["work", "promotion", "draft", `${title.split(" ")[0]}/page.md`]);
@@ -1164,7 +1164,7 @@ test("promote names its record when the queue is ambiguous", async () => {
 
 test("abandoned work is not recorded as a delivery", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "given up", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "given up", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToVerifiedE2E(root);
   const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
   wfctl(root, ["work", "promotion", "draft", "a/b.md"]);
@@ -1183,7 +1183,7 @@ test("abandoned work is not recorded as a delivery", async () => {
 
 test("work close states its outcome rather than defaulting to the best one", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "silent", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "silent", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToVerifiedE2E(root);
 
   const bare = wfctl(root, ["work", "close"]);
@@ -1212,7 +1212,7 @@ test("a guard turned off stays off across an upgrade", async () => {
 
 test("concurrent captures all survive", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "cap", "--weight", "lightweight"]);
+  wfctl(root, ["work", "start", "--title", "cap", "--weight", "lightweight", "--attested", "they asked for it"]);
 
   await Promise.all(
     Array.from({ length: 20 }, (_, index) =>

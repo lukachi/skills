@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
 import { withLock, writeAtomic } from "./lock.js";
 import { emptyRecall } from "./recall.js";
-import type { FlowKind, FlowRecord, WorkWeight } from "./types.js";
+import type { AdoptedSource, FlowKind, FlowRecord, WorkWeight } from "./types.js";
 import { FLOW_SCHEMA_VERSION } from "./types.js";
 
 const FLOW_DIR = ".workflow/flows";
@@ -113,6 +113,11 @@ export interface OpenFlowOptions {
   title: string;
   weight?: WorkWeight;
   now?: Date;
+  /** Their words agreeing this work exists. Required; refused when empty. */
+  attested: string;
+  /** Bundles this fence spans, canonical first. Defaults to the flow's own. */
+  members?: string[];
+  sources?: AdoptedSource[];
 }
 
 export class FlowOpenError extends GateRefusal {}
@@ -173,7 +178,9 @@ async function openFlowLocked(root: string, options: OpenFlowOptions): Promise<F
     step: "opened",
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
-    members: [],
+    attested: { words: options.attested, at: now.toISOString() },
+    members: options.members ?? [],
+    ...(options.sources ? { sources: options.sources } : {}),
     repositories: [],
     issues: [],
     recall: emptyRecall(),

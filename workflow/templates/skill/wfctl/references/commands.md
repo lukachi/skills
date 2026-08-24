@@ -9,6 +9,10 @@ command prints what comes next. Reach for it when you need exact flags.
   checkpoint --summary ... --handoff ... --last ... --next ...
 
   work start --title ... --weight <significant|lightweight>
+             --attested "<what the maintainer said>" [--from <where it came from>]
+  work adopt <bundle> --attested "<what they said>"
+             [--weight <significant|lightweight>] [--title ...] [--from <where>]
+  work list                    every bundle, and whether anything can reach it
   work step <step>             record that this step is reached
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...

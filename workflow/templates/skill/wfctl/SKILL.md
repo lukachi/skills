@@ -40,6 +40,7 @@ wfctl handoff
 | | When |
 | --- | --- |
 | `wfctl work start` | a change: something about the product or its code should become different |
+| `wfctl work adopt <bundle>` | the same change, assembled from work that already exists somewhere |
 | `wfctl reconstruct start` | a reconstruction: recording what the project already is, because curated knowledge is missing or has drifted |
 
 You never classify between them. The maintainer asks for one explicitly.
@@ -51,6 +52,56 @@ flow, no record, no gate.
 **One at a time.** A flow is a fence around the workload that was agreed. While
 one is open, work outside it is out of scope: something you notice along the way
 goes to `wfctl capture`, never into a new record.
+
+## A bundle exists because the maintainer said so
+
+Both ways of opening one refuse without their words:
+
+```
+wfctl work start --title "<what this is>" --weight <significant|lightweight> \
+  --attested "<what they said>"
+```
+
+Put the work to them in your own words — what it is, and whether it changes
+behaviour, meaning, contracts, data or operations — then record their answer
+verbatim. Never hand them a command to run; the identifiers in it are generated
+and their part is deciding about the product, not typing.
+
+This also answers the question you get wrong most often, and answers it by
+possession rather than judgment:
+
+> **If you cannot quote them, it is a capture.**
+
+Not "if it feels small", not "if it is out of scope". Those are calls you can
+talk yourself past. Whether you are holding their answer is not.
+
+## Work that already exists
+
+`wfctl work list` shows every bundle and whether anything can still reach one.
+A bundle with no flow is stranded — nothing can resume, close or promote it.
+
+Adoption is not a repair for old records and it parses nothing. It is the same
+bundle creation with the details taken from wherever the work actually lives: a
+stranded bundle, two records that are the same work said differently, an inbox
+entry that should have been a unit, a branch, a conversation. Assembling those
+details may mean grilling and wayfinding again — that is yours to judge, and the
+flow's own steps already ask for it.
+
+```
+wfctl work adopt <bundle> --weight <significant|lightweight> \
+  --attested "<what they said>"     # opens a fence around that bundle
+wfctl work adopt <other> --attested "<what they said>"   # folds another into it
+```
+
+Three things hold:
+
+- **Every absorption is its own answer.** Merging three confused records is a
+  decision about what the work is. Asking once for a batch asks about none.
+- **An absorbed bundle is marked, never deleted.** It stays where it is and
+  points at the survivor. The duplicate is the evidence of whatever produced it.
+- **The flow lands at `opened` whatever the source reached.** A step recorded
+  elsewhere is a check this tool never ran, and a flow reporting checks nobody
+  ran is the green gate the review exists to stop.
 
 ## The two decisions that are the maintainer's
 

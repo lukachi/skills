@@ -5,16 +5,16 @@ followed it. Verified against, not remembered.
 
 ## A — A bundle exists because the maintainer said so
 
-- [ ] A1 `work start` requires their words. Attested, verbatim, dated. Refused empty.
-- [ ] A2 `work adopt <bundle>` — same flow, sources instead of a conversation.
+- [x] A1 `work start` requires their words. Attested, verbatim, dated. Refused empty.
+- [x] A2 `work adopt <bundle>` — same flow, sources instead of a conversation.
       Binds an existing bundle to the open fence rather than creating one.
-- [ ] A3 Provenance: where each source was, recorded per source.
-- [ ] A4 Supersession: an absorbed bundle is marked and points at the survivor.
+- [x] A3 Provenance: where each source was, recorded per source.
+- [x] A4 Supersession: an absorbed bundle is marked and points at the survivor.
       Never deleted — the duplicates are the evidence of the confusion.
-- [ ] A5 `members` becomes real. The fence names one canonical bundle; the rest
+- [x] A5 `members` becomes real. The fence names one canonical bundle; the rest
       are superseded into it. (`members[0]` is currently whichever was first.)
-- [ ] A6 `work list` — stranded bundles are visible at all.
-- [ ] A7 `brief` reports bundles in changes/active with no flow.
+- [x] A6 `work list` — stranded bundles are visible at all.
+- [x] A7 `brief` reports bundles in changes/active with no flow.
 
 ## B — The installer reports; it never forces
 
@@ -55,7 +55,7 @@ followed it. Verified against, not remembered.
 
 ## F — The skill
 
-- [ ] F1 Attested creation and adoption reach the installed skill and the
+- [x] F1 Attested creation and adoption reach the installed skill and the
       managed block, or agents learn the old rule.
 
 ## G — Evals (separate; not this round)

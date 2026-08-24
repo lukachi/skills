@@ -322,7 +322,7 @@ test("binary: no step in the chain can be reached out of order", async () => {
   for (const step of WORK_STEPS) {
     if (step === "opened" || step === "aligned") continue;
     const root = await installed();
-    wfctl(root, ["work", "start", "--title", `skip to ${step}`, "--weight", "significant"]);
+    wfctl(root, ["work", "start", "--title", `skip to ${step}`, "--weight", "significant", "--attested", "they asked for it"]);
 
     const jumped = wfctl(root, ["work", "step", step]);
     assert.notEqual(jumped.status, 0, `\`work step ${step}\` succeeded straight from opened`);
@@ -338,7 +338,7 @@ test("binary: the terminal commands refuse out of order too", async () => {
   ];
   for (const args of terminal) {
     const root = await installed();
-    wfctl(root, ["work", "start", "--title", "terminal", "--weight", "significant"]);
+    wfctl(root, ["work", "start", "--title", "terminal", "--weight", "significant", "--attested", "they asked for it"]);
 
     const attempted = wfctl(root, args);
     assert.notEqual(attempted.status, 0, `\`${args.join(" ")}\` succeeded from opened`);
@@ -363,7 +363,7 @@ test("binary: a symlink cycle in the tree does not open a hole in the write guar
 test("binary: commands bind to the repository root from a nested directory", async () => {
   const root = await installed();
   await mkdir(join(root, "deep/nested"), { recursive: true });
-  wfctl(root, ["work", "start", "--title", "fenced", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "fenced", "--weight", "significant", "--attested", "they asked for it"]);
 
   const nested = wfctl(join(root, "deep/nested"), ["brief"]);
   assert.equal(nested.status, 0, nested.stdout);
@@ -372,7 +372,7 @@ test("binary: commands bind to the repository root from a nested directory", asy
 
 test("binary: an orphaned lock does not permanently wedge a record", async () => {
   const root = await installed();
-  wfctl(root, ["work", "start", "--title", "wedge", "--weight", "significant"]);
+  wfctl(root, ["work", "start", "--title", "wedge", "--weight", "significant", "--attested", "they asked for it"]);
 
   // Exactly what a SIGKILL between mkdir and the holder write leaves behind,
   // on every record the next command has to take.
@@ -427,7 +427,7 @@ test("lock: many processes racing one dead holder still admit exactly one at a t
 
 test("flags: --name=value reaches the command instead of becoming a positional", async () => {
   const root = await installed();
-  const created = wfctl(root, ["work", "start", "--title=equals form", "--weight=lightweight"]);
+  const created = wfctl(root, ["work", "start", "--title=equals form", "--weight=lightweight", "--attested=they asked"]);
   assert.equal(created.status, 0, created.stdout);
 
   const brief = wfctl(root, ["brief"]);
@@ -581,4 +581,175 @@ test("install: the runtime's own scratch directory is ignored by Git", async () 
   const ignore = await readFile(join(root, ".workflow/.gitignore"), "utf8");
   assert.match(ignore, /^current\/$/m,
     "the stop guard writes session memory under .workflow/current/, which its own comment calls gitignored");
+});
+
+// ---------------------------------------------------------------------------
+// 7. A bundle exists because the maintainer said so
+// ---------------------------------------------------------------------------
+
+test("attested: work start without their words is refused, and points at capture", async () => {
+  const root = await installed();
+  const started = wfctl(root, ["work", "start", "--title", "unasked", "--weight", "significant"]);
+
+  assert.equal(started.status, 2, "a bundle opened with nothing saying it was asked for");
+  assert.match(started.stdout, /maintainer asked for it/);
+  assert.match(started.stdout, /wfctl capture/,
+    "the refusal did not name the outlet for work nobody asked for");
+  assert.equal(existsSync(join(root, "changes/active")), true);
+  const { readdir } = await import("node:fs/promises");
+  assert.deepEqual(await readdir(join(root, "changes/active")), [],
+    "a refused start still created a bundle");
+});
+
+test("attested: an empty attestation is refused in every form", async () => {
+  const root = await installed();
+  for (const words of ["", "   "]) {
+    const started = wfctl(root, [
+      "work", "start", "--title", "hollow", "--weight", "significant", "--attested", words,
+    ]);
+    assert.equal(started.status, 2, `an attestation of ${JSON.stringify(words)} was accepted`);
+  }
+});
+
+test("attested: their words are stored verbatim and dated", async () => {
+  const root = await installed();
+  const words = "yes, do the split — but only the move, not the rename";
+  wfctl(root, ["work", "start", "--title", "split", "--weight", "significant", "--attested", words]);
+
+  const id = (await readFile(join(root, ".workflow/flows/current"), "utf8")).trim();
+  const flow = JSON.parse(await readFile(join(root, ".workflow/flows", `${id}.json`), "utf8")) as {
+    attested: { words: string; at: string };
+  };
+  assert.equal(flow.attested.words, words, "the words were reworded");
+  assert.match(flow.attested.at, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+// ---------------------------------------------------------------------------
+// 8. Adoption
+// ---------------------------------------------------------------------------
+
+/** A bundle in changes/active that no flow holds — what a lost record leaves. */
+async function strandedBundle(root: string, name: string): Promise<void> {
+  await mkdir(join(root, "changes/active", name), { recursive: true });
+  await writeFile(join(root, "changes/active", name, "change.md"), `# ${name}\n`, "utf8");
+}
+
+test("adopt: a stranded bundle is reachable, and no second bundle is created", async () => {
+  const root = await installed();
+  await strandedBundle(root, "2026-08-23-old-work");
+
+  const adopted = wfctl(root, [
+    "work", "adopt", "2026-08-23-old-work",
+    "--weight", "significant", "--attested", "the PR merged, pick it up",
+  ]);
+  assert.equal(adopted.status, 0, adopted.stdout);
+
+  const { readdir } = await import("node:fs/promises");
+  assert.deepEqual(await readdir(join(root, "changes/active")), ["2026-08-23-old-work"],
+    "adoption created a bundle of its own instead of using the one it adopted");
+
+  const id = (await readFile(join(root, ".workflow/flows/current"), "utf8")).trim();
+  const flow = JSON.parse(await readFile(join(root, ".workflow/flows", `${id}.json`), "utf8")) as {
+    members: string[]; step: string; sources: { from: string; attested: string }[];
+  };
+  assert.deepEqual(flow.members, ["2026-08-23-old-work"]);
+  assert.equal(flow.step, "opened", "an adopted flow inherited a step no gate here ever ran");
+  assert.equal(flow.sources[0]?.attested, "the PR merged, pick it up");
+});
+
+test("adopt: without their words it is refused, exactly like starting", async () => {
+  const root = await installed();
+  await strandedBundle(root, "2026-08-23-old-work");
+
+  const adopted = wfctl(root, ["work", "adopt", "2026-08-23-old-work", "--weight", "significant"]);
+  assert.equal(adopted.status, 2);
+  assert.match(adopted.stdout, /maintainer asked for it/);
+});
+
+test("adopt: absorbing a second bundle supersedes it where it sits", async () => {
+  const root = await installed();
+  await strandedBundle(root, "2026-08-20-same-work");
+  await strandedBundle(root, "2026-08-23-same-work-again");
+
+  wfctl(root, [
+    "work", "adopt", "2026-08-20-same-work",
+    "--weight", "significant", "--attested", "resume this one",
+  ]);
+  const absorbed = wfctl(root, [
+    "work", "adopt", "2026-08-23-same-work-again", "--attested", "yes, same work, fold it in",
+  ]);
+  assert.equal(absorbed.status, 0, absorbed.stdout);
+
+  // Kept where it is: the duplicate is the evidence of whatever produced it.
+  const marker = JSON.parse(
+    await readFile(join(root, "changes/active/2026-08-23-same-work-again/superseded.json"), "utf8"),
+  ) as { by: string; attested: string };
+  assert.equal(marker.by, "2026-08-20-same-work");
+  assert.equal(marker.attested, "yes, same work, fold it in");
+  assert.ok(existsSync(join(root, "changes/active/2026-08-23-same-work-again/change.md")),
+    "the absorbed record was deleted rather than marked");
+
+  const listed = wfctl(root, ["work", "list"]);
+  assert.match(listed.stdout, /superseded {2}2026-08-23-same-work-again {2}-> 2026-08-20-same-work/);
+});
+
+test("adopt: each absorption is its own answer, never a batch", async () => {
+  const root = await installed();
+  await strandedBundle(root, "2026-08-20-first");
+  await strandedBundle(root, "2026-08-21-second");
+
+  wfctl(root, ["work", "adopt", "2026-08-20-first", "--weight", "significant", "--attested", "resume"]);
+  const second = wfctl(root, ["work", "adopt", "2026-08-21-second"]);
+  assert.equal(second.status, 2, "a second bundle was absorbed on the first bundle's answer");
+  assert.match(second.stdout, /maintainer asked for it/);
+});
+
+test("adopt: a bundle already absorbed cannot be absorbed again", async () => {
+  const root = await installed();
+  await strandedBundle(root, "2026-08-20-survivor");
+  await strandedBundle(root, "2026-08-21-absorbed");
+
+  wfctl(root, ["work", "adopt", "2026-08-20-survivor", "--weight", "significant", "--attested", "go"]);
+  wfctl(root, ["work", "adopt", "2026-08-21-absorbed", "--attested", "fold it in"]);
+  wfctl(root, ["flow", "close"]);
+
+  const again = wfctl(root, [
+    "work", "adopt", "2026-08-21-absorbed", "--weight", "significant", "--attested", "again",
+  ]);
+  assert.equal(again.status, 2, "one body of work was given two live records");
+  assert.match(again.stdout, /already absorbed into 2026-08-20-survivor/);
+});
+
+test("adopt: a bundle that is not there is refused, and the real ones are listed", async () => {
+  const root = await installed();
+  await strandedBundle(root, "2026-08-20-real");
+
+  const wrong = wfctl(root, [
+    "work", "adopt", "2026-08-20-imagined", "--weight", "significant", "--attested", "go",
+  ]);
+  assert.equal(wrong.status, 2);
+  assert.match(wrong.stdout, /2026-08-20-real/, "the refusal did not name what does exist");
+});
+
+test("adopt: a bundle name cannot be a path out of changes/active", async () => {
+  const root = await installed();
+  const escaped = wfctl(root, [
+    "work", "adopt", "../../etc", "--weight", "significant", "--attested", "go",
+  ]);
+  assert.equal(escaped.status, 2);
+  assert.match(escaped.stdout, /named, not pathed/);
+});
+
+test("brief: a stranded bundle is reported as awaiting the maintainer", async () => {
+  const root = await installed();
+  await strandedBundle(root, "2026-08-23-forgotten");
+
+  const briefed = wfctl(root, ["brief"]);
+  assert.match(briefed.stdout, /2026-08-23-forgotten has no flow/);
+  assert.match(briefed.stdout, /awaits maintainer: whether this work resumes at all/);
+
+  // Held is not stranded: opening a flow around it must clear the report.
+  wfctl(root, ["work", "adopt", "2026-08-23-forgotten", "--weight", "significant", "--attested", "go"]);
+  const after = wfctl(root, ["brief"]);
+  assert.doesNotMatch(after.stdout, /has no flow/);
 });

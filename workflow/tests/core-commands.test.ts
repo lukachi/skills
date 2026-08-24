@@ -47,7 +47,7 @@ test("with no flow open the brief says how to start one", async () => {
 
 test("work start refuses without a weight, and explains what the distinction means", async () => {
   const ctx = await context();
-  const result = await workStart(ctx, { title: "account recovery" });
+  const result = await workStart(ctx, { title: "account recovery", attested: "they asked for it" });
   assert.equal(result.exitCode, 2);
   assert.match(result.stdout, /significant/);
   assert.match(result.stdout, /remedy:/);
@@ -55,7 +55,7 @@ test("work start refuses without a weight, and explains what the distinction mea
 
 test("starting a flow prints the next step's guidance, not a path to it", async () => {
   const ctx = await context();
-  const result = await workStart(ctx, { title: "account recovery", weight: "significant" });
+  const result = await workStart(ctx, { title: "account recovery", weight: "significant", attested: "they asked for it" });
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /What the project already says/);
   assert.match(result.stdout, /nothing covers it/);
@@ -63,7 +63,7 @@ test("starting a flow prints the next step's guidance, not a path to it", async 
 
 test("advancing refuses while the current step's recall is short, and names the fix", async () => {
   const ctx = await context();
-  await workStart(ctx, { title: "thing", weight: "significant" });
+  await workStart(ctx, { title: "thing", weight: "significant", attested: "they asked for it" });
   await advance(ctx, "aligned");
 
   const blocked = await advance(ctx, "framed");
@@ -75,7 +75,7 @@ test("advancing refuses while the current step's recall is short, and names the 
 
 test("an answer without a source is refused", async () => {
   const ctx = await context();
-  await workStart(ctx, { title: "thing", weight: "significant" });
+  await workStart(ctx, { title: "thing", weight: "significant", attested: "they asked for it" });
   const result = await recallAnswer(ctx, {
     item: "E14",
     answer: "nothing",
@@ -88,7 +88,7 @@ test("an answer without a source is refused", async () => {
 
 test("a full pass reaches framing once alignment is genuinely answered", async () => {
   const ctx = await context();
-  await workStart(ctx, { title: "thing", weight: "significant" });
+  await workStart(ctx, { title: "thing", weight: "significant", attested: "they asked for it" });
   await advance(ctx, "aligned");
   await answerGroup(ctx, "E", "qmd");
 
@@ -100,7 +100,7 @@ test("a full pass reaches framing once alignment is genuinely answered", async (
 
 test("the checkpoint is one act, and the brief renders its body for the bound flow", async () => {
   const ctx = await context();
-  await workStart(ctx, { title: "thing", weight: "significant" });
+  await workStart(ctx, { title: "thing", weight: "significant", attested: "they asked for it" });
   await checkpoint(ctx, {
     summary: "short line",
     handoff: "the detailed recall a fresh session needs",
@@ -117,19 +117,19 @@ test("the checkpoint is one act, and the brief renders its body for the bound fl
 
 test("closing clears the fence so the next flow may open", async () => {
   const ctx = await context();
-  await workStart(ctx, { title: "first", weight: "lightweight" });
-  const blocked = await workStart(ctx, { title: "second", weight: "lightweight" });
+  await workStart(ctx, { title: "first", weight: "lightweight", attested: "they asked for it" });
+  const blocked = await workStart(ctx, { title: "second", weight: "lightweight", attested: "they asked for it" });
   assert.equal(blocked.exitCode, 2);
   assert.match(blocked.stdout, /wfctl capture/);
 
   await flowClose(ctx);
-  const second = await workStart(ctx, { title: "second", weight: "lightweight" });
+  const second = await workStart(ctx, { title: "second", weight: "lightweight", attested: "they asked for it" });
   assert.equal(second.exitCode, 0);
 });
 
 test("the promotion draft is created by the tool, never named by the agent", async () => {
   const ctx = await context();
-  await workStart(ctx, { title: "thing", weight: "significant" });
+  await workStart(ctx, { title: "thing", weight: "significant", attested: "they asked for it" });
   const result = await promotionDraft(ctx, {
     knowledgeRoot: ctx.root,
     page: "areas/billing/index.md",
@@ -141,7 +141,7 @@ test("the promotion draft is created by the tool, never named by the agent", asy
 
 test("the write hook refuses a first write with no traversal, then goes silent on known ground", async () => {
   const ctx = await context();
-  await workStart(ctx, { title: "thing", weight: "significant" });
+  await workStart(ctx, { title: "thing", weight: "significant", attested: "they asked for it" });
 
   let flow = await currentFlow(ctx.root);
   assert.ok(flow);

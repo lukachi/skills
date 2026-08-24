@@ -95,9 +95,15 @@ export async function briefExtras(context: CommandContext) {
 
   const reconstruction = await currentCase(context.root).catch(() => undefined);
 
+  const { listBundles } = await import("./bundles.js");
+  const stranded = (await listBundles(context.root).catch(() => []))
+    .filter((entry) => entry.state === "stranded")
+    .map((entry) => entry.bundle);
+
   return {
     queued,
     awaitingCaptures,
+    stranded,
     ...(reconstruction ? { reconstruction: { id: reconstruction.id, stage: reconstruction.stage } } : {}),
   };
 }
@@ -136,9 +142,34 @@ export async function checkpoint(
   return ok(`checkpoint written for ${flow.id}`);
 }
 
+/**
+ * The maintainer's words, or no bundle.
+ *
+ * This is the first of their two decisions, and it was the only one recorded
+ * nowhere: the step definition said to put the weight to them in your own
+ * words, which is an instruction behind a branch the model evaluates, and the
+ * agent that skips it leaves a record indistinguishable from one they asked
+ * for. Bundles opened because something was noticed mid-work are the observed
+ * result. It also settles the capture question by possession rather than
+ * judgment — if you cannot quote them, it is a capture.
+ */
+function assertAttested(words: string, command: string): string {
+  const said = words.trim();
+  if (said) return said;
+  throw new GateRefusal(
+    "A bundle exists because the maintainer asked for it, and nothing here says they did.",
+    command,
+    "Put the work to them in your own words — what it is, and whether it changes " +
+      "behaviour, meaning, contracts, data or operations — then record their answer " +
+      "verbatim.\n\n" +
+      "If you cannot quote them, this is not a bundle:\n" +
+      '  wfctl capture "<what you found>"',
+  );
+}
+
 export async function workStart(
   context: CommandContext,
-  options: { title: string; weight?: WorkWeight },
+  options: { title: string; weight?: WorkWeight; attested: string; from?: string },
 ): Promise<CommandResult> {
   try {
     /** The fence spans both cases, in this direction too. */
@@ -159,10 +190,24 @@ export async function workStart(
         definition.demands,
       );
     }
+    const attested = assertAttested(
+      options.attested,
+      'wfctl work start --title "<...>" --weight <significant|lightweight> ' +
+        '--attested "<what they said>"',
+    );
+
     const flow = await openFlow(context.root, {
       kind: "work",
       title: options.title,
       weight: options.weight,
+      attested,
+      ...(options.from
+        ? {
+            sources: [
+              { from: options.from, attested, at: new Date().toISOString() },
+            ],
+          }
+        : {}),
     });
 
     /**
@@ -363,6 +408,160 @@ export async function flowClose(context: CommandContext, id?: string): Promise<C
   }
   const closed = await closeFlow(context.root, flow.id);
   return ok(`flow ${closed.id} closed; the fence is down and the checkpoint is flushed.`);
+}
+
+/**
+ * Assemble a bundle from work that already exists somewhere.
+ *
+ * This is not a migration for older records and it does not parse anything. It
+ * is the same bundle creation, with the details taken from wherever the work
+ * actually lives — a stranded bundle, two records that are the same work said
+ * differently, an inbox entry that should have been a unit. The demands and the
+ * gates after it are the flow's own; only the sourcing differs, which is why
+ * nothing downstream has to know a bundle was adopted.
+ *
+ * With no flow open it opens one around the bundle. With a flow open it absorbs
+ * the bundle into the one the fence already carries, and the absorbed record is
+ * marked where it sits rather than moved or deleted.
+ *
+ * Every absorption is its own maintainer answer. Merging three confused records
+ * is a decision about what the work is, and asking once for a batch is asking
+ * about none of them.
+ */
+export async function workAdopt(
+  context: CommandContext,
+  options: { bundle: string; attested: string; weight?: WorkWeight; title?: string; from?: string },
+): Promise<CommandResult> {
+  try {
+    const { bundleExists, listBundles, markSuperseded, readSupersession } = await import(
+      "./bundles.js"
+    );
+
+    const bundle = options.bundle.trim();
+    if (!bundle) {
+      throw new GateRefusal(
+        "Adoption needs the bundle it is assembling from.",
+        'wfctl work adopt <bundle> --weight <significant|lightweight> --attested "<what they said>"',
+      );
+    }
+    if (bundle.includes("/") || bundle.includes("..")) {
+      throw new GateRefusal(
+        "A bundle is named, not pathed.",
+        "wfctl work list",
+        `Give the name as it appears under changes/active, not ${bundle}.`,
+      );
+    }
+    if (!(await bundleExists(context.root, bundle))) {
+      const known = (await listBundles(context.root)).map((entry) => entry.bundle);
+      throw new GateRefusal(
+        `There is no bundle named ${bundle}.`,
+        "wfctl work list",
+        known.length ? `Under changes/active:\n${known.map((n) => `  ${n}`).join("\n")}` : undefined,
+      );
+    }
+
+    const already = await readSupersession(context.root, bundle);
+    if (already) {
+      throw new GateRefusal(
+        `${bundle} was already absorbed into ${already.by}.`,
+        `wfctl work adopt ${already.by} --weight <significant|lightweight> --attested "<what they said>"`,
+        "Absorbing it twice would give one body of work two live records, which " +
+          "is the state adoption exists to end.",
+      );
+    }
+
+    const attested = assertAttested(
+      options.attested,
+      `wfctl work adopt ${bundle} --weight <significant|lightweight> --attested "<what they said>"`,
+    );
+    const at = new Date().toISOString();
+    const source = { from: options.from ?? `changes/active/${bundle}`, bundle, attested, at };
+
+    const open = await currentFlow(context.root);
+    if (open) {
+      const canonical = open.members[0];
+      if (!canonical) {
+        throw new GateRefusal(
+          `Flow ${open.id} carries no bundle to absorb into.`,
+          "wfctl brief",
+        );
+      }
+      if (open.members.includes(bundle)) {
+        throw new GateRefusal(
+          `${bundle} is already part of flow ${open.id}.`,
+          "wfctl work list",
+        );
+      }
+      await markSuperseded(context.root, bundle, { by: canonical, at, attested });
+      const updated = await mutateFlow(context.root, open.id, (flow) => ({
+        ...flow,
+        members: [...flow.members, bundle],
+        sources: [...(flow.sources ?? []), source],
+      }));
+      return ok(
+        compose([
+          `${bundle} absorbed into ${canonical}.`,
+          `It stays in changes/active, marked superseded — the duplicate is the`,
+          `evidence of whatever produced it, and deleting it would take that with it.`,
+          "",
+          `Flow ${updated.id} now spans ${updated.members.length} bundle(s).`,
+          renderStep(updated),
+        ]),
+      );
+    }
+
+    /** The fence spans both cases, in this direction too. */
+    const { currentCase } = await import("./reconstruct.js");
+    const openCase = await currentCase(context.root).catch(() => undefined);
+    if (openCase && !openCase.abandoned) {
+      throw new GateRefusal(
+        `Reconstruction ${openCase.id} is open at stage ${openCase.stage}; work outside it is out of scope.`,
+        `wfctl reconstruct abandon --reason "<why this pass is not finishing>"`,
+      );
+    }
+
+    if (!options.weight) {
+      throw new GateRefusal(
+        "This flow needs its weight settled before it opens.",
+        `wfctl work adopt ${bundle} --weight <significant|lightweight> --attested "<what they said>"`,
+        definitionFor("opened").demands,
+      );
+    }
+
+    const flow = await openFlow(context.root, {
+      kind: "work",
+      title: options.title ?? bundle,
+      weight: options.weight,
+      attested,
+      members: [bundle],
+      sources: [source],
+    });
+
+    return ok(
+      compose([
+        `flow ${flow.id} opened around ${bundle}`,
+        "",
+        "Nothing about where it stopped is carried over. Every gate is walked here,",
+        "because a step recorded elsewhere is a check this tool never ran — and a",
+        "flow that reports checks nobody ran is the green gate the review exists to",
+        "stop.",
+        await guidanceFor(context, "work/aligned"),
+        renderStep({ ...flow, step: "aligned" }),
+      ]),
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    if (error instanceof Error && "remedy" in error) {
+      return refused(new GateRefusal(error.message, String((error as { remedy: string }).remedy)));
+    }
+    throw error;
+  }
+}
+
+/** Every bundle, and whether anything can still reach it. */
+export async function workList(context: CommandContext): Promise<CommandResult> {
+  const { listBundles, renderBundles } = await import("./bundles.js");
+  return ok(renderBundles(await listBundles(context.root)));
 }
 
 /* ------------------------------------------------------------------ units */

@@ -19,10 +19,30 @@ the next one needs — so you can walk this without memorising it.
 ## Opening
 
 ```sh
-wfctl work start --title "<what this is>" --weight <significant|lightweight>
+wfctl work start --title "<what this is>" --weight <significant|lightweight> \
+  --attested "<what the maintainer said>"
 ```
 
-The weight is recorded, never inferred. Significant work may change behaviour,
+Both the weight and their answer are recorded, never inferred. A bundle exists
+because they asked for it, and this is the only place that is written down —
+without it, a record they agreed to is indistinguishable from one you opened
+because you noticed something. If you cannot quote them, it is a capture.
+
+When the work already exists somewhere — a stranded bundle, two records that are
+the same work said differently, an issue, a branch — assemble it instead:
+
+```sh
+wfctl work list                                  # what exists, and what can reach it
+wfctl work adopt <bundle> --weight <...> --attested "<what they said>"
+wfctl work adopt <other> --attested "<what they said>"   # folds another in
+```
+
+Adoption parses nothing and repairs nothing. It is this same opening with the
+details taken from where the work lives; every gate below is walked here
+regardless of what was walked elsewhere. Each absorption needs its own answer,
+and an absorbed bundle is marked where it sits rather than deleted.
+
+The weight itself is recorded, never inferred. Significant work may change behaviour,
 product meaning, contracts, data or control flow, persistent state, security,
 operations or architecture. Lightweight work is clearly local and mechanical and
 preserves both behaviour and contracts.

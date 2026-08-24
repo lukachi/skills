@@ -48,6 +48,10 @@ const USAGE = `wfctl — project workflow
   checkpoint --summary ... --handoff ... --last ... --next ...
 
   work start --title ... --weight <significant|lightweight>
+             --attested "<what the maintainer said>" [--from <where it came from>]
+  work adopt <bundle> --attested "<what they said>"
+             [--weight <significant|lightweight>] [--title ...] [--from <where>]
+  work list                    every bundle, and whether anything can reach it
   work step <step>             record that this step is reached
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
@@ -291,12 +295,30 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
 
       case "work": {
         const [action, ...args] = rest;
-        if (action === "start") {
-          return await workStart(context, {
-            title: flag(args, "title") ?? "",
+        if (action === "adopt") {
+          const { workAdopt } = await import("./commands.js");
+          return await workAdopt(context, {
+            bundle: args[0] ?? "",
+            attested: flag(args, "attested") ?? "",
             ...(flag(args, "weight")
               ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") }
               : {}),
+            ...(flag(args, "title") ? { title: flag(args, "title") as string } : {}),
+            ...(flag(args, "from") ? { from: flag(args, "from") as string } : {}),
+          });
+        }
+        if (action === "list") {
+          const { workList } = await import("./commands.js");
+          return await workList(context);
+        }
+        if (action === "start") {
+          return await workStart(context, {
+            title: flag(args, "title") ?? "",
+            attested: flag(args, "attested") ?? "",
+            ...(flag(args, "weight")
+              ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") }
+              : {}),
+            ...(flag(args, "from") ? { from: flag(args, "from") as string } : {}),
           });
         }
         if (action === "step") {
@@ -556,6 +578,22 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         const { readRegistry } = await import("./registry.js");
         const [action, ...args] = rest;
 
+        if (action === "adopt") {
+          const { workAdopt } = await import("./commands.js");
+          return await workAdopt(context, {
+            bundle: args[0] ?? "",
+            attested: flag(args, "attested") ?? "",
+            ...(flag(args, "weight")
+              ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") }
+              : {}),
+            ...(flag(args, "title") ? { title: flag(args, "title") as string } : {}),
+            ...(flag(args, "from") ? { from: flag(args, "from") as string } : {}),
+          });
+        }
+        if (action === "list") {
+          const { workList } = await import("./commands.js");
+          return await workList(context);
+        }
         if (action === "start") {
           /**
            * The fence spans both cases. An agent told "work outside this flow

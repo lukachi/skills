@@ -15,7 +15,7 @@ async function context(): Promise<CommandContext> {
 test("the whole changes flow is walkable without knowing the sequence", async () => {
   const ctx = await context();
 
-  const start = await run(["work", "start", "--title", "account recovery", "--weight", "significant"], ctx);
+  const start = await run(["work", "start", "--title", "account recovery", "--weight", "significant", "--attested", "they asked for it"], ctx);
   assert.equal(start.exitCode, 0);
   assert.match(start.stdout, /What the project already says/);
 
@@ -65,7 +65,7 @@ test("the brief is what a session opens with", async () => {
   const empty = await run(["brief"], ctx);
   assert.match(empty.stdout, /No flow is open/);
 
-  await run(["work", "start", "--title", "thing", "--weight", "lightweight"], ctx);
+  await run(["work", "start", "--title", "thing", "--weight", "lightweight", "--attested", "they asked for it"], ctx);
   await run(
     ["checkpoint", "--summary", "s", "--handoff", "the body", "--last", "l", "--next", "n"],
     ctx,
@@ -102,7 +102,7 @@ test("the guide serves detail on demand and lists its topics", async () => {
 
 test("a recall refusal points at the guide that explains it", async () => {
   const ctx = await context();
-  await run(["work", "start", "--title", "thing", "--weight", "significant"], ctx);
+  await run(["work", "start", "--title", "thing", "--weight", "significant", "--attested", "they asked for it"], ctx);
   await run(["work", "step", "aligned"], ctx);
 
   const blocked = await run(["work", "step", "framed"], ctx);

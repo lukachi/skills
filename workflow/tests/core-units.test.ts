@@ -15,7 +15,7 @@ async function opened(): Promise<CommandContext> {
     assets,
     actor: "agent:test",
   };
-  await run(["work", "start", "--title", "thing", "--weight", "significant"], ctx);
+  await run(["work", "start", "--title", "thing", "--weight", "significant", "--attested", "they asked for it"], ctx);
   return ctx;
 }
 
@@ -89,7 +89,7 @@ test("a capture is written to the inbox and never becomes a record", async () =>
   assert.match(body, /the session cookie never expires/);
   assert.match(body, /awaits: nobody/);
 
-  const second = await run(["work", "start", "--title", "another", "--weight", "lightweight"], ctx);
+  const second = await run(["work", "start", "--title", "another", "--weight", "lightweight", "--attested", "they asked for it"], ctx);
   assert.equal(second.exitCode, 2);
 });
 

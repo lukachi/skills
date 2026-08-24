@@ -281,7 +281,7 @@ test("promotion writes the pages and appends to the subject's line", async () =>
   const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
   const ctx = { root: await root(), assets, actor: "agent:test" };
 
-  await run(["work", "start", "--title", "part refunds", "--weight", "significant"], ctx);
+  await run(["work", "start", "--title", "part refunds", "--weight", "significant", "--attested", "they asked for it"], ctx);
   await walkToVerified(ctx);
   await run(["work", "promotion", "draft", "areas/billing/index.md"], ctx);
   // An empty draft is refused at promotion now, which is the point of the gate.
@@ -462,7 +462,7 @@ test("unknown enum values are refused rather than stored", async () => {
   const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
   const ctx = { root: await root(), assets, actor: "agent:test" };
 
-  await run(["work", "start", "--title", "t", "--weight", "significant"], ctx);
+  await run(["work", "start", "--title", "t", "--weight", "significant", "--attested", "they asked for it"], ctx);
 
   const axis = await run(["trajectory", "append", "--subject", "S", "--summary", "s", "--axis", "banana"], ctx);
   assert.equal(axis.exitCode, 2);

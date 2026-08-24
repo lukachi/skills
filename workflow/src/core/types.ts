@@ -94,6 +94,25 @@ export interface Checkpoint {
   todo: string[];
 }
 
+/**
+ * One place work was gathered from.
+ *
+ * Adoption is not a migration for older records. It is bundle creation with the
+ * details taken from wherever the work actually lives — a stranded bundle, two
+ * records that are the same work said differently, an issue, a branch, a
+ * conversation with nothing written down. The demands and the gates are the
+ * flow's own; only the sourcing differs.
+ */
+export interface AdoptedSource {
+  /** Where it was found: a bundle id, a path, a URL. */
+  from: string;
+  /** Set when the source was a bundle absorbed into this flow. */
+  bundle?: string;
+  /** Their words agreeing to this absorption, per source and never in batch. */
+  attested: string;
+  at: string;
+}
+
 export interface FlowRecord {
   schemaVersion: number;
   id: string;
@@ -103,8 +122,29 @@ export interface FlowRecord {
   step: WorkStep;
   createdAt: string;
   updatedAt: string;
-  /** Bundles or cases gathered under this flow. */
+  /**
+   * Bundles gathered under this flow, canonical first.
+   *
+   * The fence was always documented as spanning several bundles and nothing
+   * could ever put a second one in it — so `members` was `[flow.id]` forever,
+   * and a bundle without a flow record was unreachable by every command. The
+   * first entry carries the work; anything after it was absorbed into that one
+   * and is marked superseded where it sits.
+   */
   members: string[];
+  /**
+   * The maintainer's own words agreeing this work exists.
+   *
+   * `work start` was the only decision of theirs that was asked for in prose
+   * and recorded nowhere, so nothing could tell a bundle they agreed to from
+   * one an agent opened because it noticed something — which is how a
+   * repository collects records nobody asked for. It also gives the
+   * capture-or-bundle question an answer that is not a judgment call: if you
+   * cannot quote them, it is a capture.
+   */
+  attested: { words: string; at: string };
+  /** Where each member came from, when the work was assembled rather than begun. */
+  sources?: AdoptedSource[];
   repositories: RepositoryBinding[];
   issues: IssueRecord[];
   checkpoint?: Checkpoint;

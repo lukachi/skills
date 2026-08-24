@@ -72,6 +72,15 @@ export interface BriefExtras {
   awaitingCaptures?: number;
   /** An open reconstruction, which is not a flow and was invisible here. */
   reconstruction?: { id: string; stage: string };
+  /**
+   * Bundles no flow holds.
+   *
+   * The brief reported the promotion queue and the capture inbox and never
+   * these, so a repository could hold four bundles nothing could reach and say
+   * "No flow is open" — the tool unable to report that work had been stranded,
+   * which is why nobody noticed the flow could not bind one.
+   */
+  stranded?: string[];
 }
 
 export function renderBrief(
@@ -108,14 +117,23 @@ export function renderBrief(
         `\n  remedy: put them one decision at a time, not as a backlog`,
     );
   }
+  for (const id of extras.stranded ?? []) {
+    waiting.push(
+      `${id} has no flow, so nothing can reach it` +
+        `\n  awaits maintainer: whether this work resumes at all` +
+        `\n  remedy: wfctl work adopt ${id} --weight <significant|lightweight> --attested "<what they said>"`,
+    );
+  }
 
   if (open.length === 0) {
     return [
       "No flow is open.",
       ...(waiting.length > 0 ? ["", ...waiting] : []),
       "",
-      "Start one explicitly when the maintainer asks for work:",
-      '  wfctl work start --title "<what this is>" --weight <significant|lightweight>',
+      "Start one explicitly when the maintainer asks for work, and record what",
+      "they said — a bundle exists because they asked for it:",
+      '  wfctl work start --title "<what this is>" --weight <significant|lightweight> \\',
+      '    --attested "<what they said>"',
       "  wfctl reconstruct start",
     ].join("\n");
   }
