@@ -120,6 +120,8 @@ export interface FlowRecord {
   title: string;
   weight?: WorkWeight;
   step: WorkStep;
+  /** When the flow last changed step, so a stale checkpoint is detectable. */
+  steppedAt?: string;
   createdAt: string;
   updatedAt: string;
   /**
@@ -149,8 +151,12 @@ export interface FlowRecord {
   issues: IssueRecord[];
   checkpoint?: Checkpoint;
   recall: RecallState;
-  /** Set when the maintainer approved the framing but said not to start yet. */
-  parked?: { at: string; reason: string };
+  /**
+   * Set when the maintainer approved the framing but said not to start yet.
+   * `attested` holds their words: a park silences the turn guard, so an agent
+   * may not place one on its own judgment.
+   */
+  parked?: { at: string; reason: string; attested?: string };
   closedAt?: string;
   /**
    * How it closed. Nothing stored it, so promotion recorded abandoned work as a

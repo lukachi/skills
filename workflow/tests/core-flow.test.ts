@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { buildCheckpoint, renderBrief, renderHandoff } from "../src/core/checkpoint.js";
 import { GateRefusal, assertNotParked, assertReached, assertRecall } from "../src/core/gates.js";
-import { FlowOpenError, closeFlow, currentFlow, listFlows, openFlow, writeFlow } from "../src/core/flow.js";
+import { FlowOpenError, closeFlow, currentFlow, listFlows, mutateFlow, openFlow } from "../src/core/flow.js";
 import {
   RECALL_ITEMS,
   isAnswered,
@@ -41,8 +41,8 @@ test("a second flow is refused while one is open, and the refusal names the capt
 test("closing clears the pointer and drops the checkpoint", async () => {
   const target = await root();
   const flow = await openFlow(target, { kind: "work", title: "something", attested: "they asked for it" });
-  await writeFlow(target, {
-    ...flow,
+  await mutateFlow(target, flow.id, (current) => ({
+    ...current,
     checkpoint: buildCheckpoint({
       summary: "s",
       handoff: "h",
@@ -50,7 +50,7 @@ test("closing clears the pointer and drops the checkpoint", async () => {
       nextAction: "n",
       actor: "agent:test",
     }),
-  });
+  }));
 
   const closed = await closeFlow(target, flow.id);
   assert.equal(closed.checkpoint, undefined);

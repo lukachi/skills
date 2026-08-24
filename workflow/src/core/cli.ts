@@ -56,7 +56,8 @@ const USAGE = `wfctl — project workflow
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
   work issue complete <id> | drop <id> --reason "<why it left the route>"
-  work park --reason ... | work release --attested "<their words>"
+  work park --reason ... --attested "<their words>"
+  work release --attested "<their words>"
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
   work promote --subject "<product subject>" --summary "<what it now does>"
@@ -251,6 +252,38 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
               remedy: "wfctl reconstruct status",
             });
           }
+          /**
+           * The two surfaces have to agree.
+           *
+           * `briefExtras` computed stranded bundles, awaiting captures and
+           * unreadable records, and only the prose brief printed them — so the
+           * JSON that every automated consumer reads said the repository held
+           * nothing while the human-readable one listed work nobody could reach.
+           */
+          for (const id of extras.stranded ?? []) {
+            signals.push({
+              id,
+              awaits: "maintainer" as const,
+              summary: "has no flow, so nothing can reach it",
+              remedy: `wfctl work adopt ${id} --weight <significant|lightweight> --attested "<what they said>"`,
+            });
+          }
+          for (const broken of extras.unreadable ?? []) {
+            signals.push({
+              id: broken.id,
+              awaits: "agent" as const,
+              summary: `record cannot be read: ${broken.problem}`,
+              remedy: `repair .workflow/flows/${broken.id}.json`,
+            });
+          }
+          if (extras.awaitingCaptures) {
+            signals.push({
+              id: "changes/inbox",
+              awaits: "maintainer" as const,
+              summary: `${extras.awaitingCaptures} capture(s) await the maintainer`,
+              remedy: "put them one decision at a time, not as a backlog",
+            });
+          }
           return ok_(JSON.stringify({ current, signals }, null, 2));
         }
         return await brief(context);
@@ -381,7 +414,9 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         if (action === "verify") {
           return await verify(context, { review: flag(args, "review") ?? "" });
         }
-        if (action === "park") return await park(context, flag(args, "reason") ?? "");
+        if (action === "park") {
+          return await park(context, flag(args, "reason") ?? "", flag(args, "attested") ?? "");
+        }
         if (action === "release") return await release(context, flag(args, "attested") ?? "");
         if (action === "close") {
           /**
@@ -459,7 +494,7 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
           const { currentFlow } = await import("./flow.js");
           const { decideWrite } = await import("./write-hook.js");
           const { loadGuidance } = await import("./guidance.js");
-          const { writeFlow } = await import("./flow.js");
+          const { mutateFlow } = await import("./flow.js");
           const { recordWritten } = await import("./recall.js");
           const { readRegistry } = await import("./registry.js");
           const { inspectLeaves } = await import("./leaves.js");
@@ -484,10 +519,10 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
            * This is what makes "fires on scope change, not on every edit" true.
            */
           if (flow) {
-            await writeFlow(context.root, {
-              ...flow,
-              recall: recordWritten(flow.recall, target),
-            });
+            await mutateFlow(context.root, flow.id, (current) => ({
+              ...current,
+              recall: recordWritten(current.recall, target),
+            }));
           }
           return { stdout: decision.message ?? "", exitCode: 0 };
         }
@@ -1150,7 +1185,21 @@ if (invokedDirectly) {
     actor: process.env.WFCTL_ACTOR ?? "agent:unknown",
   };
   const result = await run(process.argv.slice(2), context);
+
+  /**
+   * `process.exit` truncates a piped brief at 64KB.
+   *
+   * Writes to a pipe are asynchronous, and `exit` discards whatever has not
+   * drained — with status 0, so nothing downstream can tell. The SessionStart
+   * hook *is* a pipe, and `last:` and `next:` are printed after the handoff
+   * body, which makes the two fields a session acts on the first to go. A
+   * 73,101-byte brief arrived as exactly 65,536 bytes with no marker.
+   *
+   * Setting `exitCode` lets the process end on its own once stdout has
+   * drained. `renderBrief`'s comment already says a truncated brief reads
+   * exactly like a complete one; this is where that was happening.
+   */
+  process.exitCode = result.exitCode;
   process.stdout.write(`${result.stdout}\n`);
-  process.exit(result.exitCode);
 }
 /* c8 ignore stop */

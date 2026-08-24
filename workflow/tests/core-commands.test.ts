@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { run } from "../src/core/cli.js";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -91,6 +92,8 @@ test("a full pass reaches framing once alignment is genuinely answered", async (
   await workStart(ctx, { title: "thing", weight: "significant", attested: "they asked for it" });
   await advance(ctx, "aligned");
   await answerGroup(ctx, "E", "qmd");
+  await run(["checkpoint", "--summary", "aligned", "--handoff", "what was found",
+    "--last", "read the index", "--next", "frame it"], ctx);
 
   const framed = await advance(ctx, "framed");
   assert.equal(framed.exitCode, 0);

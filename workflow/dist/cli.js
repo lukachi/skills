@@ -240,7 +240,8 @@ function renderStep(flow) {
   const definition = definitionFor(flow.step);
   const following = nextStep(flow.step);
   const shortfall = shortfallFor(flow.step, flow.recall);
-  const next = !isSatisfied(shortfall) ? 'wfctl recall answer <item> --answer "<what you found>" --route <route> --source "<where>"' : following ? definitionFor(following).command : "wfctl work close --outcome <completed|partial|abandoned>";
+  const checkpointStale = flow.step !== "opened" && (flow.checkpoint?.updatedAt ?? "") < (flow.steppedAt ?? "");
+  const next = !isSatisfied(shortfall) ? 'wfctl recall answer <item> --answer "<what you found>" --route <route> --source "<where>"' : checkpointStale ? 'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n        --last "<last completed action>" --next "<the exact next action>"' : following ? definitionFor(following).command : "wfctl work close --outcome <completed|partial|abandoned>";
   return [
     `flow ${flow.id}  \xB7  step ${flow.step}`,
     "",
@@ -346,6 +347,24 @@ function assertNotParked(flow) {
     "Approving a framing settles what the work is, never that it begins. The condition that held it ending is not the same as being told to go."
   );
 }
+function assertCheckpointCurrent(flow, step) {
+  if (step === "aligned") return;
+  const checkpoint2 = flow.checkpoint;
+  if (!checkpoint2) {
+    throw new GateRefusal(
+      `This flow has no checkpoint, and ${step} is not reachable without one.`,
+      'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n    --last "<last completed action>" --next "<the exact next action>"',
+      "The checkpoint is the only thing a session that is not this one recovers from. Work whose state lives in a conversation is lost with the conversation, and nothing reports that it was."
+    );
+  }
+  if (checkpoint2.updatedAt < (flow.steppedAt ?? "")) {
+    throw new GateRefusal(
+      `The checkpoint predates this flow reaching ${flow.step}.`,
+      'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n    --last "<last completed action>" --next "<the exact next action>"',
+      `It was written at ${checkpoint2.updatedAt} and says the next action is "${checkpoint2.nextAction}". A session resuming here would act on that.`
+    );
+  }
+}
 var GateRefusal, PRECONDITION;
 var init_gates = __esm({
   "src/core/gates.ts"() {
@@ -378,6 +397,15 @@ var init_gates = __esm({
 });
 
 // src/core/checkpoint.ts
+function meaningful(value) {
+  return value.replace(INVISIBLE, "").replace(CONTROL, "").trim().length > 0;
+}
+function oneLine(value) {
+  return value.replace(CONTROL, "").replace(/\s*\n+\s*/g, " ").trim();
+}
+function fenceBody(value) {
+  return value.replace(CONTROL, "").split("\n").map((line) => line.trim().length === 0 ? "" : `  ${line}`).join("\n");
+}
 function buildCheckpoint(input, now = /* @__PURE__ */ new Date()) {
   const fields = [
     ["summary", "--summary", input.summary],
@@ -386,7 +414,7 @@ function buildCheckpoint(input, now = /* @__PURE__ */ new Date()) {
     ["the exact next action", "--next", input.nextAction]
   ];
   for (const [label2, option, value] of fields) {
-    if (!value || value.trim().length === 0) {
+    if (!value || !meaningful(value)) {
       throw new CheckpointError(
         `A checkpoint needs ${label2}; an empty one recalls nothing.`,
         `wfctl checkpoint --summary "<one line>" --handoff "<the body>" --last "<...>" --next "<...>"`,
@@ -395,13 +423,13 @@ function buildCheckpoint(input, now = /* @__PURE__ */ new Date()) {
     }
   }
   return {
-    summary: input.summary.trim(),
-    handoff: input.handoff.trim(),
-    lastAction: input.lastAction.trim(),
-    nextAction: input.nextAction.trim(),
-    actor: input.actor,
+    summary: oneLine(input.summary),
+    handoff: input.handoff.replace(CONTROL, "").trim(),
+    lastAction: oneLine(input.lastAction),
+    nextAction: oneLine(input.nextAction),
+    actor: oneLine(input.actor),
     updatedAt: now.toISOString(),
-    todo: input.todo ?? []
+    todo: (input.todo ?? []).map(oneLine).filter((item) => item.length > 0)
   };
 }
 function renderBrief(flows, currentId, extras = {}) {
@@ -426,6 +454,13 @@ function renderBrief(flows, currentId, extras = {}) {
   remedy: put them one decision at a time, not as a backlog`
     );
   }
+  for (const broken of extras.unreadable ?? []) {
+    waiting.push(
+      `${broken.id} cannot be read: ${broken.problem}
+  awaits agent: repair .workflow/flows/${broken.id}.json
+  remedy: open that file \u2014 a record left with merge-conflict markers is the usual cause`
+    );
+  }
   for (const id of extras.stranded ?? []) {
     waiting.push(
       `${id} has no flow, so nothing can reach it
@@ -437,6 +472,10 @@ function renderBrief(flows, currentId, extras = {}) {
     return [
       "No flow is open.",
       ...waiting.length > 0 ? ["", ...waiting] : [],
+      "",
+      "Nothing here holds session state, because state belongs to a flow. If you",
+      "are resuming work, it is one of the bundles above; if you are starting it,",
+      "open the fence first and checkpoint inside it.",
       "",
       "Start one explicitly when the maintainer asks for work, and record what",
       "they said \u2014 a bundle exists because they asked for it:",
@@ -452,7 +491,7 @@ function renderBrief(flows, currentId, extras = {}) {
     lines.push(current.title);
     lines.push("");
     if (current.checkpoint) {
-      lines.push(current.checkpoint.handoff);
+      lines.push(fenceBody(current.checkpoint.handoff));
       lines.push("");
       lines.push(`last: ${current.checkpoint.lastAction}`);
       lines.push(`next: ${current.checkpoint.nextAction}`);
@@ -497,14 +536,14 @@ function renderHandoff(flow) {
   return [
     `flow ${flow.id}  \xB7  step ${flow.step}`,
     "",
-    flow.checkpoint.handoff,
+    fenceBody(flow.checkpoint.handoff),
     "",
     `last: ${flow.checkpoint.lastAction}`,
     `next: ${flow.checkpoint.nextAction}`,
     `actor: ${flow.checkpoint.actor}   updated: ${flow.checkpoint.updatedAt}`
   ].join("\n");
 }
-var CheckpointError;
+var CheckpointError, CONTROL, INVISIBLE;
 var init_checkpoint = __esm({
   "src/core/checkpoint.ts"() {
     "use strict";
@@ -512,6 +551,8 @@ var init_checkpoint = __esm({
     init_steps();
     CheckpointError = class extends GateRefusal {
     };
+    CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
+    INVISIBLE = /[\u00ad\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\ufeff]/g;
   }
 });
 
@@ -567,26 +608,21 @@ var init_guidance = __esm({
 });
 
 // src/core/lock.ts
-import { mkdir, readFile as readFile2, rename, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile as readFile2, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve as resolve2 } from "node:path";
 function lockPath(target) {
   return `${resolve2(target)}.lock`;
 }
-function holderPath(target) {
-  return `${lockPath(target)}/holder.json`;
-}
-async function readHolder(target) {
-  return readHolderAt(lockPath(target));
-}
-async function readHolderAt(lockDirectory) {
+async function readHolderAt(path) {
   try {
-    const parsed = JSON.parse(
-      await readFile2(`${lockDirectory}/holder.json`, "utf8")
-    );
+    const parsed = JSON.parse(await readFile2(path, "utf8"));
     return typeof parsed?.token === "string" ? parsed : void 0;
   } catch {
     return void 0;
   }
+}
+async function readHolder(target) {
+  return readHolderAt(lockPath(target));
 }
 function isAbandonedHolder(holder) {
   if (Date.now() - holder.at > STALE_AFTER_MS) return true;
@@ -597,21 +633,26 @@ function isAbandonedHolder(holder) {
     return true;
   }
 }
-async function undescribedFor(target) {
+async function take(target, token) {
+  const path = lockPath(target);
+  const temporary = `${path}.${process.pid}.${token}.tmp`;
+  await writeFile(temporary, JSON.stringify({ pid: process.pid, token, at: Date.now() }), "utf8");
   try {
-    return Date.now() - (await stat(lockPath(target))).mtimeMs;
-  } catch {
-    return 0;
+    await link(temporary, path);
+    return true;
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    return false;
+  } finally {
+    await rm(temporary, { force: true }).catch(() => void 0);
   }
 }
-async function abandoned(target) {
-  const holder = await readHolder(target);
-  if (!holder) return await undescribedFor(target) > UNDESCRIBED_AFTER_MS;
-  return isAbandonedHolder(holder);
-}
-async function reclaim(target, token) {
+async function reclaim(target, judged) {
   const path = lockPath(target);
-  const aside = `${path}.stale.${token}`;
+  const now = await readHolder(target);
+  if (judged && (!now || now.token !== judged.token)) return;
+  if (!judged && now) return;
+  const aside = `${path}.stale.${process.pid}.${Math.random().toString(36).slice(2)}`;
   try {
     await rename(path, aside);
   } catch {
@@ -625,7 +666,7 @@ async function reclaim(target, token) {
     } catch {
     }
   }
-  await rm(aside, { recursive: true, force: true }).catch(() => void 0);
+  await rm(aside, { force: true }).catch(() => void 0);
 }
 async function withLock(target, work) {
   const path = lockPath(target);
@@ -633,39 +674,26 @@ async function withLock(target, work) {
   const deadline = Date.now() + WAIT_MS;
   await mkdir(dirname(path), { recursive: true });
   for (; ; ) {
-    try {
-      await mkdir(path);
-      try {
-        await writeFile(
-          holderPath(target),
-          JSON.stringify({ pid: process.pid, token, at: Date.now() })
-        );
-      } catch {
-        continue;
-      }
-      break;
-    } catch (error) {
-      if (error.code !== "EEXIST") throw error;
-      if (await abandoned(target)) {
-        await reclaim(target, token);
-        continue;
-      }
-      if (Date.now() > deadline) {
-        throw new GateRefusal(
-          `${target} is being written by another session.`,
-          "Wait for it to finish, then try again.",
-          "Two sessions writing one record lose each other's work without either being told."
-        );
-      }
-      await new Promise((wake) => setTimeout(wake, RETRY_MS + Math.floor(Math.random() * RETRY_MS)));
+    if (await take(target, token)) break;
+    const holder = await readHolder(target);
+    if (!holder || isAbandonedHolder(holder)) {
+      await reclaim(target, holder);
     }
+    if (Date.now() > deadline) {
+      throw new GateRefusal(
+        `${target} is being written by another session.`,
+        "Wait for it to finish, then try again.",
+        "Two sessions writing one record lose each other's work without either being told."
+      );
+    }
+    await new Promise((wake) => setTimeout(wake, RETRY_MS + Math.floor(Math.random() * RETRY_MS)));
   }
   try {
     return await work();
   } finally {
     const holder = await readHolder(target);
-    if (!holder || holder.token === token) {
-      await rm(path, { recursive: true, force: true }).catch(() => void 0);
+    if (holder?.token === token) {
+      await rm(path, { force: true }).catch(() => void 0);
     }
   }
 }
@@ -675,13 +703,12 @@ async function writeAtomic(path, body) {
   const { rename: rename3 } = await import("node:fs/promises");
   await rename3(temporary, path);
 }
-var STALE_AFTER_MS, UNDESCRIBED_AFTER_MS, RETRY_MS, WAIT_MS;
+var STALE_AFTER_MS, RETRY_MS, WAIT_MS;
 var init_lock = __esm({
   "src/core/lock.ts"() {
     "use strict";
     init_gates();
     STALE_AFTER_MS = 3e4;
-    UNDESCRIBED_AFTER_MS = 1e3;
     RETRY_MS = 10;
     WAIT_MS = 1e4;
   }
@@ -702,7 +729,7 @@ __export(flow_exports, {
   mutateFlow: () => mutateFlow,
   openFlow: () => openFlow,
   readFlow: () => readFlow,
-  writeFlow: () => writeFlow
+  unreadableFlows: () => unreadableFlows
 });
 import { mkdir as mkdir2, readFile as readFile3, readdir, rm as rm2 } from "node:fs/promises";
 import { join, resolve as resolve3 } from "node:path";
@@ -726,7 +753,7 @@ async function readFlow(root, id) {
     throw error;
   }
 }
-async function writeFlow(root, flow) {
+async function createFlowRecord(root, flow) {
   await mkdir2(flowDirectory(root), { recursive: true });
   const path = flowPath(root, flow.id);
   await withLock(path, async () => {
@@ -748,10 +775,20 @@ async function mutateFlow(root, id, change) {
     return next;
   });
 }
+function isFlowId(id) {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) && !id.includes("..");
+}
 async function currentFlowId(root) {
   try {
     const raw = await readFile3(resolve3(root, CURRENT_POINTER), "utf8");
     const id = raw.trim();
+    if (id.length > 0 && !isFlowId(id)) {
+      throw new GateRefusal(
+        `${CURRENT_POINTER} does not name a flow in this repository.`,
+        "wfctl work list",
+        `It reads ${JSON.stringify(id)}. A flow id names a record under ${FLOW_DIR}/ and never a path.`
+      );
+    }
     return id.length > 0 ? id : void 0;
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
@@ -804,7 +841,7 @@ async function openFlowLocked(root, options) {
     recall: emptyRecall(),
     ...options.weight ? { weight: options.weight } : {}
   };
-  await writeFlow(root, flow);
+  await createFlowRecord(root, flow);
   await setCurrent(root, id);
   return flow;
 }
@@ -817,9 +854,11 @@ async function closeFlow(root, id) {
       "The brief lists every open flow, including ones the pointer has lost."
     );
   }
-  const closed = { ...flow, closedAt: (/* @__PURE__ */ new Date()).toISOString() };
-  delete closed.checkpoint;
-  await writeFlow(root, closed);
+  const closed = await mutateFlow(root, id, (current2) => {
+    const next = { ...current2, closedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    delete next.checkpoint;
+    return next;
+  });
   const current = await currentFlowId(root);
   if (current === id) await setCurrent(root, void 0);
   return closed;
@@ -838,10 +877,33 @@ async function listFlows(root) {
   const flows = [];
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue;
-    const flow = await readFlow(root, entry.slice(0, -".json".length));
-    if (flow) flows.push(flow);
+    const id = entry.slice(0, -".json".length);
+    try {
+      const flow = await readFlow(root, id);
+      if (flow) flows.push(flow);
+    } catch {
+    }
   }
   return flows.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+async function unreadableFlows(root) {
+  let entries;
+  try {
+    entries = await readdir(flowDirectory(root));
+  } catch {
+    return [];
+  }
+  const broken = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue;
+    const id = entry.slice(0, -".json".length);
+    try {
+      await readFlow(root, id);
+    } catch (error) {
+      broken.push({ id, problem: error.message });
+    }
+  }
+  return broken;
 }
 var FLOW_DIR, CURRENT_POINTER, FlowOpenError;
 var init_flow = __esm({
@@ -1034,13 +1096,13 @@ __export(promotion_queue_exports, {
   queuePath: () => queuePath,
   readOutcome: () => readOutcome
 });
-import { copyFile, mkdir as mkdir4, readdir as readdir2, rename as rename2, stat as stat2 } from "node:fs/promises";
+import { copyFile, mkdir as mkdir4, readdir as readdir2, rename as rename2, stat } from "node:fs/promises";
 import { dirname as dirname4, join as join2, relative as relative2, resolve as resolve6 } from "node:path";
 function destinationFor(outcome, hasDrafts) {
   return hasDrafts ? QUEUE : ARCHIVE;
 }
 async function isDirectory(path) {
-  return stat2(path).then(
+  return stat(path).then(
     (entry) => entry.isDirectory(),
     () => false
   );
@@ -1489,7 +1551,7 @@ __export(reconstruct_exports, {
   setCurrentCase: () => setCurrentCase,
   writeCase: () => writeCase
 });
-import { mkdir as mkdir5, readFile as readFile5, readdir as readdir4, stat as stat3 } from "node:fs/promises";
+import { mkdir as mkdir5, readFile as readFile5, readdir as readdir4, stat as stat2 } from "node:fs/promises";
 import { dirname as dirname5, join as join4, resolve as resolve8 } from "node:path";
 function casePath(root, id) {
   return resolve8(root, RECONSTRUCTION_DIR, id, "case.json");
@@ -1636,7 +1698,7 @@ function assertClosable(record, actor) {
 }
 async function closeCase(root, id) {
   const from = resolve8(root, RECONSTRUCTION_DIR, id);
-  const present = await stat3(from).then(
+  const present = await stat2(from).then(
     (entry) => entry.isDirectory(),
     () => false
   );
@@ -2569,10 +2631,13 @@ async function briefExtras(context) {
   const reconstruction = await currentCase2(context.root).catch(() => void 0);
   const { listBundles: listBundles2 } = await Promise.resolve().then(() => (init_bundles(), bundles_exports));
   const stranded = (await listBundles2(context.root).catch(() => [])).filter((entry) => entry.state === "stranded").map((entry) => entry.bundle);
+  const { unreadableFlows: unreadableFlows2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
+  const unreadable = await unreadableFlows2(context.root).catch(() => []);
   return {
     queued,
     awaitingCaptures,
     stranded,
+    unreadable,
     ...reconstruction ? { reconstruction: { id: reconstruction.id, stage: reconstruction.stage } } : {}
   };
 }
@@ -2590,18 +2655,25 @@ async function checkpoint(context, input) {
   if (!flow) {
     return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
   }
-  const next = {
-    ...flow,
+  await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
     checkpoint: buildCheckpoint({
       summary: input.summary,
       handoff: input.handoff,
       lastAction: input.last,
       nextAction: input.next,
       actor: context.actor,
-      ...input.todo ? { todo: input.todo } : {}
+      /**
+       * Carried unless this call names its own.
+       *
+       * `todo` was replaced wholesale, so the second checkpoint of a session
+       * deleted the jobs the first had recorded — and checkpointing often is
+       * the thing this workflow asks for most. Doing it correctly was what
+       * lost them.
+       */
+      todo: input.todo && input.todo.length > 0 ? input.todo : current.checkpoint?.todo ?? []
     })
-  };
-  await writeFlow(context.root, next);
+  }));
   return ok(`checkpoint written for ${flow.id}`);
 }
 function assertAttested(words, command) {
@@ -2647,7 +2719,7 @@ async function workStart(context, options) {
       } : {}
     });
     await mkdir8(resolve12(context.root, "changes/active", flow.id), { recursive: true });
-    await writeFlow(context.root, { ...flow, members: [flow.id] });
+    await mutateFlow(context.root, flow.id, (current) => ({ ...current, members: [flow.id] }));
     return ok(
       compose([
         `flow ${flow.id} opened`,
@@ -2673,19 +2745,24 @@ async function advance(context, to) {
     assertReached(flow, to);
     assertRecall(flow, flow.step);
     assertReviewed(flow, to);
+    assertCheckpointCurrent(flow, to);
   } catch (error) {
     if (error instanceof GateRefusal) return refused(error);
     throw error;
   }
-  const advanced = { ...flow, step: to };
-  await writeFlow(context.root, advanced);
+  const advanced = await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    step: to,
+    steppedAt: (/* @__PURE__ */ new Date()).toISOString()
+  }));
   const following = nextStep(to) ?? to;
+  const owed = (advanced.checkpoint?.updatedAt ?? "") < (advanced.steppedAt ?? "");
   return ok(
     compose([
       `flow ${flow.id} is now at ${to}`,
       await guidanceFor(context, `work/${to}`),
       renderStep(advanced),
-      following !== to ? `then: ${definitionFor(following).command}` : void 0
+      following !== to && !owed ? `then: ${definitionFor(following).command}` : void 0
     ])
   );
 }
@@ -2779,6 +2856,15 @@ ${open.map((entry) => `  ${entry.id}`).join("\n")}` : void 0
         `${flow.id} is parked: ${flow.parked.reason}`,
         `wfctl work release --attested "<what they said>"`,
         "The maintainer held this work. Dropping the fence would discard that without telling them."
+      )
+    );
+  }
+  if (flow.step !== "opened" && !flow.closedAt) {
+    return refused(
+      new GateRefusal(
+        `${flow.id} reached ${flow.step}; dropping the fence would discard that.`,
+        "wfctl work close --outcome <completed|partial|abandoned>",
+        "`flow close` is for a flow that never started. Work that moved is closed with its outcome, which is what the archive and the promotion queue read."
       )
     );
   }
@@ -3163,9 +3249,10 @@ async function verify(context, options) {
     const { assertReviewUsable: assertReviewUsable2 } = await Promise.resolve().then(() => (init_verify(), verify_exports));
     const review = await readReviewArtifact2(options.review, context.actor);
     assertReviewUsable2(flow, review);
-    await writeFlow(context.root, {
-      ...flow,
+    await mutateFlow(context.root, flow.id, (current) => ({
+      ...current,
       step: "verified",
+      steppedAt: (/* @__PURE__ */ new Date()).toISOString(),
       /**
        * The whole artifact, not a count of it.
        *
@@ -3183,7 +3270,7 @@ async function verify(context, options) {
         fixedPoint: review.fixedPoint,
         source: resolve12(options.review)
       }
-    });
+    }));
     return ok(
       compose([
         `review accepted from ${review.reviewer}: ${review.attacks.length} attack(s), ${review.findings.length} finding(s)`,
@@ -3196,21 +3283,34 @@ async function verify(context, options) {
     throw error;
   }
 }
-async function park(context, reason) {
+async function park(context, reason, attested) {
   const flow = await currentFlow(context.root);
   if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
   if (!reason.trim()) {
     return refused(
       new GateRefusal(
         "Parking needs their reason.",
-        'wfctl work park --reason "<why starting now is premature>"'
+        'wfctl work park --reason "<why starting now is premature>" --attested "<what they said>"'
       )
     );
   }
-  await writeFlow(context.root, {
-    ...flow,
-    parked: { at: (/* @__PURE__ */ new Date()).toISOString(), reason: reason.trim() }
-  });
+  if (!attested.trim()) {
+    return refused(
+      new GateRefusal(
+        "A hold is the maintainer's, and nothing here says they placed one.",
+        `wfctl work park --reason "${reason.trim()}" --attested "<what they said>"`,
+        "This command stops the turn guard from ever firing again on this flow. An agent may not quietly decide that work waits."
+      )
+    );
+  }
+  await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    parked: {
+      at: (/* @__PURE__ */ new Date()).toISOString(),
+      reason: reason.trim(),
+      attested: attested.trim()
+    }
+  }));
   return ok(
     `${flow.id} is parked: ${reason.trim()}
 
@@ -3230,9 +3330,11 @@ async function release(context, attested) {
       )
     );
   }
-  const next = { ...flow };
-  delete next.parked;
-  await writeFlow(context.root, next);
+  await mutateFlow(context.root, flow.id, (current) => {
+    const next = { ...current };
+    delete next.parked;
+    return next;
+  });
   return ok(`${flow.id} released: "${attested.trim()}"`);
 }
 async function close(context, options) {
@@ -3269,12 +3371,13 @@ Drop one deliberately if it left the route: wfctl work issue drop <id> --reason 
       bundleId: bundle,
       outcome: options.outcome
     });
-    await writeFlow(context.root, {
-      ...flow,
+    await mutateFlow(context.root, flow.id, (current) => ({
+      ...current,
       step: "closed",
+      steppedAt: (/* @__PURE__ */ new Date()).toISOString(),
       closedAt: (/* @__PURE__ */ new Date()).toISOString(),
       outcome: options.outcome
-    });
+    }));
     await clearCurrent(context.root);
     return ok(
       result.waitingOnPromotion ? `${bundle} closed as ${options.outcome} and waits in the promotion queue.
@@ -3400,7 +3503,7 @@ __export(install_exports, {
   setGuard: () => setGuard
 });
 import { createHash as createHash3 } from "node:crypto";
-import { chmod, mkdir as mkdir9, readFile as readFile11, readdir as readdir7, stat as stat4, writeFile as writeFile9 } from "node:fs/promises";
+import { chmod, mkdir as mkdir9, readFile as readFile11, readdir as readdir7, stat as stat3, writeFile as writeFile9 } from "node:fs/promises";
 import { dirname as dirname9, join as join6, relative as relative4, resolve as resolve13 } from "node:path";
 function hash(content) {
   return createHash3("sha256").update(content).digest("hex");
@@ -3436,7 +3539,7 @@ async function planInstall(options) {
   const edited = [];
   for (const directory of KNOWLEDGE_DIRECTORIES) {
     const path = resolve13(options.target, directory);
-    const present = await stat4(path).then(
+    const present = await stat3(path).then(
       (entry) => entry.isDirectory(),
       () => false
     );
@@ -3892,7 +3995,7 @@ __export(leaves_exports, {
   inspectLeaves: () => inspectLeaves,
   renderLeaves: () => renderLeaves
 });
-import { stat as stat5 } from "node:fs/promises";
+import { stat as stat4 } from "node:fs/promises";
 import { resolve as resolve14, sep as sep3 } from "node:path";
 async function inspectLeaf(entry, now = /* @__PURE__ */ new Date()) {
   const base = {
@@ -3902,12 +4005,12 @@ async function inspectLeaf(entry, now = /* @__PURE__ */ new Date()) {
     path: entry.path,
     graph: "unreachable"
   };
-  const reachable = await stat5(entry.path).then(
+  const reachable = await stat4(entry.path).then(
     (found) => found.isDirectory(),
     () => false
   );
   if (!reachable) return base;
-  const graph = await stat5(resolve14(entry.path, GRAPH_PATH)).catch(() => void 0);
+  const graph = await stat4(resolve14(entry.path, GRAPH_PATH)).catch(() => void 0);
   if (!graph) return { ...base, graph: "missing" };
   const ageDays = Math.floor((now.getTime() - graph.mtimeMs) / 864e5);
   return { ...base, graph: ageDays > STALE_AFTER_DAYS ? "stale" : "ready", ageDays };
@@ -4145,8 +4248,8 @@ import { readFile as readFile12, readdir as readdir8 } from "node:fs/promises";
 import { join as join7, relative as relative6, resolve as resolve16 } from "node:path";
 function terms(subject) {
   const words = subject.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 0);
-  const meaningful = words.filter((term) => !FILLER.has(term));
-  return meaningful.length > 0 ? meaningful : words;
+  const meaningful2 = words.filter((term) => !FILLER.has(term));
+  return meaningful2.length > 0 ? meaningful2 : words;
 }
 function score(body, want) {
   const text = body.toLowerCase();
@@ -4306,7 +4409,7 @@ __export(doctor_exports, {
   runDoctor: () => runDoctor
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { access, readFile as readFile13, readdir as readdir9, stat as stat6 } from "node:fs/promises";
+import { access, readFile as readFile13, readdir as readdir9, stat as stat5 } from "node:fs/promises";
 import { resolve as resolve17 } from "node:path";
 async function exists2(path) {
   return access(path).then(
@@ -4396,7 +4499,7 @@ async function runDoctor(targetInput, options = {}) {
   });
   const absentDirs = [];
   for (const directory of KNOWLEDGE_DIRECTORIES) {
-    const found = await stat6(resolve17(target, directory)).then(
+    const found = await stat5(resolve17(target, directory)).then(
       (entry) => entry.isDirectory(),
       () => false
     );
@@ -4602,7 +4705,7 @@ var COMMAND_FLAGS = {
   "work issue claim": { value: ["repository", "worktree"], boolean: [] },
   "work issue complete": NONE,
   "work issue drop": { value: ["reason"], boolean: [] },
-  "work park": { value: ["reason"], boolean: [] },
+  "work park": { value: ["reason", "attested"], boolean: [] },
   "work release": { value: ["attested"], boolean: [] },
   "work verify": { value: ["review"], boolean: [] },
   "work close": { value: ["outcome"], boolean: [] },
@@ -4749,7 +4852,8 @@ var USAGE = `wfctl \u2014 project workflow
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
   work issue complete <id> | drop <id> --reason "<why it left the route>"
-  work park --reason ... | work release --attested "<their words>"
+  work park --reason ... --attested "<their words>"
+  work release --attested "<their words>"
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
   work promote --subject "<product subject>" --summary "<what it now does>"
@@ -4893,6 +4997,30 @@ async function run2(argv, context) {
               remedy: "wfctl reconstruct status"
             });
           }
+          for (const id of extras.stranded ?? []) {
+            signals.push({
+              id,
+              awaits: "maintainer",
+              summary: "has no flow, so nothing can reach it",
+              remedy: `wfctl work adopt ${id} --weight <significant|lightweight> --attested "<what they said>"`
+            });
+          }
+          for (const broken of extras.unreadable ?? []) {
+            signals.push({
+              id: broken.id,
+              awaits: "agent",
+              summary: `record cannot be read: ${broken.problem}`,
+              remedy: `repair .workflow/flows/${broken.id}.json`
+            });
+          }
+          if (extras.awaitingCaptures) {
+            signals.push({
+              id: "changes/inbox",
+              awaits: "maintainer",
+              summary: `${extras.awaitingCaptures} capture(s) await the maintainer`,
+              remedy: "put them one decision at a time, not as a backlog"
+            });
+          }
           return ok_(JSON.stringify({ current, signals }, null, 2));
         }
         return await brief(context);
@@ -5011,7 +5139,9 @@ async function run2(argv, context) {
         if (action === "verify") {
           return await verify(context, { review: flag(args, "review") ?? "" });
         }
-        if (action === "park") return await park(context, flag(args, "reason") ?? "");
+        if (action === "park") {
+          return await park(context, flag(args, "reason") ?? "", flag(args, "attested") ?? "");
+        }
         if (action === "release") return await release(context, flag(args, "attested") ?? "");
         if (action === "close") {
           const outcome = oneOf(
@@ -5082,7 +5212,7 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
           const { currentFlow: currentFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
           const { decideWrite: decideWrite2 } = await Promise.resolve().then(() => (init_write_hook(), write_hook_exports));
           const { loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
-          const { writeFlow: writeFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
+          const { mutateFlow: mutateFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
           const { recordWritten: recordWritten2 } = await Promise.resolve().then(() => (init_recall(), recall_exports));
           const { readRegistry: readRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
           const { inspectLeaves: inspectLeaves2 } = await Promise.resolve().then(() => (init_leaves(), leaves_exports));
@@ -5100,10 +5230,10 @@ topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
           });
           if (decision.refusal) return { stdout: decision.refusal.render(), exitCode: 2 };
           if (flow) {
-            await writeFlow2(context.root, {
-              ...flow,
-              recall: recordWritten2(flow.recall, target)
-            });
+            await mutateFlow2(context.root, flow.id, (current) => ({
+              ...current,
+              recall: recordWritten2(current.recall, target)
+            }));
           }
           return { stdout: decision.message ?? "", exitCode: 0 };
         }
@@ -5603,9 +5733,9 @@ if (invokedDirectly) {
     actor: process.env.WFCTL_ACTOR ?? "agent:unknown"
   };
   const result = await run2(process.argv.slice(2), context);
+  process.exitCode = result.exitCode;
   process.stdout.write(`${result.stdout}
 `);
-  process.exit(result.exitCode);
 }
 export {
   findGuidance,

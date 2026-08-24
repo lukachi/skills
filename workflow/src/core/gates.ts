@@ -105,11 +105,66 @@ export function assertNotParked(flow: FlowRecord): void {
  * branch this rewrite removes, so the gate requires that it was actually
  * fetched before anything material happens.
  */
-export function assertHandoffRead(read: boolean, flowId: string): void {
-  if (read) return;
-  throw new GateRefusal(
-    "This flow's handoff has not been read in this session.",
-    `wfctl handoff ${flowId}`,
-    "Resuming from conversation memory is how work is repeated and decisions are reversed.",
-  );
+/**
+ * A step does not advance on a checkpoint describing an earlier one.
+ *
+ * The checkpoint was rendered and never enforced: `grep` for it found render
+ * sites and one delete, and no refusal, gate or exit code depended on one
+ * existing. A whole flow ran start to promote with `checkpoint: None`, and
+ * across five hundred lines of output the tool never once printed the command
+ * that would have fixed it — it appeared only as prose inside guidance, which
+ * is the delivery this rewrite exists to replace.
+ *
+ * The check is staleness rather than existence, because a checkpoint written at
+ * `opened` and left there is what a fresh session then acts on: its `next:`
+ * names a step already passed, and following it literally hits a refusal that
+ * cannot clear. So each step wants a checkpoint written since the last one was
+ * recorded.
+ */
+export function assertCheckpointCurrent(flow: FlowRecord, step: WorkStep): void {
+  // Opening a flow cannot require a checkpoint of the flow it is opening.
+  if (step === "aligned") return;
+
+  const checkpoint = flow.checkpoint;
+  if (!checkpoint) {
+    throw new GateRefusal(
+      `This flow has no checkpoint, and ${step} is not reachable without one.`,
+      'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n' +
+        '    --last "<last completed action>" --next "<the exact next action>"',
+      "The checkpoint is the only thing a session that is not this one recovers " +
+        "from. Work whose state lives in a conversation is lost with the " +
+        "conversation, and nothing reports that it was.",
+    );
+  }
+  if (checkpoint.updatedAt < (flow.steppedAt ?? "")) {
+    throw new GateRefusal(
+      `The checkpoint predates this flow reaching ${flow.step}.`,
+      'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n' +
+        '    --last "<last completed action>" --next "<the exact next action>"',
+      `It was written at ${checkpoint.updatedAt} and says the next action is ` +
+        `"${checkpoint.nextAction}". A session resuming here would act on that.`,
+    );
+  }
 }
+
+/**
+ * There is no handoff receipt, and there was never a working one.
+ *
+ * `assertHandoffRead` lived here with no call site, and `CommandContext` carried
+ * a `handoffRead` field nothing set or read, while `checkpoint.ts` stated as
+ * fact that "the gate checks that it was fetched". Dead code shaped exactly
+ * like a guarantee is worse than an absent one: it is the thing a reader stops
+ * worrying about.
+ *
+ * It cannot be built as the tool stands. Every `wfctl` invocation is its own
+ * process and none of them is told which session it belongs to, so a receipt on
+ * disk could only answer "has anyone, ever, run `wfctl handoff`" — which is not
+ * the question. The question is whether *this* session received the body, and
+ * answering it needs a session identifier the CLI is never given.
+ *
+ * What actually made the handoff go missing was mechanical, and is fixed: the
+ * brief was truncated at 64KB whenever its output was piped, which is exactly
+ * how the session-start hook runs it. A receipt would have caught the symptom
+ * of that and hidden the cause.
+ */
+

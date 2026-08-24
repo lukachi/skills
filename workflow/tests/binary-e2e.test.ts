@@ -31,6 +31,17 @@ function wfctl(cwd: string, args: string[]): { stdout: string; status: number } 
   }
 }
 
+/**
+ * A checkpoint written now, so the next step's staleness gate passes.
+ *
+ * Each step wants a checkpoint recorded since the flow last moved. Tests that
+ * walk the chain have to leave one the same way real work does.
+ */
+function mark(root: string, where: string): void {
+  wfctl(root, ["checkpoint", "--summary", where, "--handoff", `at ${where}`,
+    "--last", `reached ${where}`, "--next", "the next step"]);
+}
+
 async function installed(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "wfctl-e2e-"));
   const result = wfctl(root, ["init", "knowledge", "--target", root]);
@@ -71,6 +82,7 @@ test("a step cannot be reached without a review on record", async () => {
   for (const item of ["E14", "E15", "E16"]) {
     wfctl(root, ["recall", "answer", item, "--answer", "x", "--route", "qmd", "--source", "k"]);
   }
+  mark(root, "framed");
   wfctl(root, ["work", "step", "framed"]);
 
   const verified = wfctl(root, ["work", "step", "verified"]);
@@ -751,11 +763,14 @@ async function walkToImplementE2E(root: string): Promise<void> {
   };
   wfctl(root, ["work", "step", "aligned"]);
   answer("E", "qmd");
+  mark(root, "framed");
   wfctl(root, ["work", "step", "framed"]);
   answer("A", "qmd");
   answer("B", "qmd");
   answer("C", "qmd");
+  mark(root, "split");
   wfctl(root, ["work", "step", "split"]);
+  mark(root, "implement");
   wfctl(root, ["work", "step", "implement"]);
   answer("D", "graphify");
   answer("G", "read");
@@ -770,11 +785,14 @@ async function walkToVerifiedE2E(root: string): Promise<void> {
     }
   };
   answer("E", "qmd");
+  mark(root, "framed");
   wfctl(root, ["work", "step", "framed"]);
   answer("A", "qmd");
   answer("B", "qmd");
   answer("C", "qmd");
+  mark(root, "split");
   wfctl(root, ["work", "step", "split"]);
+  mark(root, "implement");
   wfctl(root, ["work", "step", "implement"]);
   answer("D", "graphify");
   answer("G", "read");
@@ -790,7 +808,11 @@ async function walkToVerifiedE2E(root: string): Promise<void> {
     }),
     "utf8",
   );
-  wfctl(root, ["work", "verify", "--review", review]);
+  mark(root, "verified");
+  const verified = wfctl(root, ["work", "verify", "--review", review]);
+  // A walker that quietly fails to walk makes every test after it assert about
+  // a flow that never moved, and report the wrong cause when it breaks.
+  assert.equal(verified.status, 0, `walkToVerifiedE2E did not reach verified:\n${verified.stdout}`);
 }
 
 test("promote actually writes the pages into curated knowledge", async () => {
@@ -868,7 +890,7 @@ test("flow close takes the id its own refusal prints", async () => {
 test("flow close runs the gates work close runs", async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "parked", "--weight", "lightweight", "--attested", "they asked for it"]);
-  wfctl(root, ["work", "park", "--reason", "not yet"]);
+  wfctl(root, ["work", "park", "--reason", "not yet", "--attested", "they said hold"]);
 
   const parked = wfctl(root, ["flow", "close"]);
   assert.equal(parked.status, 2, "a parked flow was closed, discarding the maintainer's hold");
@@ -1119,7 +1141,7 @@ test("a parked flow accepts nothing material", async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "held", "--weight", "significant", "--attested", "they asked for it"]);
   wfctl(root, ["work", "issue", "create", "--title", "u"]);
-  wfctl(root, ["work", "park", "--reason", "maintainer said hold"]);
+  wfctl(root, ["work", "park", "--reason", "maintainer said hold", "--attested", "they said hold"]);
 
   for (const command of [
     ["work", "issue", "create", "--title", "sneaky"],
@@ -1131,7 +1153,13 @@ test("a parked flow accepts nothing material", async () => {
   }
 });
 
-test("promote names its record when the queue is ambiguous", async () => {
+/**
+ * Two complete flows, each walked to `verified`. Roughly a hundred subprocess
+ * spawns, and the checkpoint each step now wants added eight more per walk —
+ * past the runner's five-second default whenever the rest of the suite is
+ * competing for the machine.
+ */
+test("promote names its record when the queue is ambiguous", { timeout: 120_000 }, async () => {
   const root = await installed();
 
   for (const title of ["alpha subject", "zeta subject"]) {

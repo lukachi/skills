@@ -200,9 +200,23 @@ export function renderStep(flow: FlowRecord): string {
   const following = nextStep(flow.step);
   const shortfall = shortfallFor(flow.step, flow.recall);
 
+  /**
+   * The checkpoint is named where it is needed, not only where it is refused.
+   *
+   * The next step wants one written since this step was reached, and an agent
+   * that meets that as a refusal has already tried to move. Printing it here
+   * puts the demand in front of the work rather than behind it — the whole
+   * reason instructions come from the tool rather than from a document.
+   */
+  const checkpointStale =
+    flow.step !== "opened" && (flow.checkpoint?.updatedAt ?? "") < (flow.steppedAt ?? "");
+
   const next = !isSatisfied(shortfall)
     ? "wfctl recall answer <item> --answer \"<what you found>\" --route <route> --source \"<where>\""
-    : (following ? definitionFor(following).command : "wfctl work close --outcome <completed|partial|abandoned>");
+    : checkpointStale
+      ? 'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n'
+        + '        --last "<last completed action>" --next "<the exact next action>"'
+      : (following ? definitionFor(following).command : "wfctl work close --outcome <completed|partial|abandoned>");
 
   return [
     `flow ${flow.id}  ·  step ${flow.step}`,

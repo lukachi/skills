@@ -28,6 +28,54 @@ export interface CheckpointInput {
  */
 export class CheckpointError extends GateRefusal {}
 
+/**
+ * Text that cannot forge the lines around it.
+ *
+ * `renderBrief` and `renderHandoff` join fields with newlines, so a body
+ * carrying its own `last:` / `next:` / `awaits maintainer:` lines produced a
+ * second, counterfeit trailer — printed *above* the real one, under the brief's
+ * own claim that the state above is authoritative. A reader scanning for
+ * `next:` acts on the first match.
+ *
+ * This is not far-fetched. A handoff that quotes an error, a review finding or
+ * the previous brief — all natural things to record — produces it by accident.
+ *
+ * Single-line fields lose their newlines outright. The body keeps its shape,
+ * because a handoff that cannot hold a paragraph is not a handoff, so its lines
+ * are prefixed instead: indented text cannot be mistaken for the tool's own.
+ * Control characters go in every case; an ANSI escape in a session brief can
+ * clear the screen the state was printed on.
+ */
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
+
+/**
+ * Characters that occupy no space and say nothing.
+ *
+ * `String.trim` does not strip U+200B, so a checkpoint of four zero-width
+ * spaces passed the "an empty one recalls nothing" gate, rendered as blank
+ * `last:` and `next:` lines, and permanently silenced the brief's "No
+ * checkpoint yet" — the only prompt in the system. It reads as a checkpoint
+ * that happens to be blank rather than one that was faked.
+ */
+const INVISIBLE = /[\u00ad\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\ufeff]/g;
+
+/** Whether a field carries anything a reader could act on. */
+function meaningful(value: string): boolean {
+  return value.replace(INVISIBLE, "").replace(CONTROL, "").trim().length > 0;
+}
+
+function oneLine(value: string): string {
+  return value.replace(CONTROL, "").replace(/\s*\n+\s*/g, " ").trim();
+}
+
+export function fenceBody(value: string): string {
+  return value
+    .replace(CONTROL, "")
+    .split("\n")
+    .map((line) => (line.trim().length === 0 ? "" : `  ${line}`))
+    .join("\n");
+}
+
 export function buildCheckpoint(input: CheckpointInput, now = new Date()): Checkpoint {
   const fields: [string, string, string][] = [
     ["summary", "--summary", input.summary],
@@ -36,7 +84,7 @@ export function buildCheckpoint(input: CheckpointInput, now = new Date()): Check
     ["the exact next action", "--next", input.nextAction],
   ];
   for (const [label, option, value] of fields) {
-    if (!value || value.trim().length === 0) {
+    if (!value || !meaningful(value)) {
       throw new CheckpointError(
         `A checkpoint needs ${label}; an empty one recalls nothing.`,
         `wfctl checkpoint --summary "<one line>" --handoff "<the body>" --last "<...>" --next "<...>"`,
@@ -46,13 +94,13 @@ export function buildCheckpoint(input: CheckpointInput, now = new Date()): Check
   }
 
   return {
-    summary: input.summary.trim(),
-    handoff: input.handoff.trim(),
-    lastAction: input.lastAction.trim(),
-    nextAction: input.nextAction.trim(),
-    actor: input.actor,
+    summary: oneLine(input.summary),
+    handoff: input.handoff.replace(CONTROL, "").trim(),
+    lastAction: oneLine(input.lastAction),
+    nextAction: oneLine(input.nextAction),
+    actor: oneLine(input.actor),
     updatedAt: now.toISOString(),
-    todo: input.todo ?? [],
+    todo: (input.todo ?? []).map(oneLine).filter((item) => item.length > 0),
   };
 }
 
@@ -72,6 +120,8 @@ export interface BriefExtras {
   awaitingCaptures?: number;
   /** An open reconstruction, which is not a flow and was invisible here. */
   reconstruction?: { id: string; stage: string };
+  /** Flow records that cannot be parsed, named rather than silently absent. */
+  unreadable?: { id: string; problem: string }[];
   /**
    * Bundles no flow holds.
    *
@@ -117,6 +167,13 @@ export function renderBrief(
         `\n  remedy: put them one decision at a time, not as a backlog`,
     );
   }
+  for (const broken of extras.unreadable ?? []) {
+    waiting.push(
+      `${broken.id} cannot be read: ${broken.problem}` +
+        `\n  awaits agent: repair .workflow/flows/${broken.id}.json` +
+        `\n  remedy: open that file — a record left with merge-conflict markers is the usual cause`,
+    );
+  }
   for (const id of extras.stranded ?? []) {
     waiting.push(
       `${id} has no flow, so nothing can reach it` +
@@ -129,6 +186,10 @@ export function renderBrief(
     return [
       "No flow is open.",
       ...(waiting.length > 0 ? ["", ...waiting] : []),
+      "",
+      "Nothing here holds session state, because state belongs to a flow. If you",
+      "are resuming work, it is one of the bundles above; if you are starting it,",
+      "open the fence first and checkpoint inside it.",
       "",
       "Start one explicitly when the maintainer asks for work, and record what",
       "they said — a bundle exists because they asked for it:",
@@ -146,7 +207,7 @@ export function renderBrief(
     lines.push(current.title);
     lines.push("");
     if (current.checkpoint) {
-      lines.push(current.checkpoint.handoff);
+      lines.push(fenceBody(current.checkpoint.handoff));
       lines.push("");
       lines.push(`last: ${current.checkpoint.lastAction}`);
       lines.push(`next: ${current.checkpoint.nextAction}`);
@@ -194,7 +255,11 @@ export function renderBrief(
  *
  * Pointing an agent at a file it should read is the branch this rewrite exists
  * to remove, so the handoff is never merely referenced: it is either printed by
- * the brief or fetched by this, and the gate checks that it was fetched.
+ * the brief or fetched by this.
+ *
+ * Nothing verifies that it was received. This comment used to claim a gate
+ * checked that, and no such gate was ever called — see `gates.ts` for why one
+ * cannot be built without a session identifier.
  */
 export function renderHandoff(flow: FlowRecord): string {
   if (!flow.checkpoint) {
@@ -203,7 +268,7 @@ export function renderHandoff(flow: FlowRecord): string {
   return [
     `flow ${flow.id}  ·  step ${flow.step}`,
     "",
-    flow.checkpoint.handoff,
+    fenceBody(flow.checkpoint.handoff),
     "",
     `last: ${flow.checkpoint.lastAction}`,
     `next: ${flow.checkpoint.nextAction}`,

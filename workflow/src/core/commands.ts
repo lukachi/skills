@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { renderBrief, renderHandoff, buildCheckpoint } from "./checkpoint.js";
 import {
   GateRefusal,
+  assertCheckpointCurrent,
   assertNotParked,
   assertReached,
   assertRecall,
@@ -17,7 +18,6 @@ import {
   mutateFlow,
   openFlow,
   readFlow,
-  writeFlow,
 } from "./flow.js";
 import { createPromotionDraft } from "./paths.js";
 import { findItem, recordAnswer, recordRoute, renderCounterLine } from "./recall.js";
@@ -38,8 +38,6 @@ export interface CommandContext {
   /** Where the installed guidance bundle lives. */
   assets: string;
   actor: string;
-  /** Whether this session has fetched the bound flow's handoff. */
-  handoffRead?: boolean;
 }
 
 export interface CommandResult {
@@ -100,10 +98,14 @@ export async function briefExtras(context: CommandContext) {
     .filter((entry) => entry.state === "stranded")
     .map((entry) => entry.bundle);
 
+  const { unreadableFlows } = await import("./flow.js");
+  const unreadable = await unreadableFlows(context.root).catch(() => []);
+
   return {
     queued,
     awaitingCaptures,
     stranded,
+    unreadable,
     ...(reconstruction ? { reconstruction: { id: reconstruction.id, stage: reconstruction.stage } } : {}),
   };
 }
@@ -127,18 +129,25 @@ export async function checkpoint(
     return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
   }
 
-  const next: FlowRecord = {
-    ...flow,
+  await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
     checkpoint: buildCheckpoint({
       summary: input.summary,
       handoff: input.handoff,
       lastAction: input.last,
       nextAction: input.next,
       actor: context.actor,
-      ...(input.todo ? { todo: input.todo } : {}),
+      /**
+       * Carried unless this call names its own.
+       *
+       * `todo` was replaced wholesale, so the second checkpoint of a session
+       * deleted the jobs the first had recorded — and checkpointing often is
+       * the thing this workflow asks for most. Doing it correctly was what
+       * lost them.
+       */
+      todo: input.todo && input.todo.length > 0 ? input.todo : (current.checkpoint?.todo ?? []),
     }),
-  };
-  await writeFlow(context.root, next);
+  }));
   return ok(`checkpoint written for ${flow.id}`);
 }
 
@@ -217,7 +226,7 @@ export async function workStart(
      * the only way to get one is the command the maintainer asked for.
      */
     await mkdir(resolve(context.root, "changes/active", flow.id), { recursive: true });
-    await writeFlow(context.root, { ...flow, members: [flow.id] });
+    await mutateFlow(context.root, flow.id, (current) => ({ ...current, members: [flow.id] }));
 
     return ok(
       compose([
@@ -254,21 +263,31 @@ export async function advance(context: CommandContext, to: WorkStep): Promise<Co
     assertReached(flow, to);
     assertRecall(flow, flow.step);
     assertReviewed(flow, to);
+    assertCheckpointCurrent(flow, to);
   } catch (error) {
     if (error instanceof GateRefusal) return refused(error);
     throw error;
   }
 
-  const advanced: FlowRecord = { ...flow, step: to };
-  await writeFlow(context.root, advanced);
+  const advanced = await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    step: to,
+    steppedAt: new Date().toISOString(),
+  }));
 
   const following = nextStep(to) ?? to;
+  /**
+   * This line used to name the next step unconditionally, past a checkpoint
+   * gate that would refuse it. `renderStep` already prints what comes next and
+   * knows whether a checkpoint is owed; naming the step here contradicted it.
+   */
+  const owed = (advanced.checkpoint?.updatedAt ?? "") < (advanced.steppedAt ?? "");
   return ok(
     compose([
       `flow ${flow.id} is now at ${to}`,
       await guidanceFor(context, `work/${to}` as GuidanceKey),
       renderStep(advanced),
-      following !== to ? `then: ${definitionFor(following).command}` : undefined,
+      following !== to && !owed ? `then: ${definitionFor(following).command}` : undefined,
     ]),
   );
 }
@@ -413,6 +432,27 @@ export async function flowClose(context: CommandContext, id?: string): Promise<C
    * the bundle was left in `changes/active/` with no open flow that could ever
    * close it.
    */
+  /**
+   * The fence comes down on work that never started, or through `work close`.
+   *
+   * This ran none of the gates `work close` runs, so it was the way past all of
+   * them: a flow at `verified` with a real checkpoint was closed at exit 0,
+   * every signal emptied, and the checkpoint deleted with no outcome recorded.
+   * The brief also offers this as the *only* command for a flow that is not the
+   * bound one, so the recovery path for a lost pointer was the destructive one.
+   */
+  if (flow.step !== "opened" && !flow.closedAt) {
+    return refused(
+      new GateRefusal(
+        `${flow.id} reached ${flow.step}; dropping the fence would discard that.`,
+        "wfctl work close --outcome <completed|partial|abandoned>",
+        "`flow close` is for a flow that never started. Work that moved is " +
+          "closed with its outcome, which is what the archive and the promotion " +
+          "queue read.",
+      ),
+    );
+  }
+
   const unfinished = flow.issues.filter(
     (issue) => issue.status !== "done" && issue.status !== "dropped",
   );
@@ -990,9 +1030,10 @@ export async function verify(
      * review precondition at all and the adversarial round was decorative.
      * Storing it is what lets the step gate ask whether one happened.
      */
-    await writeFlow(context.root, {
-      ...flow,
+    await mutateFlow(context.root, flow.id, (current) => ({
+      ...current,
       step: "verified",
+      steppedAt: new Date().toISOString(),
       /**
        * The whole artifact, not a count of it.
        *
@@ -1010,7 +1051,7 @@ export async function verify(
         fixedPoint: review.fixedPoint,
         source: resolve(options.review),
       },
-    });
+    }));
 
     return ok(
       compose([
@@ -1027,21 +1068,49 @@ export async function verify(
 
 /* ------------------------------------------------------- park and release */
 
-export async function park(context: CommandContext, reason: string): Promise<CommandResult> {
+/**
+ * A hold is theirs, and so is the record of it.
+ *
+ * `release` demanded their words and `park` demanded nothing, which is backwards
+ * for the failure this tool exists to catch: stopping was free and resuming was
+ * expensive. Worse, parking is the one command that silences the turn guard —
+ * the guard fires only while something awaits the agent, and a park moves the
+ * flow's only signal to the maintainer. One unattested command, at any step,
+ * ended every turn quietly from then on.
+ */
+export async function park(
+  context: CommandContext,
+  reason: string,
+  attested: string,
+): Promise<CommandResult> {
   const flow = await currentFlow(context.root);
   if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
   if (!reason.trim()) {
     return refused(
       new GateRefusal(
         "Parking needs their reason.",
-        'wfctl work park --reason "<why starting now is premature>"',
+        'wfctl work park --reason "<why starting now is premature>" --attested "<what they said>"',
       ),
     );
   }
-  await writeFlow(context.root, {
-    ...flow,
-    parked: { at: new Date().toISOString(), reason: reason.trim() },
-  });
+  if (!attested.trim()) {
+    return refused(
+      new GateRefusal(
+        "A hold is the maintainer's, and nothing here says they placed one.",
+        `wfctl work park --reason "${reason.trim()}" --attested "<what they said>"`,
+        "This command stops the turn guard from ever firing again on this flow. " +
+          "An agent may not quietly decide that work waits.",
+      ),
+    );
+  }
+  await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    parked: {
+      at: new Date().toISOString(),
+      reason: reason.trim(),
+      attested: attested.trim(),
+    },
+  }));
   return ok(
     `${flow.id} is parked: ${reason.trim()}\n\n` +
       "Approving a framing settles what the work is, never that it begins. Only " +
@@ -1064,9 +1133,11 @@ export async function release(context: CommandContext, attested: string): Promis
       ),
     );
   }
-  const next = { ...flow };
-  delete next.parked;
-  await writeFlow(context.root, next);
+  await mutateFlow(context.root, flow.id, (current) => {
+    const next = { ...current };
+    delete next.parked;
+    return next;
+  });
   return ok(`${flow.id} released: "${attested.trim()}"`);
 }
 
@@ -1128,12 +1199,13 @@ export async function close(
       bundleId: bundle,
       outcome: options.outcome,
     });
-    await writeFlow(context.root, {
-      ...flow,
+    await mutateFlow(context.root, flow.id, (current) => ({
+      ...current,
       step: "closed",
+      steppedAt: new Date().toISOString(),
       closedAt: new Date().toISOString(),
       outcome: options.outcome,
-    });
+    }));
     /**
      * Drop the fence with the closure.
      *

@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { GateRefusal } from "./gates.js";
 
@@ -27,15 +27,6 @@ import { GateRefusal } from "./gates.js";
  * is a distributed lock would be a worse lie than having none.
  */
 const STALE_AFTER_MS = 30_000;
-/**
- * How long a lock may exist without saying who holds it.
- *
- * The gap between creating the directory and writing the holder file is a
- * couple of syscalls; a second is many orders of magnitude of headroom. It has
- * to be well inside `WAIT_MS`, because a bound a waiting caller never reaches
- * is not a bound at all — see `abandoned`.
- */
-const UNDESCRIBED_AFTER_MS = 1_000;
 const RETRY_MS = 10;
 const WAIT_MS = 10_000;
 
@@ -49,27 +40,42 @@ function lockPath(target: string): string {
   return `${resolve(target)}.lock`;
 }
 
-function holderPath(target: string): string {
-  return `${lockPath(target)}/holder.json`;
-}
-
-async function readHolder(target: string): Promise<Holder | undefined> {
-  return readHolderAt(lockPath(target));
-}
-
-async function readHolderAt(lockDirectory: string): Promise<Holder | undefined> {
+/**
+ * A lock that describes its holder from the instant it exists.
+ *
+ * This was a directory created by `mkdir` and then filled in by a second write,
+ * which left a window in which the lock existed and said nothing. Every attempt
+ * to handle that window failed differently. Judging an undescribed lock by the
+ * caller's own stopwatch made an orphan unreclaimable forever. Judging it by the
+ * directory's age let several callers reclaim at once and delete each other's
+ * fresh locks. Renaming it aside made the take atomic and still let a caller act
+ * on a judgment formed before the lock it took existed, because a lock with no
+ * holder file is indistinguishable from any other lock with no holder file.
+ *
+ * `link` removes the window. The holder is written to a temporary file first
+ * and then linked into place: the link either succeeds — and the lock is
+ * complete and identified in the same instant — or it fails because somebody
+ * else holds it. There is no state in between, so a lock that appears between
+ * one caller's judgment and its action carries a different token and is
+ * recognised as a different lock.
+ */
+async function readHolderAt(path: string): Promise<Holder | undefined> {
   try {
-    const parsed = JSON.parse(
-      await readFile(`${lockDirectory}/holder.json`, "utf8"),
-    ) as Holder;
+    const parsed = JSON.parse(await readFile(path, "utf8")) as Holder;
     return typeof parsed?.token === "string" ? parsed : undefined;
   } catch {
     return undefined;
   }
 }
 
-/** Whether a holder we are already holding was dead when we took it. */
+async function readHolder(target: string): Promise<Holder | undefined> {
+  return readHolderAt(lockPath(target));
+}
+
+/** Whether a holder is one whose process is provably gone. */
 function isAbandonedHolder(holder: Holder): boolean {
+  // A pid the OS has since handed to an unrelated process would otherwise look
+  // alive forever; the age bound is the backstop for that and nothing else.
   if (Date.now() - holder.at > STALE_AFTER_MS) return true;
   try {
     process.kill(holder.pid, 0);
@@ -79,77 +85,61 @@ function isAbandonedHolder(holder: Holder): boolean {
   }
 }
 
-/**
- * A holder is abandoned only when it is *there* and its process is gone.
- *
- * An absent holder file means the lock was taken microseconds ago and has not
- * described itself yet — treating that as abandoned is what let two callers in.
- * The one case that must not wedge the repository forever is a process that
- * died between creating the directory and writing the file.
- *
- * That case *did* wedge it. The age of an undescribed lock was measured from
- * when the current caller started waiting rather than from when the lock was
- * created, and the bound (30s) sat outside the wait bound (10s) — so every
- * caller gave up before its own clock could ever reach it. A directory left by
- * a process killed at the wrong microsecond made the record permanently
- * unwritable by anything, with a refusal blaming a session that no longer
- * existed. The lock's own mtime answers the question the caller's stopwatch
- * cannot: how long has this thing been here without describing itself.
- */
-async function undescribedFor(target: string): Promise<number> {
+/** Try to take the lock. Resolves true when this call now holds it. */
+async function take(target: string, token: string): Promise<boolean> {
+  const path = lockPath(target);
+  const temporary = `${path}.${process.pid}.${token}.tmp`;
+  await writeFile(temporary, JSON.stringify({ pid: process.pid, token, at: Date.now() }), "utf8");
   try {
-    return Date.now() - (await stat(lockPath(target))).mtimeMs;
-  } catch {
-    // Gone between the EEXIST and here: not abandoned, just finished.
-    return 0;
+    await link(temporary, path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return false;
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined);
   }
 }
 
-async function abandoned(target: string): Promise<boolean> {
-  const holder = await readHolder(target);
-  if (!holder) return (await undescribedFor(target)) > UNDESCRIBED_AFTER_MS;
-  // A pid the OS has since handed to an unrelated process would otherwise look
-  // alive forever; the age bound is the backstop for that and nothing else.
-  return isAbandonedHolder(holder);
-}
-
 /**
- * Take an abandoned lock out of the way, atomically.
+ * Remove an abandoned lock, and only the one that was judged.
  *
- * Reclaiming used to delete the holder file and then the directory, which is
- * two steps and therefore not exclusive: two callers both judged the same lock
- * abandoned, both deleted its holder, and the slower one's directory delete
- * landed *after* the faster one had created a fresh lock and entered the
- * critical section. A live lock disappeared out from under its holder, a third
- * caller walked straight in, and two increments became one. It surfaced as a
- * lock test that lost a write about one run in three.
- *
- * `rename` is one step and exactly one caller can win it. The loser fails, and
- * whatever it would have deleted is a directory it no longer has a name for.
- * The holder is re-read immediately beforehand so a lock that came alive in the
- * meantime is left alone.
+ * The holder is re-read immediately before the removal, so a lock taken since
+ * the judgment — which necessarily carries a different token — is left alone.
  */
-async function reclaim(target: string, token: string): Promise<void> {
+async function reclaim(target: string, judged: Holder | undefined): Promise<void> {
   const path = lockPath(target);
-  const aside = `${path}.stale.${token}`;
+  const now = await readHolder(target);
 
   /**
-   * Take it first, then check what was taken.
+   * An unreadable lock is corrupt, and corrupt is abandoned.
    *
-   * Checking first cannot work. Eight callers judging one dead holder all
-   * decide to reclaim at the same instant; the first succeeds and a second then
-   * takes the lock for real, and the third — whose judgment was made before
-   * that lock existed — reclaims the live one. Re-reading the holder before the
-   * rename does not help, because the read that mattered happened earlier.
-   *
-   * `rename` is atomic and single-winner, so the winner is the only caller
-   * holding this directory and can inspect it at leisure. If it turns out to
-   * have been alive, it goes back where it came from.
+   * `link` puts a complete file in place in one step, so there is no moment at
+   * which a live lock is half-written — which means an unreadable one is
+   * damage, not a race. Leaving it alone was the previous bug in its newest
+   * shape: nothing judged it abandoned, so nothing ever removed it and the
+   * record could not be written again.
    */
+  if (judged && (!now || now.token !== judged.token)) return;
+  if (!judged && now) return;
+
+  /**
+   * Move it aside, then look at what was moved.
+   *
+   * Deleting by path is not a compare-and-delete: several callers judge one
+   * dead holder at the same instant, the first removes it, a second takes the
+   * lock for real, and a third's removal — decided before that lock existed —
+   * deletes it. Two callers are then inside the critical section and one
+   * increment is lost, silently, which is the whole failure this lock exists to
+   * prevent.
+   *
+   * `rename` has one winner, and the winner holds the file rather than the
+   * path. If what it took turns out to be alive, it goes back.
+   */
+  const aside = `${path}.stale.${process.pid}.${Math.random().toString(36).slice(2)}`;
   try {
     await rename(path, aside);
   } catch {
-    // Somebody else took it, or its holder finished. Either way it is not ours.
     return;
   }
 
@@ -159,16 +149,10 @@ async function reclaim(target: string, token: string): Promise<void> {
       await rename(aside, path);
       return;
     } catch {
-      /**
-       * The slot was refilled while we held its contents. Nothing can put this
-       * back without overwriting whoever refilled it, and overwriting a live
-       * lock is the failure being fixed. Drop what we took: its holder will
-       * find its directory gone, fail to release something that is not there,
-       * and its next call goes round again.
-       */
+      // Refilled while we held it; there is nowhere to put it back.
     }
   }
-  await rm(aside, { recursive: true, force: true }).catch(() => undefined);
+  await rm(aside, { force: true }).catch(() => undefined);
 }
 
 export async function withLock<T>(target: string, work: () => Promise<T>): Promise<T> {
@@ -178,49 +162,27 @@ export async function withLock<T>(target: string, work: () => Promise<T>): Promi
   await mkdir(dirname(path), { recursive: true });
 
   for (;;) {
-    try {
-      // Atomic: exactly one caller creates the directory.
-      await mkdir(path);
-      try {
-        await writeFile(
-          holderPath(target),
-          JSON.stringify({ pid: process.pid, token, at: Date.now() }),
-        );
-      } catch {
-        /**
-         * The directory went away between creating it and describing it.
-         *
-         * A caller reclaiming an abandoned lock cannot tell "the stale holder
-         * I just deleted" from "a new holder that has not written itself yet",
-         * so it removes a directory this call had just created — and the write
-         * then failed with ENOENT and crashed the command. Under load that
-         * surfaced as a lock test that failed roughly one run in three, at
-         * twenty milliseconds, which reads as a broken test rather than as the
-         * race it is.
-         *
-         * Losing the lock is not an error. Go round again.
-         */
-        continue;
-      }
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    if (await take(target, token)) break;
 
-      if (await abandoned(target)) {
-        await reclaim(target, token);
-        continue;
-      }
-
-      if (Date.now() > deadline) {
-        throw new GateRefusal(
-          `${target} is being written by another session.`,
-          "Wait for it to finish, then try again.",
-          "Two sessions writing one record lose each other's work without either " +
-            "being told.",
-        );
-      }
-      await new Promise((wake) => setTimeout(wake, RETRY_MS + Math.floor(Math.random() * RETRY_MS)));
+    /**
+     * A reclaim attempt falls through to the wait rather than looping straight
+     * back, so a removal that cannot succeed spins against the deadline instead
+     * of spinning against the CPU.
+     */
+    const holder = await readHolder(target);
+    if (!holder || isAbandonedHolder(holder)) {
+      await reclaim(target, holder);
     }
+
+    if (Date.now() > deadline) {
+      throw new GateRefusal(
+        `${target} is being written by another session.`,
+        "Wait for it to finish, then try again.",
+        "Two sessions writing one record lose each other's work without either " +
+          "being told.",
+      );
+    }
+    await new Promise((wake) => setTimeout(wake, RETRY_MS + Math.floor(Math.random() * RETRY_MS)));
   }
 
   try {
@@ -228,8 +190,8 @@ export async function withLock<T>(target: string, work: () => Promise<T>): Promi
   } finally {
     // Release only while the lock is still ours.
     const holder = await readHolder(target);
-    if (!holder || holder.token === token) {
-      await rm(path, { recursive: true, force: true }).catch(() => undefined);
+    if (holder?.token === token) {
+      await rm(path, { force: true }).catch(() => undefined);
     }
   }
 }

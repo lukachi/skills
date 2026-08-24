@@ -155,15 +155,35 @@ Three guards run whether or not you invoke anything:
 
 `wfctl guards` shows which are on. Turning one off is the maintainer's decision.
 
-## Working habits the tool cannot enforce
+## The checkpoint
 
-**Checkpoint often.** `wfctl checkpoint` writes where the work stands, and it is
-what a fresh session resumes from. Anything left only in a message is lost with
-the session.
+`wfctl checkpoint` writes where the work stands, and it is what a fresh session
+resumes from. Anything left only in a message is lost with the session.
+
+```
+wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \
+  --last "<last completed action>" --next "<the exact next action>"
+```
+
+**Every step wants one written since the flow last moved.** `wfctl work step`
+refuses otherwise, and says so — a checkpoint written at `opened` and left there
+describes a flow that no longer exists, and a session resuming from it acts on a
+`next:` already done.
+
+The `--handoff` body is the substance and can be long: what was found, what it
+rests on, what is still open. `--summary` is one line. `--todo` carries small
+jobs noticed in passing and survives the next checkpoint.
+
+## Working habits the tool cannot enforce
 
 **Do not stop to protect context.** That fear made runs park themselves halfway
 through a window that was still wide open. The checkpoint is what recovery
 reads, and it costs one command.
+
+**Parking is the maintainer's, and it needs their words.** `wfctl work park`
+refuses without `--attested`. A park is the one command that stops the turn
+guard from firing again on this flow, so an agent may not decide on its own that
+work waits.
 
 **End a turn only when you are waiting on the maintainer.** If you are not, take
 the next action in the same turn. Finishing a unit is not finishing — completing

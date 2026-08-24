@@ -266,9 +266,10 @@ test("a lock whose holder is gone does not wedge the repository", async () => {
 test("a live holder is waited for, then refused with a reason", { timeout: 20_000 }, async () => {
   const target = await root();
   const path = resolve(target, "held.json");
-  await mkdir(`${path}.lock`, { recursive: true });
+  // The lock is a file that names its holder from the instant it exists; it was
+  // a directory filled in by a second write, and that gap was the whole problem.
   await writeFile(
-    `${path}.lock/holder.json`,
+    `${path}.lock`,
     JSON.stringify({ pid: process.pid, token: "held", at: Date.now() }),
     "utf8",
   );

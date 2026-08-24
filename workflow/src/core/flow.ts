@@ -49,7 +49,21 @@ export async function readFlow(root: string, id: string): Promise<FlowRecord | u
   }
 }
 
-export async function writeFlow(root: string, flow: FlowRecord): Promise<void> {
+/**
+ * Write a record that does not exist yet.
+ *
+ * This is deliberately not exported and deliberately not named `write`. The
+ * exported version was called by eight places that had all read the record
+ * first, and it locks only the write — so each one was a blind overwrite of
+ * the whole record with a snapshot taken before the lock. A checkpoint racing
+ * the write guard reverted the flow to its previous checkpoint one run in
+ * three, reported success, and handed the next session a next-action that had
+ * already been done.
+ *
+ * Anything deriving a new value from the old one goes through `mutateFlow`.
+ * There is no longer a function that lets it not.
+ */
+async function createFlowRecord(root: string, flow: FlowRecord): Promise<void> {
   await mkdir(flowDirectory(root), { recursive: true });
   const path = flowPath(root, flow.id);
   await withLock(path, async () => {
@@ -82,10 +96,33 @@ export async function mutateFlow(
   });
 }
 
+/**
+ * A flow id names a record in this repository's flow directory, and nothing else.
+ *
+ * The pointer is a plain file. With `../../../elsewhere` in it, `currentFlow`
+ * read a foreign record and `checkpoint` then wrote the result back to
+ * `flowPath(root, flow.id)` — the id *inside* what it had read. That imported
+ * another file's `step`, `title`, `attested` and recall counters into the real
+ * record, under a plain success message. Those are the two gates the design
+ * leans hardest on: that the maintainer asked for this, and that the step was
+ * genuinely reached.
+ */
+function isFlowId(id: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) && !id.includes("..");
+}
+
 export async function currentFlowId(root: string): Promise<string | undefined> {
   try {
     const raw = await readFile(resolve(root, CURRENT_POINTER), "utf8");
     const id = raw.trim();
+    if (id.length > 0 && !isFlowId(id)) {
+      throw new GateRefusal(
+        `${CURRENT_POINTER} does not name a flow in this repository.`,
+        "wfctl work list",
+        `It reads ${JSON.stringify(id)}. A flow id names a record under ` +
+          `${FLOW_DIR}/ and never a path.`,
+      );
+    }
     return id.length > 0 ? id : undefined;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -187,7 +224,7 @@ async function openFlowLocked(root: string, options: OpenFlowOptions): Promise<F
     ...(options.weight ? { weight: options.weight } : {}),
   };
 
-  await writeFlow(root, flow);
+  await createFlowRecord(root, flow);
   await setCurrent(root, id);
   return flow;
 }
@@ -208,9 +245,11 @@ export async function closeFlow(root: string, id: string): Promise<FlowRecord> {
       "The brief lists every open flow, including ones the pointer has lost.",
     );
   }
-  const closed: FlowRecord = { ...flow, closedAt: new Date().toISOString() };
-  delete closed.checkpoint;
-  await writeFlow(root, closed);
+  const closed = await mutateFlow(root, id, (current) => {
+    const next: FlowRecord = { ...current, closedAt: new Date().toISOString() };
+    delete next.checkpoint;
+    return next;
+  });
 
   const current = await currentFlowId(root);
   if (current === id) await setCurrent(root, undefined);
@@ -231,11 +270,55 @@ export async function listFlows(root: string): Promise<FlowRecord[]> {
     throw error;
   }
 
+  /**
+   * One unreadable record must not take the others with it.
+   *
+   * `readFlow` handled a missing file and rethrew everything else, so a single
+   * record left with merge-conflict markers — these files are tracked, so that
+   * is a routine way to get one — killed `brief` for every flow at once. The
+   * refusal named no path, and `brief --json` failed the same way, which
+   * silently disarms the turn guard: it reads that output and allows the turn
+   * when it cannot parse it.
+   *
+   * A record that cannot be read is reported as one that cannot be read.
+   */
   const flows: FlowRecord[] = [];
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue;
-    const flow = await readFlow(root, entry.slice(0, -".json".length));
-    if (flow) flows.push(flow);
+    const id = entry.slice(0, -".json".length);
+    try {
+      const flow = await readFlow(root, id);
+      if (flow) flows.push(flow);
+    } catch {
+      // Named by `unreadableFlows`, which the brief reports.
+    }
   }
   return flows.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+/**
+ * The records that could not be parsed, so the brief can name them.
+ *
+ * Kept as its own read rather than as state shared with `listFlows`: a
+ * module-level map would outlive the call that filled it and report a record
+ * long after it was repaired.
+ */
+export async function unreadableFlows(root: string): Promise<{ id: string; problem: string }[]> {
+  let entries: string[];
+  try {
+    entries = await readdir(flowDirectory(root));
+  } catch {
+    return [];
+  }
+  const broken: { id: string; problem: string }[] = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue;
+    const id = entry.slice(0, -".json".length);
+    try {
+      await readFlow(root, id);
+    } catch (error) {
+      broken.push({ id, problem: (error as Error).message });
+    }
+  }
+  return broken;
 }

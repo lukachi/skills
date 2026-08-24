@@ -63,7 +63,7 @@ test("a parked flow refuses a claim, and only their words release it", async () 
   const ctx = await opened();
   await run(["work", "issue", "create", "--title", "first"], ctx);
   await run(["repo", "add", "o/r", "--path", "/tmp"], ctx);
-  await run(["work", "park", "--reason", "client rebuild first"], ctx);
+  await run(["work", "park", "--reason", "client rebuild first", "--attested", "they said hold"], ctx);
 
   const blocked = await run(["work", "issue", "claim", "U001", "--repository", "o/r"], ctx);
   assert.equal(blocked.exitCode, 2);

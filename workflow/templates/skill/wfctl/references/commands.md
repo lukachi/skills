@@ -17,7 +17,8 @@ command prints what comes next. Reach for it when you need exact flags.
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
   work issue complete <id>
-  work park --reason ... | work release --attested "<their words>"
+  work park --reason ... --attested "<their words>"
+  work release --attested "<their words>"
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
   work promote --subject "<product subject>" --summary "<what it now does>"

@@ -47,7 +47,7 @@ export const COMMAND_FLAGS: Readonly<Record<string, CommandFlags>> = {
   "work issue claim": { value: ["repository", "worktree"], boolean: [] },
   "work issue complete": NONE,
   "work issue drop": { value: ["reason"], boolean: [] },
-  "work park": { value: ["reason"], boolean: [] },
+  "work park": { value: ["reason", "attested"], boolean: [] },
   "work release": { value: ["attested"], boolean: [] },
   "work verify": { value: ["review"], boolean: [] },
   "work close": { value: ["outcome"], boolean: [] },

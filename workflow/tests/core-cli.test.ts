@@ -33,6 +33,14 @@ test("the whole changes flow is walkable without knowing the sequence", async ()
     assert.equal(answered.exitCode, 0);
   }
 
+  // The step now wants a checkpoint written since the flow last moved, and the
+  // refusal is what says so — following the tool is still the whole route.
+  const owed = await run(["work", "step", "framed"], ctx);
+  assert.equal(owed.exitCode, 2);
+  assert.match(owed.stdout, /remedy: wfctl checkpoint/);
+  await run(["checkpoint", "--summary", "aligned", "--handoff", "what was found",
+    "--last", "read the index", "--next", "frame it"], ctx);
+
   const framed = await run(["work", "step", "framed"], ctx);
   assert.equal(framed.exitCode, 0);
   assert.match(framed.stdout, /numbered round/);
