@@ -377,6 +377,9 @@ var init_gates = __esm({
         this.remedy = remedy;
         this.detail = detail;
         this.name = "GateRefusal";
+        if (!remedy.trim()) {
+          throw new Error(`A refusal must name the command that clears it: ${message}`);
+        }
       }
       remedy;
       detail;

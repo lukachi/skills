@@ -29,6 +29,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { projectDir, readPayload } from "./hook-input.mjs";
 
 const MESSAGE_LIMIT = 600;
 const MAX_REENTRIES = 100;
@@ -39,13 +40,7 @@ function allow() {
 }
 
 function main() {
-  let input;
-  try {
-    input = JSON.parse(readFileSync(0, "utf8"));
-  } catch {
-    allow();
-    return;
-  }
+  const input = readPayload();
 
   // Waiting on a background task is a legitimate reason for a short turn; the
   // host re-invokes the agent when the task finishes.
@@ -54,7 +49,7 @@ function main() {
     return;
   }
 
-  const cwd = input.cwd || process.cwd();
+  const cwd = projectDir(input);
   // Turned off deliberately. The switch is a marker file rather than the absence
   // of the settings entry, because an upgrade reinstalls the entry and would
   // silently undo the maintainer's choice.

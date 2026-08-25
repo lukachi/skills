@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, symlinkSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1162,10 +1162,15 @@ test("a parked flow accepts nothing material", async () => {
 test("promote names its record when the queue is ambiguous", { timeout: 120_000 }, async () => {
   const root = await installed();
 
+  const bundles: Record<string, string> = {};
   for (const title of ["alpha subject", "zeta subject"]) {
     wfctl(root, ["work", "start", "--title", title, "--weight", "significant", "--attested", "they asked for it"]);
     await walkToVerifiedE2E(root);
     const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+    // The id carries the day it was opened. It used to be written out by hand
+    // here, so the test passed on the day it was written and failed at the next
+    // midnight against a tool that had not changed.
+    bundles[title] = id;
     wfctl(root, ["work", "promotion", "draft", `${title.split(" ")[0]}/page.md`]);
     await writeFile(
       resolve(root, "changes/active", id, `promotion/${title.split(" ")[0]}/page.md`),
@@ -1183,7 +1188,7 @@ test("promote names its record when the queue is ambiguous", { timeout: 120_000 
   assert.match(ambiguous.stdout, /name the one they answered about/);
 
   const named = wfctl(root, [
-    "work", "promote", "--bundle", "2026-08-24-work-zeta-subject",
+    "work", "promote", "--bundle", bundles["zeta subject"] ?? "",
     "--subject", "Zeta", "--summary", "zeta works",
   ]);
   assert.equal(named.status, 0, named.stdout);
@@ -1269,4 +1274,151 @@ test("decided finds a subject whose words are short", async () => {
   // were unsearchable — and the empty result was reported as authoritative.
   const found = wfctl(root, ["decided", "SSO"]);
   assert.match(found.stdout, /already say something/, found.stdout);
+});
+
+// ---------------------------------------------------------------------------
+// The payload a hook is handed, on both hosts.
+//
+// The guards read the payload themselves and every one of them assumed Claude
+// Code's shape. Codex sends the same JSON for a shell call and a different one
+// for an edit: its editing tool is `apply_patch` and the files it touches are
+// named inside a patch body, not in `file_path`. Measured against codex-cli
+// 0.147.0, not inferred.
+//
+// The failure this prevents is silent. A guard that finds no target exits zero,
+// the write proceeds unchecked, and nothing reports that the guard did not run.
+
+function writeGuard(root: string, payload: unknown) {
+  return spawnSync(process.execPath, [resolve(root, ".workflow/runtime/guard-write.mjs")], {
+    cwd: root,
+    encoding: "utf8",
+    input: JSON.stringify(payload),
+    env: { ...process.env, PATH: `${resolve(root, "bin")}:${process.env.PATH ?? ""}` },
+  });
+}
+
+test("the write guard refuses a curated page however the host names it", async () => {
+  const root = await installed();
+  const page = resolve(root, "knowledge/areas/world.md");
+
+  const claude = writeGuard(root, {
+    cwd: root,
+    tool_name: "Write",
+    tool_input: { file_path: page, content: "x" },
+  });
+  assert.equal(claude.status, 2, claude.stdout + claude.stderr);
+  assert.match(claude.stderr, /remedy:/);
+
+  const codex = writeGuard(root, {
+    cwd: root,
+    tool_name: "apply_patch",
+    tool_input: { command: `*** Begin Patch\n*** Add File: ${page}\n+x\n*** End Patch` },
+  });
+  assert.equal(codex.status, 2, codex.stdout + codex.stderr);
+  assert.match(codex.stderr, /remedy:/);
+  assert.equal(codex.stderr.trim(), claude.stderr.trim(), "the same write refused two different ways");
+});
+
+test("a patch is checked file by file, not by its first name only", async () => {
+  const root = await installed();
+  const page = resolve(root, "knowledge/areas/world.md");
+
+  // An innocent file first. Reading only the first target would pass the whole
+  // patch and carry the curated page in behind it.
+  const result = writeGuard(root, {
+    cwd: root,
+    tool_name: "apply_patch",
+    tool_input: {
+      command: [
+        "*** Begin Patch",
+        `*** Update File: ${resolve(root, "notes.md")}`,
+        "@@",
+        "+fine",
+        `*** Add File: ${page}`,
+        "+x",
+        "*** End Patch",
+      ].join("\n"),
+    },
+  });
+  assert.equal(result.status, 2, "the second file in the patch was never checked");
+  assert.match(result.stderr, /cannot be written directly into knowledge/);
+});
+
+test("a page moved into the corpus is a write", async () => {
+  const root = await installed();
+  const result = writeGuard(root, {
+    cwd: root,
+    tool_name: "apply_patch",
+    tool_input: {
+      command: [
+        "*** Begin Patch",
+        `*** Update File: ${resolve(root, "draft.md")}`,
+        `*** Move to: ${resolve(root, "knowledge/areas/world.md")}`,
+        "@@",
+        "+x",
+        "*** End Patch",
+      ].join("\n"),
+    },
+  });
+  assert.equal(result.status, 2, "a move into knowledge/ landed unguarded");
+});
+
+test("the write guard stands aside for anything that is not a write", async () => {
+  const root = await installed();
+  for (const payload of [
+    { cwd: root, tool_name: "Bash", tool_input: { command: "ls" } },
+    { cwd: root, tool_name: "apply_patch", tool_input: {} },
+    { cwd: root, tool_name: "Read", tool_input: { file_path: resolve(root, "knowledge/index.md") } },
+  ]) {
+    const result = writeGuard(root, payload);
+    assert.equal(result.status, 0, `a non-write was blocked: ${JSON.stringify(payload)}`);
+  }
+});
+
+test("the bash guard wraps a shell command on either host", async () => {
+  const root = await installed();
+  const guard = resolve(root, ".workflow/runtime/guard-background-bash.mjs");
+
+  const wrapped = execFileSync(process.execPath, [guard], {
+    cwd: root,
+    encoding: "utf8",
+    input: JSON.stringify({ cwd: root, tool_name: "Bash", tool_input: { command: "sleep 1" } }),
+  });
+  assert.match(wrapped, /idle-guard\.sh/);
+
+  // A patch is not a shell command, and wrapping one would corrupt the edit.
+  const untouched = execFileSync(process.execPath, [guard], {
+    cwd: root,
+    encoding: "utf8",
+    input: JSON.stringify({
+      cwd: root,
+      tool_name: "apply_patch",
+      tool_input: { command: "*** Begin Patch\n*** End Patch" },
+    }),
+  });
+  assert.equal(untouched.trim(), "", "a patch was wrapped as though it were a shell command");
+});
+
+test("the stop guard reads the project from the payload when the host sets no variable", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "outstanding", "--weight", "significant", "--attested", "they asked for it"]);
+
+  // Codex exports no CLAUDE_PROJECT_DIR. Every payload carries cwd, and the
+  // guard has to work from that or it reports on the wrong repository.
+  const env = { ...process.env };
+  delete env.CLAUDE_PROJECT_DIR;
+
+  const decision = spawnSync(process.execPath, [resolve(root, ".workflow/runtime/guard-stop.mjs")], {
+    cwd: tmpdir(),
+    encoding: "utf8",
+    env: { ...env, PATH: `${resolve(root, "bin")}:${env.PATH ?? ""}` },
+    input: JSON.stringify({
+      cwd: root,
+      session_id: "s",
+      last_assistant_message: "I will pick this up next time.",
+      transcript_path: "/dev/null",
+      stop_hook_active: false,
+    }),
+  });
+  assert.match(decision.stdout, /"decision":"block"/, "the guard judged the wrong directory");
 });

@@ -1189,3 +1189,38 @@ test("knowledge: the roads are delivered where the page is created", async () =>
   assert.match(drafted, /Which road the page is on/);
   assert.match(drafted, /view: engineering|`engineering`/);
 });
+
+// ---------------------------------------------------------------------------
+// A refusal names the command that clears it, and the type system cannot say so.
+//
+// `remedy` is a string and `""` is a string, so a refusal rendering `remedy:`
+// with nothing after it would ship looking like a working refusal — the exact
+// failure this class was written to prevent. Codex refuses a hook decision of
+// `block` carrying no reason; this is the same rule one layer in.
+
+test("a refusal cannot be built without a remedy", () => {
+  for (const blank of ["", "   ", "\n\t"]) {
+    assert.throws(
+      () => new GateRefusal("something is wrong", blank),
+      /must name the command that clears it/,
+      `a blank remedy was accepted: ${JSON.stringify(blank)}`,
+    );
+  }
+  const real = new GateRefusal("something is wrong", "wfctl brief");
+  assert.match(real.render(), /remedy: wfctl brief/);
+});
+
+test("the remedies a refusal borrows are never empty", () => {
+  /**
+   * Most remedies are literals in the refusal itself. The ones that are not are
+   * read from a step definition, and a step whose command was blank would build
+   * a refusal saying `remedy:` and nothing — a hole the constructor check only
+   * finds if that particular step is ever reached.
+   */
+  for (const definition of WORK_STEP_DEFINITIONS) {
+    assert.ok(
+      definition.command.trim(),
+      `step ${definition.step} has no command, so any refusal naming it is empty`,
+    );
+  }
+});

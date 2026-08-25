@@ -13,9 +13,9 @@
 // This runs before every tool call, so it must never fail and never block:
 // any unexpected input produces no decision and the call proceeds unchanged.
 
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readPayload, shellCommand } from "./hook-input.mjs";
 
 const GUARD = join(dirname(fileURLToPath(import.meta.url)), "idle-guard.sh");
 // Must stay under the host's foreground limit; see idle-guard.sh for why equal
@@ -27,23 +27,12 @@ function shellQuote(value) {
 }
 
 function main() {
-  let payload;
-  try {
-    payload = JSON.parse(readFileSync(0, "utf8"));
-  } catch {
-    return;
-  }
-  if (payload?.tool_name !== "Bash") {
-    return;
-  }
-  const input = payload.tool_input;
-  if (!input) {
-    return;
-  }
-  const command = typeof input.command === "string" ? input.command : "";
+  const payload = readPayload();
+  const command = shellCommand(payload);
   if (!command.trim() || command.includes("idle-guard.sh")) {
     return;
   }
+  const input = payload.tool_input;
 
   process.stdout.write(`${
     JSON.stringify({
