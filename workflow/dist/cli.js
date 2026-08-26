@@ -2724,20 +2724,17 @@ Accepting is for a test this work does not own \u2014 one that belongs to a repo
     );
   }
 }
-function renderReviewerBrief(lens, fixedPoint) {
+function renderReviewerBrief(personality, body, fixedPoint, lens = "correctness") {
   return [
     `You are reviewing work at the fixed point ${fixedPoint}.`,
     "",
-    `Lens: ${lens} \u2014 ${LENS_QUESTIONS[lens]}`,
+    body.trim(),
     "",
-    "Your goal is to break this work, not to confirm it.",
+    "---",
     "",
     "Every attack must be an executable test. Write it, run it, and return the",
     "source, its output, and whether it broke the work. If you could not break",
     "it, say exactly what you tried and why it held.",
-    "",
-    "Also read the diff backwards: for each changed file, ask what the framing",
-    "said about it. That direction finds work nobody asked for.",
     "",
     "RUN THE STUB PASS. Replace each implementation under review with a constant",
     "and run the tests again. Anything still green asserts nothing, and this is",
@@ -2747,11 +2744,14 @@ function renderReviewerBrief(lens, fixedPoint) {
     "",
     "You will not be given the implementer's reasoning. Do not ask for it.",
     "",
+    "Tag each finding and each attack with the lens it answers:",
+    ...VERIFY_LENSES.map((entry) => `  ${entry} \u2014 ${LENS_QUESTIONS[entry]}`),
+    "",
     "Return this shape, and nothing else:",
     "",
     JSON.stringify(
       {
-        reviewer: "agent:<who you are, and not the implementer>",
+        reviewer: `agent:${personality} <and not the implementer>`,
         fixedPoint,
         framingDigest: "<the digest the framing was approved at>",
         attacks: [
@@ -2797,7 +2797,8 @@ var init_verify = __esm({
       "failure-paths",
       "state-and-data",
       "delivery-reality",
-      "test-integrity"
+      "test-integrity",
+      "complexity"
     ];
     LENS_QUESTIONS = {
       intent: "Does the diff do what the framing asked, and only that?",
@@ -2806,7 +2807,14 @@ var init_verify = __esm({
       "failure-paths": "What happens on error, empty, concurrent, retried, partial?",
       "state-and-data": "What happens to data written by the previous version?",
       "delivery-reality": "Is the only caller a test, fixture, demo, or mock?",
-      "test-integrity": "Would these tests catch a broken implementation?"
+      "test-integrity": "Would these tests catch a broken implementation?",
+      /**
+       * Added with the personality that reports under it. Its findings are about
+       * branching and coverage together, which `test-integrity` half-covers and the
+       * other six do not touch at all — so a reviewer had a protocol and no way to
+       * tag what it found.
+       */
+      complexity: "Is this both hard to follow and undertested?"
     };
   }
 });
@@ -5922,7 +5930,7 @@ var USAGE = `wfctl \u2014 project workflow
   work issue drop <id> --reason "<why it left the route>"
   work park --reason ... --attested "<their words>"
   work release --attested "<their words>"
-  work verify --brief <lens> [--at <revision>]
+  work verify --brief <personality> [--at <revision>]
                                the brief to hand the reviewing agent
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
@@ -6322,12 +6330,27 @@ async function dispatch(argv, context) {
           };
         }
         if (action === "verify") {
-          const lens = flag(args, "brief");
-          if (lens !== void 0) {
-            const { renderReviewerBrief: renderReviewerBrief2, VERIFY_LENSES: VERIFY_LENSES2 } = await Promise.resolve().then(() => (init_verify(), verify_exports));
+          const personality = flag(args, "brief");
+          if (personality !== void 0) {
+            const { renderReviewerBrief: renderReviewerBrief2 } = await Promise.resolve().then(() => (init_verify(), verify_exports));
+            const { loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
+            const { shipped: shipped2 } = await Promise.resolve().then(() => (init_kit(), kit_exports));
+            const body = /^[a-z][a-z0-9-]*$/.test(personality) ? await loadGuidance2({ root: context.assets }, `personality/${personality}`) : void 0;
+            if (!body) {
+              const available = (await shipped2(context.assets, "personality")).map((entry) => entry.id.replace("personality:", "")).filter((name) => name !== "shape");
+              return {
+                stdout: new GateRefusal(
+                  `There is no personality called ${personality}.`,
+                  `wfctl work verify --brief <${available.join("|")}>`,
+                  "A personality is who reviews \u2014 its stance and its protocol. A lens is the question one finding answers, and a reviewer uses several; the brief lists them.\n\nwfctl guide personality/shape \u2014 what a personality is"
+                ).render(),
+                exitCode: 2
+              };
+            }
             return {
               stdout: renderReviewerBrief2(
-                oneOf(lens, VERIFY_LENSES2, "brief"),
+                personality,
+                body,
                 flag(args, "at") ?? "<pin the revision this work started at>"
               ),
               exitCode: 0

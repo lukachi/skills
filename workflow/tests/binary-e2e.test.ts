@@ -1786,16 +1786,27 @@ test("a stubPass that is not a report is refused rather than read as one", { tim
 test("the reviewer's brief comes from the tool, not from memory", async () => {
   const root = await installed();
 
-  const brief = wfctl(root, ["work", "verify", "--brief", "test-integrity", "--at", "abc123"]);
+  const brief = wfctl(root, ["work", "verify", "--brief", "adversary", "--at", "abc123"]);
   assert.equal(brief.status, 0, brief.stdout);
   assert.match(brief.stdout, /fixed point abc123/);
   assert.match(brief.stdout, /RUN THE STUB PASS/);
+  // The personality's own stance and protocol, not four generated lines.
+  assert.match(brief.stdout, /trying to break this work/);
+  assert.match(brief.stdout, /Read the diff backwards/);
+  // Every lens a finding may be tagged with, because a reviewer uses several.
   assert.match(brief.stdout, /Would these tests catch a broken implementation/);
+  assert.match(brief.stdout, /Is this both hard to follow and undertested/);
   // The shape it must return, so the reviewer is not guessing at field names.
   assert.match(brief.stdout, /"stubPass"/);
   assert.match(brief.stdout, /"stubSurvivors"/);
   // And the property the whole design rests on.
   assert.match(brief.stdout, /not be given the implementer's reasoning/);
+
+  // A lens is not a personality, and the refusal says which is which.
+  const lens = wfctl(root, ["work", "verify", "--brief", "correctness"]);
+  assert.equal(lens.status, 2);
+  assert.match(lens.stdout, /A lens is the question one finding answers/);
+  assert.match(lens.stdout, /adversary/);
 
   const unknown = wfctl(root, ["work", "verify", "--brief", "vibes"]);
   assert.equal(unknown.status, 2);

@@ -385,9 +385,15 @@ test("a reworded framing routes closure back to the maintainer", () => {
   );
 });
 
-test("the reviewer brief withholds the implementer's reasoning", () => {
-  const brief = renderReviewerBrief("contract", "abc123");
-  assert.match(brief, /break this work, not to confirm/);
+test("the reviewer brief carries the personality and withholds the reasoning", () => {
+  // The personality's own file is the brief. This used to generate four lines
+  // from a lens while the real briefs sat unread in the kit.
+  const brief = renderReviewerBrief("adversary", "**Stance.** Break it.", "abc123");
+  assert.match(brief, /Stance\.\*\* Break it\./);
+  assert.match(brief, /fixed point abc123/);
   assert.match(brief, /executable test/);
   assert.match(brief, /will not be given the implementer's reasoning/);
+  // Every lens, because one reviewer tags findings under several of them.
+  assert.match(brief, /Is this both hard to follow and undertested/);
+  assert.match(brief, /agent:adversary/);
 });

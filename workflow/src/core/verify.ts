@@ -22,6 +22,7 @@ export const VERIFY_LENSES = [
   "state-and-data",
   "delivery-reality",
   "test-integrity",
+  "complexity",
 ] as const;
 export type VerifyLens = (typeof VERIFY_LENSES)[number];
 
@@ -33,6 +34,13 @@ export const LENS_QUESTIONS: Record<VerifyLens, string> = {
   "state-and-data": "What happens to data written by the previous version?",
   "delivery-reality": "Is the only caller a test, fixture, demo, or mock?",
   "test-integrity": "Would these tests catch a broken implementation?",
+  /**
+   * Added with the personality that reports under it. Its findings are about
+   * branching and coverage together, which `test-integrity` half-covers and the
+   * other six do not touch at all — so a reviewer had a protocol and no way to
+   * tag what it found.
+   */
+  complexity: "Is this both hard to follow and undertested?",
 };
 
 /**
@@ -297,20 +305,36 @@ export function assertReviewUsable(flow: FlowRecord, review: Review): void {
  * leaks through a shared context, and an agent shown its own justification will
  * accept it.
  */
-export function renderReviewerBrief(lens: VerifyLens, fixedPoint: string): string {
+/**
+ * The brief handed to one reviewing agent.
+ *
+ * There were two vocabularies for this and they were the same idea said twice.
+ * A **personality** is who reviews — its stance, its protocol, what it must
+ * return. A **lens** is the question a single finding answers, and one reviewer
+ * uses several of them. `--brief` took a lens and generated four lines from it,
+ * while the real briefs sat in the kit as personalities nothing printed.
+ *
+ * So the personality is the brief. Its own file carries the stance and the
+ * protocol; this appends the two things every reviewer owes regardless of who it
+ * is — the shape to return, and the lens vocabulary those findings are tagged
+ * with.
+ */
+export function renderReviewerBrief(
+  personality: string,
+  body: string,
+  fixedPoint: string,
+  lens: VerifyLens = "correctness",
+): string {
   return [
     `You are reviewing work at the fixed point ${fixedPoint}.`,
     "",
-    `Lens: ${lens} — ${LENS_QUESTIONS[lens]}`,
+    body.trim(),
     "",
-    "Your goal is to break this work, not to confirm it.",
+    "---",
     "",
     "Every attack must be an executable test. Write it, run it, and return the",
     "source, its output, and whether it broke the work. If you could not break",
     "it, say exactly what you tried and why it held.",
-    "",
-    "Also read the diff backwards: for each changed file, ask what the framing",
-    "said about it. That direction finds work nobody asked for.",
     "",
     "RUN THE STUB PASS. Replace each implementation under review with a constant",
     "and run the tests again. Anything still green asserts nothing, and this is",
@@ -320,11 +344,14 @@ export function renderReviewerBrief(lens: VerifyLens, fixedPoint: string): strin
     "",
     "You will not be given the implementer's reasoning. Do not ask for it.",
     "",
+    "Tag each finding and each attack with the lens it answers:",
+    ...VERIFY_LENSES.map((entry) => `  ${entry} — ${LENS_QUESTIONS[entry]}`),
+    "",
     "Return this shape, and nothing else:",
     "",
     JSON.stringify(
       {
-        reviewer: "agent:<who you are, and not the implementer>",
+        reviewer: `agent:${personality} <and not the implementer>`,
         fixedPoint,
         framingDigest: "<the digest the framing was approved at>",
         attacks: [

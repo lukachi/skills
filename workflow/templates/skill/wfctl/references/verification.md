@@ -16,8 +16,16 @@ wfctl does not spawn the reviewer. What it checks is what comes back.
 the exact shape it must return:
 
 ```sh
-wfctl work verify --brief <lens> --at <fixed point>
+wfctl work verify --brief <personality> --at <fixed point>
 ```
+
+A **personality** is who reviews — `adversary`, `standards`, `spec`,
+`complexity` — its stance and its concrete protocol. A **lens** is the question
+one finding answers, and a reviewer uses several of them; the brief lists them
+and each attack and finding is tagged with one.
+
+These were two vocabularies for one idea. `--brief` took a lens and generated
+four lines, while the real briefs sat unread in the kit.
 
 It was not printed by anything until 2026-08-26, so briefs were written from
 memory — and the stub pass, the highest-yield check on this page, reached the
@@ -137,7 +145,8 @@ maintainer opens. The review is delegated because you cannot review your own
 work, not because someone else has to permit it.
 
 `lens` is one of `intent`, `correctness`, `contract`, `failure-paths`,
-`state-and-data`, `delivery-reality`, `test-integrity` — hyphenated exactly.
+`state-and-data`, `delivery-reality`, `test-integrity`, `complexity` —
+hyphenated exactly.
 
 It is refused when: the reviewer is you; there are no attacks and no findings;
 an attack carries no test, no output, or no target; **any attack has `broke:

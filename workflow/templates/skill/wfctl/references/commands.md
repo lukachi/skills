@@ -42,7 +42,7 @@ need exact flags.
   work issue drop <id> --reason "<why it left the route>"
   work park --reason ... --attested "<their words>"
   work release --attested "<their words>"
-  work verify --brief <lens> [--at <revision>]
+  work verify --brief <personality> [--at <revision>]
                                the brief to hand the reviewing agent
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>

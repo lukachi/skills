@@ -93,7 +93,7 @@ export const USAGE = `wfctl — project workflow
   work issue drop <id> --reason "<why it left the route>"
   work park --reason ... --attested "<their words>"
   work release --attested "<their words>"
-  work verify --brief <lens> [--at <revision>]
+  work verify --brief <personality> [--at <revision>]
                                the brief to hand the reviewing agent
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
@@ -639,12 +639,40 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
            * from memory — and the stub pass, the highest-yield check on the
            * page, appeared only in a document that agent may never have opened.
            */
-          const lens = flag(args, "brief");
-          if (lens !== undefined) {
-            const { renderReviewerBrief, VERIFY_LENSES } = await import("./verify.js");
+          const personality = flag(args, "brief");
+          if (personality !== undefined) {
+            const { renderReviewerBrief } = await import("./verify.js");
+            const { loadGuidance } = await import("./guidance.js");
+            const { shipped } = await import("./kit.js");
+            /**
+             * The personality is the brief. `--brief` used to take a lens and
+             * generate four lines from it, while the real briefs sat in the kit
+             * as personalities nothing printed — so an agent could adopt
+             * `personality:adversary` and then be handed something else.
+             */
+            const body = /^[a-z][a-z0-9-]*$/.test(personality)
+              ? await loadGuidance({ root: context.assets }, `personality/${personality}`)
+              : undefined;
+            if (!body) {
+              const available = (await shipped(context.assets, "personality"))
+                .map((entry) => entry.id.replace("personality:", ""))
+                .filter((name) => name !== "shape");
+              return {
+                stdout: new GateRefusal(
+                  `There is no personality called ${personality}.`,
+                  `wfctl work verify --brief <${available.join("|")}>`,
+                  "A personality is who reviews — its stance and its protocol. A " +
+                    "lens is the question one finding answers, and a reviewer uses " +
+                    "several; the brief lists them.\n\n" +
+                    "wfctl guide personality/shape — what a personality is",
+                ).render(),
+                exitCode: 2,
+              };
+            }
             return {
               stdout: renderReviewerBrief(
-                oneOf(lens, VERIFY_LENSES, "brief"),
+                personality,
+                body,
                 flag(args, "at") ?? "<pin the revision this work started at>",
               ),
               exitCode: 0,
