@@ -1815,3 +1815,143 @@ test("the reviewer's brief comes from the tool, not from memory", async () => {
   const unknown = wfctl(root, ["work", "verify", "--brief", "vibes"]);
   assert.equal(unknown.status, 2);
 });
+
+// ---------------------------------------------------------------------------
+// What a piece of work can be equipped with.
+//
+// Three registered checkouts carried fifty-six skills between them and the tool
+// read none of them. The session that edits a leaf runs from the knowledge
+// repository, where the leaf's own conventions are not in scope — so a repo
+// that states exactly how it expects to be worked in was invisible at the one
+// moment the work reached it.
+
+async function leafWithSkills(root: string, name: string, skills: [string, string][]) {
+  const path = resolve(root, "..", `leaf-${name}-${Math.random().toString(36).slice(2)}`);
+  for (const [skill, description] of skills) {
+    await mkdir(resolve(path, ".claude/skills", skill), { recursive: true });
+    await writeFile(
+      resolve(path, ".claude/skills", skill, "SKILL.md"),
+      `---\nname: ${skill}\ndescription: ${description}\n---\n\n# ${skill}\n`,
+      "utf8",
+    );
+  }
+  wfctl(root, ["repo", "add", name, "--path", path, "--worktree", "main"]);
+  return path;
+}
+
+test("the survey lists what exists and loads none of it", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "equip", "--weight", "significant", "--attested", "they asked"]);
+  await leafWithSkills(root, "acme/leaf", [
+    ["localization", "Use whenever work changes user-facing copy."],
+    ["state-management", "Use whenever work touches shared client state."],
+  ]);
+
+  const survey = wfctl(root, ["kit", "survey"]);
+  assert.equal(survey.status, 0, survey.stdout);
+  assert.match(survey.stdout, /acme\/leaf:localization/);
+  assert.match(survey.stdout, /user-facing copy/, "the description is what makes it triageable");
+  // Strategies and personalities ship with the tool.
+  assert.match(survey.stdout, /strategy:barriered-pipeline/);
+  assert.match(survey.stdout, /personality:adversary/);
+  // And nothing has been equipped by surveying.
+  assert.match(wfctl(root, ["kit"]).stdout, /equipped with nothing yet/);
+});
+
+test("equipping is the maintainer's call and is recorded on the flow", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "record", "--weight", "significant", "--attested", "they asked"]);
+  await leafWithSkills(root, "acme/leaf", [["localization", "Use for user-facing copy."]]);
+
+  const unattested = wfctl(root, ["kit", "adopt", "strategy:prefactor"]);
+  assert.equal(unattested.status, 2);
+  assert.match(unattested.stdout, /maintainer's call/);
+
+  const adopted = wfctl(root, [
+    "kit", "adopt", "strategy:prefactor", "acme/leaf:localization",
+    "--attested", "yes, those two",
+  ]);
+  assert.equal(adopted.status, 0, adopted.stdout);
+
+  // The point of the record: it survives the session that chose it.
+  const listed = wfctl(root, ["kit"]).stdout;
+  assert.match(listed, /strategy:prefactor/);
+  assert.match(listed, /acme\/leaf:localization/);
+  assert.match(listed, /yes, those two/);
+  assert.match(wfctl(root, ["brief"]).stdout, /equipped: 1 skill, 1 strategy/);
+});
+
+test("a claim hands over what this work equipped for that checkout", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "claiming", "--weight", "significant", "--attested", "they asked"]);
+  await leafWithSkills(root, "acme/leaf", [["localization", "Use for user-facing copy."]]);
+  await leafWithSkills(root, "acme/other", [["grpc", "Use for wire contracts."]]);
+  wfctl(root, ["kit", "adopt", "acme/leaf:localization", "acme/other:grpc", "--attested", "yes"]);
+
+  await walkToImplementE2E(root);
+  wfctl(root, ["work", "issue", "create", "--title", "a unit"]);
+  const claimed = wfctl(root, [
+    "work", "issue", "claim", "U001", "--repository", "acme/leaf", "--worktree", "main",
+  ]);
+  assert.equal(claimed.status, 0, claimed.stdout);
+  assert.match(claimed.stdout, /acme\/leaf:localization/);
+  // The other checkout's skills are not this checkout's business.
+  assert.doesNotMatch(claimed.stdout, /acme\/other:grpc/);
+});
+
+test("a strategy and a personality can be read by the path the survey prints", async () => {
+  const root = await installed();
+  for (const topic of ["strategy/barriered-pipeline", "strategy/prefactor", "personality/adversary"]) {
+    const result = wfctl(root, ["guide", topic]);
+    assert.equal(result.status, 0, `${topic}: ${result.stdout}`);
+    assert.ok(result.stdout.trim().length > 400, `${topic} is nearly empty`);
+  }
+  // A record may not point at a guide the guide command denies exists.
+  const survey = wfctl(root, ["kit", "survey"]).stdout;
+  for (const match of survey.matchAll(/read: (wfctl guide [a-z]+\/[a-z-]+)/g)) {
+    const topic = (match[1] ?? "").replace("wfctl guide ", "");
+    assert.equal(wfctl(root, ["guide", topic]).status, 0, `${topic} was surveyed and cannot be read`);
+  }
+});
+
+test("an id nobody ships is refused rather than recorded", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "unknown", "--weight", "significant", "--attested", "they asked"]);
+  const result = wfctl(root, ["kit", "adopt", "strategy:vibes", "--attested", "yes"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /strategy:vibes/);
+  assert.match(wfctl(root, ["kit"]).stdout, /nothing yet/, "a refused adoption still wrote");
+});
+
+// ---------------------------------------------------------------------------
+// What earlier work found out.
+//
+// Every destination the record had ended when the bundle did, so each session
+// started from the same ground as the last and hit the same wall twice.
+
+test("a learning outlives the work and needs the maintainer's word", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "teaching", "--weight", "significant", "--attested", "they asked"]);
+
+  const unattested = wfctl(root, ["learned", "a narrowed refspec looks like lost work", "--detail", "check .git/config first"]);
+  assert.equal(unattested.status, 2);
+  // The refusal has to name the thing that does apply, or it is a wall.
+  assert.match(unattested.stdout, /wfctl finding/);
+
+  const bare = wfctl(root, ["learned", "a title with no detail", "--attested", "yes"]);
+  assert.equal(bare.status, 2);
+  assert.match(bare.stdout, /is a title/);
+
+  const written = wfctl(root, [
+    "learned", "a narrowed refspec looks exactly like lost upstream work",
+    "--detail", "The pin was four commits above origin/master and looked wrong. The clone had a narrowed fetch refspec.",
+    "--attested", "yes, keep that",
+  ]);
+  assert.equal(written.status, 0, written.stdout);
+  assert.match(written.stdout, /learnings\//);
+
+  // It survives the flow that found it, which is the whole point.
+  wfctl(root, ["work", "close", "--outcome", "abandoned"]);
+  assert.match(wfctl(root, ["learned", "list"]).stdout, /narrowed refspec/);
+  assert.match(wfctl(root, ["brief"]).stdout, /1 learning\(s\) from earlier work/);
+});

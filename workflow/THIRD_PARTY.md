@@ -1,14 +1,14 @@
 # Third-party provenance
 
-One upstream source is adapted here, pinned, with a machine-readable manifest
-under `vendor/`. It is MIT for the material used. This file said "four" and
-listed one, which is the kind of drift an attribution record cannot afford. The rule is the same for every one of them: **adapt the text, never
+Two upstream sources are adapted here, each pinned, each with a machine-readable
+manifest under `vendor/`. Both are MIT for the material used. The rule is the same for every one of them: **adapt the text, never
 paraphrase it.** A paraphrase keeps what a gate can check and drops what only a
 person can judge, and this file exists because that happened once already.
 
 | Upstream | Vendored at | What it governs here |
 | --- | --- | --- |
 | [`mattpocock/skills`](https://github.com/mattpocock/skills) | `vendor/mattpocock/` | The delivery flow: wayfinding, specification, units, TDD, review, grilling, domain modeling, prototyping, research |
+| [`EveryInc/compound-engineering-plugin`](https://github.com/EveryInc/compound-engineering-plugin) | `vendor/every/` | Two patterns: the durable-learning loop, and the shape of a subagent brief |
 
 ## Matt Pocock skills
 
@@ -64,6 +64,29 @@ Local paths are repository-relative and are asserted to exist by
 | `domain-modeling` | `templates/guidance/decide/domain-language.md` | Active discipline; challenge the glossary; sharpen fuzzy terms; stress-test with scenarios; record terms as they resolve | The working glossary is the bundle's domain language; a promoted term is a curated page, and a decision is a decision page serving both roads |
 | `prototype` | `templates/guidance/decide/prototype.md`, `references/logic.md`, `references/ui.md` | Throwaway code that answers a question; the logic and UI branches; the six shared rules; keep the prototype as a primary source; **`logic.md` and `ui.md` verbatim** | The answer lands in the bundle rather than a ticket resolution; the prototype is registered with `wfctl artifact add` |
 | `research` | `templates/guidance/decide/research.md`, `references/research-contract.md` | Primary sources only, every claim followed to the source that owns it; findings written with their citations | Findings land in the owning record or a capture; an external source authorizes an external fact only |
+
+## Compound engineering
+
+The **mindset** is adapted and the workflow is not. Upstream's own skills are
+phase machines with mandatory reference reads and per-tier completion contracts
+— more prescriptive than what this tool is moving away from — so none of that
+shape is taken, and the manifest records what was declined as well as what was
+kept.
+
+Two things are taken. The **durable-learning loop**: one solved problem written
+after the work, read as grounding before the next, so a record that ends with
+its bundle stops guaranteeing that the same wall is hit twice. And the **shape
+of a subagent brief** — stance, an invocation contract stating what the caller
+needs back in the caller's terms, a concrete protocol, and a stated reporting
+shape. That shape is why their agent briefs produce work rather than opinion.
+
+| Upstream source | Where it lives now | Retained | Modified |
+| --- | --- | --- | --- |
+| `ce-compound` | `src/core/learned.ts`, the skill | one problem per record; a corpus read before work rather than after failing | a learning carries the maintainer's words, because it outlives every fence; a flat directory indexed by the brief, not a documentation tree |
+| `security-sentinel`, `learnings-researcher` | `templates/guidance/personality/shape.md` | stance, invocation contract, protocol, reporting shape | the reviewer never receives the implementer's reasoning; silence is not success |
+
+The concrete personalities shipped here — adversary, standards, spec — are this
+tool's own verification lenses written into that shape.
 
 ## Withdrawn
 

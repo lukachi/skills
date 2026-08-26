@@ -1234,12 +1234,25 @@ test("the remedies a refusal borrows are never empty", () => {
 // record naming files that are not there is worse than no record, because it
 // reads as checked.
 
+/** Every manifest under vendor/, so a second upstream cannot be added unchecked. */
+interface Derivation {
+  local?: string[];
+  verbatim?: string[];
+}
+
+async function everyRecord(root: string): Promise<{ derivations?: Derivation[] }[]> {
+  const vendors = readdirSync(resolve(root, "vendor"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => resolve(root, "vendor", entry.name, "upstream.json"))
+    .filter((path) => existsSync(path));
+  assert.ok(vendors.length > 0, "no provenance manifests at all");
+  return Promise.all(vendors.map(async (path) => JSON.parse(await readFile(path, "utf8"))));
+}
+
 test("every path the provenance record names is on disk", async () => {
   const root = resolve(import.meta.dirname, "..");
-  const record = JSON.parse(await readFile(resolve(root, "vendor/mattpocock/upstream.json"), "utf8"));
-
   const missing: string[] = [];
-  for (const derivation of record.derivations ?? []) {
+  for (const derivation of (await everyRecord(root)).flatMap((record) => record.derivations ?? [])) {
     for (const path of [...(derivation.local ?? []), ...(derivation.verbatim ?? [])]) {
       if (!existsSync(resolve(root, path))) missing.push(path);
     }
@@ -1249,11 +1262,9 @@ test("every path the provenance record names is on disk", async () => {
 
 test("what the record calls verbatim is still shipped whole", async () => {
   const root = resolve(import.meta.dirname, "..");
-  const record = JSON.parse(await readFile(resolve(root, "vendor/mattpocock/upstream.json"), "utf8"));
-
-  const verbatim = (record.derivations ?? []).flatMap(
-    (derivation: { verbatim?: string[] }) => derivation.verbatim ?? [],
-  );
+  const verbatim = (await everyRecord(root))
+    .flatMap((record) => record.derivations ?? [])
+    .flatMap((derivation) => derivation.verbatim ?? []);
   assert.ok(verbatim.length > 0, "the record claims no verbatim files, which would be a licensing change");
 
   for (const path of verbatim) {

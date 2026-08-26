@@ -13,6 +13,15 @@ need exact flags.
                                Either alone. What you do not name is left as it was.
   notes                        everything written down for this flow
 
+  kit                          what this work is equipped with
+  kit survey                   the skills, strategies and personalities it could pick up
+  kit adopt <id>... --attested "<what they said>"
+
+  learned "<the one line>" --detail "<what happened, and what to do>"
+          --attested "<what they said>"
+                               one problem, solved, kept past this work
+  learned list                 what earlier work already found out
+
   finding "<what you found>" [--about <unit>] [--artifact <path>]
                                something this work should settle, kept with this work
   finding list | resolve <id> --how "<what you did>" | release <id>

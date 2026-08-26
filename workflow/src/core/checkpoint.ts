@@ -1,4 +1,5 @@
 import { GateRefusal } from "./gates.js";
+import { summariseKit } from "./kit.js";
 import { deriveBlocker } from "./steps.js";
 import type { Checkpoint, FlowRecord, Note } from "./types.js";
 
@@ -332,6 +333,12 @@ export function renderBrief(
      * indexes, not contents: the counts and the openings, with the command that
      * reads the rest.
      */
+    const equipped = summariseKit(current.kit ?? []);
+    if (equipped) {
+      lines.push("");
+      lines.push(equipped);
+    }
+
     const openFindings = (current.findings ?? []).filter((finding) => finding.status === "open");
     if (openFindings.length > 0) {
       lines.push("");

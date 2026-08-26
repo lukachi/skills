@@ -156,6 +156,30 @@ export interface Finding {
  * deciding from a sentence somebody remembered to update — is what makes a
  * directory of documents unreadable.
  */
+/**
+ * A skill, a strategy or a personality this work picked up.
+ *
+ * Three kinds because they arrive from three places, one record because they
+ * fail the same way: they exist, nobody knows they exist, and the moment they
+ * would have helped passes. It is on the flow rather than in a session because
+ * the session that chose it is routinely cleared — shaping ends, the context
+ * goes, and implementation starts from nothing.
+ */
+export type KitKind = "skill" | "strategy" | "personality";
+
+export interface KitEntry {
+  id: string;
+  kind: KitKind;
+  /** Where to read it. */
+  path: string;
+  what: string;
+  /** For a skill, the checkout it belongs to. */
+  repository?: string;
+  /** The maintainer's own words. Adopting is their call, like opening a bundle. */
+  attested: string;
+  at: string;
+}
+
 export interface Artifact {
   /** Repository-relative, as the tool prints it. */
   path: string;
@@ -235,6 +259,8 @@ export interface FlowRecord {
   findings?: Finding[];
   /** Files this work produced, and which of them the record still stands on. */
   artifacts?: Artifact[];
+  /** What this work is equipped with, and on whose word. */
+  kit?: KitEntry[];
   recall: RecallState;
   /**
    * Set when the maintainer approved the framing but said not to start yet.

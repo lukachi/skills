@@ -13,6 +13,11 @@ import {
   findingList,
   findingRelease,
   findingResolve,
+  kitAdopt,
+  learned,
+  learnedList,
+  kitList,
+  kitSurvey,
   notes,
   workWhere,
   close,
@@ -58,6 +63,15 @@ export const USAGE = `wfctl — project workflow
                                a body writes a note; the flags update the index.
                                Either alone. What you do not name is left as it was.
   notes                        everything written down for this flow
+
+  kit                          what this work is equipped with
+  kit survey                   the skills, strategies and personalities it could pick up
+  kit adopt <id>... --attested "<what they said>"
+
+  learned "<the one line>" --detail "<what happened, and what to do>"
+          --attested "<what they said>"
+                               one problem, solved, kept past this work
+  learned list                 what earlier work already found out
 
   finding "<what you found>" [--about <unit>] [--artifact <path>]
                                something this work should settle, kept with this work
@@ -415,6 +429,39 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
       case "notes":
         return await notes(context);
 
+      case "learned": {
+        if (rest[0] === "list") return await learnedList(context);
+        return await learned(context, {
+          title: bare(rest) ?? "",
+          detail: flag(rest, "detail") ?? "",
+          attested: flag(rest, "attested") ?? "",
+        });
+      }
+
+      case "kit": {
+        const [action, ...args] = rest;
+        if (action === undefined) return await kitList(context);
+        if (action === "survey") return await kitSurvey(context);
+        if (action === "adopt") {
+          /**
+           * Ids are positional and there may be several: equipping is normally
+           * one decision about a short list, not one decision per item.
+           */
+          const ids = args.filter(
+            (entry, index) => !entry.startsWith("--") && !(args[index - 1] ?? "").startsWith("--"),
+          );
+          return await kitAdopt(context, { ids, attested: flag(args, "attested") ?? "" });
+        }
+        return {
+          stdout: new GateRefusal(
+            "kit takes survey or adopt, or nothing at all.",
+            "wfctl kit survey",
+            "`wfctl kit` alone lists what this work is already equipped with.",
+          ).render(),
+          exitCode: 2,
+        };
+      }
+
       case "finding": {
         const [action, ...args] = rest;
         if (action === "list") return await findingList(context);
@@ -654,6 +701,7 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
 
       case "guide": {
         const { GUIDE_TOPICS, loadGuidance } = await import("./guidance.js");
+        type GuidanceKey = Parameters<typeof loadGuidance>[1];
         const topic = rest[0];
         if (!topic) {
           return {
@@ -661,10 +709,24 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
             exitCode: 0,
           };
         }
-        const key = GUIDE_TOPICS[topic];
+        /**
+         * Strategies and personalities are addressed by path.
+         *
+         * They are a growing set the kit surveys by reading the directory, so
+         * naming each one in a fixed topic table would mean a strategy could be
+         * shipped, surveyed, adopted, and then not readable — a record pointing
+         * at a guide the guide command denies exists.
+         */
+        const key =
+          GUIDE_TOPICS[topic] ??
+          (/^(strategy|personality)\/[a-z][a-z0-9-]*$/.test(topic)
+            ? (topic as GuidanceKey)
+            : undefined);
         if (!key) {
           return {
-            stdout: `No guide named ${topic}.\ntopics: ${Object.keys(GUIDE_TOPICS).sort().join(", ")}`,
+            stdout:
+              `No guide named ${topic}.\ntopics: ${Object.keys(GUIDE_TOPICS).sort().join(", ")}` +
+              "\n\nStrategies and personalities are read by path — wfctl kit survey lists them.",
             exitCode: 1,
           };
         }

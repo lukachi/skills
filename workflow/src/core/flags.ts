@@ -43,6 +43,13 @@ export const COMMAND_FLAGS: Readonly<Record<string, CommandFlags>> = {
   "finding resolve": { value: ["how"], boolean: [] },
   "finding release": NONE,
 
+  "learned": { value: ["detail", "attested"], boolean: [] },
+  "learned list": NONE,
+
+  "kit": NONE,
+  "kit survey": NONE,
+  "kit adopt": { value: ["attested"], boolean: [] },
+
   "artifact": NONE,
   "artifact add": { value: ["what", "supersedes"], boolean: [] },
   "artifact list": NONE,
@@ -159,7 +166,7 @@ const FLAG_SHAPED = /^--[a-z][a-z0-9-]*(=.*)?$/;
  * down, and a body that has to be re-worded to avoid the parser is a body that
  * does not get written.
  */
-const BODY_COMMANDS = new Set(["capture", "checkpoint", "finding"]);
+const BODY_COMMANDS = new Set(["capture", "checkpoint", "finding", "learned"]);
 
 function isBody(argv: string[], index: number): boolean {
   if (index === 0 || !BODY_COMMANDS.has(argv[0] ?? "")) return false;

@@ -168,6 +168,87 @@ Read the one that matches what you are doing. Each is also served by
 | [reading a source repository](references/leaves.md) | the work touches code in a leaf — including which checkout you may write to |
 | [the command surface](references/commands.md) | you need the exact flags for something |
 
+`wfctl guide strategy/<name>` and `wfctl guide personality/<name>` read a
+strategy or a subagent brief. `wfctl kit survey` lists them all.
+
+## What this work can be equipped with
+
+Three kinds of thing you can pick up for a piece of work. **None of it is loaded
+for you, and none of it is a gate.**
+
+```sh
+wfctl kit survey     # what this repository and this tool can offer this work
+wfctl kit            # what it already carries
+```
+
+| | What it is | Where it comes from |
+| --- | --- | --- |
+| **skill** | how a place expects to be worked in | the leaf checkout's own `.claude/skills/` |
+| **strategy** | a shape of work that has survived being used | ships with wfctl |
+| **personality** | the brief that makes a subagent something specific | ships with wfctl |
+
+A registered checkout may carry sixteen skills, or twenty-eight. Reading all of
+them costs more than it returns, and handing you all of them would be the same
+as handing you none. So the survey lists what exists and what each claims. **You
+read the ones that look relevant, judge them, and put a short list to the
+maintainer** — the ones you recommend and why each earns its place. Their answer
+is what the work carries:
+
+```sh
+wfctl kit adopt <id>... --attested "<what they said>"
+```
+
+**It is recorded on the flow, not held in this session.** The maintainer often
+shapes work, clears the context, and starts implementing from nothing — so the
+brief prints the kit at the start of every session on this work, and claiming a
+unit in a checkout hands over that checkout's equipped skills at the moment they
+apply.
+
+Surveying is worth it when the work is about to touch a checkout you have not
+worked in, when it is large enough that its shape matters, or when something
+else will review it.
+
+### Strategies, and what they are for
+
+Not steps in a sequence — shapes to reach for, composable, and usable at
+different points in different work. `wfctl guide strategy/<name>` reads one.
+
+| | Reach for it when |
+| --- | --- |
+| `barriered-pipeline` | the work is big enough that finishing it is not the same as doing it well |
+| `fan-out` | several units are genuinely independent |
+| `judge-panel` | the solution space is wide and one attempt would just get iterated |
+| `adversarial-verify` | a claim matters and its author wrote the evidence |
+| `loop-until-dry` | discovering something of unknown size |
+| `tracer-bullet` | splitting work into units |
+| `prefactor` | the change is hard because the code is shaped wrong |
+| `expand-migrate-contract` | the change is wide enough to leave the tree red in the middle |
+
+**A big goal is where an agent goes fastest and sees least.** More planning does
+not fix that — a longer list of units is a longer list of boxes to tick. A
+barrier does: a place partway through where the work stops and something
+independent looks before the rest begins.
+
+## What earlier work already found out
+
+```sh
+wfctl learned list
+```
+
+One problem, solved, written so the next piece of work reads it before starting
+rather than after failing. The brief names the count; read the ones this work
+could plausibly hit **before** you start, not after you hit them.
+
+When this work teaches something that will still be true after it closes:
+
+```sh
+wfctl learned "<the one line>" --detail "<what happened, and what to do>" \
+  --attested "<what they said>"
+```
+
+It needs their word because it outlives every fence. A thing that belongs to
+*this* work is a finding, not a learning.
+
 ## Things that fire without being called
 
 Three guards run whether or not you invoke anything:
@@ -275,6 +356,10 @@ retrieval that returns nothing both look like a quiet, healthy session.
 **Act on a refusal, do not work around it.** Every refusal names the command
 that clears it. Editing a record by hand to get past one is how a receipt ends
 up meaning nothing.
+
+**Take the heavier reading when you are unsure.** An underweighted piece of work
+is worked fast and seen shallowly; an overweighted one costs a survey and a
+barrier nobody needed. Only one of those is recoverable.
 
 **Search by structure before by string.** Text search finds names you already
 thought of. The graph finds what you did not know to look for. That graph lives

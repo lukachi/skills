@@ -122,6 +122,8 @@ export const KNOWLEDGE_DIRECTORIES = [
   "reconstruction/active",
   "reconstruction/archive",
   "trajectories",
+  /** What earlier work found out, kept past the bundle that found it. */
+  "learnings",
   RUNTIME_DIR,
   FLOWS_DIR,
 ];

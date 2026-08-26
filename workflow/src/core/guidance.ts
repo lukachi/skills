@@ -89,7 +89,14 @@ export type GuidanceKey =
   | "reconstruct/probe"
   | "reconstruct/sources"
   | "verify/adversarial"
-  | "session/start";
+  | "session/start"
+  /**
+   * A growing set, read from the directory rather than named one by one. The
+   * kit surveys these; a fixed list here would let one be shipped, surveyed and
+   * adopted while the guide command denied it existed.
+   */
+  | `strategy/${string}`
+  | `personality/${string}`;
 
 export interface GuidanceSource {
   /**

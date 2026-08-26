@@ -79,9 +79,19 @@ async function guidanceFor(context: CommandContext, key: GuidanceKey): Promise<s
 export async function brief(context: CommandContext): Promise<CommandResult> {
   const flows = await listFlows(context.root);
   const current = await currentFlow(context.root);
+  /**
+   * The count, never the contents.
+   *
+   * A corpus delivered all at once is a corpus that gets skimmed. One line
+   * saying earlier work left something behind is what makes it a thing an agent
+   * reaches for when it has a reason to.
+   */
+  const { listLearnings, summariseLearnings } = await import("./learned.js");
+  const learnings = summariseLearnings(await listLearnings(context.root));
   return ok(
     compose([
       renderBrief(flows, current?.id, await briefExtras(context)),
+      learnings,
       await guidanceFor(context, "session/start"),
     ]),
   );
@@ -954,7 +964,7 @@ export async function issueClaim(
       throw error;
     }
   }
-  return withIssue(context, options.id, (issue) => ({
+  const claimed = await withIssue(context, options.id, (issue) => ({
     ...issue,
     status: "claimed",
     claim: {
@@ -963,6 +973,40 @@ export async function issueClaim(
       worktreeId: options.worktreeId,
     },
   }));
+  if (claimed.exitCode !== 0) return claimed;
+
+  /**
+   * The claim is the moment the work reaches a checkout, and it printed one
+   * line about the unit and nothing about the place.
+   *
+   * That checkout states its own conventions — sixteen skills in one of the
+   * registered ones, twenty-eight in another — and the session that edits it
+   * runs from the knowledge repository, where none of that is in scope. So what
+   * this work equipped for this repository is handed over here, where it is
+   * about to matter, rather than at session start where it would be noise.
+   */
+  const equipped = (flow?.kit ?? []).filter(
+    (entry) => entry.kind === "skill" && entry.repository === options.repository,
+  );
+  if (equipped.length === 0) return claimed;
+
+  const { readRegistry: readForPath } = await import("./registry.js");
+  const checkout = (await readForPath(context.root)).find(
+    (entry) => entry.repository === options.repository && entry.worktreeId === options.worktreeId,
+  );
+
+  return ok(
+    [
+      claimed.stdout,
+      "",
+      `what this work equipped for ${options.repository}:`,
+      ...equipped.flatMap((entry) => [
+        `  ${entry.id}`,
+        ...(entry.what ? [`      ${entry.what}`] : []),
+        `      read: ${checkout ? `${checkout.path}/` : ""}${entry.path}`,
+      ]),
+    ].join("\n"),
+  );
 }
 
 /**
@@ -1798,4 +1842,163 @@ export async function workWhere(context: CommandContext): Promise<CommandResult>
     lines.push('  wfctl checkpoint "<what has happened since>"');
   }
   return ok(lines.join("\n"));
+}
+
+/* --------------------------------------------------------------------- kit */
+
+/**
+ * Everything this work could pick up, and nothing picked up for it.
+ *
+ * The survey is deliberately a list rather than a briefing. Fifty-six skills
+ * exist across three registered checkouts and handing an agent all of them at
+ * session start hands it nothing — the useful three are indistinguishable from
+ * the other fifty-three, and the set gets skimmed on the way past. The agent
+ * reads what looks relevant, judges it, and puts a short list to the maintainer.
+ */
+export async function kitSurvey(context: CommandContext): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  const { readRegistry } = await import("./registry.js");
+  const { renderSurvey, shipped, skillsIn } = await import("./kit.js");
+
+  const candidates = [
+    ...(await shipped(context.assets, "strategy")),
+    ...(await shipped(context.assets, "personality")),
+  ];
+  for (const leaf of await readRegistry(context.root)) {
+    candidates.push(...(await skillsIn(leaf.path, leaf.repository)));
+  }
+  return ok(renderSurvey(candidates, flow?.kit ?? []));
+}
+
+export async function kitAdopt(
+  context: CommandContext,
+  options: { ids: string[]; attested: string },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(
+      new GateRefusal(
+        "No flow is open, so there is no work to equip.",
+        'wfctl work start --title "<what this is>"',
+        "The kit belongs to a piece of work, which is what makes it survive the " +
+          "session that chose it.",
+      ),
+    );
+  }
+  if (options.ids.length === 0) {
+    return refused(new GateRefusal("Which ones?", "wfctl kit survey"));
+  }
+  /**
+   * Their words, like opening a bundle.
+   *
+   * What the work carries into implementation is the maintainer's call, and a
+   * selection an agent made alone is indistinguishable from one they asked for
+   * once it is on the record.
+   */
+  const attested = options.attested.trim();
+  if (!attested) {
+    return refused(
+      new GateRefusal(
+        "What this work carries is the maintainer's call, and nothing here says they made it.",
+        `wfctl kit adopt ${options.ids.join(" ")} --attested "<what they said>"`,
+        "Put your short list to them — the ones you recommend, and why each earns " +
+          "its place — and record their answer. A selection made alone is " +
+          "indistinguishable from one they asked for once it is on the record, and " +
+          "the next session reads it as theirs.",
+      ),
+    );
+  }
+
+  const { readRegistry } = await import("./registry.js");
+  const { assertAdoptable, shipped, skillsIn } = await import("./kit.js");
+  const candidates = [
+    ...(await shipped(context.assets, "strategy")),
+    ...(await shipped(context.assets, "personality")),
+  ];
+  for (const leaf of await readRegistry(context.root)) {
+    candidates.push(...(await skillsIn(leaf.path, leaf.repository)));
+  }
+
+  let adopted: string[] = [];
+  try {
+    const chosen = assertAdoptable(options.ids, candidates);
+    await mutateFlow(context.root, flow.id, (current) => {
+      const held = current.kit ?? [];
+      const fresh = chosen
+        .filter((candidate) => !held.some((entry) => entry.id === candidate.id))
+        .map((candidate) => ({
+          id: candidate.id,
+          kind: candidate.kind,
+          path: candidate.path,
+          what: candidate.what,
+          ...(candidate.repository ? { repository: candidate.repository } : {}),
+          attested,
+          at: new Date().toISOString(),
+        }));
+      adopted = fresh.map((entry) => entry.id);
+      return { ...current, kit: [...held, ...fresh] };
+    });
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
+
+  const already = options.ids.filter((id) => !adopted.includes(id));
+  return ok(
+    [
+      adopted.length > 0
+        ? `${adopted.length} added to ${flow.id}: ${adopted.join(", ")}`
+        : "Nothing new; all of those were already equipped.",
+      ...(already.length > 0 && adopted.length > 0
+        ? [`Already equipped: ${already.join(", ")}`]
+        : []),
+      "",
+      "The brief prints this at the start of every session on this work, so a",
+      "cleared context does not lose it. Read them when the work reaches what",
+      "they are for, not now.",
+    ].join("\n"),
+  );
+}
+
+export async function kitList(context: CommandContext): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  const { renderKit } = await import("./kit.js");
+  return ok(renderKit(flow.kit ?? []));
+}
+
+/* ----------------------------------------------------------------- learned */
+
+export async function learned(
+  context: CommandContext,
+  options: { title: string; detail: string; attested: string },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  try {
+    const { writeLearning } = await import("./learned.js");
+    const path = await writeLearning(context.root, {
+      title: options.title,
+      body: options.detail,
+      attested: options.attested,
+      actor: context.actor,
+      ...(flow ? { flow: flow.id } : {}),
+    });
+    return ok(
+      [
+        `written to ${relative(context.root, path)}`,
+        "",
+        "It outlives this work. The brief names the count at the start of every",
+        "session in this repository, so the next piece of work can read it before",
+        "starting rather than after failing.",
+      ].join("\n"),
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
+}
+
+export async function learnedList(context: CommandContext): Promise<CommandResult> {
+  const { listLearnings, renderLearnings } = await import("./learned.js");
+  return ok(renderLearnings(await listLearnings(context.root)));
 }

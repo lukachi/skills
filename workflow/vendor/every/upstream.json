@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 2,
+  "source": {
+    "repository": "https://github.com/EveryInc/compound-engineering-plugin.git",
+    "revision": "4e6738223d7dd66d765a598673c48c136fb78f95",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2025 Every"
+  },
+  "reviewedAt": "2026-08-26",
+  "distribution": {
+    "strategy": "adapted-patterns",
+    "installOriginalSuite": false,
+    "fetchMutableUpstreamAtInstall": false
+  },
+  "method": {
+    "rule": "The mindset and two structural patterns are adapted; the workflow is not. Upstream's skills are phase machines with mandatory reference reads and completion contracts — more prescriptive than what this tool is moving away from — so none of that shape is taken. What is taken is stated per derivation below.",
+    "reviewNote": "Read at this revision on 2026-08-26. The whole plugin was read before anything was written, and most of it was deliberately declined."
+  },
+  "derivations": [
+    {
+      "upstream": [
+        "skills/ce-compound/SKILL.md"
+      ],
+      "local": [
+        "src/core/learned.ts",
+        "templates/skill/wfctl/SKILL.md"
+      ],
+      "relationship": "adapted",
+      "retained": [
+        "one solved problem per record, written durably after the work",
+        "a corpus read as grounding before new work rather than after failing",
+        "the loop is the point: run one teaches it, run two remembers"
+      ],
+      "modified": [
+        "a learning carries the maintainer's own words, because it outlives every fence",
+        "it is a flat directory read by the brief's index line, not a documentation tree",
+        "no interactive/non-interactive mode split, no depth selector, no subagent phase"
+      ],
+      "note": "The mechanism is ours; the observation that a record ending with its bundle guarantees the same wall gets hit twice is theirs."
+    },
+    {
+      "upstream": [
+        "skills/ce-plan/references/agents/security-sentinel.md",
+        "skills/ce-plan/references/agents/learnings-researcher.md"
+      ],
+      "local": [
+        "templates/guidance/personality/shape.md"
+      ],
+      "relationship": "adapted",
+      "retained": [
+        "stance, then a concrete protocol with the actual commands",
+        "an invocation contract: what the caller needs back, in the caller's terms",
+        "a stated reporting shape so the caller is not parsing prose"
+      ],
+      "modified": [
+        "the reviewer never receives the implementer's reasoning, which is this tool's own rule",
+        "silence is not success: a personality that found nothing says what it looked for"
+      ],
+      "note": "The four-part shape is upstream's and is the reason their agent briefs produce work rather than opinion. The concrete personalities shipped here — adversary, standards, spec — are this tool's own verification lenses written into that shape."
+    }
+  ],
+  "declined": [
+    {
+      "upstream": [
+        "skills/ce-plan/SKILL.md",
+        "skills/ce-work/SKILL.md"
+      ],
+      "why": "Phase machines with mandatory-read-at-this-step reference contracts and a completion contract per output tier. This is the over-strictness the maintainer is removing, not an alternative to it."
+    },
+    {
+      "upstream": [
+        "skills/ce-test-browser/SKILL.md",
+        "skills/ce-proof/SKILL.md"
+      ],
+      "why": "Out of scope for this round by the maintainer's decision."
+    }
+  ]
+}
