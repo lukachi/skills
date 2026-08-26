@@ -89,6 +89,29 @@ export interface Finding {
   acceptedBecause?: string;
 }
 
+/**
+ * Whether the stub pass was actually run, and what it found.
+ *
+ * An empty `stubSurvivors` meant two different things and the tool could not
+ * tell them apart: "I stubbed the implementation and every test went red", and
+ * "I never stubbed anything". The second is the more likely of the two, because
+ * the instruction to stub lived only in a document the reviewer may never have
+ * opened — the brief this tool generates never mentioned it, and nothing printed
+ * that brief anyway.
+ *
+ * So the reviewer says. This is the same rule the empty-review check already
+ * applies to attacks: a reviewer that broke nothing must still say what it
+ * tried, because silence and success must not look the same.
+ *
+ * `ran: false` is allowed and carries its reason, so a suite that genuinely
+ * cannot be stubbed reports that instead of wedging the flow.
+ */
+export interface StubPass {
+  ran: boolean;
+  /** What was stubbed and what happened, or why it could not be. */
+  note: string;
+}
+
 export interface Review {
   /** The revision the first claim was made at. Fixed before the work existed. */
   fixedPoint: string;
@@ -103,6 +126,8 @@ export interface Review {
    * this page: it needs no judgment and it catches most fake green.
    */
   stubSurvivors: StubSurvivor[];
+  /** Whether the stub pass ran at all. Absent is refused, not assumed. */
+  stubPass?: StubPass;
 }
 
 /**
@@ -129,6 +154,36 @@ export function assertReviewUsable(flow: FlowRecord, review: Review): void {
       "wfctl work verify --review <artifact carrying its attacks>",
       'A reviewer that broke nothing must still say what it tried. "Looks ' +
         'correct" is not an allowed answer.',
+    );
+  }
+
+  /**
+   * Silence about the stub pass is not a pass.
+   *
+   * This is the check the whole page rests on — it needs no judgment and it
+   * catches most fake green — and it was reported by a field that defaulted to
+   * empty. A reviewer that never stubbed anything returned `[]` and the gate
+   * congratulated it.
+   */
+  if (!review.stubPass) {
+    throw new GateRefusal(
+      "The review does not say whether the stub pass ran.",
+      'Add "stubPass": { "ran": true, "note": "<what was stubbed and what went red>" }',
+      "Stub each implementation under review to a constant and run the tests " +
+        "again. Anything still green asserts nothing. An empty stubSurvivors " +
+        "list means both 'I stubbed and everything failed correctly' and 'I " +
+        "never stubbed', and this tool cannot tell them apart.\n\n" +
+        'If the suite cannot be stubbed, say so: "ran": false with the reason.',
+    );
+  }
+  if (!review.stubPass.note.trim()) {
+    throw new GateRefusal(
+      review.stubPass.ran
+        ? "The stub pass ran and the review does not say what it found."
+        : "The stub pass did not run and the review does not say why.",
+      'Record it in "stubPass": { "note": "<what was stubbed and what happened>" }',
+      "A pass with no account of itself is indistinguishable from one that was " +
+        "not run.",
     );
   }
 
@@ -257,6 +312,49 @@ export function renderReviewerBrief(lens: VerifyLens, fixedPoint: string): strin
     "Also read the diff backwards: for each changed file, ask what the framing",
     "said about it. That direction finds work nobody asked for.",
     "",
+    "RUN THE STUB PASS. Replace each implementation under review with a constant",
+    "and run the tests again. Anything still green asserts nothing, and this is",
+    "the highest-yield check here: it needs no judgment and it catches most fake",
+    "green. Report it whether or not it found something — an empty list with no",
+    "account of the pass is indistinguishable from never having run it.",
+    "",
     "You will not be given the implementer's reasoning. Do not ask for it.",
+    "",
+    "Return this shape, and nothing else:",
+    "",
+    JSON.stringify(
+      {
+        reviewer: "agent:<who you are, and not the implementer>",
+        fixedPoint,
+        framingDigest: "<the digest the framing was approved at>",
+        attacks: [
+          {
+            lens,
+            target: "what this attack tried to break",
+            test: "the test source, verbatim",
+            output: "what running it produced",
+            broke: false,
+          },
+        ],
+        findings: [
+          {
+            lens,
+            summary: "one sentence",
+            failure: "inputs or state → wrong output",
+            status: "open",
+            acceptedBecause: "required only when status is accepted",
+          },
+        ],
+        stubPass: { ran: true, note: "what was stubbed, and what went red" },
+        stubSurvivors: [
+          { test: "which test survived, and what stubbing it proved", status: "open" },
+        ],
+      },
+      null,
+      2,
+    ),
+    "",
+    "A stub survivor is answered like a finding: repair it, or accept it with a",
+    "reason. Accepting is for a test this work does not own.",
   ].join("\n");
 }

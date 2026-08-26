@@ -32,6 +32,8 @@ need exact flags.
   work issue complete <id> | drop <id> --reason "<why it left the route>"
   work park --reason ... --attested "<their words>"
   work release --attested "<their words>"
+  work verify --brief <lens> [--at <revision>]
+                               the brief to hand the reviewing agent
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
   work promote --subject "<product subject>" --summary "<what it now does>"

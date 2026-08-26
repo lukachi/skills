@@ -59,7 +59,7 @@ export const COMMAND_FLAGS: Readonly<Record<string, CommandFlags>> = {
   "work issue drop": { value: ["reason"], boolean: [] },
   "work park": { value: ["reason", "attested"], boolean: [] },
   "work release": { value: ["attested"], boolean: [] },
-  "work verify": { value: ["review"], boolean: [] },
+  "work verify": { value: ["review", "brief", "at"], boolean: [] },
   "work close": { value: ["outcome"], boolean: [] },
   "work promote": { value: ["subject", "summary", "bundle", "settles"], boolean: [] },
   "work promotion draft": NONE,

@@ -74,9 +74,13 @@ export async function walkToVerified(ctx: CommandContext): Promise<void> {
       attacks: [{ lens: "correctness", target: "edges", test: "expect(f()).toThrow()", output: "held", broke: false }],
       findings: [],
       stubSurvivors: [],
+      stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
     }),
     "utf8",
   );
   await mark(ctx, "verified");
-  await run(["work", "verify", "--review", review], ctx);
+  const verified = await run(["work", "verify", "--review", review], ctx);
+  if (verified.exitCode !== 0) {
+    throw new Error(`walkToVerified did not reach verified:\n${verified.stdout}`);
+  }
 }

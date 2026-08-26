@@ -116,7 +116,9 @@ what the project then says about itself; whether the work gets checked is not
 one of their two decisions, and putting it to them spends a turn and delays the
 one step that can still find the change wrong.
 
-  wfctl work verify --review <artifact>
+  wfctl work verify --brief <lens> --at <fixed point>   # the brief to hand it
+  wfctl work verify --review <artifact>                # what it returns
 
 It is delegated to a separate agent because you cannot review your own work, not
-because somebody has to open it.
+because somebody has to open it. Do not write the reviewer's brief yourself —
+the tool prints it, with the shape the artifact must come back in.

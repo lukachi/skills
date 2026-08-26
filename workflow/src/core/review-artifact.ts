@@ -5,6 +5,7 @@ import {
   type Attack,
   type Finding,
   type Review,
+  type StubPass,
   type StubSurvivor,
   type VerifyLens,
 } from "./verify.js";
@@ -27,6 +28,7 @@ export interface ReviewArtifact {
   attacks: Attack[];
   findings: Finding[];
   stubSurvivors: unknown;
+  stubPass?: unknown;
 }
 
 /**
@@ -165,6 +167,33 @@ export async function readReviewArtifact(path: string, actor: string): Promise<R
     }
   }
 
+  /**
+   * Read only a shape that says something. A truthy object with no `ran` is not
+   * an answer, and letting it through would restore the ambiguity this field
+   * exists to remove.
+   */
+  let stubPass: StubPass | undefined;
+  const reported = parsed.stubPass;
+  if (reported !== undefined && reported !== null) {
+    if (typeof reported !== "object") {
+      fail(
+        `stubPass is a ${typeof reported}, not a report.`,
+        'Return "stubPass": { "ran": true|false, "note": "<what happened>" }',
+      );
+    }
+    const record = reported as Record<string, unknown>;
+    if (typeof record.ran !== "boolean") {
+      fail(
+        "stubPass does not say whether the pass ran.",
+        'Set "ran" to true or false. False carries the reason it could not run.',
+      );
+    }
+    stubPass = {
+      ran: record.ran,
+      note: typeof record.note === "string" ? record.note : "",
+    };
+  }
+
   return {
     fixedPoint: parsed.fixedPoint ?? "",
     framingDigest: parsed.framingDigest ?? "",
@@ -172,5 +201,6 @@ export async function readReviewArtifact(path: string, actor: string): Promise<R
     attacks: parsed.attacks ?? [],
     findings: parsed.findings ?? [],
     stubSurvivors: readStubSurvivors(parsed.stubSurvivors),
+    ...(stubPass ? { stubPass } : {}),
   };
 }

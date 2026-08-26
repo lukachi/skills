@@ -2340,6 +2340,22 @@ function assertReviewUsable(flow, review) {
       'A reviewer that broke nothing must still say what it tried. "Looks correct" is not an allowed answer.'
     );
   }
+  if (!review.stubPass) {
+    throw new GateRefusal(
+      "The review does not say whether the stub pass ran.",
+      'Add "stubPass": { "ran": true, "note": "<what was stubbed and what went red>" }',
+      `Stub each implementation under review to a constant and run the tests again. Anything still green asserts nothing. An empty stubSurvivors list means both 'I stubbed and everything failed correctly' and 'I never stubbed', and this tool cannot tell them apart.
+
+If the suite cannot be stubbed, say so: "ran": false with the reason.`
+    );
+  }
+  if (!review.stubPass.note.trim()) {
+    throw new GateRefusal(
+      review.stubPass.ran ? "The stub pass ran and the review does not say what it found." : "The stub pass did not run and the review does not say why.",
+      'Record it in "stubPass": { "note": "<what was stubbed and what happened>" }',
+      "A pass with no account of itself is indistinguishable from one that was not run."
+    );
+  }
   const unknownStub = review.stubSurvivors.filter(
     (survivor) => survivor.status !== "open" && survivor.status !== "accepted"
   );
@@ -2431,7 +2447,50 @@ function renderReviewerBrief(lens, fixedPoint) {
     "Also read the diff backwards: for each changed file, ask what the framing",
     "said about it. That direction finds work nobody asked for.",
     "",
-    "You will not be given the implementer's reasoning. Do not ask for it."
+    "RUN THE STUB PASS. Replace each implementation under review with a constant",
+    "and run the tests again. Anything still green asserts nothing, and this is",
+    "the highest-yield check here: it needs no judgment and it catches most fake",
+    "green. Report it whether or not it found something \u2014 an empty list with no",
+    "account of the pass is indistinguishable from never having run it.",
+    "",
+    "You will not be given the implementer's reasoning. Do not ask for it.",
+    "",
+    "Return this shape, and nothing else:",
+    "",
+    JSON.stringify(
+      {
+        reviewer: "agent:<who you are, and not the implementer>",
+        fixedPoint,
+        framingDigest: "<the digest the framing was approved at>",
+        attacks: [
+          {
+            lens,
+            target: "what this attack tried to break",
+            test: "the test source, verbatim",
+            output: "what running it produced",
+            broke: false
+          }
+        ],
+        findings: [
+          {
+            lens,
+            summary: "one sentence",
+            failure: "inputs or state \u2192 wrong output",
+            status: "open",
+            acceptedBecause: "required only when status is accepted"
+          }
+        ],
+        stubPass: { ran: true, note: "what was stubbed, and what went red" },
+        stubSurvivors: [
+          { test: "which test survived, and what stubbing it proved", status: "open" }
+        ]
+      },
+      null,
+      2
+    ),
+    "",
+    "A stub survivor is answered like a finding: repair it, or accept it with a",
+    "reason. Accepting is for a test this work does not own."
   ].join("\n");
 }
 var VERIFY_LENSES, LENS_QUESTIONS;
@@ -2555,13 +2614,35 @@ async function readReviewArtifact(path, actor) {
       fail(`Attack ${index + 1} does not say what it tried to break.`, "Record the target of each attack.");
     }
   }
+  let stubPass;
+  const reported = parsed.stubPass;
+  if (reported !== void 0 && reported !== null) {
+    if (typeof reported !== "object") {
+      fail(
+        `stubPass is a ${typeof reported}, not a report.`,
+        'Return "stubPass": { "ran": true|false, "note": "<what happened>" }'
+      );
+    }
+    const record = reported;
+    if (typeof record.ran !== "boolean") {
+      fail(
+        "stubPass does not say whether the pass ran.",
+        'Set "ran" to true or false. False carries the reason it could not run.'
+      );
+    }
+    stubPass = {
+      ran: record.ran,
+      note: typeof record.note === "string" ? record.note : ""
+    };
+  }
   return {
     fixedPoint: parsed.fixedPoint ?? "",
     framingDigest: parsed.framingDigest ?? "",
     reviewer: parsed.reviewer.trim(),
     attacks: parsed.attacks ?? [],
     findings: parsed.findings ?? [],
-    stubSurvivors: readStubSurvivors(parsed.stubSurvivors)
+    stubSurvivors: readStubSurvivors(parsed.stubSurvivors),
+    ...stubPass ? { stubPass } : {}
   };
 }
 var init_review_artifact = __esm({
@@ -5148,7 +5229,7 @@ var COMMAND_FLAGS = {
   "work issue drop": { value: ["reason"], boolean: [] },
   "work park": { value: ["reason", "attested"], boolean: [] },
   "work release": { value: ["attested"], boolean: [] },
-  "work verify": { value: ["review"], boolean: [] },
+  "work verify": { value: ["review", "brief", "at"], boolean: [] },
   "work close": { value: ["outcome"], boolean: [] },
   "work promote": { value: ["subject", "summary", "bundle", "settles"], boolean: [] },
   "work promotion draft": NONE,
@@ -5308,6 +5389,8 @@ var USAGE = `wfctl \u2014 project workflow
   work issue complete <id> | drop <id> --reason "<why it left the route>"
   work park --reason ... --attested "<their words>"
   work release --attested "<their words>"
+  work verify --brief <lens> [--at <revision>]
+                               the brief to hand the reviewing agent
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
   work promote --subject "<product subject>" --summary "<what it now does>"
@@ -5673,6 +5756,17 @@ async function dispatch(argv, context) {
           };
         }
         if (action === "verify") {
+          const lens = flag(args, "brief");
+          if (lens !== void 0) {
+            const { renderReviewerBrief: renderReviewerBrief2, VERIFY_LENSES: VERIFY_LENSES2 } = await Promise.resolve().then(() => (init_verify(), verify_exports));
+            return {
+              stdout: renderReviewerBrief2(
+                oneOf(lens, VERIFY_LENSES2, "brief"),
+                flag(args, "at") ?? "<pin the revision this work started at>"
+              ),
+              exitCode: 0
+            };
+          }
           return await verify(context, { review: flag(args, "review") ?? "" });
         }
         if (action === "park") {

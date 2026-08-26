@@ -22,6 +22,25 @@ repository. It does not receive this session, your reasoning, or your account of
 why anything was done — reading the justification is what makes a reviewer accept
 it.
 
+**The brief comes from the tool, not from you:**
+
+  wfctl work verify --brief <lens> --at <fixed point>
+
+It carries the lens question, the rules, the stub pass, and the exact shape the
+artifact must come back in. Nothing printed it until 2026-08-26, so briefs were
+composed from memory and the stub pass reached the reviewer only by luck.
+
+## The stub pass
+
+Stub each implementation under review to a constant and run the tests again.
+Anything still green asserts nothing. It needs no judgment, it catches most fake
+green, and the review is refused without it — reported whether or not it found
+anything, because an empty survivor list with no account of the pass cannot be
+told from a pass that never ran.
+
+A survivor is answered like a finding: repair it, or accept it with a reason.
+Accepting is for a test this work does not own.
+
 ## Pin the fixed point first
 
 The diff runs from the revision this work started at to the current `HEAD` of

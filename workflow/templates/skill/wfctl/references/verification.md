@@ -12,6 +12,17 @@ shown its own justification accepts it.
 
 wfctl does not spawn the reviewer. What it checks is what comes back.
 
+**Do not compose the reviewer's brief yourself.** The tool prints it, including
+the exact shape it must return:
+
+```sh
+wfctl work verify --brief <lens> --at <fixed point>
+```
+
+It was not printed by anything until 2026-08-26, so briefs were written from
+memory — and the stub pass, the highest-yield check on this page, reached the
+reviewer only if the implementing agent happened to remember it.
+
 ## Pin the fixed point first
 
 The diff runs from the revision this work started at to the current `HEAD` of
@@ -92,6 +103,10 @@ wfctl work verify --review <path>
       "acceptedBecause": "required when accepted"
     }
   ],
+  "stubPass": {
+    "ran": true,
+    "note": "what was stubbed, and what went red"
+  },
   "stubSurvivors": [
     {
       "test": "which test survived, and what stubbing it proved",
@@ -101,6 +116,11 @@ wfctl work verify --review <path>
   ]
 }
 ```
+
+`stubPass` is required and is refused when absent. An empty `stubSurvivors` used
+to mean both "I stubbed and everything went red" and "I never stubbed", and the
+tool could not tell them apart — so the reviewer says. `"ran": false` is allowed
+and carries the reason, for a change with nothing stubbable in it.
 
 A **stub survivor** is a test that still passes with the implementation replaced
 by a constant. It asserts nothing, and it is the highest-yield check on this
@@ -121,8 +141,8 @@ work, not because someone else has to permit it.
 
 It is refused when: the reviewer is you; there are no attacks and no findings;
 an attack carries no test, no output, or no target; **any attack has `broke:
-true`**; a stub survivor or a finding is still `open`; either is `accepted` with
-no reason; or the framing digest has moved since approval — the one case that
+true`**; the stub pass is unreported or unaccounted for; a stub survivor or a
+finding is still `open`; either is `accepted` with no reason; or the framing digest has moved since approval — the one case that
 goes back to the maintainer.
 
 **Closure does not need this to pass.** `--outcome completed` does, because that

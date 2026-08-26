@@ -314,6 +314,7 @@ test("an empty review is refused, but a clean one is not", () => {
     attacks: [],
     findings: [],
     stubSurvivors: [],
+    stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
   };
   assert.throws(() => assertReviewUsable(flow, review), GateRefusal);
 
@@ -340,6 +341,7 @@ test("tests that survive stubbing block verification", () => {
         attacks: [],
         findings: [{ lens: "intent", summary: "s", failure: "f", status: "accepted", acceptedBecause: "ok" }],
         stubSurvivors: [{ test: "tests/thing.test.ts:12", status: "open" }],
+        stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
       }),
     (error: unknown) => {
       assert.ok(error instanceof GateRefusal);
@@ -360,6 +362,7 @@ test("an accepted finding without a reason is refused", () => {
         attacks: [],
         findings: [{ lens: "intent", summary: "s", failure: "f", status: "accepted" }],
         stubSurvivors: [],
+        stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
       }),
     GateRefusal,
   );
@@ -377,6 +380,7 @@ test("a reworded framing routes closure back to the maintainer", () => {
         attacks: [],
         findings: [],
         stubSurvivors: [],
+        stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
       }),
     GateRefusal,
   );

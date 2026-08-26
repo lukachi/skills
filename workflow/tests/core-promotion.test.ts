@@ -96,7 +96,7 @@ test("a review returned by the agent under review is refused", async () => {
   const path = resolve(root, "review.json");
   await writeFile(
     path,
-    JSON.stringify({ reviewer: "agent:me", attacks: [], findings: [], stubSurvivors: [] }),
+    JSON.stringify({ reviewer: "agent:me", attacks: [], findings: [], stubSurvivors: [], stubPass: { ran: true, note: "stubbed; all red" } }),
     "utf8",
   );
   await assert.rejects(
@@ -148,6 +148,7 @@ test("a valid review artifact parses", async () => {
       ],
       findings: [],
       stubSurvivors: [],
+      stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
     }),
     "utf8",
   );

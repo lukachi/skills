@@ -156,6 +156,7 @@ test("an attack that broke the work is not accepted", async () => {
       ],
       findings: [],
       stubSurvivors: [],
+      stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
     }),
     "utf8",
   );
@@ -806,6 +807,7 @@ async function walkToVerifiedE2E(root: string): Promise<void> {
       attacks: [{ lens: "correctness", target: "t", test: "x", output: "held", broke: false }],
       findings: [],
       stubSurvivors: [],
+      stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
     }),
     "utf8",
   );
@@ -963,6 +965,7 @@ test("a review keeps its whole artifact, and a finding with an odd status is ref
       attacks: [{ lens: "intent", target: "t", test: "x", output: "held", broke: false }],
       findings: [{ lens: "intent", summary: "s", failure: "f", status: "blocking" }],
       stubSurvivors: [],
+      stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
     }),
     "utf8",
   );
@@ -1127,6 +1130,7 @@ test("work verify runs the step chain", async () => {
       attacks: [{ lens: "intent", target: "t", test: "x", output: "held", broke: false }],
       findings: [],
       stubSurvivors: [],
+      stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
     }),
     "utf8",
   );
@@ -1442,13 +1446,14 @@ async function reviewWith(root: string, stubSurvivors: unknown[]): Promise<strin
       attacks: [{ lens: "correctness", target: "t", test: "x", output: "held", broke: false }],
       findings: [],
       stubSurvivors,
+      stubPass: { ran: true, note: "stubbed each implementation to a constant" },
     }),
     "utf8",
   );
   return path;
 }
 
-test("a stub survivor can be accepted with a reason instead of blocking forever", async () => {
+test("a stub survivor can be accepted with a reason instead of blocking forever", { timeout: 60_000 }, async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "upstream tests", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToImplementE2E(root);
@@ -1477,7 +1482,7 @@ test("a stub survivor can be accepted with a reason instead of blocking forever"
   assert.equal(accepted.status, 0, accepted.stdout);
 });
 
-test("a stub survivor with an unknown status is refused, not ignored", async () => {
+test("a stub survivor with an unknown status is refused, not ignored", { timeout: 60_000 }, async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "status", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToImplementE2E(root);
@@ -1491,7 +1496,7 @@ test("a stub survivor with an unknown status is refused, not ignored", async () 
   assert.match(result.stdout, /not open or accepted/);
 });
 
-test("a survivor the reviewer described in its own shape is readable", async () => {
+test("a survivor the reviewer described in its own shape is readable", { timeout: 60_000 }, async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "shape", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToImplementE2E(root);
@@ -1511,7 +1516,7 @@ test("a survivor the reviewer described in its own shape is readable", async () 
   assert.match(result.stdout, /1123 pass/, "the evidence for accepting was dropped");
 });
 
-test("work that cannot be verified can still be given up on", async () => {
+test("work that cannot be verified can still be given up on", { timeout: 60_000 }, async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "wedged", "--weight", "significant", "--attested", "they asked for it"]);
   await walkToImplementE2E(root);
@@ -1709,4 +1714,104 @@ test("the write hook stays machine-readable", async () => {
   // reminder to it makes the guard speak on every edit.
   const quiet = wfctl(root, ["hook", "write", "--target", resolve(root, "README.md")]);
   assert.doesNotMatch(quiet.stdout, /wfctl checkpoint/);
+});
+
+// ---------------------------------------------------------------------------
+// The check the verification gate rests on, and the brief that asks for it.
+//
+// `renderReviewerBrief` existed with no caller and no command, so the
+// instructions for the one agent this design depends on were composed from
+// memory — and the stub pass, which the module's own comment calls the single
+// highest-yield check on the page, appeared only in a document that agent may
+// never have opened. An empty `stubSurvivors` then meant both "I stubbed and
+// everything went red" and "I never stubbed", and the gate congratulated both.
+
+async function reviewJson(root: string, extra: Record<string, unknown>): Promise<string> {
+  const path = resolve(root, `stub-review-${Math.random()}.json`);
+  await writeFile(
+    path,
+    JSON.stringify({
+      reviewer: "agent:reviewer",
+      attacks: [{ lens: "correctness", target: "t", test: "x", output: "held", broke: false }],
+      findings: [],
+      stubSurvivors: [],
+      ...extra,
+    }),
+    "utf8",
+  );
+  return path;
+}
+
+test("a review that does not say whether it stubbed is refused", { timeout: 60_000 }, async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "stubs", "--weight", "significant", "--attested", "they asked"]);
+  await walkToImplementE2E(root);
+  mark(root, "verified");
+
+  const silent = wfctl(root, ["work", "verify", "--review", await reviewJson(root, {})]);
+  assert.equal(silent.status, 2);
+  assert.match(silent.stdout, /does not say whether the stub pass ran/);
+  // The refusal has to say what the pass is, or it cannot be acted on.
+  assert.match(silent.stdout, /constant/);
+
+  const unaccounted = wfctl(root, [
+    "work", "verify", "--review", await reviewJson(root, { stubPass: { ran: true, note: "" } }),
+  ]);
+  assert.equal(unaccounted.status, 2);
+  assert.match(unaccounted.stdout, /does not say what it found/);
+
+  const reported = wfctl(root, [
+    "work", "verify", "--review",
+    await reviewJson(root, { stubPass: { ran: true, note: "stubbed parse() to ''; nine tests went red" } }),
+  ]);
+  assert.equal(reported.status, 0, reported.stdout);
+});
+
+test("a suite that cannot be stubbed says so rather than wedging", { timeout: 60_000 }, async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "unstubbable", "--weight", "significant", "--attested", "they asked"]);
+  await walkToImplementE2E(root);
+  mark(root, "verified");
+
+  // Making this mandatory-and-true would be a new deadlock of exactly the kind
+  // the stub-survivor gate already was.
+  const declined = wfctl(root, [
+    "work", "verify", "--review",
+    await reviewJson(root, { ran: false, stubPass: { ran: false, note: "the change is a Makefile recipe; there is nothing to stub" } }),
+  ]);
+  assert.equal(declined.status, 0, declined.stdout);
+});
+
+test("a stubPass that is not a report is refused rather than read as one", { timeout: 60_000 }, async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "shape", "--weight", "significant", "--attested", "they asked"]);
+  await walkToImplementE2E(root);
+  mark(root, "verified");
+
+  for (const [value, expected] of [
+    ["yes", /not a report/],
+    [{ note: "stubbed things" }, /does not say whether the pass ran/],
+  ] as const) {
+    const result = wfctl(root, ["work", "verify", "--review", await reviewJson(root, { stubPass: value })]);
+    assert.equal(result.status, 2, `accepted ${JSON.stringify(value)}`);
+    assert.match(result.stdout, expected);
+  }
+});
+
+test("the reviewer's brief comes from the tool, not from memory", async () => {
+  const root = await installed();
+
+  const brief = wfctl(root, ["work", "verify", "--brief", "test-integrity", "--at", "abc123"]);
+  assert.equal(brief.status, 0, brief.stdout);
+  assert.match(brief.stdout, /fixed point abc123/);
+  assert.match(brief.stdout, /RUN THE STUB PASS/);
+  assert.match(brief.stdout, /Would these tests catch a broken implementation/);
+  // The shape it must return, so the reviewer is not guessing at field names.
+  assert.match(brief.stdout, /"stubPass"/);
+  assert.match(brief.stdout, /"stubSurvivors"/);
+  // And the property the whole design rests on.
+  assert.match(brief.stdout, /not be given the implementer's reasoning/);
+
+  const unknown = wfctl(root, ["work", "verify", "--brief", "vibes"]);
+  assert.equal(unknown.status, 2);
 });

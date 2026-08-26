@@ -99,7 +99,7 @@ test("verification refuses a review the acting agent produced", async () => {
   const review = resolve(ctx.root, "review.json");
   await writeFile(
     review,
-    JSON.stringify({ reviewer: "agent:test", attacks: [], findings: [], stubSurvivors: [] }),
+    JSON.stringify({ reviewer: "agent:test", attacks: [], findings: [], stubSurvivors: [], stubPass: { ran: true, note: "stubbed; all red" } }),
     "utf8",
   );
   const result = await run(["work", "verify", "--review", review], ctx);
@@ -122,6 +122,7 @@ test("verification accepts a delegated review and hands over the closing guidanc
       ],
       findings: [],
       stubSurvivors: [],
+      stubPass: { ran: true, note: "stubbed the implementation; every test went red" },
     }),
     "utf8",
   );

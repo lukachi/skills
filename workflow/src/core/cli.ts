@@ -78,6 +78,8 @@ export const USAGE = `wfctl — project workflow
   work issue complete <id> | drop <id> --reason "<why it left the route>"
   work park --reason ... --attested "<their words>"
   work release --attested "<their words>"
+  work verify --brief <lens> [--at <revision>]
+                               the brief to hand the reviewing agent
   work verify --review <artifact>
   work close --outcome <completed|partial|abandoned>
   work promote --subject "<product subject>" --summary "<what it now does>"
@@ -574,6 +576,26 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
           };
         }
         if (action === "verify") {
+          /**
+           * The brief the reviewer is given, printed by the tool that checks
+           * what comes back.
+           *
+           * `renderReviewerBrief` existed with no caller and no command, so the
+           * instructions for the one agent this design depends on were composed
+           * from memory — and the stub pass, the highest-yield check on the
+           * page, appeared only in a document that agent may never have opened.
+           */
+          const lens = flag(args, "brief");
+          if (lens !== undefined) {
+            const { renderReviewerBrief, VERIFY_LENSES } = await import("./verify.js");
+            return {
+              stdout: renderReviewerBrief(
+                oneOf(lens, VERIFY_LENSES, "brief"),
+                flag(args, "at") ?? "<pin the revision this work started at>",
+              ),
+              exitCode: 0,
+            };
+          }
           return await verify(context, { review: flag(args, "review") ?? "" });
         }
         if (action === "park") {
