@@ -70,12 +70,22 @@ export interface StepRequirement {
 }
 
 export const STEP_REQUIREMENTS: Partial<Record<WorkStep, StepRequirement>> = {
-  aligned: { groups: ["E"], floor: { qmd: 1 } },
   framed: { groups: ["A", "B", "C", "E"], floor: { qmd: 1 } },
-  implement: { groups: ["D"], floor: { graphify: 1 } },
   verified: { groups: ["G"], floor: {} },
   promoted: { groups: ["E", "H"], floor: {} },
 };
+
+/**
+ * What has to be answered before code is written, rather than before a step is
+ * announced.
+ *
+ * Group D asks whether an implementation already exists, and it wants a graph
+ * traversal rather than a guess. It hung off a step called `implement` — a step
+ * an agent could record without doing anything, and which one real run never
+ * recorded at all while delivering eighteen units. The claim is the moment a
+ * checkout is bound and code is about to change, so the obligation lives there.
+ */
+export const CLAIM_REQUIREMENT: StepRequirement = { groups: ["D"], floor: { graphify: 1 } };
 
 export function emptyCounters(): RecallCounters {
   return RECALL_ROUTES.reduce((counters, route) => {
@@ -115,8 +125,12 @@ export interface RecallShortfall {
   missingFloor: { route: RecallRoute; required: number; actual: number }[];
 }
 
-export function shortfallFor(step: WorkStep, state: RecallState): RecallShortfall {
-  const requirement = STEP_REQUIREMENTS[step];
+export function shortfallFor(
+  step: WorkStep | "implement",
+  state: RecallState,
+  override?: StepRequirement,
+): RecallShortfall {
+  const requirement = override ?? STEP_REQUIREMENTS[step as WorkStep];
   if (!requirement) {
     return { missingItems: [], missingFloor: [] };
   }
@@ -148,8 +162,12 @@ export function isSatisfied(shortfall: RecallShortfall): boolean {
  * traversal means the code was searched by string and never by structure, and
  * that is worth seeing even on a step that passes.
  */
-export function renderCounterLine(step: WorkStep, state: RecallState): string {
-  const requirement = STEP_REQUIREMENTS[step];
+export function renderCounterLine(
+  step: WorkStep | "implement",
+  state: RecallState,
+  override?: StepRequirement,
+): string {
+  const requirement = override ?? STEP_REQUIREMENTS[step as WorkStep];
   const required = requirement
     ? requirement.groups.flatMap((group) => itemsForGroup(group))
     : [];
@@ -160,7 +178,7 @@ export function renderCounterLine(step: WorkStep, state: RecallState): string {
   );
   const lines = [`recall: ${answered}/${required.length} required answered · ${counters}`];
 
-  const shortfall = shortfallFor(step, state);
+  const shortfall = shortfallFor(step, state, override);
   if (shortfall.missingItems.length > 0) {
     const missing = shortfall.missingItems
       .map((item) => `${item.id} ${item.question}`)

@@ -78,16 +78,14 @@ test("closing runs every gate the step machine runs", async () => {
 test("a step cannot be reached without a review on record", async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "no review", "--weight", "significant", "--attested", "they asked for it"]);
-  wfctl(root, ["work", "step", "aligned"]);
-  for (const item of ["E14", "E15", "E16"]) {
-    wfctl(root, ["recall", "answer", item, "--answer", "x", "--route", "qmd", "--source", "k"]);
-  }
-  mark(root, "framed");
-  wfctl(root, ["work", "step", "framed"]);
+  // Everything `verified` asks for except the review itself, so the refusal
+  // that lands is the one this test is about.
+  await walkToImplementE2E(root);
+  mark(root, "verified");
 
   const verified = wfctl(root, ["work", "step", "verified"]);
   assert.equal(verified.status, 2);
-  assert.match(verified.stdout, /No review is on record|needs implement recorded first/);
+  assert.match(verified.stdout, /No review is on record/);
 });
 
 test("every command a refusal names actually exists", async () => {
@@ -606,8 +604,14 @@ test("a write into a sibling checkout is refused while another is claimed", asyn
   wfctl(root, ["repo", "add", "acme/b", "--path", b]);
   wfctl(root, ["work", "start", "--title", "w", "--weight", "significant", "--attested", "they asked for it"]);
   wfctl(root, ["recall", "route", "graphify", "--covered", resolve(a, "src/a.ts")]);
+  // The claim asks whether this already exists before it binds a checkout.
+  const { RECALL_ITEMS: items } = await import("../src/core/recall.js");
+  for (const item of items.filter((entry) => entry.group === "D")) {
+    wfctl(root, ["recall", "answer", item.id, "--answer", "x", "--route", "graphify", "--source", "s"]);
+  }
   wfctl(root, ["work", "issue", "create", "--title", "unit"]);
-  wfctl(root, ["work", "issue", "claim", "U001", "--repository", "acme/a", "--worktree", "main"]);
+  const bound = wfctl(root, ["work", "issue", "claim", "U001", "--repository", "acme/a", "--worktree", "main"]);
+  assert.equal(bound.status, 0, bound.stdout);
 
   /**
    * The failure the registry was invented for: an agent working across several
@@ -763,41 +767,21 @@ async function walkToImplementE2E(root: string): Promise<void> {
       wfctl(root, ["recall", "answer", item.id, "--answer", "x", "--route", route, "--source", "s"]);
     }
   };
-  wfctl(root, ["work", "step", "aligned"]);
-  answer("E", "qmd");
+  /**
+   * The recall a step demands is checked when that step is entered, so it is
+   * answered before the step rather than after it.
+   */
+  for (const group of ["A", "B", "C", "E"]) answer(group, "qmd");
   mark(root, "framed");
-  wfctl(root, ["work", "step", "framed"]);
-  answer("A", "qmd");
-  answer("B", "qmd");
-  answer("C", "qmd");
-  mark(root, "split");
-  wfctl(root, ["work", "step", "split"]);
-  mark(root, "implement");
-  wfctl(root, ["work", "step", "implement"]);
+  const framed = wfctl(root, ["work", "step", "framed"]);
+  assert.equal(framed.status, 0, `walkToImplementE2E did not reach framed:\n${framed.stdout}`);
+  // Group D belongs to the claim; group G to verification.
   answer("D", "graphify");
   answer("G", "read");
 }
 
 async function walkToVerifiedE2E(root: string): Promise<void> {
-  const { RECALL_ITEMS } = await import("../src/core/recall.js");
-  wfctl(root, ["work", "step", "aligned"]);
-  const answer = (group: string, route: string) => {
-    for (const item of RECALL_ITEMS.filter((entry) => entry.group === group)) {
-      wfctl(root, ["recall", "answer", item.id, "--answer", "x", "--route", route, "--source", "s"]);
-    }
-  };
-  answer("E", "qmd");
-  mark(root, "framed");
-  wfctl(root, ["work", "step", "framed"]);
-  answer("A", "qmd");
-  answer("B", "qmd");
-  answer("C", "qmd");
-  mark(root, "split");
-  wfctl(root, ["work", "step", "split"]);
-  mark(root, "implement");
-  wfctl(root, ["work", "step", "implement"]);
-  answer("D", "graphify");
-  answer("G", "read");
+  await walkToImplementE2E(root);
 
   const review = resolve(root, "review.json");
   await writeFile(
@@ -912,7 +896,7 @@ test("the next line names the step after this one, not the one just run", async 
   const started = wfctl(root, ["work", "start", "--title", "next", "--weight", "significant", "--attested", "they asked for it"]);
   assert.doesNotMatch(started.stdout, /next: wfctl work start/);
 
-  const aligned = wfctl(root, ["work", "step", "aligned"]);
+  const aligned = wfctl(root, ["work", "step", "framed"]);
   assert.doesNotMatch(aligned.stdout, /next: wfctl work step aligned/, "next named the command that just ran");
 });
 
@@ -1139,7 +1123,7 @@ test("work verify runs the step chain", async () => {
   // not advance(), so a significant flow closed as completed in six commands.
   const early = wfctl(root, ["work", "verify", "--review", resolve(root, "r.json")]);
   assert.equal(early.status, 2, "verify skipped the chain");
-  assert.match(early.stdout, /needs implement recorded first|Recall is incomplete/);
+  assert.match(early.stdout, /needs framed recorded first/);
 });
 
 test("a parked flow accepts nothing material", async () => {

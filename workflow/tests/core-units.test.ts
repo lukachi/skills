@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { run } from "../src/core/cli.js";
+import { RECALL_ITEMS } from "../src/core/recall.js";
 import type { CommandContext } from "../src/core/commands.js";
 import { walkToImplement, walkToVerified } from "./helpers.js";
 
@@ -57,6 +58,13 @@ test("a claim records the workspace and never a revision", async () => {
   const ctx = await opened();
   // A claim names a checkout the registry knows; any string used to be accepted.
   await run(["repo", "add", "o/r", "--path", "/tmp", "--worktree", "wt-1"], ctx);
+  // The claim asks whether this already exists before it binds a checkout.
+  for (const item of RECALL_ITEMS.filter((entry) => entry.group === "D")) {
+    await run(
+      ["recall", "answer", item.id, "--answer", "x", "--route", "graphify", "--source", "s"],
+      ctx,
+    );
+  }
   await run(["work", "issue", "create", "--title", "first"], ctx);
   await run(["work", "issue", "claim", "U001", "--repository", "o/r", "--worktree", "wt-1"], ctx);
 

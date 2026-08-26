@@ -33,17 +33,48 @@ export type WorkWeight = (typeof WORK_WEIGHTS)[number];
  * work, and issues inside `implement` are worked in whatever order the agent
  * finds efficient.
  */
-export const WORK_STEPS = [
-  "opened",
-  "aligned",
-  "framed",
-  "split",
-  "implement",
-  "verified",
-  "closed",
-  "promoted",
-] as const;
+/**
+ * The transitions that carry authority, and nothing else.
+ *
+ * There were eight. Three of them — `aligned`, `split`, `implement` — recorded
+ * no decision anybody makes: they announced that reading, splitting or building
+ * was happening, which is a thing the record can see for itself. Measurement was
+ * blunt about it. One run delivered eighteen units, ran every gate green, and
+ * sat at `split` the whole time, because the work went past the chain rather
+ * than through it. `wfctl work step` refused to say which step it was on, so
+ * nothing ever pointed at the discrepancy.
+ *
+ * What is left is the four moments something is actually settled: the work
+ * exists and the maintainer said so, the framing is theirs, a review is on
+ * record, an outcome is recorded — and then promotion, which is theirs again.
+ *
+ * The obligations the removed steps carried did not go with them. `aligned`
+ * demanded recall group E, which `framed` already demands. `implement` demanded
+ * group D and a graph traversal before writing code; that belongs to the claim,
+ * which is the moment code is about to be written, rather than to a step an
+ * agent can record without doing anything.
+ */
+export const WORK_STEPS = ["opened", "framed", "verified", "closed", "promoted"] as const;
 export type WorkStep = (typeof WORK_STEPS)[number];
+
+/**
+ * Records written against the eight-step chain.
+ *
+ * Read-time only, and never written back: a live flow at `implement` is a flow
+ * whose framing is recorded and whose review is not, which is exactly `framed`.
+ * That delivery had started is not lost by the mapping — it is derivable from
+ * the units, which is where this record keeps everything it can derive.
+ */
+export const LEGACY_STEPS: Readonly<Record<string, WorkStep>> = {
+  aligned: "opened",
+  split: "framed",
+  implement: "framed",
+};
+
+export function settleStep(step: string): WorkStep {
+  if ((WORK_STEPS as readonly string[]).includes(step)) return step as WorkStep;
+  return LEGACY_STEPS[step] ?? "opened";
+}
 
 export interface RepositoryBinding {
   /** Portable identity, e.g. `owner/name`. */

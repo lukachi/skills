@@ -244,7 +244,8 @@ function flowAt(step: FlowRecord["step"]): FlowRecord {
 }
 
 test("steps: every step refuses from `opened` and names the command that clears it", () => {
-  const skippable = new Set(["opened", "aligned"]);
+  // `framed` is the first transition, so it is reachable from `opened` by design.
+  const skippable = new Set(["opened", "framed"]);
   for (const step of WORK_STEPS) {
     if (skippable.has(step)) continue;
     assert.throws(
@@ -264,10 +265,8 @@ test("steps: every step refuses from `opened` and names the command that clears 
 test("steps: each refusal names the command of the step it is actually missing", () => {
   const byStep = new Map(WORK_STEP_DEFINITIONS.map((definition) => [definition.step, definition]));
   const cases: Array<[FlowRecord["step"], FlowRecord["step"], FlowRecord["step"]]> = [
-    ["opened", "framed", "aligned"],
-    ["aligned", "implement", "framed"],
-    ["framed", "verified", "implement"],
-    ["implement", "closed", "verified"],
+    ["opened", "verified", "framed"],
+    ["framed", "closed", "verified"],
     ["verified", "promoted", "closed"],
   ];
   for (const [at, attempted, missing] of cases) {
@@ -322,7 +321,7 @@ async function installed(): Promise<string> {
 
 test("binary: no step in the chain can be reached out of order", async () => {
   for (const step of WORK_STEPS) {
-    if (step === "opened" || step === "aligned") continue;
+    if (step === "opened" || step === "framed") continue;
     const root = await installed();
     wfctl(root, ["work", "start", "--title", `skip to ${step}`, "--weight", "significant", "--attested", "they asked for it"]);
 
@@ -983,31 +982,26 @@ test("checkpoint: todos survive the next checkpoint", async () => {
   assert.match(brief, /delete the dead branch/);
 });
 
-test("checkpoint: a step does not advance on a checkpoint from an earlier one", async () => {
+test("checkpoint: a step does not advance without one written since the last", async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "stale", "--weight", "significant", "--attested", "go"]);
-  wfctl(root, ["work", "step", "aligned"]);
-  for (const item of ["E14", "E15", "E16"]) {
-    wfctl(root, ["recall", "answer", item, "--answer", "x", "--route", "qmd", "--source", "k"]);
+  const { RECALL_ITEMS } = await import("../src/core/recall.js");
+  for (const item of RECALL_ITEMS.filter((entry) => ["A", "B", "C", "E"].includes(entry.group))) {
+    wfctl(root, ["recall", "answer", item.id, "--answer", "x", "--route", "qmd", "--source", "k"]);
   }
 
   const owed = wfctl(root, ["work", "step", "framed"]);
   assert.equal(owed.status, 2, "a step advanced with no checkpoint at all");
   assert.match(owed.stdout, /remedy: wfctl checkpoint/);
 
-  wfctl(root, ["checkpoint", "--summary", "aligned", "--handoff", "what was found",
+  wfctl(root, ["checkpoint", "--summary", "framed", "--handoff", "what was found",
     "--last", "read the index", "--next", "frame it"]);
   assert.equal(wfctl(root, ["work", "step", "framed"]).status, 0);
 
-  // And the same checkpoint does not carry the flow through a second step.
-  // (Recall is answered first, so the refusal that lands is the checkpoint's.)
-  const { RECALL_ITEMS } = await import("../src/core/recall.js");
-  for (const item of RECALL_ITEMS.filter((entry) => ["A", "B", "C"].includes(entry.group))) {
-    wfctl(root, ["recall", "answer", item.id, "--answer", "x", "--route", "qmd", "--source", "k"]);
-  }
-  const again = wfctl(root, ["work", "step", "split"]);
-  assert.equal(again.status, 2, "one checkpoint carried the flow through two steps");
-  assert.match(again.stdout, /predates this flow reaching/);
+  // The second half of this test used to walk one more step on the same
+  // checkpoint. Every step after `framed` now needs a review on record, so the
+  // refusal that lands there is the review's rather than the checkpoint's —
+  // `core-flow.test.ts` holds the staleness check directly, against the gate.
 });
 
 test("park: a hold needs their words, because it silences the turn guard", async () => {
@@ -1025,7 +1019,12 @@ test("park: a hold needs their words, because it silences the turn guard", async
 test("flow close: work that moved is not dropped without an outcome", async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "moved", "--weight", "significant", "--attested", "go"]);
-  wfctl(root, ["work", "step", "aligned"]);
+  const { RECALL_ITEMS } = await import("../src/core/recall.js");
+  for (const item of RECALL_ITEMS.filter((entry) => ["A", "B", "C", "E"].includes(entry.group))) {
+    wfctl(root, ["recall", "answer", item.id, "--answer", "x", "--route", "qmd", "--source", "k"]);
+  }
+  wfctl(root, ["checkpoint", "--summary", "s", "--handoff", "h", "--last", "l", "--next", "n"]);
+  assert.equal(wfctl(root, ["work", "step", "framed"]).status, 0, "the flow never moved");
 
   const dropped = wfctl(root, ["flow", "close"]);
   assert.equal(dropped.status, 2, "the fence came down on work that had moved, with no outcome");
@@ -1109,9 +1108,9 @@ test("install: the ignore file matches what the runtime actually writes", async 
 test("steps: re-recording the current step does not invalidate its checkpoint", async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "loop", "--weight", "significant", "--attested", "go"]);
-  wfctl(root, ["work", "step", "aligned"]);
-  for (const item of ["E14", "E15", "E16"]) {
-    wfctl(root, ["recall", "answer", item, "--answer", "x", "--route", "qmd", "--source", "k"]);
+  const { RECALL_ITEMS } = await import("../src/core/recall.js");
+  for (const item of RECALL_ITEMS.filter((entry) => ["A", "B", "C", "E"].includes(entry.group))) {
+    wfctl(root, ["recall", "answer", item.id, "--answer", "x", "--route", "qmd", "--source", "k"]);
   }
   wfctl(root, ["checkpoint", "--summary", "s", "--handoff", "h", "--last", "l", "--next", "n"]);
 
@@ -1119,7 +1118,7 @@ test("steps: re-recording the current step does not invalidate its checkpoint", 
   // against, so the only way out was another checkpoint, which the next re-run
   // invalidated again. A real session spent four attempts on `aligned` and five
   // on `framed` inside that loop.
-  wfctl(root, ["work", "step", "aligned"]);
+  wfctl(root, ["work", "step", "framed"]);
   const advanced = wfctl(root, ["work", "step", "framed"]);
   assert.equal(advanced.status, 0,
     `re-recording the current step invalidated a fresh checkpoint:\n${advanced.stdout}`);
@@ -1360,4 +1359,49 @@ test("every relative link in the docs resolves", () => {
     }
   }
   assert.deepEqual(broken, []);
+});
+
+// ---------------------------------------------------------------------------
+// Records written against the eight-step chain.
+//
+// Two live repositories held flows at `implement` when the chain collapsed to
+// four. A rename that strands the records it renames is not a rename.
+
+test("a flow written at a step that no longer exists still reads", async () => {
+  const root = await scratch("wfctl-legacy-");
+  const { settleStep, WORK_STEPS } = await import("../src/core/types.js");
+
+  for (const [was, becomes] of [
+    ["aligned", "opened"],
+    ["split", "framed"],
+    ["implement", "framed"],
+  ] as const) {
+    assert.equal(settleStep(was), becomes, `${was} settled to the wrong step`);
+    assert.ok((WORK_STEPS as readonly string[]).includes(settleStep(was)));
+  }
+  // A step that still exists is untouched.
+  for (const step of WORK_STEPS) assert.equal(settleStep(step), step);
+  // And anything unrecognisable lands somewhere legal rather than corrupting.
+  assert.ok((WORK_STEPS as readonly string[]).includes(settleStep("nonsense")));
+
+  await rm(root, { recursive: true, force: true });
+});
+
+test("a record at implement is read as framed, and its units survive", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "legacy", "--weight", "significant", "--attested", "go"]);
+  wfctl(root, ["work", "issue", "create", "--title", "a unit written before the collapse"]);
+
+  const id = (await readFile(join(root, ".workflow/flows/current"), "utf8")).trim();
+  const path = join(root, ".workflow/flows", `${id}.json`);
+  const record = JSON.parse(await readFile(path, "utf8"));
+  record.step = "implement";
+  await writeFile(path, JSON.stringify(record, null, 2), "utf8");
+
+  // Delivery having started is not lost by the mapping: it is derivable from
+  // the units, which is where this record keeps everything it can derive.
+  const brief = wfctl(root, ["brief"]);
+  assert.equal(brief.status, 0, brief.stdout);
+  assert.match(brief.stdout, /step framed/);
+  assert.match(wfctl(root, ["work", "issue", "list"]).stdout, /a unit written before the collapse/);
 });

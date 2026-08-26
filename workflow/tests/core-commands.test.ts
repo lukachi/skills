@@ -59,13 +59,13 @@ test("starting a flow prints the next step's guidance, not a path to it", async 
   const result = await workStart(ctx, { title: "account recovery", weight: "significant", attested: "they asked for it" });
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /What the project already says/);
-  assert.match(result.stdout, /nothing covers it/);
+  assert.match(result.stdout, /what the project already says/i);
 });
 
 test("advancing refuses while the current step's recall is short, and names the fix", async () => {
   const ctx = await context();
   await workStart(ctx, { title: "thing", weight: "significant", attested: "they asked for it" });
-  await advance(ctx, "aligned");
+  await advance(ctx, "framed");
 
   const blocked = await advance(ctx, "framed");
   assert.equal(blocked.exitCode, 2);
@@ -90,9 +90,8 @@ test("an answer without a source is refused", async () => {
 test("a full pass reaches framing once alignment is genuinely answered", async () => {
   const ctx = await context();
   await workStart(ctx, { title: "thing", weight: "significant", attested: "they asked for it" });
-  await advance(ctx, "aligned");
-  await answerGroup(ctx, "E", "qmd");
-  await run(["checkpoint", "--summary", "aligned", "--handoff", "what was found",
+  for (const group of ["A", "B", "C", "E"]) await answerGroup(ctx, group, "qmd");
+  await run(["checkpoint", "--summary", "framed", "--handoff", "what was found",
     "--last", "read the index", "--next", "frame it"], ctx);
 
   const framed = await advance(ctx, "framed");

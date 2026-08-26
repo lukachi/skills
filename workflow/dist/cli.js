@@ -15,22 +15,22 @@ var __export = (target, all) => {
 };
 
 // src/core/types.ts
-var FLOW_SCHEMA_VERSION, WORK_WEIGHTS, WORK_STEPS, RECALL_ROUTES;
+function settleStep(step) {
+  if (WORK_STEPS.includes(step)) return step;
+  return LEGACY_STEPS[step] ?? "opened";
+}
+var FLOW_SCHEMA_VERSION, WORK_WEIGHTS, WORK_STEPS, LEGACY_STEPS, RECALL_ROUTES;
 var init_types = __esm({
   "src/core/types.ts"() {
     "use strict";
     FLOW_SCHEMA_VERSION = 1;
     WORK_WEIGHTS = ["significant", "lightweight"];
-    WORK_STEPS = [
-      "opened",
-      "aligned",
-      "framed",
-      "split",
-      "implement",
-      "verified",
-      "closed",
-      "promoted"
-    ];
+    WORK_STEPS = ["opened", "framed", "verified", "closed", "promoted"];
+    LEGACY_STEPS = {
+      aligned: "opened",
+      split: "framed",
+      implement: "framed"
+    };
     RECALL_ROUTES = ["qmd", "graphify", "grep", "read", "maintainer"];
   }
 });
@@ -38,6 +38,7 @@ var init_types = __esm({
 // src/core/recall.ts
 var recall_exports = {};
 __export(recall_exports, {
+  CLAIM_REQUIREMENT: () => CLAIM_REQUIREMENT,
   RECALL_ITEMS: () => RECALL_ITEMS,
   STEP_REQUIREMENTS: () => STEP_REQUIREMENTS,
   emptyCounters: () => emptyCounters,
@@ -72,8 +73,8 @@ function isAnswered(state, itemId) {
     (answer) => answer.item.toUpperCase() === itemId.toUpperCase() && answer.answer.trim().length > 0 && answer.source.trim().length > 0
   );
 }
-function shortfallFor(step, state) {
-  const requirement = STEP_REQUIREMENTS[step];
+function shortfallFor(step, state, override) {
+  const requirement = override ?? STEP_REQUIREMENTS[step];
   if (!requirement) {
     return { missingItems: [], missingFloor: [] };
   }
@@ -88,15 +89,15 @@ function shortfallFor(step, state) {
 function isSatisfied(shortfall) {
   return shortfall.missingItems.length === 0 && shortfall.missingFloor.length === 0;
 }
-function renderCounterLine(step, state) {
-  const requirement = STEP_REQUIREMENTS[step];
+function renderCounterLine(step, state, override) {
+  const requirement = override ?? STEP_REQUIREMENTS[step];
   const required = requirement ? requirement.groups.flatMap((group) => itemsForGroup(group)) : [];
   const answered = required.filter((item) => isAnswered(state, item.id)).length;
   const counters = RECALL_ROUTES.map((route) => `${route} ${state.counters[route] ?? 0}`).join(
     " \xB7 "
   );
   const lines = [`recall: ${answered}/${required.length} required answered \xB7 ${counters}`];
-  const shortfall = shortfallFor(step, state);
+  const shortfall = shortfallFor(step, state, override);
   if (shortfall.missingItems.length > 0) {
     const missing = shortfall.missingItems.map((item) => `${item.id} ${item.question}`).join("\n         ");
     lines.push(`missing: ${missing}`);
@@ -126,7 +127,7 @@ function recordRoute(state, route, covered = []) {
 function recordWritten(state, path) {
   return { ...state, written: [.../* @__PURE__ */ new Set([...state.written ?? [], path])].sort() };
 }
-var RECALL_ITEMS, STEP_REQUIREMENTS;
+var RECALL_ITEMS, STEP_REQUIREMENTS, CLAIM_REQUIREMENT;
 var init_recall = __esm({
   "src/core/recall.ts"() {
     "use strict";
@@ -158,12 +159,11 @@ var init_recall = __esm({
       { id: "H24", group: "H", question: "Am I recording not-found, or asserting it does not exist?" }
     ];
     STEP_REQUIREMENTS = {
-      aligned: { groups: ["E"], floor: { qmd: 1 } },
       framed: { groups: ["A", "B", "C", "E"], floor: { qmd: 1 } },
-      implement: { groups: ["D"], floor: { graphify: 1 } },
       verified: { groups: ["G"], floor: {} },
       promoted: { groups: ["E", "H"], floor: {} }
     };
+    CLAIM_REQUIREMENT = { groups: ["D"], floor: { graphify: 1 } };
   }
 });
 
@@ -266,25 +266,9 @@ var init_steps = __esm({
         command: 'wfctl work start --title "<what this is>" --weight <significant|lightweight>'
       },
       {
-        step: "aligned",
-        demands: "What the project already says about this subject. If nothing is written yet, record that nothing covers it \u2014 an empty corpus passes a conflict check silently, and that reads exactly like a check that found nothing wrong.",
-        command: "wfctl work step aligned"
-      },
-      {
         step: "framed",
-        demands: "What the work is: the outcome, the boundary, and the acceptance criteria. This is the cheapest moment to change the scope and the last one where it is free.",
+        demands: "What the work is: the outcome, the boundary, the acceptance criteria, and what the project already says about the subject. If nothing is written yet, record that nothing covers it \u2014 an empty corpus passes a conflict check silently, and that reads exactly like a check that found nothing wrong. This is the cheapest moment to change the scope and the last one where it is free.",
         command: "wfctl work step framed"
-      },
-      {
-        step: "split",
-        demands: "The units of delivery, sized by scope and coherence. Not by what fits in a session \u2014 that framing made agents stop halfway through a context that was still wide open.",
-        command: 'wfctl work issue create --title "<what it delivers>"',
-        optionalWhen: (flow) => flow.weight === "lightweight"
-      },
-      {
-        step: "implement",
-        demands: "One slice at a time, in the checkout the claim binds.",
-        command: "wfctl work issue claim <id> --repository <owner/name>"
       },
       {
         step: "verified",
@@ -309,7 +293,7 @@ var init_steps = __esm({
 function assertReached(flow, step) {
   const required = PRECONDITION[step];
   if (!required) return;
-  const order = ["opened", "aligned", "framed", "split", "implement", "verified", "closed", "promoted"];
+  const order = WORK_STEPS;
   if (order.indexOf(flow.step) < order.indexOf(required)) {
     const definition = definitionFor(required);
     throw new GateRefusal(
@@ -348,7 +332,7 @@ function assertNotParked(flow) {
   );
 }
 function assertCheckpointCurrent(flow, step) {
-  if (step === "aligned") return;
+  if (flow.step === step) return;
   const checkpoint2 = flow.checkpoint;
   if (!checkpoint2) {
     throw new GateRefusal(
@@ -371,6 +355,7 @@ var init_gates = __esm({
     "use strict";
     init_recall();
     init_steps();
+    init_types();
     GateRefusal = class extends Error {
       constructor(message, remedy, detail) {
         super(message);
@@ -388,11 +373,8 @@ var init_gates = __esm({
       }
     };
     PRECONDITION = {
-      aligned: "opened",
-      framed: "aligned",
-      split: "framed",
-      implement: "framed",
-      verified: "implement",
+      framed: "opened",
+      verified: "framed",
       closed: "verified",
       promoted: "closed"
     };
@@ -1007,10 +989,14 @@ function createFlowId(kind, title, now) {
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
   return `${date}-${kind}-${slug || "untitled"}`;
 }
+function settleRecord(record) {
+  const step = settleStep(record.step);
+  return step === record.step ? record : { ...record, step };
+}
 async function readFlow(root, id) {
   try {
     const raw = await readFile4(flowPath(root, id), "utf8");
-    return JSON.parse(raw);
+    return settleRecord(JSON.parse(raw));
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
     throw error;
@@ -3304,8 +3290,8 @@ async function workStart(context, options) {
     return ok(
       compose([
         `flow ${flow.id} opened`,
-        await guidanceFor(context, "work/aligned"),
-        renderStep({ ...flow, step: "aligned" })
+        await guidanceFor(context, "work/framed"),
+        renderStep({ ...flow, step: "opened" })
       ])
     );
   } catch (error) {
@@ -3324,7 +3310,7 @@ async function advance(context, to) {
   try {
     assertNotParked(flow);
     assertReached(flow, to);
-    assertRecall(flow, flow.step);
+    assertRecall(flow, to);
     assertReviewed(flow, to);
     assertCheckpointCurrent(flow, to);
   } catch (error) {
@@ -3574,8 +3560,8 @@ ${known.map((n) => `  ${n}`).join("\n")}` : void 0
           "stop."
         ].join("\n"),
         adoptedCheckpointDemand(bundle),
-        await guidanceFor(context, "work/aligned"),
-        renderStep({ ...flow, step: "aligned" })
+        await guidanceFor(context, "work/framed"),
+        renderStep({ ...flow, step: "opened" })
       ])
     );
   } catch (error) {
@@ -3623,7 +3609,7 @@ async function workList(context) {
   return ok(renderBundles2(await listBundles2(context.root)));
 }
 function grownDuring(step) {
-  return step === "implement" || step === "verified" || step === "closed" || step === "promoted";
+  return step !== "opened";
 }
 async function issueCreate(context, options) {
   const flow = await currentFlow(context.root);
@@ -3658,10 +3644,14 @@ async function issueCreate(context, options) {
     if (options.from) issue.from = options.from;
     return { ...current, issues: [...current.issues, issue] };
   });
+  const first = flow.issues.length === 0;
   return ok(
-    discovered ? `${created}  ${options.title.trim()}
+    compose([
+      discovered ? `${created}  ${options.title.trim()}
 
-Added during ${flow.step}. The route grows: a unit list written at split is a prediction, and this is one reality asked for.` : `${created}  ${options.title.trim()}`
+Added during ${flow.step}. The route grows: a unit list is a prediction, and this is one reality asked for.` : `${created}  ${options.title.trim()}`,
+      first ? await guidanceFor(context, "work/split") : void 0
+    ])
   );
 }
 async function issueList(context) {
@@ -3742,11 +3732,25 @@ async function issueClaim(context, options) {
 ${registered.map((entry) => `  ${entry.repository}  ${entry.worktreeId}  ${entry.path}`).join("\n")}` : "Nothing is registered, so no checkout can be claimed."
         );
       }
+      const { CLAIM_REQUIREMENT: CLAIM_REQUIREMENT2, isSatisfied: isSatisfied2, renderCounterLine: renderCounterLine2, shortfallFor: shortfallFor2 } = await Promise.resolve().then(() => (init_recall(), recall_exports));
+      const shortfall = shortfallFor2("implement", flow.recall, CLAIM_REQUIREMENT2);
+      if (!isSatisfied2(shortfall)) {
+        throw new GateRefusal(
+          "Nothing here says whether this already exists.",
+          'wfctl recall answer <item> --answer "<what you found>" --route graphify --source "<where>"',
+          `${renderCounterLine2("implement", flow.recall, CLAIM_REQUIREMENT2)}
+
+A claim is about to bind a checkout and change code in it. The one thing worth knowing first is whether the thing already exists, and text search finds only the names you thought of.
+
+wfctl guide recall \u2014 why this checklist exists`
+        );
+      }
     } catch (error) {
       if (error instanceof GateRefusal) return refused(error);
       throw error;
     }
   }
+  const page = await guidanceFor(context, "work/implement");
   const claimed = await withIssue(context, options.id, (issue) => ({
     ...issue,
     status: "claimed",
@@ -3760,13 +3764,14 @@ ${registered.map((entry) => `  ${entry.repository}  ${entry.worktreeId}  ${entry
   const equipped = (flow?.kit ?? []).filter(
     (entry) => entry.kind === "skill" && entry.repository === options.repository
   );
-  if (equipped.length === 0) return claimed;
+  if (equipped.length === 0) return ok(compose([page, claimed.stdout]));
   const { readRegistry: readForPath } = await Promise.resolve().then(() => (init_registry(), registry_exports));
   const checkout = (await readForPath(context.root)).find(
     (entry) => entry.repository === options.repository && entry.worktreeId === options.worktreeId
   );
   return ok(
     [
+      ...page ? [page, ""] : [],
       claimed.stdout,
       "",
       `what this work equipped for ${options.repository}:`,

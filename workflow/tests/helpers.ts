@@ -17,52 +17,40 @@ async function mark(ctx: CommandContext, where: string): Promise<void> {
     "--last", `reached ${where}`, "--next", "the next step"], ctx);
 }
 
-export async function walkToImplement(ctx: CommandContext): Promise<void> {
-  await run(["work", "step", "aligned"], ctx);
-  for (const group of ["E"]) {
+/** Answer every recall item in these groups, by the route each floor wants. */
+async function answer(ctx: CommandContext, groups: string[]): Promise<void> {
+  for (const group of groups) {
+    const route = group === "D" ? "graphify" : group === "G" ? "read" : "qmd";
     for (const item of RECALL_ITEMS.filter((entry) => entry.group === group)) {
-      await run(["recall", "answer", item.id, "--answer", "checked", "--route", "qmd", "--source", "k"], ctx);
-    }
-  }
-  await mark(ctx, "framed");
-  await run(["work", "step", "framed"], ctx);
-  for (const group of ["A", "B", "C"]) {
-    for (const item of RECALL_ITEMS.filter((entry) => entry.group === group)) {
-      await run(["recall", "answer", item.id, "--answer", "checked", "--route", "qmd", "--source", "k"], ctx);
-    }
-  }
-  await mark(ctx, "split");
-  await run(["work", "step", "split"], ctx);
-  await mark(ctx, "implement");
-  await run(["work", "step", "implement"], ctx);
-  for (const group of ["D", "G"]) {
-    for (const item of RECALL_ITEMS.filter((entry) => entry.group === group)) {
-      await run(["recall", "answer", item.id, "--answer", "checked", "--route", group === "D" ? "graphify" : "read", "--source", "s"], ctx);
+      await run(
+        ["recall", "answer", item.id, "--answer", "checked", "--route", route, "--source", "k"],
+        ctx,
+      );
     }
   }
 }
 
-export async function walkToVerified(ctx: CommandContext): Promise<void> {
-  await run(["work", "step", "aligned"], ctx);
-  for (const item of RECALL_ITEMS.filter((entry) => entry.group === "E")) {
-    await run(["recall", "answer", item.id, "--answer", "checked", "--route", "qmd", "--source", "knowledge/index.md"], ctx);
-  }
+/**
+ * Framed, and ready to claim.
+ *
+ * `aligned`, `split` and `implement` were steps and are not any more, so this
+ * walks the four transitions that carry authority. Group D is answered because
+ * the claim wants it — the traversal obligation moved to the moment code is
+ * about to change rather than to a step announcing that it might.
+ */
+export async function walkToImplement(ctx: CommandContext): Promise<void> {
+  await answer(ctx, ["A", "B", "C", "E"]);
   await mark(ctx, "framed");
-  await run(["work", "step", "framed"], ctx);
-  for (const item of RECALL_ITEMS.filter((entry) => ["A", "B", "C"].includes(entry.group))) {
-    await run(["recall", "answer", item.id, "--answer", "checked", "--route", "qmd", "--source", "knowledge/index.md"], ctx);
+  const framed = await run(["work", "step", "framed"], ctx);
+  if (framed.exitCode !== 0) {
+    throw new Error(`walkToImplement did not reach framed:\n${framed.stdout}`);
   }
-  await mark(ctx, "split");
-  await run(["work", "step", "split"], ctx);
-  await mark(ctx, "implement");
-  await run(["work", "step", "implement"], ctx);
-  for (const item of RECALL_ITEMS.filter((entry) => entry.group === "D")) {
-    await run(["recall", "answer", item.id, "--answer", "checked", "--route", "graphify", "--source", "src/x.ts"], ctx);
-  }
+  await answer(ctx, ["D"]);
+}
 
-  for (const item of RECALL_ITEMS.filter((entry) => entry.group === "G")) {
-    await run(["recall", "answer", item.id, "--answer", "checked", "--route", "read", "--source", "src/x.ts"], ctx);
-  }
+export async function walkToVerified(ctx: CommandContext): Promise<void> {
+  await walkToImplement(ctx);
+  await answer(ctx, ["G"]);
 
   const review = resolve(ctx.root, "walk-review.json");
   await writeFile(

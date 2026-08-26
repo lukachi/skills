@@ -19,15 +19,16 @@ test("the whole changes flow is walkable without knowing the sequence", async ()
   assert.equal(start.exitCode, 0);
   assert.match(start.stdout, /What the project already says/);
 
-  await run(["work", "step", "aligned"], ctx);
+  await run(["work", "step", "framed"], ctx);
 
   const blocked = await run(["work", "step", "framed"], ctx);
   assert.equal(blocked.exitCode, 2);
   assert.match(blocked.stdout, /remedy: wfctl recall answer/);
 
-  for (const item of ["E14", "E15", "E16"]) {
+  const { RECALL_ITEMS } = await import("../src/core/recall.js");
+  for (const item of RECALL_ITEMS.filter((entry) => ["A", "B", "C", "E"].includes(entry.group))) {
     const answered = await run(
-      ["recall", "answer", item, "--answer", "checked", "--route", "qmd", "--source", "knowledge/index.md"],
+      ["recall", "answer", item.id, "--answer", "checked", "--route", "qmd", "--source", "knowledge/index.md"],
       ctx,
     );
     assert.equal(answered.exitCode, 0);
@@ -38,7 +39,7 @@ test("the whole changes flow is walkable without knowing the sequence", async ()
   const owed = await run(["work", "step", "framed"], ctx);
   assert.equal(owed.exitCode, 2);
   assert.match(owed.stdout, /remedy: wfctl checkpoint/);
-  await run(["checkpoint", "--summary", "aligned", "--handoff", "what was found",
+  await run(["checkpoint", "--summary", "framed", "--handoff", "what was found",
     "--last", "read the index", "--next", "frame it"], ctx);
 
   const framed = await run(["work", "step", "framed"], ctx);
@@ -89,7 +90,7 @@ test("an unknown step is named rather than silently ignored", async () => {
   // answers the question the caller was probably asking.
   assert.equal(result.exitCode, 2);
   assert.match(result.stdout, /wfctl work step/);
-  assert.match(result.stdout, /The steps are: opened, aligned/);
+  assert.match(result.stdout, /The steps are: opened, framed/);
 });
 
 test("the guide serves detail on demand and lists its topics", async () => {
@@ -114,7 +115,7 @@ test("the guide serves detail on demand and lists its topics", async () => {
 test("a recall refusal points at the guide that explains it", async () => {
   const ctx = await context();
   await run(["work", "start", "--title", "thing", "--weight", "significant", "--attested", "they asked for it"], ctx);
-  await run(["work", "step", "aligned"], ctx);
+  await run(["work", "step", "framed"], ctx);
 
   const blocked = await run(["work", "step", "framed"], ctx);
   assert.equal(blocked.exitCode, 2);

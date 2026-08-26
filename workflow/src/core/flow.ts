@@ -4,7 +4,7 @@ import { GateRefusal } from "./gates.js";
 import { withLock, writeAtomic } from "./lock.js";
 import { emptyRecall } from "./recall.js";
 import type { AdoptedSource, FlowKind, FlowRecord, WorkWeight } from "./types.js";
-import { FLOW_SCHEMA_VERSION } from "./types.js";
+import { FLOW_SCHEMA_VERSION, settleStep } from "./types.js";
 
 const FLOW_DIR = ".workflow/flows";
 const CURRENT_POINTER = ".workflow/flows/current";
@@ -39,10 +39,24 @@ export function createFlowId(kind: FlowKind, title: string, now: Date): string {
   return `${date}-${kind}-${slug || "untitled"}`;
 }
 
+/**
+ * A record written against the eight-step chain, read against the four.
+ *
+ * Read-time only, and never written back on its own: rewriting live records to
+ * settle a rename is a migration, and a migration that runs on every read is a
+ * migration that will one day run halfway. A flow at `implement` is a flow whose
+ * framing is recorded and whose review is not — which is `framed` — and that
+ * delivery had started is derivable from the units rather than lost.
+ */
+function settleRecord(record: FlowRecord): FlowRecord {
+  const step = settleStep(record.step as string);
+  return step === record.step ? record : { ...record, step };
+}
+
 export async function readFlow(root: string, id: string): Promise<FlowRecord | undefined> {
   try {
     const raw = await readFile(flowPath(root, id), "utf8");
-    return JSON.parse(raw) as FlowRecord;
+    return settleRecord(JSON.parse(raw) as FlowRecord);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;

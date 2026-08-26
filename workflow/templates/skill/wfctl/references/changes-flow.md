@@ -1,20 +1,29 @@
 # The changes flow
 
-Eight steps. Each is unlocked by the one before it, and each command prints what
-the next one needs — so you can walk this without memorising it.
+Four transitions, and each is a moment something is settled. Each is unlocked by
+the one before it, and each command prints what the next one needs — so you can
+walk this without memorising it.
 
 | Step | What is settled | Whose |
 | --- | --- | --- |
 | `opened` | significant or lightweight | maintainer's |
-| `aligned` | what the project already says about this subject | yours |
-| `framed` | the outcome, the boundary, the acceptance criteria | maintainer's |
-| `split` | the units of delivery | yours |
-| `implement` | one slice at a time, in a bound checkout | yours |
+| `framed` | what the project already says, and the outcome, boundary and acceptance criteria | maintainer's |
 | `verified` | an adversarial review by a different agent | yours |
 | `closed` | nothing | nobody's |
 | `promoted` | what the project now says about itself | maintainer's |
 
-`split` may be skipped for lightweight work.
+There were eight. Three of them — `aligned`, `split`, `implement` — recorded no
+decision anybody makes: they announced that reading, splitting or building was
+happening, which the record can see for itself. One real run delivered eighteen
+units, ran every gate green, and sat at `split` the whole time, because the work
+went past the chain rather than through it.
+
+**What they demanded did not go with them.** Alignment is the first half of
+framing and its recall folded in. Units are created whenever the work asks —
+`wfctl work issue create`, at any point. And the traversal that asks whether a
+thing already exists moved to `wfctl work issue claim`, which is the moment a
+checkout is bound and code is about to change, rather than a step an agent could
+record without doing anything.
 
 ## Opening
 

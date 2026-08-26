@@ -318,8 +318,8 @@ export async function workStart(
     return ok(
       compose([
         `flow ${flow.id} opened`,
-        await guidanceFor(context, "work/aligned"),
-        renderStep({ ...flow, step: "aligned" }),
+        await guidanceFor(context, "work/framed"),
+        renderStep({ ...flow, step: "opened" }),
       ]),
     );
   } catch (error) {
@@ -348,7 +348,17 @@ export async function advance(context: CommandContext, to: WorkStep): Promise<Co
   try {
     assertNotParked(flow);
     assertReached(flow, to);
-    assertRecall(flow, flow.step);
+    /**
+     * The recall the step being entered demands, not the one being left.
+     *
+     * This read `flow.step`, so every requirement was checked one transition
+     * late — with eight steps that mostly coincided, and collapsing to four made
+     * it visible: framing demands groups A, B, C and E, and entering `framed`
+     * from `opened` checked `opened`, which demands nothing. The corpus reading
+     * the framing rests on was never required at the moment framing was
+     * recorded.
+     */
+    assertRecall(flow, to);
     assertReviewed(flow, to);
     assertCheckpointCurrent(flow, to);
   } catch (error) {
@@ -708,8 +718,8 @@ export async function workAdopt(
           "stop.",
         ].join("\n"),
         adoptedCheckpointDemand(bundle),
-        await guidanceFor(context, "work/aligned"),
-        renderStep({ ...flow, step: "aligned" }),
+        await guidanceFor(context, "work/framed"),
+        renderStep({ ...flow, step: "opened" }),
       ]),
     );
   } catch (error) {
@@ -808,9 +818,15 @@ export async function workList(context: CommandContext): Promise<CommandResult> 
  * written in the notes, which is also where everything else learned about a
  * unit goes.
  */
-/** Whether a unit created at this step is one delivery asked for. */
+/**
+ * Whether a unit created here is one delivery asked for.
+ *
+ * A framed flow is a flow whose route is settled, so anything named after that
+ * is the route growing. Before framing it is still being laid down, and calling
+ * a unit written at `opened` "discovered" would make the signal mean nothing.
+ */
 function grownDuring(step: WorkStep): boolean {
-  return step === "implement" || step === "verified" || step === "closed" || step === "promoted";
+  return step !== "opened";
 }
 
 export async function issueCreate(
@@ -863,11 +879,20 @@ export async function issueCreate(
     if (options.from) issue.from = options.from;
     return { ...current, issues: [...current.issues, issue] };
   });
+  /**
+   * The units page is printed where units are made, not at a step called
+   * `split`. It was keyed to that step and the step is gone; the content is
+   * exactly what somebody writing a unit needs, so it arrives here.
+   */
+  const first = flow.issues.length === 0;
   return ok(
-    discovered
-      ? `${created}  ${options.title.trim()}\n\nAdded during ${flow.step}. The route grows: a unit list written at ` +
-        `split is a prediction, and this is one reality asked for.`
-      : `${created}  ${options.title.trim()}`,
+    compose([
+      discovered
+        ? `${created}  ${options.title.trim()}\n\nAdded during ${flow.step}. The route grows: a unit ` +
+          "list is a prediction, and this is one reality asked for."
+        : `${created}  ${options.title.trim()}`,
+      first ? await guidanceFor(context, "work/split") : undefined,
+    ]),
   );
 }
 
@@ -1001,11 +1026,43 @@ export async function issueClaim(
             : "Nothing is registered, so no checkout can be claimed.",
         );
       }
+
+      /**
+       * What has to be answered before code is written.
+       *
+       * Group D — does an implementation already exist, found by traversal
+       * rather than by guess — hung off a step called `implement`, which an
+       * agent could record without doing anything and which one real run never
+       * recorded at all while delivering eighteen units. The claim is the moment
+       * a checkout is bound and code is about to change, so the obligation is
+       * here, where it cannot be walked past.
+       */
+      const { CLAIM_REQUIREMENT, isSatisfied, renderCounterLine, shortfallFor } = await import(
+        "./recall.js"
+      );
+      const shortfall = shortfallFor("implement", flow.recall, CLAIM_REQUIREMENT);
+      if (!isSatisfied(shortfall)) {
+        throw new GateRefusal(
+          "Nothing here says whether this already exists.",
+          'wfctl recall answer <item> --answer "<what you found>" --route graphify --source "<where>"',
+          `${renderCounterLine("implement", flow.recall, CLAIM_REQUIREMENT)}\n\n` +
+            "A claim is about to bind a checkout and change code in it. The one " +
+            "thing worth knowing first is whether the thing already exists, and " +
+            "text search finds only the names you thought of.\n\n" +
+            "wfctl guide recall — why this checklist exists",
+        );
+      }
+
     } catch (error) {
       if (error instanceof GateRefusal) return refused(error);
       throw error;
     }
   }
+  /**
+   * The implementing page arrives at the claim, where the work is about to
+   * start, rather than at a step announcing that it might.
+   */
+  const page = await guidanceFor(context, "work/implement");
   const claimed = await withIssue(context, options.id, (issue) => ({
     ...issue,
     status: "claimed",
@@ -1030,7 +1087,7 @@ export async function issueClaim(
   const equipped = (flow?.kit ?? []).filter(
     (entry) => entry.kind === "skill" && entry.repository === options.repository,
   );
-  if (equipped.length === 0) return claimed;
+  if (equipped.length === 0) return ok(compose([page, claimed.stdout]));
 
   const { readRegistry: readForPath } = await import("./registry.js");
   const checkout = (await readForPath(context.root)).find(
@@ -1039,6 +1096,7 @@ export async function issueClaim(
 
   return ok(
     [
+      ...(page ? [page, ""] : []),
       claimed.stdout,
       "",
       `what this work equipped for ${options.repository}:`,

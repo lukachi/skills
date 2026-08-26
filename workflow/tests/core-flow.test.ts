@@ -6,14 +6,7 @@ import test from "node:test";
 import { buildCheckpoint, renderBrief, renderHandoff } from "../src/core/checkpoint.js";
 import { GateRefusal, assertNotParked, assertReached, assertRecall } from "../src/core/gates.js";
 import { FlowOpenError, closeFlow, currentFlow, listFlows, mutateFlow, openFlow } from "../src/core/flow.js";
-import {
-  RECALL_ITEMS,
-  isAnswered,
-  recordAnswer,
-  recordRoute,
-  renderCounterLine,
-  shortfallFor,
-} from "../src/core/recall.js";
+import { CLAIM_REQUIREMENT, RECALL_ITEMS, isAnswered, isSatisfied, recordAnswer, recordRoute, renderCounterLine, shortfallFor } from "../src/core/recall.js";
 import { deriveBlocker, renderStep } from "../src/core/steps.js";
 import { assertWriteAllowed } from "../src/core/paths.js";
 import { assertReviewUsable, renderReviewerBrief, type Review } from "../src/core/verify.js";
@@ -75,15 +68,17 @@ test("an answer without a source does not count as answered", () => {
   assert.equal(isAnswered(recall, "E14"), true);
 });
 
-test("the align step demands group E and at least one qmd query", () => {
+test("framing demands what the project already says, and a qmd query", () => {
+  // `aligned` was a step and is not any more; the recall it carried folded into
+  // framing, which already demanded group E alongside A, B and C.
   const flow = base();
-  flow.step = "aligned";
+  flow.step = "framed";
 
-  const before = shortfallFor("aligned", flow.recall);
+  const before = shortfallFor("framed", flow.recall);
   assert.ok(before.missingItems.some((item) => item.id === "E14"));
   assert.ok(before.missingFloor.some((entry) => entry.route === "qmd"));
 
-  for (const item of RECALL_ITEMS.filter((entry) => entry.group === "E")) {
+  for (const item of RECALL_ITEMS.filter((entry) => ["A", "B", "C", "E"].includes(entry.group))) {
     flow.recall = recordAnswer(flow.recall, {
       item: item.id,
       answer: "checked",
@@ -93,14 +88,19 @@ test("the align step demands group E and at least one qmd query", () => {
     });
   }
 
-  const after = shortfallFor("aligned", flow.recall);
+  const after = shortfallFor("framed", flow.recall);
   assert.equal(after.missingItems.length, 0);
   assert.equal(after.missingFloor.length, 0);
 });
 
-test("implementation requires a graph traversal, and grep does not substitute", () => {
+test("a claim requires a graph traversal, and grep does not substitute", () => {
+  /**
+   * This hung off a step called `implement` — a step an agent could record
+   * without doing anything, and one real run never recorded at all while
+   * delivering eighteen units. It belongs to the claim, which is the moment a
+   * checkout is bound and code is about to change.
+   */
   const flow = base();
-  flow.step = "implement";
   for (const item of RECALL_ITEMS.filter((entry) => entry.group === "D")) {
     flow.recall = recordAnswer(flow.recall, {
       item: item.id,
@@ -111,10 +111,9 @@ test("implementation requires a graph traversal, and grep does not substitute", 
     });
   }
 
-  assert.throws(() => assertRecall(flow, "implement"), GateRefusal);
-
+  assert.ok(!isSatisfied(shortfallFor("implement", flow.recall, CLAIM_REQUIREMENT)));
   flow.recall = recordRoute(flow.recall, "graphify", ["src/thing.ts"]);
-  assert.doesNotThrow(() => assertRecall(flow, "implement"));
+  assert.ok(isSatisfied(shortfallFor("implement", flow.recall, CLAIM_REQUIREMENT)));
 });
 
 test("every gate refusal names the command that clears it", () => {
@@ -136,7 +135,7 @@ test("a step cannot be entered before its precondition", () => {
   const flow = base();
   flow.step = "opened";
   assert.throws(() => assertReached(flow, "verified"), GateRefusal);
-  flow.step = "implement";
+  flow.step = "verified";
   assert.doesNotThrow(() => assertReached(flow, "verified"));
 });
 
@@ -213,9 +212,9 @@ test("an invisible field is not a field", () => {
 
 test("the counter line names the missing items", () => {
   const flow = base();
-  flow.step = "aligned";
-  const line = renderCounterLine("aligned", flow.recall);
-  assert.match(line, /recall: 0\/3 required answered/);
+  flow.step = "framed";
+  const line = renderCounterLine("framed", flow.recall);
+  assert.match(line, /recall: 0\/13 required answered/);
   assert.match(line, /E14/);
 });
 

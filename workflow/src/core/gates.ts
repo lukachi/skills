@@ -1,6 +1,6 @@
 import { isSatisfied, renderCounterLine, shortfallFor } from "./recall.js";
 import { definitionFor } from "./steps.js";
-import type { FlowRecord, WorkStep } from "./types.js";
+import { WORK_STEPS, type FlowRecord, type WorkStep } from "./types.js";
 
 /**
  * A refusal that does not name its own remedy costs the agent a turn and
@@ -43,11 +43,8 @@ export class GateRefusal extends Error {
 
 /** Steps that may not be entered until the prior one is recorded. */
 const PRECONDITION: Partial<Record<WorkStep, WorkStep>> = {
-  aligned: "opened",
-  framed: "aligned",
-  split: "framed",
-  implement: "framed",
-  verified: "implement",
+  framed: "opened",
+  verified: "framed",
   closed: "verified",
   promoted: "closed",
 };
@@ -56,7 +53,7 @@ export function assertReached(flow: FlowRecord, step: WorkStep): void {
   const required = PRECONDITION[step];
   if (!required) return;
 
-  const order = ["opened", "aligned", "framed", "split", "implement", "verified", "closed", "promoted"];
+  const order: readonly string[] = WORK_STEPS;
   if (order.indexOf(flow.step) < order.indexOf(required)) {
     const definition = definitionFor(required);
     throw new GateRefusal(
@@ -137,9 +134,24 @@ export function assertNotParked(flow: FlowRecord): void {
  * recorded.
  */
 export function assertCheckpointCurrent(flow: FlowRecord, step: WorkStep): void {
-  // Opening a flow cannot require a checkpoint of the flow it is opening.
-  if (step === "aligned") return;
-
+  /**
+   * Re-recording the step the flow is already on asks for nothing.
+   *
+   * It moves nothing, so demanding a fresh checkpoint for it recreates the loop
+   * this gate's own history describes: the stamp restarts the clock, the only
+   * way out is another checkpoint, and the next re-run invalidates that one
+   * too. A real session spent nine attempts inside it.
+   */
+  if (flow.step === step) return;
+  /**
+   * Nothing is exempt any more.
+   *
+   * `aligned` was, because opening a flow cannot require a checkpoint of the
+   * flow it is opening. `framed` inherits its position and not its exemption:
+   * by the time framing is recorded, the agent has read the corpus and settled
+   * a contract with the maintainer, and "write down what you found before I
+   * record this" is exactly what that moment is worth.
+   */
   const checkpoint = flow.checkpoint;
   if (!checkpoint) {
     throw new GateRefusal(

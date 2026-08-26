@@ -31,32 +31,14 @@ export const WORK_STEP_DEFINITIONS: readonly StepDefinition[] = [
     command: "wfctl work start --title \"<what this is>\" --weight <significant|lightweight>",
   },
   {
-    step: "aligned",
-    demands:
-      "What the project already says about this subject. If nothing is written yet, record " +
-      "that nothing covers it — an empty corpus passes a conflict check silently, and that " +
-      "reads exactly like a check that found nothing wrong.",
-    command: "wfctl work step aligned",
-  },
-  {
     step: "framed",
     demands:
-      "What the work is: the outcome, the boundary, and the acceptance criteria. This is the " +
-      "cheapest moment to change the scope and the last one where it is free.",
+      "What the work is: the outcome, the boundary, the acceptance criteria, and what the " +
+      "project already says about the subject. If nothing is written yet, record that nothing " +
+      "covers it — an empty corpus passes a conflict check silently, and that reads exactly " +
+      "like a check that found nothing wrong. This is the cheapest moment to change the scope " +
+      "and the last one where it is free.",
     command: "wfctl work step framed",
-  },
-  {
-    step: "split",
-    demands:
-      "The units of delivery, sized by scope and coherence. Not by what fits in a session — " +
-      "that framing made agents stop halfway through a context that was still wide open.",
-    command: "wfctl work issue create --title \"<what it delivers>\"",
-    optionalWhen: (flow) => flow.weight === "lightweight",
-  },
-  {
-    step: "implement",
-    demands: "One slice at a time, in the checkout the claim binds.",
-    command: "wfctl work issue claim <id> --repository <owner/name>",
   },
   {
     step: "verified",

@@ -49,6 +49,16 @@ export const GUIDE_TOPICS: Record<string, GuidanceKey> = {
 
 export type GuidanceKey =
   | `work/${WorkStep}`
+  /**
+   * Three guidance files outlived the steps they were keyed to.
+   *
+   * `aligned`, `split` and `implement` stopped being steps; the content they
+   * carried is still the content the agent needs, so it moved to the acts that
+   * need it — units when one is created, the implement page at the claim, and
+   * alignment folded into framing.
+   */
+  | "work/split"
+  | "work/implement"
   | "work/capture"
   | "work/promotion-path"
   | "recall/checklist"
