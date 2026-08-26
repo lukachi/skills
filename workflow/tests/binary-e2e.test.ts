@@ -2034,3 +2034,20 @@ test("units written before delivery are not counted as grown", { timeout: 60_000
   const listed = wfctl(root, ["work", "issue", "list"]).stdout;
   assert.doesNotMatch(listed, /added after the route was laid down/);
 });
+
+test("the complexity personality carries a threshold a reviewer can apply", async () => {
+  const root = await installed();
+  const brief = wfctl(root, ["guide", "personality/complexity"]);
+  assert.equal(brief.status, 0, brief.stdout);
+
+  // A personality without a protocol produces opinion. This one's protocol is
+  // arithmetic, so the numbers have to survive being shipped.
+  assert.match(brief.stdout, /CRAP\(m\) = comp\(m\)² × \(1 − cov\(m\)\)³ \+ comp\(m\)/);
+  assert.match(brief.stdout, /threshold is 30/);
+  assert.match(brief.stdout, /31\+.*impossible/s);
+
+  // And the failure that makes the metric lie: coverage bought with tests that
+  // assert nothing. It is the cheapest way to fix the score and it moves no risk.
+  assert.match(brief.stdout, /asserts nothing/);
+  assert.match(brief.stdout, /stub the function to a constant/);
+});
