@@ -2262,12 +2262,35 @@ function assertReviewUsable(flow, review) {
       'A reviewer that broke nothing must still say what it tried. "Looks correct" is not an allowed answer.'
     );
   }
-  if (review.stubSurvivors.length > 0) {
+  const unknownStub = review.stubSurvivors.filter(
+    (survivor) => survivor.status !== "open" && survivor.status !== "accepted"
+  );
+  if (unknownStub.length > 0) {
     throw new GateRefusal(
-      `${review.stubSurvivors.length} test(s) still pass with the implementation stubbed.`,
-      "Fix the tests, then re-run the review.",
+      `${unknownStub.length} stub survivor(s) declare a status that is not open or accepted.`,
+      "Set each to open, or to accepted with a reason.",
+      unknownStub.map((survivor) => `  ${String(survivor.status)}: ${survivor.test}`).join("\n")
+    );
+  }
+  const openStubs = review.stubSurvivors.filter((survivor) => survivor.status === "open");
+  if (openStubs.length > 0) {
+    throw new GateRefusal(
+      `${openStubs.length} test(s) still pass with the implementation stubbed.`,
+      'Repair the test, or accept it in the artifact: "status": "accepted", "acceptedBecause": "<why not here>"',
       `Those tests assert nothing:
-  ${review.stubSurvivors.join("\n  ")}`
+${openStubs.map((survivor) => `  ${survivor.test}`).join("\n")}
+
+Accepting is for a test this work does not own \u2014 one that belongs to a repository outside the fence, or to a suite this change did not author. It records the weakness rather than repairing it, and the reason is read by whoever meets it next.`
+    );
+  }
+  const silentStubs = review.stubSurvivors.filter(
+    (survivor) => survivor.status === "accepted" && !survivor.acceptedBecause?.trim()
+  );
+  if (silentStubs.length > 0) {
+    throw new GateRefusal(
+      `${silentStubs.length} stub survivor(s) were accepted without a reason.`,
+      "Record the reason in the artifact, then verify again.",
+      "A test that asserts nothing may be accepted, never silently."
     );
   }
   const broke = review.attacks.filter((attack) => attack.broke);
@@ -2365,6 +2388,45 @@ __export(review_artifact_exports, {
   readReviewArtifact: () => readReviewArtifact
 });
 import { readFile as readFile8 } from "node:fs/promises";
+function readStubSurvivors(raw) {
+  if (raw === void 0 || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    fail(
+      "stubSurvivors is not a list.",
+      'Return a list of strings, or of {"test": "...", "status": "open"|"accepted"}.'
+    );
+  }
+  return raw.map((entry, index) => {
+    if (typeof entry === "string") {
+      if (!entry.trim()) {
+        fail(`Stub survivor ${index + 1} is empty.`, "Say which test survived, and what stubbing it proved.");
+      }
+      return { test: entry, status: "open" };
+    }
+    if (typeof entry !== "object" || entry === null) {
+      fail(
+        `Stub survivor ${index + 1} is a ${typeof entry}, not a test.`,
+        'Return a string, or {"test": "...", "status": "open"|"accepted"}.'
+      );
+    }
+    const record = entry;
+    const named = record.test ?? record.target;
+    if (typeof named !== "string" || !named.trim()) {
+      fail(
+        `Stub survivor ${index + 1} does not say which test survived.`,
+        'Give it a "test" naming the test and what stubbing it proved.',
+        `It carries: ${Object.keys(record).join(", ") || "nothing"}`
+      );
+    }
+    const extra = Object.entries(record).filter(([key]) => !["test", "target", "status", "acceptedBecause"].includes(key)).map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
+    const survivor = {
+      test: [named, ...extra].join("\n    "),
+      status: record.status ?? "open"
+    };
+    if (typeof record.acceptedBecause === "string") survivor.acceptedBecause = record.acceptedBecause;
+    return survivor;
+  });
+}
 function fail(message, remedy, detail) {
   throw new GateRefusal(message, remedy, detail);
 }
@@ -2421,7 +2483,7 @@ async function readReviewArtifact(path, actor) {
     reviewer: parsed.reviewer.trim(),
     attacks: parsed.attacks ?? [],
     findings: parsed.findings ?? [],
-    stubSurvivors: parsed.stubSurvivors ?? []
+    stubSurvivors: readStubSurvivors(parsed.stubSurvivors)
   };
 }
 var init_review_artifact = __esm({
@@ -3352,18 +3414,19 @@ async function release(context, attested) {
 async function close(context, options) {
   const flow = await currentFlow(context.root);
   if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  const concedes = options.outcome !== "completed";
   try {
     assertNotParked(flow);
-    assertReached(flow, "closed");
+    if (!concedes) {
+      assertReached(flow, "closed");
+      assertReviewed(flow, "closed");
+    }
     assertRecall(flow, flow.step);
-    assertReviewed(flow, "closed");
   } catch (error) {
     if (error instanceof GateRefusal) return refused(error);
     throw error;
   }
-  const unfinished = flow.issues.filter(
-    (issue) => issue.status !== "done" && issue.status !== "dropped"
-  );
+  const unfinished = options.outcome === "abandoned" ? [] : flow.issues.filter((issue) => issue.status !== "done" && issue.status !== "dropped");
   if (unfinished.length > 0) {
     return refused(
       new GateRefusal(
@@ -3391,10 +3454,11 @@ Drop one deliberately if it left the route: wfctl work issue drop <id> --reason 
       outcome: options.outcome
     }));
     await clearCurrent(context.root);
+    const unreviewed = concedes && !flow.review ? "\n\nClosed with no review on record. That is allowed for this outcome and not for `completed`, and promotion will still ask for one." : "";
     return ok(
-      result.waitingOnPromotion ? `${bundle} closed as ${options.outcome} and waits in the promotion queue.
+      (result.waitingOnPromotion ? `${bundle} closed as ${options.outcome} and waits in the promotion queue.
 
-Its pages are what the maintainer is asked about. Nothing else is.` : `${bundle} closed as ${options.outcome} and archived; it had nothing to say about itself.`
+Its pages are what the maintainer is asked about. Nothing else is.` : `${bundle} closed as ${options.outcome} and archived; it had nothing to say about itself.`) + unreviewed
     );
   } catch (error) {
     if (error instanceof GateRefusal) return refused(error);

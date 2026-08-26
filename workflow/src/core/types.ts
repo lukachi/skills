@@ -174,7 +174,8 @@ export interface FlowRecord {
     at: string;
     attacks: unknown[];
     findings: unknown[];
-    stubSurvivors: string[];
+    /** Survivors as accepted, so the reason a weak test was allowed stays on the record. */
+    stubSurvivors: unknown[];
     fixedPoint: string;
     /** Where the artifact came from, so a replay across flows is visible. */
     source: string;

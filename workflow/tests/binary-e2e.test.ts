@@ -1422,3 +1422,115 @@ test("the stop guard reads the project from the payload when the host sets no va
   });
   assert.match(decision.stdout, /"decision":"block"/, "the guard judged the wrong directory");
 });
+
+// ---------------------------------------------------------------------------
+// The deadlock a real flow reached.
+//
+// knowledge-humid, 2026-08-25: the flow sat at `implement`, its review honestly
+// reported tests that pass with the implementation stubbed, and every exit
+// refused. `work verify` refused on the survivors; `work close` refused for
+// want of a verification; `flow close` refused because the work had moved. The
+// agent turned the Stop guard off — the tell that there was no legal move left.
+
+async function reviewWith(root: string, stubSurvivors: unknown[]): Promise<string> {
+  const path = resolve(root, `review-${stubSurvivors.length}-${Math.random()}.json`);
+  await writeFile(
+    path,
+    JSON.stringify({
+      reviewer: "agent:reviewer",
+      attacks: [{ lens: "correctness", target: "t", test: "x", output: "held", broke: false }],
+      findings: [],
+      stubSurvivors,
+    }),
+    "utf8",
+  );
+  return path;
+}
+
+test("a stub survivor can be accepted with a reason instead of blocking forever", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "upstream tests", "--weight", "significant", "--attested", "they asked for it"]);
+  await walkToImplementE2E(root);
+  mark(root, "verified");
+
+  const open = wfctl(root, ["work", "verify", "--review", await reviewWith(root, ["upstream/lib.rs::t -- passes stubbed"])]);
+  assert.equal(open.status, 2);
+  assert.match(open.stdout, /assert nothing/);
+  // The refusal must name a move that is possible. "Fix the tests" alone is a
+  // wall when the tests belong to a repository outside the fence.
+  assert.match(open.stdout, /accepted/);
+
+  const silent = wfctl(root, [
+    "work", "verify", "--review",
+    await reviewWith(root, [{ test: "upstream/lib.rs::t", status: "accepted" }]),
+  ]);
+  assert.equal(silent.status, 2, "an accepted survivor with no reason passed");
+  assert.match(silent.stdout, /never silently/);
+
+  const accepted = wfctl(root, [
+    "work", "verify", "--review",
+    await reviewWith(root, [
+      { test: "upstream/lib.rs::t", status: "accepted", acceptedBecause: "upstream's suite; the fence does not reach it" },
+    ]),
+  ]);
+  assert.equal(accepted.status, 0, accepted.stdout);
+});
+
+test("a stub survivor with an unknown status is refused, not ignored", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "status", "--weight", "significant", "--attested", "they asked for it"]);
+  await walkToImplementE2E(root);
+  mark(root, "verified");
+
+  const result = wfctl(root, [
+    "work", "verify", "--review",
+    await reviewWith(root, [{ test: "t", status: "waived" }]),
+  ]);
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /not open or accepted/);
+});
+
+test("a survivor the reviewer described in its own shape is readable", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "shape", "--weight", "significant", "--attested", "they asked for it"]);
+  await walkToImplementE2E(root);
+  mark(root, "verified");
+
+  // The shape a real reviewer returned. It used to render as [object Object]:
+  // the agent was told its tests assert nothing and shown none of them.
+  const result = wfctl(root, [
+    "work", "verify", "--review",
+    await reviewWith(root, [
+      { target: "the double's addCovenantIssuanceInput", stub: "renamed the mock", result: "1123 pass | 0 fail" },
+    ]),
+  ]);
+  assert.equal(result.status, 2);
+  assert.doesNotMatch(result.stdout, /\[object Object\]/);
+  assert.match(result.stdout, /addCovenantIssuanceInput/);
+  assert.match(result.stdout, /1123 pass/, "the evidence for accepting was dropped");
+});
+
+test("work that cannot be verified can still be given up on", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "wedged", "--weight", "significant", "--attested", "they asked for it"]);
+  await walkToImplementE2E(root);
+  wfctl(root, ["work", "issue", "create", "--title", "a unit nobody reached"]);
+
+  // Exactly the humid state: at implement, no review on record, a unit open.
+  assert.equal(wfctl(root, ["flow", "close"]).status, 2);
+
+  const abandoned = wfctl(root, ["work", "close", "--outcome", "abandoned"]);
+  assert.equal(abandoned.status, 0, abandoned.stdout);
+  assert.match(abandoned.stdout, /no review on record/, "the concession was silent");
+});
+
+test("conceding is not the way past verification", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "shortcut", "--weight", "significant", "--attested", "they asked for it"]);
+  await walkToImplementE2E(root);
+
+  // `completed` is the outcome that claims the work is done, and it still asks.
+  const completed = wfctl(root, ["work", "close", "--outcome", "completed"]);
+  assert.equal(completed.status, 2);
+  assert.match(completed.stdout, /verified/);
+});

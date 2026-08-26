@@ -1,6 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { GateRefusal } from "./gates.js";
-import { VERIFY_LENSES, type Attack, type Finding, type Review, type VerifyLens } from "./verify.js";
+import {
+  VERIFY_LENSES,
+  type Attack,
+  type Finding,
+  type Review,
+  type StubSurvivor,
+  type VerifyLens,
+} from "./verify.js";
 
 /**
  * wfctl does not spawn the reviewer.
@@ -19,7 +26,73 @@ export interface ReviewArtifact {
   framingDigest: string;
   attacks: Attack[];
   findings: Finding[];
-  stubSurvivors: string[];
+  stubSurvivors: unknown;
+}
+
+/**
+ * Read the survivors, whatever shape the reviewer chose.
+ *
+ * This was typed `string[]` and validated by nothing, so a reviewer returning
+ * its own reasonable shape — `{target, stub, result}` — produced a refusal that
+ * printed `[object Object]` once per entry. The agent was told two of its tests
+ * assert nothing and shown neither, which is a refusal that cannot be acted on
+ * even in principle.
+ *
+ * A bare string is the short form and means unresolved. `target` is accepted
+ * beside `test` because that is the word a reviewer reaches for and refusing it
+ * would only move the wall.
+ */
+function readStubSurvivors(raw: unknown): StubSurvivor[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    fail(
+      "stubSurvivors is not a list.",
+      'Return a list of strings, or of {"test": "...", "status": "open"|"accepted"}.',
+    );
+  }
+
+  return raw.map((entry, index) => {
+    if (typeof entry === "string") {
+      if (!entry.trim()) {
+        fail(`Stub survivor ${index + 1} is empty.`, "Say which test survived, and what stubbing it proved.");
+      }
+      return { test: entry, status: "open" as const };
+    }
+
+    if (typeof entry !== "object" || entry === null) {
+      fail(
+        `Stub survivor ${index + 1} is a ${typeof entry}, not a test.`,
+        'Return a string, or {"test": "...", "status": "open"|"accepted"}.',
+      );
+    }
+
+    const record = entry as Record<string, unknown>;
+    const named = record.test ?? record.target;
+    if (typeof named !== "string" || !named.trim()) {
+      fail(
+        `Stub survivor ${index + 1} does not say which test survived.`,
+        'Give it a "test" naming the test and what stubbing it proved.',
+        `It carries: ${Object.keys(record).join(", ") || "nothing"}`,
+      );
+    }
+
+    /**
+     * The whole entry is kept in the description when the reviewer wrote more
+     * than a name. Dropping the extra keys would discard the evidence — the
+     * stub that was applied and what the suite did under it — which is the part
+     * that lets a maintainer judge whether accepting is honest.
+     */
+    const extra = Object.entries(record)
+      .filter(([key]) => !["test", "target", "status", "acceptedBecause"].includes(key))
+      .map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
+
+    const survivor: StubSurvivor = {
+      test: [named, ...extra].join("\n    "),
+      status: (record.status ?? "open") as StubSurvivor["status"],
+    };
+    if (typeof record.acceptedBecause === "string") survivor.acceptedBecause = record.acceptedBecause;
+    return survivor;
+  });
 }
 
 function fail(message: string, remedy: string, detail?: string): never {
@@ -98,6 +171,6 @@ export async function readReviewArtifact(path: string, actor: string): Promise<R
     reviewer: parsed.reviewer.trim(),
     attacks: parsed.attacks ?? [],
     findings: parsed.findings ?? [],
-    stubSurvivors: parsed.stubSurvivors ?? [],
+    stubSurvivors: readStubSurvivors(parsed.stubSurvivors),
   };
 }

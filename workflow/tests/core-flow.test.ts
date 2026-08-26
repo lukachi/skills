@@ -322,7 +322,7 @@ test("tests that survive stubbing block verification", () => {
         reviewer: "agent:reviewer",
         attacks: [],
         findings: [{ lens: "intent", summary: "s", failure: "f", status: "accepted", acceptedBecause: "ok" }],
-        stubSurvivors: ["tests/thing.test.ts:12"],
+        stubSurvivors: [{ test: "tests/thing.test.ts:12", status: "open" }],
       }),
     (error: unknown) => {
       assert.ok(error instanceof GateRefusal);

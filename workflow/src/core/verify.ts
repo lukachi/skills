@@ -55,6 +55,31 @@ export interface Attack {
   broke: boolean;
 }
 
+/**
+ * A test that passes with the implementation stubbed out.
+ *
+ * It carries a status for the same reason a finding does. This was a bare
+ * string, refused unconditionally, and it was the only thing a reviewer could
+ * report that had no way to be answered — so an honest review of work whose
+ * weak tests belong to somebody else wedged the flow permanently: verification
+ * refused on the survivor, closure refused for want of a verification, and
+ * dropping the fence refused because the work had moved. Three commands, each
+ * naming another that refused.
+ *
+ * The remedy it printed was "fix the tests", which is right when the tests are
+ * yours and impossible when they are upstream's and the fence does not reach
+ * them. A weak test is a fact about the work; whether this change is the place
+ * to repair it is a judgment, and judgments are recorded here the way every
+ * other one is — acceptable, never silently.
+ */
+export interface StubSurvivor {
+  /** The test, and what stubbing it proved. */
+  test: string;
+  status: "open" | "accepted";
+  /** Required when accepted. */
+  acceptedBecause?: string;
+}
+
 export interface Finding {
   lens: VerifyLens;
   summary: string;
@@ -77,7 +102,7 @@ export interface Review {
    * Those tests assert nothing, and this is the single highest-yield check on
    * this page: it needs no judgment and it catches most fake green.
    */
-  stubSurvivors: string[];
+  stubSurvivors: StubSurvivor[];
 }
 
 /**
@@ -107,11 +132,43 @@ export function assertReviewUsable(flow: FlowRecord, review: Review): void {
     );
   }
 
-  if (review.stubSurvivors.length > 0) {
+  /**
+   * A survivor is answered the same way a finding is: repaired, or accepted
+   * with a reason. Both are legal moves and the refusal names both, because a
+   * refusal offering only the impossible one is a wall.
+   */
+  const unknownStub = review.stubSurvivors.filter(
+    (survivor) => survivor.status !== "open" && survivor.status !== "accepted",
+  );
+  if (unknownStub.length > 0) {
     throw new GateRefusal(
-      `${review.stubSurvivors.length} test(s) still pass with the implementation stubbed.`,
-      "Fix the tests, then re-run the review.",
-      `Those tests assert nothing:\n  ${review.stubSurvivors.join("\n  ")}`,
+      `${unknownStub.length} stub survivor(s) declare a status that is not open or accepted.`,
+      "Set each to open, or to accepted with a reason.",
+      unknownStub.map((survivor) => `  ${String(survivor.status)}: ${survivor.test}`).join("\n"),
+    );
+  }
+
+  const openStubs = review.stubSurvivors.filter((survivor) => survivor.status === "open");
+  if (openStubs.length > 0) {
+    throw new GateRefusal(
+      `${openStubs.length} test(s) still pass with the implementation stubbed.`,
+      'Repair the test, or accept it in the artifact: "status": "accepted", "acceptedBecause": "<why not here>"',
+      `Those tests assert nothing:\n${openStubs.map((survivor) => `  ${survivor.test}`).join("\n")}\n\n` +
+        "Accepting is for a test this work does not own — one that belongs to a " +
+        "repository outside the fence, or to a suite this change did not author. " +
+        "It records the weakness rather than repairing it, and the reason is read " +
+        "by whoever meets it next.",
+    );
+  }
+
+  const silentStubs = review.stubSurvivors.filter(
+    (survivor) => survivor.status === "accepted" && !survivor.acceptedBecause?.trim(),
+  );
+  if (silentStubs.length > 0) {
+    throw new GateRefusal(
+      `${silentStubs.length} stub survivor(s) were accepted without a reason.`,
+      "Record the reason in the artifact, then verify again.",
+      "A test that asserts nothing may be accepted, never silently.",
     );
   }
 

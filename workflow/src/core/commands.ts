@@ -1169,11 +1169,32 @@ export async function close(
   const flow = await currentFlow(context.root);
   if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
 
+  /**
+   * Only `completed` claims the work is done, so only `completed` is gated on
+   * having been reviewed.
+   *
+   * Requiring a verification of all three outcomes made conceding impossible in
+   * exactly the case where conceding is the honest answer. A real flow reached
+   * `implement`, its review reported weak tests belonging to an upstream
+   * repository, and every exit refused: verification refused on the review,
+   * closure refused for want of a verification, and dropping the fence refused
+   * because the work had moved. There was no legal move left.
+   *
+   * `partial` and `abandoned` say the opposite of what a review certifies —
+   * that this did not finish — so a missing review is consistent with them
+   * rather than a gap in them. Promotion still demands one, which is where the
+   * requirement belongs: what the project says about itself is never published
+   * on unreviewed work.
+   */
+  const concedes = options.outcome !== "completed";
+
   try {
     assertNotParked(flow);
-    assertReached(flow, "closed");
+    if (!concedes) {
+      assertReached(flow, "closed");
+      assertReviewed(flow, "closed");
+    }
     assertRecall(flow, flow.step);
-    assertReviewed(flow, "closed");
   } catch (error) {
     if (error instanceof GateRefusal) return refused(error);
     throw error;
@@ -1188,9 +1209,17 @@ export async function close(
    * Terminal is an allowlist. Filtering for `open` and `claimed` let anything
    * else through — the same denylist mistake the finding-status check had.
    */
-  const unfinished = flow.issues.filter(
-    (issue) => issue.status !== "done" && issue.status !== "dropped",
-  );
+  /**
+   * Abandoning is the exit, and an exit that can be blocked is not one.
+   *
+   * Work given up on is work with units nobody reached — demanding each be
+   * completed or explicitly dropped first asks the agent to tidy a route it is
+   * abandoning, and one unreachable unit would hold the fence open forever.
+   */
+  const unfinished =
+    options.outcome === "abandoned"
+      ? []
+      : flow.issues.filter((issue) => issue.status !== "done" && issue.status !== "dropped");
   if (unfinished.length > 0) {
     return refused(
       new GateRefusal(
@@ -1224,11 +1253,23 @@ export async function close(
      * kept accepting units, captures, steps and checkpoints.
      */
     await clearCurrent(context.root);
+    /**
+     * A concession without a review says so where it is read.
+     *
+     * Silently allowing it would turn `--outcome partial` into the way past
+     * verification, which is the failure this gate was built against.
+     */
+    const unreviewed =
+      concedes && !flow.review
+        ? "\n\nClosed with no review on record. That is allowed for this outcome and " +
+          "not for `completed`, and promotion will still ask for one."
+        : "";
     return ok(
-      result.waitingOnPromotion
+      (result.waitingOnPromotion
         ? `${bundle} closed as ${options.outcome} and waits in the promotion queue.\n\n` +
             "Its pages are what the maintainer is asked about. Nothing else is."
-        : `${bundle} closed as ${options.outcome} and archived; it had nothing to say about itself.`,
+        : `${bundle} closed as ${options.outcome} and archived; it had nothing to say about itself.`) +
+        unreviewed,
     );
   } catch (error) {
     if (error instanceof GateRefusal) return refused(error);

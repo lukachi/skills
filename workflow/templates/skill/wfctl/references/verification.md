@@ -92,9 +92,24 @@ wfctl work verify --review <path>
       "acceptedBecause": "required when accepted"
     }
   ],
-  "stubSurvivors": []
+  "stubSurvivors": [
+    {
+      "test": "which test survived, and what stubbing it proved",
+      "status": "open",
+      "acceptedBecause": "required when accepted"
+    }
+  ]
 }
 ```
+
+A **stub survivor** is a test that still passes with the implementation replaced
+by a constant. It asserts nothing, and it is the highest-yield check on this
+page — it needs no judgment and it catches most fake green.
+
+It is answered the same way a finding is: **repair it, or accept it with a
+reason.** Accepting is for a test this work does not own — one belonging to a
+repository outside the fence, or to a suite this change did not author. Say why
+it is not repaired here; the reason is read by whoever meets it next.
 
 Nobody authorises this. Verification runs on your own initiative as soon as the
 units are delivered — it is the second half of implementing, not a gate the
@@ -106,6 +121,12 @@ work, not because someone else has to permit it.
 
 It is refused when: the reviewer is you; there are no attacks and no findings;
 an attack carries no test, no output, or no target; **any attack has `broke:
-true`**; any test survived stubbing; a finding is still `open`; a finding is
-`accepted` with no reason; or the framing digest has moved since approval — the
-one case that goes back to the maintainer.
+true`**; a stub survivor or a finding is still `open`; either is `accepted` with
+no reason; or the framing digest has moved since approval — the one case that
+goes back to the maintainer.
+
+**Closure does not need this to pass.** `--outcome completed` does, because that
+is the outcome claiming the work is done. `partial` and `abandoned` say the
+opposite, so they close without a review on record and say so where it is read.
+Promotion still asks for one: what the project says about itself is never
+published on unreviewed work.
