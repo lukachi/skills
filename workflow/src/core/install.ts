@@ -225,7 +225,7 @@ export async function planInstall(options: {
   }
   /**
    * The runtime guards keep per-session memory under `.workflow/current/`, and
-   * `wfctl knowledge build` puts its rebuilt artifacts there. 0.8.0 shipped the
+   * hold whatever a command needs to keep out of the tree. 0.8.0 shipped the
    * ignore file and this version dropped it, so every session dirtied the tree
    * with hook state — while the guard's own comment still said the directory
    * was ignored.

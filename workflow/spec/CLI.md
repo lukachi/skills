@@ -18,22 +18,49 @@ wfctl handoff [<flow>]      # the full recall body for a flow
 `brief` is emitted by the session-start hook. It prints the bound flow's handoff
 in full and every other open flow as one line.
 
-## Checkpoint
+## Writing things down
 
 ```sh
-wfctl checkpoint --summary "<one line>" --handoff "<the body>" \
-                 --last "<last completed action>" --next "<exact next action>" \
+wfctl checkpoint "<whatever you would not want to look up again>" [--about <unit>]
+wfctl checkpoint [--summary "<one line>"] [--handoff "<the body>"] \
+                 [--last "<last completed action>"] [--next "<exact next action>"] \
                  [--todo "<small job>"]...
+wfctl notes                 # everything written down for this flow
 ```
 
-One act, two renderings: the brief is the index, the handoff is the body. A
-checkpoint missing any of its four fields is refused — an empty one recalls
-nothing.
+A body writes a note; the named fields update the index a fresh session reads.
+Either may be given alone, and **what is not named is left as it was** — so
+correcting the next action does not cost the handoff. Notes accumulate; the
+second does not erase the first. Only a checkpoint with nothing at all in it is
+refused.
+
+All four fields were required until 2026-08-26, which made the cheapest useful
+act cost a composed paragraph, and a tool that expensive is reached for at the
+end of a session rather than during it.
+
+```sh
+wfctl finding "<what you found>" [--about <unit>] [--artifact <path>]
+wfctl finding list
+wfctl finding resolve <id> --how "<what you did about it>"
+wfctl finding release <id>          # it turned out not to be this work's
+```
+
+A finding stays with the work that found it. A capture leaves — inbox,
+maintainer, later — which is right for something outside the fence and wrong for
+what the agent noticed and could simply fix.
+
+```sh
+wfctl artifact add <path> --what "<what it is>" [--supersedes <path>]
+wfctl artifact list
+```
+
+Superseding is recorded, not implied.
 
 ## Work
 
 ```sh
 wfctl work start --title "<what this is>" --weight <significant|lightweight>
+wfctl work step             # where this work is, and what moves it on
 wfctl work step <opened|aligned|framed|split|implement|verified|closed|promoted>
 
 wfctl work issue create --title "<what it delivers>" [--satisfies AC-01]...

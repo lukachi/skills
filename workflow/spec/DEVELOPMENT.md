@@ -3,7 +3,8 @@
 ## Audience
 
 Use this guide when changing `wfctl`, its installed assets, or its package
-contract. End users should follow the [user guides](../docs/).
+contract. There are no separate user guides: the CLI prints what the state demands at
+each call site, and [`CLI.md`](CLI.md) is the reference.
 
 ## Requirements
 

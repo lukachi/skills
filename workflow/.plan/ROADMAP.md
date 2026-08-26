@@ -1,7 +1,14 @@
-# What this round fixes
+# What the 0.9.0 round fixed
 
-Assembled from the dogfood on knowledge-humid and the design discussion that
-followed it. Verified against, not remembered.
+**Historical.** This is the record of one completed round, not the current plan.
+It was assembled from the dogfood on knowledge-humid and the design discussion
+that followed it, and verified against the tool rather than remembered. Twenty-
+five of its twenty-seven items landed; the two under G were deferred deliberately
+and are still open.
+
+Rounds after this one are in the commit history, not here. Read it as evidence of
+what was decided and why, and never as a description of what the tool does now —
+`spec/` is normative and the CLI's own output is authoritative.
 
 ## A — A bundle exists because the maintainer said so
 

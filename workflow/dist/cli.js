@@ -5133,6 +5133,7 @@ var COMMAND_FLAGS = {
   "finding list": NONE,
   "finding resolve": { value: ["how"], boolean: [] },
   "finding release": NONE,
+  "artifact": NONE,
   "artifact add": { value: ["what", "supersedes"], boolean: [] },
   "artifact list": NONE,
   "work start": { value: ["title", "weight", "attested", "from"], boolean: [] },

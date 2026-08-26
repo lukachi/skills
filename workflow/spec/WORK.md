@@ -91,7 +91,7 @@ Every checkpoint records:
   handoff, never both — they are answers to different questions;
 - a SHA-256 basis over the owning record excluding the checkpoint itself.
 
-The agent updates semantic content first and runs `wfctl work checkpoint` last.
+The agent updates semantic content first and runs `wfctl checkpoint` last.
 If the record changes afterward, the basis no longer matches and stage context
 reports the checkpoint stale. Claim, review, or completion may not use a stale
 checkpoint. This proves which record state was summarized, not that the summary
@@ -117,7 +117,7 @@ validation accepts an empty ledger, but every real `DISC-*` entry must have a
 unique stable ID and non-empty values for all five fields. This proves record
 shape, not that the agent noticed every consequential observation.
 
-On a clean session, `wfctl work context --stage resume` without an ID resolves
+On a clean session, `wfctl brief` without an ID resolves
 only an unambiguous single binding. The agent reads the reported checkpoint and
 every required file, including complete discovery ledgers, before it acts.
 Multiple bindings require a maintainer selection; directory, recency, branch,
@@ -205,12 +205,13 @@ distributed bundle template.
 ## Maintainer approval
 
 A maintainer decides three things, and only two of them on every bundle.
-`framing` settles what the work is and is recorded by `wfctl work approve`.
+`framing` settles what the work is and is recorded by `wfctl work step framed`,
+against the maintainer's own words.
 `promotion` settles what the project now says about itself and is recorded by
 `wfctl work promote`, which writes the pages into `knowledge/` in the same act.
 `completion` is asked only where delivery no longer matches the approved framing
 — the acceptance criteria were reworded since the approval, or an issue was
-dropped from the route — and is recorded by `wfctl work approve --stage
+dropped from the route — and is recorded by `wfctl work step framed` (--stage
 completion`.
 
 Closure itself needs nobody. Every part of "is this done" is something the

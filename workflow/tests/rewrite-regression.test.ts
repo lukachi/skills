@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import test from "node:test";
 import { withLock, writeAtomic } from "../src/core/lock.js";
 import { canonical, contains, findRepositoryRoot } from "../src/core/paths-resolve.js";
@@ -1223,4 +1223,130 @@ test("the remedies a refusal borrows are never empty", () => {
       `step ${definition.step} has no command, so any refusal naming it is empty`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// The attribution record names files that exist.
+//
+// `vendor/mattpocock/upstream.json` is a public MIT provenance record, and every
+// one of its sixteen local paths pointed at the old `skills/` tree that the
+// 0.9.0 rewrite deleted. The text had moved, not gone — but an attribution
+// record naming files that are not there is worse than no record, because it
+// reads as checked.
+
+test("every path the provenance record names is on disk", async () => {
+  const root = resolve(import.meta.dirname, "..");
+  const record = JSON.parse(await readFile(resolve(root, "vendor/mattpocock/upstream.json"), "utf8"));
+
+  const missing: string[] = [];
+  for (const derivation of record.derivations ?? []) {
+    for (const path of [...(derivation.local ?? []), ...(derivation.verbatim ?? [])]) {
+      if (!existsSync(resolve(root, path))) missing.push(path);
+    }
+  }
+  assert.deepEqual(missing, []);
+});
+
+test("what the record calls verbatim is still shipped whole", async () => {
+  const root = resolve(import.meta.dirname, "..");
+  const record = JSON.parse(await readFile(resolve(root, "vendor/mattpocock/upstream.json"), "utf8"));
+
+  const verbatim = (record.derivations ?? []).flatMap(
+    (derivation: { verbatim?: string[] }) => derivation.verbatim ?? [],
+  );
+  assert.ok(verbatim.length > 0, "the record claims no verbatim files, which would be a licensing change");
+
+  for (const path of verbatim) {
+    // Verbatim means the upstream text, not a stub with the same name.
+    const body = await readFile(resolve(root, path), "utf8");
+    assert.ok(body.trim().length > 500, `${path} is claimed verbatim and is nearly empty`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// A document that names a command the tool does not have.
+//
+// `spec/WORK.md` and `spec/KNOWLEDGE.md` declare themselves normative and named
+// `wfctl work approve`, `wfctl work context`, `wfctl work checkpoint` and
+// `wfctl knowledge build` — four commands the rewrite removed, and one of them
+// specified a compiled artifact nothing has ever written. A contract naming a
+// command that does not exist is worse than silence: it reads as checked.
+
+test("every wfctl command named in the docs exists", async () => {
+  const root = resolve(import.meta.dirname, "..");
+  const { COMMAND_FLAGS } = await import("../src/core/flags.js");
+  const known = new Set(Object.keys(COMMAND_FLAGS));
+
+  /**
+   * Only fenced code and inline code are read. Prose says things like "wfctl
+   * does not spawn the reviewer", and treating that as a command invocation
+   * would make this test unusable rather than strict.
+   */
+  const files: string[] = [];
+  const walk = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (["node_modules", ".git", "dist", "graphify-out"].includes(entry.name)) continue;
+        walk(path);
+        continue;
+      }
+      if (entry.name.endsWith(".md")) files.push(path);
+    }
+  };
+  walk(root);
+
+  const offenders: string[] = [];
+  for (const file of files) {
+    const body = readFileSync(file, "utf8");
+    const code = [
+      ...body.matchAll(/```[a-z]*\n([\s\S]*?)```/g),
+      ...body.matchAll(/`([^`\n]+)`/g),
+    ].map((match) => match[1] ?? "");
+
+    for (const block of code) {
+      for (const found of block.matchAll(/\bwfctl ((?:[a-z][a-z0-9-]*)(?: [a-z][a-z0-9-]*)?(?: [a-z][a-z0-9-]*)?)/g)) {
+        const words = (found[1] ?? "").split(" ");
+        if ([3, 2, 1].some((length) => known.has(words.slice(0, length).join(" ")))) continue;
+        offenders.push(`${relative(root, file)}: wfctl ${found[1]}`);
+      }
+    }
+  }
+  assert.deepEqual([...new Set(offenders)], []);
+});
+
+test("every relative link in the docs resolves", () => {
+  /**
+   * The root README pointed at `workflow/docs/01-setup.md` — a numbered user
+   * guide series that does not exist and, by the current design, should not:
+   * the CLI prints what the state demands at each call site instead. A link to
+   * a missing guide sends a reader looking for the part they are missing.
+   */
+  const root = resolve(import.meta.dirname, "../..");
+  const files: string[] = [];
+  const walk = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (["node_modules", ".git", "dist", "graphify-out"].includes(entry.name)) continue;
+        walk(path);
+        continue;
+      }
+      if (entry.name.endsWith(".md")) files.push(path);
+    }
+  };
+  walk(root);
+
+  const broken: string[] = [];
+  for (const file of files) {
+    const body = readFileSync(file, "utf8");
+    for (const match of body.matchAll(/\[[^\]]*\]\(([^)#\s]+)(?:#[^)]*)?\)/g)) {
+      const href = match[1] ?? "";
+      if (/^[a-z]+:\/\/|^mailto:/.test(href)) continue;
+      if (!existsSync(resolve(join(file, ".."), href))) {
+        broken.push(`${relative(root, file)} -> ${href}`);
+      }
+    }
+  }
+  assert.deepEqual(broken, []);
 });

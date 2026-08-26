@@ -43,6 +43,7 @@ export const COMMAND_FLAGS: Readonly<Record<string, CommandFlags>> = {
   "finding resolve": { value: ["how"], boolean: [] },
   "finding release": NONE,
 
+  "artifact": NONE,
   "artifact add": { value: ["what", "supersedes"], boolean: [] },
   "artifact list": NONE,
 

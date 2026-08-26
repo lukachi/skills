@@ -270,25 +270,35 @@ engineering links established product meaning, so both a dead link and an orphan
 are structural failures rather than tidiness. The entry point is never an
 orphan: it is where a reader starts.
 
-## Deterministic artifacts
+## Deterministic checks
 
-`wfctl knowledge build` compiles two ignored, rebuildable artifacts:
+`wfctl knowledge validate` reads the corpus directly and reports what a check can
+see: a page missing `view`, `purpose` or `audience`; a `view` outside the three
+the model names; a page citing raw material, which carries no authority; a
+product page carrying a code block or a source path; a page with no heading; a
+page marked `stable` whose content no longer matches its sealed hash; a link to a
+page that is not there; and a page nothing links to.
 
-- `.workflow/current/knowledge-graph.json` from authored Markdown links, typed
-  relations, Area ownership, and decision lineage;
-- `.workflow/current/claim-ledger.json` from explicit intake and
-  reconstruction candidates, relations, routing, evidence, adjudication, and
-  promotion state.
+`wfctl knowledge hash` prints the content hash the two semantic reviews bind to.
+It covers frontmatter and body and never the location, so a seal taken on a
+draft still matches once the page is promoted.
 
-Neither artifact infers missing facts or becomes evidence. The build rejects
-broken internal links, invisible typed relations, Area mismatches, unreachable
-stable concepts, invalid decision lineages, and inconsistent claim relations.
+**There are no compiled artifacts.** This section previously specified a
+`knowledge build` command that produced `knowledge-graph.json` and
+`claim-ledger.json` under `.workflow/current/`. No such command exists and
+neither file is written by anything. The link and orphan checks it claimed are
+real and live in validation, above; the typed relations, Area ownership, decision
+lineage and claim ledger it also claimed were never built.
+
+A structural pass establishes nothing about whether a page is true or whether a
+reader can act on it. Those are the semantic gate's, and saying so matters: a
+green structural run reads like a verdict.
 
 ## Completion
 
 Promotion requires complete candidate routing, valid evidence or maintainer
-authority, fresh semantic receipts, successful structural validation, rebuilt
-derived artifacts, and explicit maintainer review where required.
+authority, fresh semantic receipts, successful structural validation, and
+explicit maintainer review where required.
 
 Partial and unresolved states remain valid. The workflow must never repair a
 failed gate by weakening the claim or silently changing its meaning.

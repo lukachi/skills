@@ -97,7 +97,7 @@ Start a genuinely fresh agent session in the leaf and ask only:
 
 A pass requires:
 
-1. the agent invokes `wfctl work context --stage resume` without asking for an
+1. the agent invokes `wfctl brief` without asking for an
    ID;
 2. exactly one binding is selected automatically;
 3. every reported file is read completely, including bottom canaries and every
@@ -118,7 +118,7 @@ Repeat the same black-box test from a disposable knowledge repository with one
 active reconstruction. Put distinct bottom canaries and consequential
 discoveries in the parent case and each repository dossier, and leave a known
 pending item only in the complete coverage JSON. A pass requires the fresh
-agent to invoke `wfctl knowledge reconstruct context --json` without an ID,
+agent to invoke `wfctl reconstruct status` without an ID,
 read every returned semantic record and local binding completely, recover the
 coverage-only pending item, preserve the parent/dossier ownership boundary,
 and refuse to trust a checkpoint made stale by a later dossier or coverage
@@ -126,7 +126,7 @@ edit. Repeat with two active reconstructions and require selection by human
 outcome rather than recency.
 
 For raw intake, repeat with one then two active cases. The agent must use
-`wfctl knowledge case context --json`, read the entire selected case, recover
+`wfctl brief --json`, read the entire selected case, recover
 its pending frozen sources and discovery implications, and refresh the
 checkpoint only after updating the semantic case.
 
