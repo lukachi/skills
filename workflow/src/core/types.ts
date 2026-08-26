@@ -72,6 +72,26 @@ export interface IssueRecord {
   notes: string[];
   acceptance: string[];
   claim?: RepositoryBinding;
+  /**
+   * What proves this unit is done.
+   *
+   * A unit went terminal on the agent's own say-so and the record kept nothing
+   * about why, so `done` six weeks later is indistinguishable from `done` that
+   * was really `gave up`. One real run put its evidence in a note by hand,
+   * every time, because the field it wanted did not exist.
+   */
+  evidence?: string;
+  /**
+   * The step the flow was at when this unit appeared.
+   *
+   * A route laid out at `split` is a prediction, and predictions rot: one run
+   * had a unit come back part-done and another that reality demanded could not
+   * be created at all. Units may be added at any point, and this is what makes
+   * a grown route visible as grown rather than passing as foresight.
+   */
+  addedDuring?: WorkStep;
+  /** The unit this one was split out of, when a remainder was carried forward. */
+  from?: string;
 }
 
 export interface Checkpoint {

@@ -8,6 +8,15 @@ Break the work into **tracer bullet** slices.
 - Prefactoring goes first, as its own unit: make the change easy, then make the
   easy change.
 
+**The list grows, and that is the design.** What you write here is a prediction,
+and predictions rot: a unit comes back half-delivered, another turns out to be
+two, a third that reality demanded was never on the list. Create units whenever
+the work asks for one — nothing here is closed after this step, and a unit added
+later is marked as added later rather than passing as foresight.
+
+So do not split further than you can see. A long list up front is a long list of
+boxes to tick, and ticking boxes is what an agent does instead of looking.
+
 **Size by scope and coherence.** Not by what fits in one agent session — that
 framing taught agents to stop halfway through a context that was still wide
 open, and they did.
@@ -68,3 +77,25 @@ full rules behind these slices.
 - Acceptance text duplicated from the parent and allowed to drift.
 - Source paths or snippets treated as permanent requirements.
 - A leaf-local checklist competing with the central record.
+
+## Finishing one
+
+```sh
+wfctl work issue complete <id> --evidence "<what proves it>"
+```
+
+**Evidence is not a restatement of the title.** A test that ran, a gate that
+passed, a commit, a thing you watched happen. A unit that is done because you
+say it is done cannot be told, six weeks later, from one that was quietly given
+up on.
+
+When part of it landed and part did not, say both:
+
+```sh
+wfctl work issue complete <id> --evidence "<what did land>" \
+  --remainder "<what is left>"
+```
+
+That completes what was delivered and creates a unit carrying the rest. It is
+the honest answer to a half-done unit, and the two answers that existed before —
+call it done, or leave it open and claim nothing landed — were each false.

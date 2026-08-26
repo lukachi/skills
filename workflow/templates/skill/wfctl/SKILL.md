@@ -229,6 +229,29 @@ not fix that — a longer list of units is a longer list of boxes to tick. A
 barrier does: a place partway through where the work stops and something
 independent looks before the rest begins.
 
+## The route grows
+
+The unit list is not a plan you are audited against. It is written when the work
+is understood well enough to write it, and **added to whenever reality asks** —
+a unit created once delivery has started is marked as one reality asked for
+rather than passing as foresight.
+
+So do not split further than you can see. A long list up front is a long list of
+boxes to tick, and ticking boxes is what an agent does instead of looking.
+
+```sh
+wfctl work issue complete <id> --evidence "<what proves it>"
+wfctl work issue complete <id> --evidence "<what landed>" --remainder "<what is left>"
+```
+
+**Evidence is not a restatement of the title** — a test that ran, a gate that
+passed, a commit, a thing you watched happen. A unit done because you say it is
+done cannot be told, later, from one quietly given up on.
+
+The remainder completes what landed and creates a unit carrying the rest. It is
+the honest answer to a half-done unit, and the two answers that existed before
+were each false.
+
 ## What earlier work already found out
 
 ```sh

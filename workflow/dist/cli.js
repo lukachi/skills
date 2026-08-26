@@ -3622,6 +3622,9 @@ async function workList(context) {
   const { listBundles: listBundles2, renderBundles: renderBundles2 } = await Promise.resolve().then(() => (init_bundles(), bundles_exports));
   return ok(renderBundles2(await listBundles2(context.root)));
 }
+function grownDuring(step) {
+  return step === "implement" || step === "verified" || step === "closed" || step === "promoted";
+}
 async function issueCreate(context, options) {
   const flow = await currentFlow(context.root);
   if (!flow) {
@@ -3639,24 +3642,27 @@ async function issueCreate(context, options) {
     );
   }
   let created = "";
+  let discovered = false;
   await mutateFlow(context.root, flow.id, (current) => {
     const id = `U${String(current.issues.length + 1).padStart(3, "0")}`;
     created = id;
-    return {
-      ...current,
-      issues: [
-        ...current.issues,
-        {
-          id,
-          title: options.title.trim(),
-          status: "open",
-          notes: [],
-          acceptance: options.acceptance
-        }
-      ]
+    discovered = grownDuring(current.step);
+    const issue = {
+      id,
+      title: options.title.trim(),
+      status: "open",
+      notes: [],
+      acceptance: options.acceptance,
+      addedDuring: current.step
     };
+    if (options.from) issue.from = options.from;
+    return { ...current, issues: [...current.issues, issue] };
   });
-  return ok(`${created}  ${options.title.trim()}`);
+  return ok(
+    discovered ? `${created}  ${options.title.trim()}
+
+Added during ${flow.step}. The route grows: a unit list written at split is a prediction, and this is one reality asked for.` : `${created}  ${options.title.trim()}`
+  );
 }
 async function issueList(context) {
   const flow = await currentFlow(context.root);
@@ -3670,9 +3676,21 @@ async function issueList(context) {
     const notes2 = issue.notes.length > 0 ? `
       ${issue.notes.join("\n      ")}` : "";
     const claim = issue.claim ? `  [${issue.claim.repository}/${issue.claim.worktreeId}]` : "";
-    return `${issue.id}  ${issue.status.padEnd(8)}  ${issue.title}${claim}${notes2}`;
+    const origin = issue.from ? `  \u2190 ${issue.from}` : "";
+    const evidence = issue.status === "done" ? issue.evidence ? `
+      \u2713 ${issue.evidence}` : "\n      \u2713 done with no evidence recorded" : "";
+    return `${issue.id}  ${issue.status.padEnd(8)}  ${issue.title}${claim}${origin}${evidence}${notes2}`;
   });
-  return ok(lines.join("\n"));
+  const grown = flow.issues.filter((issue) => issue.addedDuring && grownDuring(issue.addedDuring));
+  return ok(
+    [
+      lines.join("\n"),
+      ...grown.length > 0 ? [
+        "",
+        `${grown.length} of these were added after the route was laid down. That is the route working, not the route failing.`
+      ] : []
+    ].join("\n")
+  );
 }
 async function withIssue(context, id, change) {
   const bound = await currentFlow(context.root);
@@ -3780,18 +3798,62 @@ async function issueDrop(context, options) {
     return next;
   });
 }
-async function issueComplete(context, id) {
-  const result = await withIssue(context, id, (issue) => {
-    const next = { ...issue, status: "done" };
+async function issueComplete(context, options) {
+  const before = await currentFlow(context.root);
+  if (before) {
+    try {
+      assertNotParked(before);
+    } catch (error) {
+      if (error instanceof GateRefusal) return refused(error);
+      throw error;
+    }
+  }
+  const existing = (before?.issues ?? []).find(
+    (issue) => issue.id.toUpperCase() === options.id.toUpperCase()
+  );
+  if (existing?.status === "done") {
+    return refused(
+      new GateRefusal(
+        `${existing.id} is already done.`,
+        "wfctl work issue list",
+        existing.evidence ? `It was completed on: ${existing.evidence}` : void 0
+      )
+    );
+  }
+  if (!options.evidence.trim()) {
+    return refused(
+      new GateRefusal(
+        "Say what proves it is done.",
+        `wfctl work issue complete ${options.id} --evidence "<what proves it>"`,
+        `A test that ran, a gate that passed, a commit, a thing you watched happen. Not a restatement of the title \u2014 a unit that is done because you say it is done is not evidence, and six weeks from now nobody can tell it from one that was quietly given up on.
+
+If part of it landed and part did not:
+  wfctl work issue complete ${options.id} --evidence "<what did land>" --remainder "<what is left>"`
+      )
+    );
+  }
+  const result = await withIssue(context, options.id, (issue) => {
+    const next = { ...issue, status: "done", evidence: options.evidence.trim() };
     delete next.claim;
     return next;
   });
   if (result.exitCode !== 0) return result;
+  let carried;
+  if (options.remainder?.trim()) {
+    carried = await issueCreate(context, {
+      title: options.remainder.trim(),
+      acceptance: existing?.acceptance ?? [],
+      from: existing?.id ?? options.id
+    });
+    if (carried.exitCode !== 0) return carried;
+  }
   const flow = await currentFlow(context.root);
   const remaining2 = (flow?.issues ?? []).filter((issue) => issue.status === "open");
   return ok(
     compose([
       result.stdout,
+      carried ? `remainder carried forward:
+  ${carried.stdout.split("\n")[0]}` : void 0,
       remaining2.length > 0 ? `${remaining2.length} unit(s) still open:
   ${remaining2.map((issue) => `${issue.id}  ${issue.title}`).join("\n  ")}
 
@@ -5681,7 +5743,7 @@ var COMMAND_FLAGS = {
   "work issue list": NONE,
   "work issue note": { value: ["note"], boolean: [] },
   "work issue claim": { value: ["repository", "worktree"], boolean: [] },
-  "work issue complete": NONE,
+  "work issue complete": { value: ["evidence", "remainder"], boolean: [] },
   "work issue drop": { value: ["reason"], boolean: [] },
   "work park": { value: ["reason", "attested"], boolean: [] },
   "work release": { value: ["attested"], boolean: [] },
@@ -5851,7 +5913,8 @@ var USAGE = `wfctl \u2014 project workflow
   work step <step>             record that this step is reached
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
-  work issue complete <id> | drop <id> --reason "<why it left the route>"
+  work issue complete <id> --evidence "<what proves it>" [--remainder "<what is left>"]
+  work issue drop <id> --reason "<why it left the route>"
   work park --reason ... --attested "<their words>"
   work release --attested "<their words>"
   work verify --brief <lens> [--at <revision>]
@@ -6227,7 +6290,13 @@ async function dispatch(argv, context) {
               worktreeId: flag(rest_, "worktree") ?? "main"
             });
           }
-          if (sub === "complete") return await issueComplete(context, rest_[0] ?? "");
+          if (sub === "complete") {
+            return await issueComplete(context, {
+              id: rest_[0] ?? "",
+              evidence: flag(rest_, "evidence") ?? "",
+              ...optional("remainder", flag(rest_, "remainder"))
+            });
+          }
           if (sub === "drop") {
             return await issueDrop(context, {
               id: rest_[0] ?? "",

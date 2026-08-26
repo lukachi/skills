@@ -38,8 +38,17 @@ test("completing a unit says the next one is available work", async () => {
   await run(["repo", "add", "o/r", "--path", "/tmp"], ctx);
   await run(["work", "issue", "claim", "U001", "--repository", "o/r", "--worktree", "main"], ctx);
 
-  const done = await run(["work", "issue", "complete", "U001"], ctx);
-  assert.equal(done.exitCode, 0);
+  // A unit goes terminal with what proves it: `done` and `gave up` were the
+  // same word until completion carried its evidence.
+  const bare = await run(["work", "issue", "complete", "U001"], ctx);
+  assert.equal(bare.exitCode, 2);
+  assert.match(bare.stdout, /what proves it/);
+
+  const done = await run(
+    ["work", "issue", "complete", "U001", "--evidence", "bun test: 4 pass, 0 fail"],
+    ctx,
+  );
+  assert.equal(done.exitCode, 0, done.stdout);
   assert.match(done.stdout, /1 unit\(s\) still open/);
   assert.match(done.stdout, /Finishing a unit is not finishing/);
 });

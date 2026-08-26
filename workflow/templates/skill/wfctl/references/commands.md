@@ -38,7 +38,8 @@ need exact flags.
   work step <step>             record that this step is reached
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
-  work issue complete <id> | drop <id> --reason "<why it left the route>"
+  work issue complete <id> --evidence "<what proves it>" [--remainder "<what is left>"]
+  work issue drop <id> --reason "<why it left the route>"
   work park --reason ... --attested "<their words>"
   work release --attested "<their words>"
   work verify --brief <lens> [--at <revision>]

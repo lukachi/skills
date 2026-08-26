@@ -1150,7 +1150,8 @@ test("a parked flow accepts nothing material", async () => {
 
   for (const command of [
     ["work", "issue", "create", "--title", "sneaky"],
-    ["work", "issue", "complete", "U001"],
+    // With its evidence, so this proves the park rather than a missing flag.
+    ["work", "issue", "complete", "U001", "--evidence", "it landed"],
     ["work", "promotion", "draft", "a/b.md"],
   ]) {
     const result = wfctl(root, command);
@@ -1954,4 +1955,98 @@ test("a learning outlives the work and needs the maintainer's word", async () =>
   wfctl(root, ["work", "close", "--outcome", "abandoned"]);
   assert.match(wfctl(root, ["learned", "list"]).stdout, /narrowed refspec/);
   assert.match(wfctl(root, ["brief"]).stdout, /1 learning\(s\) from earlier work/);
+});
+
+// ---------------------------------------------------------------------------
+// A route that grows, and a claim that carries its support.
+//
+// The unit list was written at `split` and then audited against. It is a
+// prediction, and predictions rot: one real run had a unit come back part-done
+// with no way to say so, and another that reality demanded could not be created
+// because the flow was parked when it was confirmed.
+
+test("a unit goes terminal with what proves it", { timeout: 60_000 }, async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "evidence", "--weight", "significant", "--attested", "they asked"]);
+  await walkToImplementE2E(root);
+  wfctl(root, ["work", "issue", "create", "--title", "the world takes turns"]);
+
+  const bare = wfctl(root, ["work", "issue", "complete", "U001"]);
+  assert.equal(bare.status, 2);
+  assert.match(bare.stdout, /what proves it/);
+  // The refusal offers the half-done answer too, or it is a wall for the case
+  // that has no honest move.
+  assert.match(bare.stdout, /--remainder/);
+
+  const done = wfctl(root, [
+    "work", "issue", "complete", "U001", "--evidence", "tbt-api 87600cf5; both interleaving tests pass",
+  ]);
+  assert.equal(done.status, 0, done.stdout);
+  assert.match(wfctl(root, ["work", "issue", "list"]).stdout, /✓ tbt-api 87600cf5/);
+});
+
+test("a half-done unit carries its remainder forward", { timeout: 60_000 }, async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "remainder", "--weight", "significant", "--attested", "they asked"]);
+  await walkToImplementE2E(root);
+  wfctl(root, ["work", "issue", "create", "--title", "every state is a whole screen", "--satisfies", "AC-01"]);
+
+  const partial = wfctl(root, [
+    "work", "issue", "complete", "U001",
+    "--evidence", "eighteen states seeded and green",
+    "--remainder", "the world action bar has no content",
+  ]);
+  assert.equal(partial.status, 0, partial.stdout);
+  assert.match(partial.stdout, /remainder carried forward/);
+
+  const listed = wfctl(root, ["work", "issue", "list"]).stdout;
+  assert.match(listed, /U002\s+open\s+the world action bar has no content\s+← U001/);
+  // The remainder inherits what the original was for; it is the same criterion,
+  // not a new one nobody agreed to.
+  const flow = JSON.parse(
+    await readFile(
+      resolve(root, ".workflow/flows", `${(await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim()}.json`),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(flow.issues[1].acceptance, ["AC-01"]);
+});
+
+test("re-completing a done unit is refused, not congratulated", { timeout: 60_000 }, async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "twice", "--weight", "significant", "--attested", "they asked"]);
+  await walkToImplementE2E(root);
+  wfctl(root, ["work", "issue", "create", "--title", "a unit"]);
+  wfctl(root, ["work", "issue", "complete", "U001", "--evidence", "it landed"]);
+
+  // It used to succeed and print "every unit is terminal", so a run that had
+  // lost track of itself was congratulated for it.
+  const again = wfctl(root, ["work", "issue", "complete", "U001", "--evidence", "it landed again"]);
+  assert.equal(again.status, 2);
+  assert.match(again.stdout, /already done/);
+  assert.match(again.stdout, /it landed/, "the refusal did not say what it was completed on");
+});
+
+test("a unit added during delivery is marked as one reality asked for", { timeout: 60_000 }, async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "grown", "--weight", "significant", "--attested", "they asked"]);
+  wfctl(root, ["work", "issue", "create", "--title", "planned before delivery"]);
+  await walkToImplementE2E(root);
+
+  const discovered = wfctl(root, ["work", "issue", "create", "--title", "found while building"]);
+  assert.equal(discovered.status, 0, discovered.stdout);
+  assert.match(discovered.stdout, /route grows/);
+
+  const listed = wfctl(root, ["work", "issue", "list"]).stdout;
+  assert.match(listed, /1 of these were added after the route was laid down/);
+});
+
+test("units written before delivery are not counted as grown", { timeout: 60_000 }, async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "early", "--weight", "significant", "--attested", "they asked"]);
+  // Everything before delivery is the route being laid down. Calling a unit
+  // written at `opened` "discovered" would make the signal mean nothing.
+  wfctl(root, ["work", "issue", "create", "--title", "written at opened"]);
+  const listed = wfctl(root, ["work", "issue", "list"]).stdout;
+  assert.doesNotMatch(listed, /added after the route was laid down/);
 });

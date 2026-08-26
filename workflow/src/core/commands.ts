@@ -808,9 +808,14 @@ export async function workList(context: CommandContext): Promise<CommandResult> 
  * written in the notes, which is also where everything else learned about a
  * unit goes.
  */
+/** Whether a unit created at this step is one delivery asked for. */
+function grownDuring(step: WorkStep): boolean {
+  return step === "implement" || step === "verified" || step === "closed" || step === "promoted";
+}
+
 export async function issueCreate(
   context: CommandContext,
-  options: { title: string; acceptance: string[] },
+  options: { title: string; acceptance: string[]; from?: string },
 ): Promise<CommandResult> {
   const flow = await currentFlow(context.root);
   if (!flow) {
@@ -834,24 +839,36 @@ export async function issueCreate(
    * recorded against it afterwards pointed at whichever one survived.
    */
   let created = "";
+  let discovered = false;
   await mutateFlow(context.root, flow.id, (current) => {
     const id = `U${String(current.issues.length + 1).padStart(3, "0")}`;
     created = id;
-    return {
-      ...current,
-      issues: [
-        ...current.issues,
-        {
-          id,
-          title: options.title.trim(),
-          status: "open",
-          notes: [],
-          acceptance: options.acceptance,
-        },
-      ],
+    /**
+     * A unit named once delivery has started is one reality asked for, and the
+     * record says so rather than letting it pass as foresight.
+     *
+     * The line is `implement`, not `split`: everything before delivery is still
+     * the route being laid down, and calling a unit written at `opened`
+     * "discovered" would make the signal mean nothing.
+     */
+    discovered = grownDuring(current.step);
+    const issue: IssueRecord = {
+      id,
+      title: options.title.trim(),
+      status: "open",
+      notes: [],
+      acceptance: options.acceptance,
+      addedDuring: current.step,
     };
+    if (options.from) issue.from = options.from;
+    return { ...current, issues: [...current.issues, issue] };
   });
-  return ok(`${created}  ${options.title.trim()}`);
+  return ok(
+    discovered
+      ? `${created}  ${options.title.trim()}\n\nAdded during ${flow.step}. The route grows: a unit list written at ` +
+        `split is a prediction, and this is one reality asked for.`
+      : `${created}  ${options.title.trim()}`,
+  );
 }
 
 export async function issueList(context: CommandContext): Promise<CommandResult> {
@@ -865,9 +882,34 @@ export async function issueList(context: CommandContext): Promise<CommandResult>
   const lines = flow.issues.map((issue) => {
     const notes = issue.notes.length > 0 ? `\n      ${issue.notes.join("\n      ")}` : "";
     const claim = issue.claim ? `  [${issue.claim.repository}/${issue.claim.worktreeId}]` : "";
-    return `${issue.id}  ${issue.status.padEnd(8)}  ${issue.title}${claim}${notes}`;
+    const origin = issue.from ? `  ← ${issue.from}` : "";
+    /**
+     * Evidence is shown beside the status because the two are one claim. A
+     * `done` with nothing under it is the shape this field exists to make
+     * visible, and it stays visible for anything written before the field did.
+     */
+    const evidence =
+      issue.status === "done"
+        ? issue.evidence
+          ? `\n      ✓ ${issue.evidence}`
+          : "\n      ✓ done with no evidence recorded"
+        : "";
+    return `${issue.id}  ${issue.status.padEnd(8)}  ${issue.title}${claim}${origin}${evidence}${notes}`;
   });
-  return ok(lines.join("\n"));
+
+  const grown = flow.issues.filter((issue) => issue.addedDuring && grownDuring(issue.addedDuring));
+  return ok(
+    [
+      lines.join("\n"),
+      ...(grown.length > 0
+        ? [
+            "",
+            `${grown.length} of these were added after the route was laid down. That is the ` +
+              "route working, not the route failing.",
+          ]
+        : []),
+    ].join("\n"),
+  );
 }
 
 async function withIssue(
@@ -1041,22 +1083,96 @@ export async function issueDrop(
   });
 }
 
+/**
+ * A unit goes terminal with what proves it, and may leave a remainder behind.
+ *
+ * Completion took an id and nothing else, so the record kept no account of why
+ * a unit was done — `done` and `gave up` were the same word. The same rule
+ * already governs a resolved finding: a claim closed with no support reads,
+ * later, exactly like one quietly dropped.
+ *
+ * The remainder is the other half. A real run had a unit come back part-done
+ * and the tool offered two answers, both false: `done`, or leave it open and
+ * claim nothing was delivered. Naming what is left completes what was delivered
+ * and creates a unit carrying the rest, which is the route growing where reality
+ * asked it to.
+ */
 export async function issueComplete(
   context: CommandContext,
-  id: string,
+  options: { id: string; evidence: string; remainder?: string },
 ): Promise<CommandResult> {
-  const result = await withIssue(context, id, (issue) => {
-    const next: IssueRecord = { ...issue, status: "done" };
+  const before = await currentFlow(context.root);
+  /**
+   * The park is checked before anything else this command asks for.
+   *
+   * `withIssue` holds it, and every check added above `withIssue` quietly moves
+   * in front of it — so a parked flow started refusing for a missing flag
+   * instead of for being held, and the test that proves the park still passed
+   * because it only asserted the exit code.
+   */
+  if (before) {
+    try {
+      assertNotParked(before);
+    } catch (error) {
+      if (error instanceof GateRefusal) return refused(error);
+      throw error;
+    }
+  }
+  const existing = (before?.issues ?? []).find(
+    (issue) => issue.id.toUpperCase() === options.id.toUpperCase(),
+  );
+  /**
+   * Re-completing a done unit used to succeed and print "every unit is
+   * terminal", so a run that lost track of itself was congratulated for it.
+   */
+  if (existing?.status === "done") {
+    return refused(
+      new GateRefusal(
+        `${existing.id} is already done.`,
+        "wfctl work issue list",
+        existing.evidence ? `It was completed on: ${existing.evidence}` : undefined,
+      ),
+    );
+  }
+  if (!options.evidence.trim()) {
+    return refused(
+      new GateRefusal(
+        "Say what proves it is done.",
+        `wfctl work issue complete ${options.id} --evidence "<what proves it>"`,
+        "A test that ran, a gate that passed, a commit, a thing you watched " +
+          "happen. Not a restatement of the title — a unit that is done because " +
+          "you say it is done is not evidence, and six weeks from now nobody " +
+          "can tell it from one that was quietly given up on.\n\n" +
+          "If part of it landed and part did not:\n" +
+          `  wfctl work issue complete ${options.id} --evidence "<what did land>" ` +
+          '--remainder "<what is left>"',
+      ),
+    );
+  }
+
+  const result = await withIssue(context, options.id, (issue) => {
+    const next: IssueRecord = { ...issue, status: "done", evidence: options.evidence.trim() };
     delete next.claim;
     return next;
   });
   if (result.exitCode !== 0) return result;
+
+  let carried: CommandResult | undefined;
+  if (options.remainder?.trim()) {
+    carried = await issueCreate(context, {
+      title: options.remainder.trim(),
+      acceptance: existing?.acceptance ?? [],
+      from: existing?.id ?? options.id,
+    });
+    if (carried.exitCode !== 0) return carried;
+  }
 
   const flow = await currentFlow(context.root);
   const remaining = (flow?.issues ?? []).filter((issue) => issue.status === "open");
   return ok(
     compose([
       result.stdout,
+      carried ? `remainder carried forward:\n  ${carried.stdout.split("\n")[0]}` : undefined,
       remaining.length > 0
         ? `${remaining.length} unit(s) still open:\n  ${remaining.map((issue) => `${issue.id}  ${issue.title}`).join("\n  ")}\n\nFinishing a unit is not finishing. The next unit is available work, and available work is yours.`
         : "every unit is terminal.",
