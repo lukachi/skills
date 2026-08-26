@@ -5,8 +5,16 @@ import { fileURLToPath } from "node:url";
 import {
   advance,
   brief,
+  artifactAdd,
+  artifactList,
   capture,
   checkpoint,
+  findingAdd,
+  findingList,
+  findingRelease,
+  findingResolve,
+  notes,
+  workWhere,
   close,
   flowClose,
   handoff,
@@ -41,17 +49,29 @@ import { RECALL_ROUTES, WORK_STEPS, WORK_WEIGHTS, type WorkStep } from "./types.
  * agent is never expected to know which command comes next, only to read what
  * the last one said.
  */
-const USAGE = `wfctl — project workflow
+export const USAGE = `wfctl — project workflow
 
   brief [--json]               the state of this repository, and what awaits whom
   handoff [<flow>]             the full recall body for a flow
-  checkpoint --summary ... --handoff ... --last ... --next ...
+  checkpoint "<anything worth not looking up again>"   [--about <unit>]
+  checkpoint [--summary ...] [--handoff ...] [--last ...] [--next ...] [--todo ...]
+                               a body writes a note; the flags update the index.
+                               Either alone. What you do not name is left as it was.
+  notes                        everything written down for this flow
+
+  finding "<what you found>" [--about <unit>] [--artifact <path>]
+                               something this work should settle, kept with this work
+  finding list | resolve <id> --how "<what you did>" | release <id>
+
+  artifact add <path> --what "<what it is>" [--supersedes <path>]
+  artifact list                what this work produced, and what still stands
 
   work start --title ... --weight <significant|lightweight>
              --attested "<what the maintainer said>" [--from <where it came from>]
   work adopt <bundle> --attested "<what they said>"
              [--weight <significant|lightweight>] [--title ...] [--from <where>]
   work list                    every bundle, and whether anything can reach it
+  work step                    where this work is, and what moves it on
   work step <step>             record that this step is reached
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
@@ -66,6 +86,8 @@ const USAGE = `wfctl — project workflow
   work promotion list          records waiting on the maintainer
 
   capture "<what you found>" [--awaits]
+                               for what is OUTSIDE this work's fence. Inside it,
+                               use finding — it stays with the work that found it.
 
   repo add <owner/name> --path <dir> [--worktree <id>] [--checkout <name>]
   repo list | repo remove <owner/name> [--worktree <id>]
@@ -139,6 +161,29 @@ function flag(argv: string[], name: string): string | undefined {
   return value;
 }
 
+/**
+ * The first argument that is prose rather than a flag or a flag's value.
+ *
+ * Bodies are why this is not simply `argv[0]`: a note phrased "--fix the
+ * parser" is a body, and one that has to be re-worded to get past the parser is
+ * one that does not get written.
+ */
+const FLAG_LIKE = /^--[a-z][a-z0-9-]*$/;
+
+function bare(argv: string[]): string | undefined {
+  for (const [index, token] of argv.entries()) {
+    if (FLAG_LIKE.test(token)) continue;
+    if (index > 0 && FLAG_LIKE.test(argv[index - 1] ?? "")) continue;
+    return token;
+  }
+  return undefined;
+}
+
+/** Omit the key entirely when the flag was absent, rather than passing "". */
+function optional<K extends string>(key: K, value: string | undefined): Record<K, string> | object {
+  return value === undefined ? {} : ({ [key]: value } as Record<K, string>);
+}
+
 function flags(argv: string[], name: string): string[] {
   const values: string[] = [];
   argv.forEach((entry, index) => {
@@ -185,7 +230,60 @@ function oneOf<T extends string>(
  * checked against what that command actually reads before anything runs. See
  * `flags.ts` for why both halves exist.
  */
-export async function run(argv: string[], context: CommandContext): Promise<{ stdout: string; exitCode: number }> {
+/**
+ * Every command ends by saying how long the work has gone unrecorded.
+ *
+ * This is the habit, and it is deliberately not a gate. It costs the agent
+ * nothing, it is guaranteed to be read because it is the output of a command
+ * the agent chose to run, and it names the cheapest possible answer. An agent
+ * shown the drift writes something down; an agent refused learns to avoid the
+ * command that refuses it.
+ *
+ * It stays quiet until the gap is real — twenty minutes — so the ordinary rhythm
+ * of work is never nagged at. A reminder on every line is a reminder nobody
+ * reads.
+ */
+export async function run(
+  argv: string[],
+  context: CommandContext,
+): Promise<{ stdout: string; exitCode: number }> {
+  const result = await dispatch(argv, context);
+  if (result.exitCode !== 0) return result;
+
+  try {
+    const { currentFlow } = await import("./flow.js");
+    const { driftLine, lastWritten } = await import("./checkpoint.js");
+    const flow = await currentFlow(context.root);
+    if (!flow) return result;
+    /**
+     * Never on a machine surface.
+     *
+     * `hook write` feeds the pre-write guard, whose contract is that empty
+     * output means stay silent — appending anything to it makes the guard speak
+     * on every edit. `brief --json` is parsed by the Stop guard. Both are read
+     * by programs, and a program does not form habits.
+     *
+     * The brief, `work step` and `checkpoint` say it themselves, in their own
+     * place, so they are not doubled here.
+     */
+    if (argv[0] === "hook" || argv[0] === "brief" || argv[0] === "checkpoint") return result;
+    if (argv[0] === "work" && argv[1] === "step") return result;
+    const drift = driftLine(lastWritten(flow));
+    if (!drift) return result;
+    return {
+      stdout: `${result.stdout}
+
+⚠ ${drift}.
+  wfctl checkpoint "<what has happened since>"`,
+      exitCode: result.exitCode,
+    };
+  } catch {
+    /** Reporting drift must never be the thing that fails a command. */
+    return result;
+  }
+}
+
+async function dispatch(argv: string[], context: CommandContext): Promise<{ stdout: string; exitCode: number }> {
   /**
    * `--help` is answered before anything runs.
    *
@@ -292,14 +390,64 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
       case "handoff":
         return await handoff(context, rest[0]);
 
-      case "checkpoint":
+      case "checkpoint": {
+        /**
+         * The body is the first bare argument, if there is one.
+         *
+         * `wfctl checkpoint "<anything>"` is the cheap form and the one the
+         * habit is built on; the named fields update the index a next session
+         * reads. Either may be given alone, and both may be given together.
+         */
+        const body = bare(rest);
         return await checkpoint(context, {
-          summary: flag(rest, "summary") ?? "",
-          handoff: flag(rest, "handoff") ?? "",
-          last: flag(rest, "last") ?? "",
-          next: flag(rest, "next") ?? "",
+          ...(body === undefined ? {} : { body }),
+          ...optional("summary", flag(rest, "summary")),
+          ...optional("handoff", flag(rest, "handoff")),
+          ...optional("last", flag(rest, "last")),
+          ...optional("next", flag(rest, "next")),
+          ...optional("about", flag(rest, "about")),
           todo: flags(rest, "todo"),
         });
+      }
+
+      case "notes":
+        return await notes(context);
+
+      case "finding": {
+        const [action, ...args] = rest;
+        if (action === "list") return await findingList(context);
+        if (action === "resolve") {
+          return await findingResolve(context, {
+            id: args[0] ?? "",
+            how: flag(args, "how") ?? "",
+          });
+        }
+        if (action === "release") return await findingRelease(context, { id: args[0] ?? "" });
+        return await findingAdd(context, {
+          what: bare(rest) ?? "",
+          ...optional("about", flag(rest, "about")),
+          artifacts: flags(rest, "artifact"),
+        });
+      }
+
+      case "artifact": {
+        const [action, ...args] = rest;
+        if (action === "list") return await artifactList(context);
+        if (action === "add") {
+          return await artifactAdd(context, {
+            path: bare(args) ?? "",
+            what: flag(args, "what") ?? "",
+            ...optional("supersedes", flag(args, "supersedes")),
+          });
+        }
+        return {
+          stdout: new GateRefusal(
+            "artifact takes add or list.",
+            'wfctl artifact add <path> --what "<what it is>"',
+          ).render(),
+          exitCode: 2,
+        };
+      }
 
       case "recall": {
         const [action, ...args] = rest;
@@ -356,10 +504,24 @@ export async function run(argv: string[], context: CommandContext): Promise<{ st
         }
         if (action === "step") {
           const step = args[0] as WorkStep | undefined;
-          if (!step || !WORK_STEPS.includes(step)) {
+          /**
+           * Asked with no argument, this says where the work is.
+           *
+           * It refused — "Unknown step. One of: …" — at an agent that was using
+           * it to *ask*. A tool that answers a question with a refusal teaches
+           * the agent not to ask it, and in a real run the flow then sat at
+           * `split` through eighteen delivered units because nothing ever said
+           * so out loud.
+           */
+          if (!step) return await workWhere(context);
+          if (!WORK_STEPS.includes(step)) {
             return {
-              stdout: `Unknown step. One of: ${WORK_STEPS.join(", ")}`,
-              exitCode: 1,
+              stdout: new GateRefusal(
+                `There is no step called ${step}.`,
+                "wfctl work step   (with nothing after it, to see where this work is)",
+                `The steps are: ${WORK_STEPS.join(", ")}`,
+              ).render(),
+              exitCode: 2,
             };
           }
           return await advance(context, step);

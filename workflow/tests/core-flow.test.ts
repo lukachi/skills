@@ -182,16 +182,33 @@ test("the brief prints the bound flow's handoff in full and others as one line",
   assert.doesNotMatch(brief, /a body nobody should be shown here/);
 });
 
-test("a checkpoint missing its body is refused", () => {
-  assert.throws(() =>
-    buildCheckpoint({
-      summary: "s",
-      handoff: "   ",
-      lastAction: "l",
-      nextAction: "n",
-      actor: "agent:test",
-    }),
-  );
+test("a field the caller did not name keeps what it had", () => {
+  /**
+   * All four were required, so correcting the next action meant retyping the
+   * handoff — and a tool that charges four fields for a one-word correction is
+   * reached for at the end of a session instead of during it.
+   */
+  const first = buildCheckpoint({
+    summary: "s",
+    handoff: "the body",
+    lastAction: "l",
+    nextAction: "n",
+    actor: "agent:test",
+  });
+  const second = buildCheckpoint({ nextAction: "read paths-resolve.ts", actor: "agent:test" }, first);
+  assert.equal(second.nextAction, "read paths-resolve.ts");
+  assert.equal(second.handoff, "the body", "the handoff was dropped by a call that never mentioned it");
+  assert.equal(second.summary, "s");
+  assert.equal(second.lastAction, "l");
+});
+
+test("an invisible field is not a field", () => {
+  // trim() does not strip U+200B, so a body of zero-width spaces used to count
+  // as supplied — and a checkpoint that reports success having stored nothing
+  // silences the brief's own prompt for the life of the flow.
+  const previous = buildCheckpoint({ summary: "real", actor: "agent:test" });
+  const after = buildCheckpoint({ summary: "\u200b\u200b", actor: "agent:test" }, previous);
+  assert.equal(after.summary, "real");
 });
 
 test("the counter line names the missing items", () => {

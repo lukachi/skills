@@ -35,7 +35,16 @@ const NONE: CommandFlags = { value: [], boolean: [] };
 export const COMMAND_FLAGS: Readonly<Record<string, CommandFlags>> = {
   "brief": { value: [], boolean: ["json"] },
   "handoff": NONE,
-  "checkpoint": { value: ["summary", "handoff", "last", "next", "todo"], boolean: [] },
+  "checkpoint": { value: ["summary", "handoff", "last", "next", "todo", "about"], boolean: [] },
+  "notes": NONE,
+
+  "finding": { value: ["about", "artifact"], boolean: [] },
+  "finding list": NONE,
+  "finding resolve": { value: ["how"], boolean: [] },
+  "finding release": NONE,
+
+  "artifact add": { value: ["what", "supersedes"], boolean: [] },
+  "artifact list": NONE,
 
   "work start": { value: ["title", "weight", "attested", "from"], boolean: [] },
   "work adopt": { value: ["attested", "weight", "title", "from"], boolean: [] },
@@ -140,14 +149,19 @@ function flagName(token: string): string {
 const FLAG_SHAPED = /^--[a-z][a-z0-9-]*(=.*)?$/;
 
 /**
- * A capture's body is an argument even when it opens with dashes.
+ * Commands whose body is prose the agent typed.
  *
- * A finding phrased "--fix the parser" has to be recordable, and capture is the
- * only sanctioned outlet while a flow is open. Only the flags capture actually
- * declares are treated as flags here; everything else is its text.
+ * A finding phrased "--fix the parser" has to be recordable, and these are the
+ * commands that take one. Only the flags they actually declare are treated as
+ * flags; everything else is their text. `checkpoint` and `finding` are here for
+ * the same reason capture is — they are the cheap places to write something
+ * down, and a body that has to be re-worded to avoid the parser is a body that
+ * does not get written.
  */
-function isCaptureBody(argv: string[], index: number): boolean {
-  if (argv[0] !== "capture" || index === 0) return false;
+const BODY_COMMANDS = new Set(["capture", "checkpoint", "finding"]);
+
+function isBody(argv: string[], index: number): boolean {
+  if (index === 0 || !BODY_COMMANDS.has(argv[0] ?? "")) return false;
   return !FLAG_SHAPED.test(argv[index] ?? "");
 }
 
@@ -162,7 +176,7 @@ export function normalize(argv: string[]): string[] {
 
   const out: string[] = [];
   for (const [index, token] of argv.entries()) {
-    if (!token.startsWith("--") || !token.includes("=") || isCaptureBody(argv, index)) {
+    if (!token.startsWith("--") || !token.includes("=") || isBody(argv, index)) {
       out.push(token);
       continue;
     }
@@ -197,7 +211,7 @@ export function validate(argv: string[]): void {
 
   const unknown: string[] = [];
   for (const [index, token] of argv.entries()) {
-    if (!token.startsWith("--") || isCaptureBody(argv, index)) continue;
+    if (!token.startsWith("--") || isBody(argv, index)) continue;
     const name = flagName(token);
     if (!name || spec.value.includes(name) || spec.boolean.includes(name)) continue;
     unknown.push(name);

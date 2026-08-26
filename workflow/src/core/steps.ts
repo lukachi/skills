@@ -216,8 +216,7 @@ export function renderStep(flow: FlowRecord): string {
   const next = !isSatisfied(shortfall)
     ? "wfctl recall answer <item> --answer \"<what you found>\" --route <route> --source \"<where>\""
     : checkpointStale
-      ? 'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n'
-        + '        --last "<last completed action>" --next "<the exact next action>"'
+      ? 'wfctl checkpoint "<what has happened since>"   ·   or name fields: --summary --handoff --last --next'
       : (following ? definitionFor(following).command : "wfctl work close --outcome <completed|partial|abandoned>");
 
   return [

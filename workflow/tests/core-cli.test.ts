@@ -85,8 +85,11 @@ test("the brief is what a session opens with", async () => {
 test("an unknown step is named rather than silently ignored", async () => {
   const ctx = await context();
   const result = await run(["work", "step", "nonsense"], ctx);
-  assert.equal(result.exitCode, 1);
-  assert.match(result.stdout, /One of: opened, aligned/);
+  // A refusal, like every other refusal: exit 2, and it names the command that
+  // answers the question the caller was probably asking.
+  assert.equal(result.exitCode, 2);
+  assert.match(result.stdout, /wfctl work step/);
+  assert.match(result.stdout, /The steps are: opened, aligned/);
 });
 
 test("the guide serves detail on demand and lists its topics", async () => {

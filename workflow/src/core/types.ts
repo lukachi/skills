@@ -95,6 +95,79 @@ export interface Checkpoint {
 }
 
 /**
+ * One arbitrary thing the agent wrote down.
+ *
+ * The checkpoint's four named fields are the index a next session reads. This
+ * is everything else — the detail too small to be the summary and too costly to
+ * lose. It exists because the checkpoint replaced itself: the only durable
+ * surface in the tool held one paragraph, and the second write of a session
+ * erased the first.
+ *
+ * Nothing validates what goes in beyond it not being empty. A tool the agent
+ * has to compose for is a tool it uses less, and the whole point is that
+ * writing costs almost nothing.
+ */
+export interface Note {
+  at: string;
+  actor: string;
+  text: string;
+  /** The unit or artifact it is about, when it is about one. */
+  about?: string;
+}
+
+/**
+ * Something noticed during the work, that belongs to the work.
+ *
+ * A finding had exactly one destination — `capture`, which by design leaves the
+ * fence and waits for the maintainer. So a thing the agent noticed and could
+ * simply fix had to become somebody else's decision, and came back, if ever, as
+ * a separate bundle nobody asked for.
+ *
+ * Two properties were collapsed into one: whether it is inside this bundle's
+ * scope, and who decides. A capture answers "outside, theirs". This answers
+ * "inside, mine" — and it stays with the work that found it.
+ */
+export interface Finding {
+  id: string;
+  at: string;
+  actor: string;
+  /** What was found. */
+  what: string;
+  status: "open" | "resolved" | "released";
+  /** What was done about it. Required to resolve. */
+  resolution?: string;
+  resolvedAt?: string;
+  /** The unit it came out of, when it came out of one. */
+  about?: string;
+  /** Files that carry its evidence. */
+  artifacts?: string[];
+}
+
+/**
+ * A file this work produced that the record can name.
+ *
+ * Bundles have always had an `artifacts/` directory and the tool has never
+ * known what was in it. Reviews, harvests, measurements and briefings were
+ * written there and then found again by remembering, so a fresh session met a
+ * directory of files with no statement of which mattered or which had been
+ * replaced.
+ *
+ * Superseding is recorded rather than implied. The alternative — a reader
+ * deciding from a sentence somebody remembered to update — is what makes a
+ * directory of documents unreadable.
+ */
+export interface Artifact {
+  /** Repository-relative, as the tool prints it. */
+  path: string;
+  /** What it is, in the agent's own words. */
+  what: string;
+  at: string;
+  actor: string;
+  /** The artifact that replaced this one. */
+  supersededBy?: string;
+}
+
+/**
  * One place work was gathered from.
  *
  * Adoption is not a migration for older records. It is bundle creation with the
@@ -150,6 +223,18 @@ export interface FlowRecord {
   repositories: RepositoryBinding[];
   issues: IssueRecord[];
   checkpoint?: Checkpoint;
+  /**
+   * Everything written down that is not one of the checkpoint's four fields.
+   *
+   * Append-only. The checkpoint is the index; this is the record behind it, and
+   * it is the difference between a session that recalls and one that is told a
+   * paragraph.
+   */
+  notes?: Note[];
+  /** Things noticed that belong to this work rather than to the inbox. */
+  findings?: Finding[];
+  /** Files this work produced, and which of them the record still stands on. */
+  artifacts?: Artifact[];
   recall: RecallState;
   /**
    * Set when the maintainer approved the framing but said not to start yet.

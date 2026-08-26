@@ -144,8 +144,7 @@ export function assertCheckpointCurrent(flow: FlowRecord, step: WorkStep): void 
   if (!checkpoint) {
     throw new GateRefusal(
       `This flow has no checkpoint, and ${step} is not reachable without one.`,
-      'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n' +
-        '    --last "<last completed action>" --next "<the exact next action>"',
+      'wfctl checkpoint "<what has happened since>"',
       "The checkpoint is the only thing a session that is not this one recovers " +
         "from. Work whose state lives in a conversation is lost with the " +
         "conversation, and nothing reports that it was.",
@@ -154,8 +153,7 @@ export function assertCheckpointCurrent(flow: FlowRecord, step: WorkStep): void 
   if (checkpoint.updatedAt < (flow.steppedAt ?? "")) {
     throw new GateRefusal(
       `The checkpoint predates this flow reaching ${flow.step}.`,
-      'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n' +
-        '    --last "<last completed action>" --next "<the exact next action>"',
+      'wfctl checkpoint "<what has happened since>"',
       `It was written at ${checkpoint.updatedAt} and says the next action is ` +
         `"${checkpoint.nextAction}". A session resuming here would act on that.`,
     );

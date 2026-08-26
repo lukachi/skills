@@ -241,7 +241,7 @@ function renderStep(flow) {
   const following = nextStep(flow.step);
   const shortfall = shortfallFor(flow.step, flow.recall);
   const checkpointStale = flow.step !== "opened" && (flow.checkpoint?.updatedAt ?? "") < (flow.steppedAt ?? "");
-  const next = !isSatisfied(shortfall) ? 'wfctl recall answer <item> --answer "<what you found>" --route <route> --source "<where>"' : checkpointStale ? 'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n        --last "<last completed action>" --next "<the exact next action>"' : following ? definitionFor(following).command : "wfctl work close --outcome <completed|partial|abandoned>";
+  const next = !isSatisfied(shortfall) ? 'wfctl recall answer <item> --answer "<what you found>" --route <route> --source "<where>"' : checkpointStale ? 'wfctl checkpoint "<what has happened since>"   \xB7   or name fields: --summary --handoff --last --next' : following ? definitionFor(following).command : "wfctl work close --outcome <completed|partial|abandoned>";
   return [
     `flow ${flow.id}  \xB7  step ${flow.step}`,
     "",
@@ -353,14 +353,14 @@ function assertCheckpointCurrent(flow, step) {
   if (!checkpoint2) {
     throw new GateRefusal(
       `This flow has no checkpoint, and ${step} is not reachable without one.`,
-      'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n    --last "<last completed action>" --next "<the exact next action>"',
+      'wfctl checkpoint "<what has happened since>"',
       "The checkpoint is the only thing a session that is not this one recovers from. Work whose state lives in a conversation is lost with the conversation, and nothing reports that it was."
     );
   }
   if (checkpoint2.updatedAt < (flow.steppedAt ?? "")) {
     throw new GateRefusal(
       `The checkpoint predates this flow reaching ${flow.step}.`,
-      'wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\\n    --last "<last completed action>" --next "<the exact next action>"',
+      'wfctl checkpoint "<what has happened since>"',
       `It was written at ${checkpoint2.updatedAt} and says the next action is "${checkpoint2.nextAction}". A session resuming here would act on that.`
     );
   }
@@ -400,6 +400,18 @@ var init_gates = __esm({
 });
 
 // src/core/checkpoint.ts
+var checkpoint_exports = {};
+__export(checkpoint_exports, {
+  CheckpointError: () => CheckpointError,
+  buildCheckpoint: () => buildCheckpoint,
+  buildNote: () => buildNote,
+  driftLine: () => driftLine,
+  fenceBody: () => fenceBody,
+  lastWritten: () => lastWritten,
+  meaningful: () => meaningful,
+  renderBrief: () => renderBrief,
+  renderHandoff: () => renderHandoff
+});
 function meaningful(value) {
   return value.replace(INVISIBLE, "").replace(CONTROL, "").trim().length > 0;
 }
@@ -409,31 +421,60 @@ function oneLine(value) {
 function fenceBody(value) {
   return value.replace(CONTROL, "").split("\n").map((line) => line.trim().length === 0 ? "" : `  ${line}`).join("\n");
 }
-function buildCheckpoint(input, now = /* @__PURE__ */ new Date()) {
-  const fields = [
-    ["summary", "--summary", input.summary],
-    ["a handoff body", "--handoff", input.handoff],
-    ["the last completed action", "--last", input.lastAction],
-    ["the exact next action", "--next", input.nextAction]
-  ];
-  for (const [label2, option, value] of fields) {
-    if (!value || !meaningful(value)) {
-      throw new CheckpointError(
-        `A checkpoint needs ${label2}; an empty one recalls nothing.`,
-        `wfctl checkpoint --summary "<one line>" --handoff "<the body>" --last "<...>" --next "<...>"`,
-        `${option} was empty or absent.`
-      );
-    }
-  }
+function carry(next, previous) {
+  if (next !== void 0 && meaningful(next)) return next;
+  return previous ?? "";
+}
+function buildCheckpoint(input, previous, now = /* @__PURE__ */ new Date()) {
   return {
-    summary: oneLine(input.summary),
-    handoff: input.handoff.replace(CONTROL, "").trim(),
-    lastAction: oneLine(input.lastAction),
-    nextAction: oneLine(input.nextAction),
+    summary: oneLine(carry(input.summary, previous?.summary)),
+    handoff: carry(input.handoff, previous?.handoff).replace(CONTROL, "").trim(),
+    lastAction: oneLine(carry(input.lastAction, previous?.lastAction)),
+    nextAction: oneLine(carry(input.nextAction, previous?.nextAction)),
     actor: oneLine(input.actor),
     updatedAt: now.toISOString(),
-    todo: (input.todo ?? []).map(oneLine).filter((item) => item.length > 0)
+    /**
+     * Carried unless this call names its own.
+     *
+     * `todo` was replaced wholesale, so the second checkpoint of a session
+     * deleted the jobs the first had recorded — and checkpointing often is the
+     * thing this workflow asks for most. Doing it correctly was what lost them.
+     */
+    todo: input.todo && input.todo.length > 0 ? input.todo.map(oneLine).filter((item) => item.length > 0) : previous?.todo ?? []
   };
+}
+function buildNote(text, actor, about, now = /* @__PURE__ */ new Date()) {
+  if (!meaningful(text)) {
+    throw new CheckpointError(
+      "A note with nothing in it recalls nothing.",
+      'wfctl checkpoint "<what you want to remember>"'
+    );
+  }
+  const note = {
+    at: now.toISOString(),
+    actor: oneLine(actor),
+    text: text.replace(CONTROL, "").trim()
+  };
+  if (about && meaningful(about)) note.about = oneLine(about);
+  return note;
+}
+function driftLine(since, now = /* @__PURE__ */ new Date()) {
+  if (!since) return void 0;
+  const minutes = Math.floor((now.getTime() - new Date(since).getTime()) / 6e4);
+  if (Number.isNaN(minutes) || minutes < 20) return void 0;
+  if (minutes < 120) return `${minutes} minutes since anything was written down`;
+  return `${Math.floor(minutes / 60)} hours since anything was written down`;
+}
+function lastWritten(flow) {
+  const stamps = [
+    flow.createdAt,
+    flow.checkpoint?.updatedAt,
+    ...(flow.notes ?? []).map((note) => note.at),
+    ...(flow.findings ?? []).map((finding) => finding.at),
+    ...(flow.artifacts ?? []).map((artifact) => artifact.at)
+  ].filter((value) => Boolean(value));
+  if (stamps.length === 0) return void 0;
+  return stamps.sort().at(-1);
 }
 function renderBrief(flows, currentId, extras = {}) {
   const open = flows.filter((flow) => !flow.closedAt);
@@ -494,20 +535,57 @@ function renderBrief(flows, currentId, extras = {}) {
     lines.push(current.title);
     lines.push("");
     if (current.checkpoint) {
-      lines.push(fenceBody(current.checkpoint.handoff));
-      lines.push("");
-      lines.push(`last: ${current.checkpoint.lastAction}`);
-      lines.push(`next: ${current.checkpoint.nextAction}`);
+      if (current.checkpoint.handoff) {
+        lines.push(fenceBody(current.checkpoint.handoff));
+        lines.push("");
+      }
+      lines.push(
+        current.checkpoint.lastAction ? `last: ${current.checkpoint.lastAction}` : 'last: not recorded   \xB7   wfctl checkpoint --last "<what you just finished>"'
+      );
+      lines.push(
+        current.checkpoint.nextAction ? `next: ${current.checkpoint.nextAction}` : 'next: not recorded   \xB7   wfctl checkpoint --next "<the exact next action>"'
+      );
       if (current.checkpoint.todo.length > 0) {
         lines.push("todo:");
         for (const item of current.checkpoint.todo) lines.push(`  - ${item}`);
       }
     } else {
-      lines.push("No checkpoint yet. Write one before this session does anything material.");
-      lines.push(
-        '  wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\'
-      );
-      lines.push('    --last "<last completed action>" --next "<the exact next action>"');
+      lines.push("Nothing written down for this flow yet.");
+      lines.push('  wfctl checkpoint "<whatever you would not want to look up again>"');
+    }
+    const openFindings = (current.findings ?? []).filter((finding) => finding.status === "open");
+    if (openFindings.length > 0) {
+      lines.push("");
+      lines.push(`findings, ${openFindings.length} open and this work's to settle:`);
+      for (const finding of openFindings.slice(0, 5)) {
+        lines.push(`  ${finding.id}  ${finding.what}`);
+      }
+      if (openFindings.length > 5) lines.push(`  \u2026 ${openFindings.length - 5} more: wfctl finding list`);
+    }
+    const standing = (current.artifacts ?? []).filter((artifact) => !artifact.supersededBy);
+    if (standing.length > 0) {
+      lines.push("");
+      lines.push("artifacts this work stands on:");
+      for (const artifact of standing.slice(0, 6)) {
+        lines.push(`  ${artifact.path}`);
+        lines.push(`    ${artifact.what}`);
+      }
+      if (standing.length > 6) lines.push(`  \u2026 ${standing.length - 6} more: wfctl artifact list`);
+    }
+    const notes2 = current.notes ?? [];
+    if (notes2.length > 0) {
+      lines.push("");
+      lines.push(`written down, ${notes2.length} note(s), most recent last:`);
+      for (const note of notes2.slice(-4)) {
+        lines.push(fenceBody(note.text));
+      }
+      if (notes2.length > 4) lines.push(`  \u2026 all of them: wfctl notes`);
+    }
+    const drift = driftLine(lastWritten(current));
+    if (drift) {
+      lines.push("");
+      lines.push(`\u26A0 ${drift}.`);
+      lines.push('  wfctl checkpoint "<what has happened since>"');
     }
     const blocker = deriveBlocker(current);
     if (blocker) {
@@ -2644,11 +2722,17 @@ var init_trajectory = __esm({
 var commands_exports = {};
 __export(commands_exports, {
   advance: () => advance,
+  artifactAdd: () => artifactAdd,
+  artifactList: () => artifactList,
   brief: () => brief,
   briefExtras: () => briefExtras,
   capture: () => capture,
   checkpoint: () => checkpoint,
   close: () => close,
+  findingAdd: () => findingAdd,
+  findingList: () => findingList,
+  findingRelease: () => findingRelease,
+  findingResolve: () => findingResolve,
   flowClose: () => flowClose,
   handoff: () => handoff,
   issueClaim: () => issueClaim,
@@ -2657,6 +2741,7 @@ __export(commands_exports, {
   issueDrop: () => issueDrop,
   issueList: () => issueList,
   issueNote: () => issueNote,
+  notes: () => notes,
   park: () => park,
   promote: () => promote2,
   promotionDraft: () => promotionDraft,
@@ -2666,10 +2751,12 @@ __export(commands_exports, {
   verify: () => verify,
   workAdopt: () => workAdopt,
   workList: () => workList,
-  workStart: () => workStart
+  workStart: () => workStart,
+  workWhere: () => workWhere
 });
+import { existsSync } from "node:fs";
 import { mkdir as mkdir8, readFile as readFile10, writeFile as writeFile8 } from "node:fs/promises";
-import { resolve as resolve12 } from "node:path";
+import { relative as relative4, resolve as resolve12 } from "node:path";
 function ok(stdout) {
   return { stdout, exitCode: 0 };
 }
@@ -2728,26 +2815,52 @@ async function checkpoint(context, input) {
   if (!flow) {
     return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
   }
-  await mutateFlow(context.root, flow.id, (current) => ({
-    ...current,
-    checkpoint: buildCheckpoint({
-      summary: input.summary,
-      handoff: input.handoff,
-      lastAction: input.last,
-      nextAction: input.next,
-      actor: context.actor,
-      /**
-       * Carried unless this call names its own.
-       *
-       * `todo` was replaced wholesale, so the second checkpoint of a session
-       * deleted the jobs the first had recorded — and checkpointing often is
-       * the thing this workflow asks for most. Doing it correctly was what
-       * lost them.
-       */
-      todo: input.todo && input.todo.length > 0 ? input.todo : current.checkpoint?.todo ?? []
-    })
-  }));
-  return ok(`checkpoint written for ${flow.id}`);
+  const named = [input.summary, input.handoff, input.last, input.next].some(
+    (value) => value !== void 0 && meaningful(value)
+  );
+  const hasTodo = (input.todo ?? []).some((item) => meaningful(item));
+  const hasBody = meaningful(input.body ?? "");
+  if (!named && !hasTodo && !hasBody) {
+    return refused(
+      new GateRefusal(
+        "A checkpoint with nothing in it recalls nothing.",
+        'wfctl checkpoint "<whatever you would not want to look up again>"',
+        "Anything is enough. A line, a correction to the next action, a detail too small to be the summary \u2014 all of it is kept, and none of it is checked. The four named fields (--summary, --handoff, --last, --next) update the index a fresh session reads; what you are not naming is left as it was."
+      )
+    );
+  }
+  let noteCount = 0;
+  try {
+    await mutateFlow(context.root, flow.id, (current) => {
+      const next = { ...current };
+      if (hasBody) {
+        const notes2 = [...current.notes ?? [], buildNote(input.body ?? "", context.actor, input.about)];
+        next.notes = notes2;
+        noteCount = notes2.length;
+      } else {
+        noteCount = (current.notes ?? []).length;
+      }
+      if (named || hasTodo) {
+        next.checkpoint = buildCheckpoint(
+          {
+            summary: input.summary,
+            handoff: input.handoff,
+            lastAction: input.last,
+            nextAction: input.next,
+            actor: context.actor,
+            todo: input.todo
+          },
+          current.checkpoint
+        );
+      }
+      return next;
+    });
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
+  const written = hasBody ? `note ${noteCount} written` : "checkpoint updated";
+  return ok(`${written} for ${flow.id}`);
 }
 function assertAttested(words, command) {
   const said = words.trim();
@@ -3159,10 +3272,10 @@ async function issueList(context) {
     return ok("no units yet.");
   }
   const lines = flow.issues.map((issue) => {
-    const notes = issue.notes.length > 0 ? `
+    const notes2 = issue.notes.length > 0 ? `
       ${issue.notes.join("\n      ")}` : "";
     const claim = issue.claim ? `  [${issue.claim.repository}/${issue.claim.worktreeId}]` : "";
-    return `${issue.id}  ${issue.status.padEnd(8)}  ${issue.title}${claim}${notes}`;
+    return `${issue.id}  ${issue.status.padEnd(8)}  ${issue.title}${claim}${notes2}`;
   });
   return ok(lines.join("\n"));
 }
@@ -3541,6 +3654,245 @@ ${result.archived}`,
     throw error;
   }
 }
+async function findingAdd(context, options) {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(
+      new GateRefusal(
+        "No flow is open, so there is no work for a finding to belong to.",
+        'wfctl capture "<what you found>"',
+        "A finding met with no fence around it is a capture: it goes to the inbox and waits."
+      )
+    );
+  }
+  if (!options.what.trim()) {
+    return refused(new GateRefusal("A finding needs what was found.", 'wfctl finding "<what you found>"'));
+  }
+  let id = "";
+  await mutateFlow(context.root, flow.id, (current) => {
+    const findings = current.findings ?? [];
+    id = `F${String(findings.length + 1).padStart(3, "0")}`;
+    const finding = {
+      id,
+      at: (/* @__PURE__ */ new Date()).toISOString(),
+      actor: context.actor,
+      what: options.what.trim(),
+      status: "open"
+    };
+    if (options.about?.trim()) finding.about = options.about.trim();
+    if (options.artifacts?.length) finding.artifacts = options.artifacts;
+    return { ...current, findings: [...findings, finding] };
+  });
+  return ok(
+    [
+      `${id} recorded against ${flow.id}.`,
+      "",
+      "It stays with this work. Settle it here when it is yours to settle:",
+      `  wfctl finding resolve ${id} --how "<what you did about it>"`,
+      "",
+      "If it turns out to be outside this fence, it belongs to the maintainer:",
+      `  wfctl finding release ${id}`
+    ].join("\n")
+  );
+}
+async function findingResolve(context, options) {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  const finding = (flow.findings ?? []).find((entry) => entry.id === options.id);
+  if (!finding) {
+    return refused(
+      new GateRefusal(
+        `No finding ${options.id} on this work.`,
+        "wfctl finding list",
+        (flow.findings ?? []).length === 0 ? "Nothing has been recorded against this flow." : void 0
+      )
+    );
+  }
+  if (!options.how.trim()) {
+    return refused(
+      new GateRefusal(
+        "Say what you did about it.",
+        `wfctl finding resolve ${options.id} --how "<what you did>"`,
+        `${finding.id}: ${finding.what}`
+      )
+    );
+  }
+  await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    findings: (current.findings ?? []).map(
+      (entry) => entry.id === options.id ? { ...entry, status: "resolved", resolution: options.how.trim(), resolvedAt: (/* @__PURE__ */ new Date()).toISOString() } : entry
+    )
+  }));
+  return ok(`${options.id} resolved.`);
+}
+async function findingRelease(context, options) {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  const finding = (flow.findings ?? []).find((entry) => entry.id === options.id);
+  if (!finding) {
+    return refused(new GateRefusal(`No finding ${options.id} on this work.`, "wfctl finding list"));
+  }
+  const captured = await capture(context, {
+    text: `${finding.what}
+
+Found during ${flow.id}${finding.about ? `, working on ${finding.about}` : ""}, and released to the inbox because it is outside that fence.`
+  });
+  if (captured.exitCode !== 0) return captured;
+  await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    findings: (current.findings ?? []).map(
+      (entry) => entry.id === options.id ? { ...entry, status: "released" } : entry
+    )
+  }));
+  const where = captured.stdout.split("\n").filter((line) => line.includes("/changes/inbox/"))[0] ?? "";
+  return ok(`${options.id} released to the inbox.${where ? `
+${where.trim()}` : ""}`);
+}
+async function findingList(context) {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  const findings = flow.findings ?? [];
+  if (findings.length === 0) {
+    return ok(
+      [
+        "Nothing recorded against this work yet.",
+        "",
+        "A thing you noticed that this work should settle:",
+        '  wfctl finding "<what you found>" --about <unit>',
+        "",
+        "A thing outside this fence, for the maintainer:",
+        '  wfctl capture "<what you found>"'
+      ].join("\n")
+    );
+  }
+  const lines = [];
+  for (const finding of findings) {
+    lines.push(`${finding.id}  ${finding.status}${finding.about ? `  (${finding.about})` : ""}`);
+    lines.push(`  ${finding.what}`);
+    if (finding.resolution) lines.push(`  \u2192 ${finding.resolution}`);
+    for (const artifact of finding.artifacts ?? []) lines.push(`  evidence: ${artifact}`);
+  }
+  const open = findings.filter((finding) => finding.status === "open").length;
+  lines.push("");
+  lines.push(`${findings.length} recorded, ${open} open.`);
+  return ok(lines.join("\n"));
+}
+async function artifactAdd(context, options) {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  if (!options.path.trim()) {
+    return refused(new GateRefusal("Which file?", 'wfctl artifact add <path> --what "<what it is>"'));
+  }
+  if (!options.what.trim()) {
+    return refused(
+      new GateRefusal(
+        "Say what it is.",
+        `wfctl artifact add ${options.path} --what "<what it is>"`,
+        "A path alone is a filename. What a reader needs is why they would open it."
+      )
+    );
+  }
+  const absolute = resolve12(context.root, options.path);
+  if (!existsSync(absolute)) {
+    return refused(
+      new GateRefusal(
+        `${options.path} is not there.`,
+        "Write the file first, then register it.",
+        "An artifact the record names and the disk does not have is worse than one nobody registered."
+      )
+    );
+  }
+  const stored = relative4(context.root, absolute);
+  await mutateFlow(context.root, flow.id, (current) => {
+    const artifacts = (current.artifacts ?? []).filter((entry) => entry.path !== stored);
+    const added = {
+      path: stored,
+      what: options.what.trim(),
+      at: (/* @__PURE__ */ new Date()).toISOString(),
+      actor: context.actor
+    };
+    return {
+      ...current,
+      artifacts: [
+        ...artifacts.map(
+          (entry) => options.supersedes && entry.path === relative4(context.root, resolve12(context.root, options.supersedes)) ? { ...entry, supersededBy: stored } : entry
+        ),
+        added
+      ]
+    };
+  });
+  return ok(
+    options.supersedes ? `${stored} registered, and ${options.supersedes} marked superseded by it.` : `${stored} registered.`
+  );
+}
+async function artifactList(context) {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  const artifacts = flow.artifacts ?? [];
+  if (artifacts.length === 0) {
+    return ok(
+      [
+        "This work has registered no artifacts.",
+        "",
+        "Register what a next session would otherwise have to find by reading the directory:",
+        '  wfctl artifact add <path> --what "<what it is>"'
+      ].join("\n")
+    );
+  }
+  const lines = [];
+  for (const artifact of artifacts) {
+    lines.push(`${artifact.supersededBy ? "superseded" : "standing  "}  ${artifact.path}`);
+    lines.push(`  ${artifact.what}`);
+    if (artifact.supersededBy) lines.push(`  replaced by ${artifact.supersededBy}`);
+  }
+  return ok(lines.join("\n"));
+}
+async function notes(context) {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  const written = flow.notes ?? [];
+  if (written.length === 0) {
+    return ok(
+      [
+        "Nothing written down for this flow.",
+        "",
+        '  wfctl checkpoint "<whatever you would not want to look up again>"'
+      ].join("\n")
+    );
+  }
+  return ok(
+    written.map((note) => `${note.at}  ${note.actor}${note.about ? `  (${note.about})` : ""}
+${fenceBody(note.text)}`).join("\n\n")
+  );
+}
+async function workWhere(context) {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(
+      new GateRefusal(
+        "No flow is open, so no work has a step.",
+        "wfctl brief",
+        "The brief says what this repository is waiting on."
+      )
+    );
+  }
+  const definition = definitionFor(flow.step);
+  const lines = [
+    `flow ${flow.id}  \xB7  step ${flow.step}`,
+    flow.title,
+    "",
+    definition.demands,
+    "",
+    `move it on with: ${definition.command}`
+  ];
+  const drift = driftLine(lastWritten(flow));
+  if (drift) {
+    lines.push("");
+    lines.push(`\u26A0 ${drift}.`);
+    lines.push('  wfctl checkpoint "<what has happened since>"');
+  }
+  return ok(lines.join("\n"));
+}
 var init_commands = __esm({
   "src/core/commands.ts"() {
     "use strict";
@@ -3580,7 +3932,7 @@ __export(install_exports, {
 });
 import { createHash as createHash3 } from "node:crypto";
 import { chmod, mkdir as mkdir9, readFile as readFile11, readdir as readdir7, stat as stat3, writeFile as writeFile9 } from "node:fs/promises";
-import { dirname as dirname9, join as join6, relative as relative4, resolve as resolve13 } from "node:path";
+import { dirname as dirname9, join as join6, relative as relative5, resolve as resolve13 } from "node:path";
 function hash(content) {
   return createHash3("sha256").update(content).digest("hex");
 }
@@ -3721,10 +4073,10 @@ async function applyInstall(plan, options) {
     }
     const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
     const skillDir = SKILL_DIRS.find((directory) => operation.path.startsWith(`${directory}/`));
-    const source = operation.path === ".workflow/.gitignore" ? resolve13(options.distribution, "templates/workflow/gitignore") : runtime ? resolve13(options.distribution, "templates/runtime", relative4(RUNTIME_DIR, operation.path)) : resolve13(
+    const source = operation.path === ".workflow/.gitignore" ? resolve13(options.distribution, "templates/workflow/gitignore") : runtime ? resolve13(options.distribution, "templates/runtime", relative5(RUNTIME_DIR, operation.path)) : resolve13(
       options.distribution,
       "templates/skill/wfctl",
-      relative4(skillDir ?? "", operation.path)
+      relative5(skillDir ?? "", operation.path)
     );
     const content = await readFile11(source, "utf8");
     await mkdir9(dirname9(absolute), { recursive: true });
@@ -4195,7 +4547,7 @@ var write_hook_exports = {};
 __export(write_hook_exports, {
   decideWrite: () => decideWrite
 });
-import { relative as relative5, resolve as resolve15 } from "node:path";
+import { relative as relative6, resolve as resolve15 } from "node:path";
 function decideWrite(input) {
   const { flow, knowledgeRoot, target } = input;
   try {
@@ -4252,7 +4604,7 @@ wfctl guide structure \u2014 searching by graph before by string`
 }
 function normalize2(root, path) {
   const absolute = resolve15(root, path);
-  return relative5(root, absolute) || absolute;
+  return relative6(root, absolute) || absolute;
 }
 var init_write_hook = __esm({
   "src/core/write-hook.ts"() {
@@ -4326,7 +4678,7 @@ __export(decided_exports, {
   renderDecisions: () => renderDecisions
 });
 import { readFile as readFile12, readdir as readdir8 } from "node:fs/promises";
-import { join as join7, relative as relative6, resolve as resolve16 } from "node:path";
+import { join as join7, relative as relative7, resolve as resolve16 } from "node:path";
 function terms(subject) {
   const words = subject.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 0);
   const meaningful2 = words.filter((term) => !FILLER.has(term));
@@ -4378,7 +4730,7 @@ async function walk(root, dir) {
   const base = resolve16(root, dir);
   try {
     const entries = await readdir8(base, { recursive: true, withFileTypes: true });
-    return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => relative6(root, join7(entry.parentPath ?? base, entry.name)));
+    return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => relative7(root, join7(entry.parentPath ?? base, entry.name)));
   } catch {
     return [];
   }
@@ -4764,7 +5116,7 @@ var init_doctor = __esm({
 // src/core/cli.ts
 init_commands();
 init_gates();
-import { existsSync, realpathSync as realpathSync2 } from "node:fs";
+import { existsSync as existsSync2, realpathSync as realpathSync2 } from "node:fs";
 import { readFile as readFile14 } from "node:fs/promises";
 import { dirname as dirname12, resolve as resolve18 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -4775,7 +5127,14 @@ var NONE = { value: [], boolean: [] };
 var COMMAND_FLAGS = {
   "brief": { value: [], boolean: ["json"] },
   "handoff": NONE,
-  "checkpoint": { value: ["summary", "handoff", "last", "next", "todo"], boolean: [] },
+  "checkpoint": { value: ["summary", "handoff", "last", "next", "todo", "about"], boolean: [] },
+  "notes": NONE,
+  "finding": { value: ["about", "artifact"], boolean: [] },
+  "finding list": NONE,
+  "finding resolve": { value: ["how"], boolean: [] },
+  "finding release": NONE,
+  "artifact add": { value: ["what", "supersedes"], boolean: [] },
+  "artifact list": NONE,
   "work start": { value: ["title", "weight", "attested", "from"], boolean: [] },
   "work adopt": { value: ["attested", "weight", "title", "from"], boolean: [] },
   "work list": NONE,
@@ -4854,8 +5213,9 @@ function flagName(token) {
   return token.slice(2).split("=")[0] ?? "";
 }
 var FLAG_SHAPED = /^--[a-z][a-z0-9-]*(=.*)?$/;
-function isCaptureBody(argv, index) {
-  if (argv[0] !== "capture" || index === 0) return false;
+var BODY_COMMANDS = /* @__PURE__ */ new Set(["capture", "checkpoint", "finding"]);
+function isBody(argv, index) {
+  if (index === 0 || !BODY_COMMANDS.has(argv[0] ?? "")) return false;
   return !FLAG_SHAPED.test(argv[index] ?? "");
 }
 function normalize(argv) {
@@ -4864,7 +5224,7 @@ function normalize(argv) {
   const { spec } = resolved;
   const out = [];
   for (const [index, token] of argv.entries()) {
-    if (!token.startsWith("--") || !token.includes("=") || isCaptureBody(argv, index)) {
+    if (!token.startsWith("--") || !token.includes("=") || isBody(argv, index)) {
       out.push(token);
       continue;
     }
@@ -4894,7 +5254,7 @@ function validate(argv) {
   const { key, spec } = resolved;
   const unknown = [];
   for (const [index, token] of argv.entries()) {
-    if (!token.startsWith("--") || isCaptureBody(argv, index)) continue;
+    if (!token.startsWith("--") || isBody(argv, index)) continue;
     const name = flagName(token);
     if (!name || spec.value.includes(name) || spec.boolean.includes(name)) continue;
     unknown.push(name);
@@ -4922,13 +5282,25 @@ var USAGE = `wfctl \u2014 project workflow
 
   brief [--json]               the state of this repository, and what awaits whom
   handoff [<flow>]             the full recall body for a flow
-  checkpoint --summary ... --handoff ... --last ... --next ...
+  checkpoint "<anything worth not looking up again>"   [--about <unit>]
+  checkpoint [--summary ...] [--handoff ...] [--last ...] [--next ...] [--todo ...]
+                               a body writes a note; the flags update the index.
+                               Either alone. What you do not name is left as it was.
+  notes                        everything written down for this flow
+
+  finding "<what you found>" [--about <unit>] [--artifact <path>]
+                               something this work should settle, kept with this work
+  finding list | resolve <id> --how "<what you did>" | release <id>
+
+  artifact add <path> --what "<what it is>" [--supersedes <path>]
+  artifact list                what this work produced, and what still stands
 
   work start --title ... --weight <significant|lightweight>
              --attested "<what the maintainer said>" [--from <where it came from>]
   work adopt <bundle> --attested "<what they said>"
              [--weight <significant|lightweight>] [--title ...] [--from <where>]
   work list                    every bundle, and whether anything can reach it
+  work step                    where this work is, and what moves it on
   work step <step>             record that this step is reached
   work issue create --title ... [--satisfies AC-01]...
   work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
@@ -4943,6 +5315,8 @@ var USAGE = `wfctl \u2014 project workflow
   work promotion list          records waiting on the maintainer
 
   capture "<what you found>" [--awaits]
+                               for what is OUTSIDE this work's fence. Inside it,
+                               use finding \u2014 it stays with the work that found it.
 
   repo add <owner/name> --path <dir> [--worktree <id>] [--checkout <name>]
   repo list | repo remove <owner/name> [--worktree <id>]
@@ -5005,6 +5379,18 @@ function flag(argv, name) {
   }
   return value;
 }
+var FLAG_LIKE = /^--[a-z][a-z0-9-]*$/;
+function bare(argv) {
+  for (const [index, token] of argv.entries()) {
+    if (FLAG_LIKE.test(token)) continue;
+    if (index > 0 && FLAG_LIKE.test(argv[index - 1] ?? "")) continue;
+    return token;
+  }
+  return void 0;
+}
+function optional(key, value) {
+  return value === void 0 ? {} : { [key]: value };
+}
 function flags(argv, name) {
   const values = [];
   argv.forEach((entry, index) => {
@@ -5031,6 +5417,29 @@ function oneOf(value, allowed, name, fallback) {
   return value;
 }
 async function run2(argv, context) {
+  const result = await dispatch(argv, context);
+  if (result.exitCode !== 0) return result;
+  try {
+    const { currentFlow: currentFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
+    const { driftLine: driftLine2, lastWritten: lastWritten2 } = await Promise.resolve().then(() => (init_checkpoint(), checkpoint_exports));
+    const flow = await currentFlow2(context.root);
+    if (!flow) return result;
+    if (argv[0] === "hook" || argv[0] === "brief" || argv[0] === "checkpoint") return result;
+    if (argv[0] === "work" && argv[1] === "step") return result;
+    const drift = driftLine2(lastWritten2(flow));
+    if (!drift) return result;
+    return {
+      stdout: `${result.stdout}
+
+\u26A0 ${drift}.
+  wfctl checkpoint "<what has happened since>"`,
+      exitCode: result.exitCode
+    };
+  } catch {
+    return result;
+  }
+}
+async function dispatch(argv, context) {
   if (argv.includes("--help")) {
     return { stdout: USAGE, exitCode: 0 };
   }
@@ -5108,14 +5517,54 @@ async function run2(argv, context) {
       }
       case "handoff":
         return await handoff(context, rest[0]);
-      case "checkpoint":
+      case "checkpoint": {
+        const body = bare(rest);
         return await checkpoint(context, {
-          summary: flag(rest, "summary") ?? "",
-          handoff: flag(rest, "handoff") ?? "",
-          last: flag(rest, "last") ?? "",
-          next: flag(rest, "next") ?? "",
+          ...body === void 0 ? {} : { body },
+          ...optional("summary", flag(rest, "summary")),
+          ...optional("handoff", flag(rest, "handoff")),
+          ...optional("last", flag(rest, "last")),
+          ...optional("next", flag(rest, "next")),
+          ...optional("about", flag(rest, "about")),
           todo: flags(rest, "todo")
         });
+      }
+      case "notes":
+        return await notes(context);
+      case "finding": {
+        const [action, ...args] = rest;
+        if (action === "list") return await findingList(context);
+        if (action === "resolve") {
+          return await findingResolve(context, {
+            id: args[0] ?? "",
+            how: flag(args, "how") ?? ""
+          });
+        }
+        if (action === "release") return await findingRelease(context, { id: args[0] ?? "" });
+        return await findingAdd(context, {
+          what: bare(rest) ?? "",
+          ...optional("about", flag(rest, "about")),
+          artifacts: flags(rest, "artifact")
+        });
+      }
+      case "artifact": {
+        const [action, ...args] = rest;
+        if (action === "list") return await artifactList(context);
+        if (action === "add") {
+          return await artifactAdd(context, {
+            path: bare(args) ?? "",
+            what: flag(args, "what") ?? "",
+            ...optional("supersedes", flag(args, "supersedes"))
+          });
+        }
+        return {
+          stdout: new GateRefusal(
+            "artifact takes add or list.",
+            'wfctl artifact add <path> --what "<what it is>"'
+          ).render(),
+          exitCode: 2
+        };
+      }
       case "recall": {
         const [action, ...args] = rest;
         if (action === "list") {
@@ -5166,10 +5615,15 @@ async function run2(argv, context) {
         }
         if (action === "step") {
           const step = args[0];
-          if (!step || !WORK_STEPS.includes(step)) {
+          if (!step) return await workWhere(context);
+          if (!WORK_STEPS.includes(step)) {
             return {
-              stdout: `Unknown step. One of: ${WORK_STEPS.join(", ")}`,
-              exitCode: 1
+              stdout: new GateRefusal(
+                `There is no step called ${step}.`,
+                "wfctl work step   (with nothing after it, to see where this work is)",
+                `The steps are: ${WORK_STEPS.join(", ")}`
+              ).render(),
+              exitCode: 2
             };
           }
           return await advance(context, step);
@@ -5785,7 +6239,7 @@ function findGuidance(start) {
   let current = start;
   for (let depth = 0; depth < 3; depth += 1) {
     const candidate = resolve18(current, "templates", "guidance");
-    if (existsSync(candidate)) return candidate;
+    if (existsSync2(candidate)) return candidate;
     const parent = dirname12(current);
     if (parent === current) break;
     current = parent;
@@ -5819,6 +6273,7 @@ if (invokedDirectly) {
 `);
 }
 export {
+  USAGE,
   findGuidance,
   run2 as run
 };

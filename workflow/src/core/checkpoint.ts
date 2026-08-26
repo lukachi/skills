@@ -1,6 +1,6 @@
 import { GateRefusal } from "./gates.js";
 import { deriveBlocker } from "./steps.js";
-import type { Checkpoint, FlowRecord } from "./types.js";
+import type { Checkpoint, FlowRecord, Note } from "./types.js";
 
 /**
  * Checkpoint, brief and handoff are one thing under one name.
@@ -11,12 +11,12 @@ import type { Checkpoint, FlowRecord } from "./types.js";
  * renderings of its result: the brief is the index, the handoff is the body.
  */
 export interface CheckpointInput {
-  summary: string;
-  handoff: string;
-  lastAction: string;
-  nextAction: string;
+  summary?: string | undefined;
+  handoff?: string | undefined;
+  lastAction?: string | undefined;
+  nextAction?: string | undefined;
   actor: string;
-  todo?: string[];
+  todo?: string[] | undefined;
 }
 
 /**
@@ -60,7 +60,7 @@ const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 const INVISIBLE = /[\u00ad\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\ufeff]/g;
 
 /** Whether a field carries anything a reader could act on. */
-function meaningful(value: string): boolean {
+export function meaningful(value: string): boolean {
   return value.replace(INVISIBLE, "").replace(CONTROL, "").trim().length > 0;
 }
 
@@ -76,32 +76,98 @@ export function fenceBody(value: string): string {
     .join("\n");
 }
 
-export function buildCheckpoint(input: CheckpointInput, now = new Date()): Checkpoint {
-  const fields: [string, string, string][] = [
-    ["summary", "--summary", input.summary],
-    ["a handoff body", "--handoff", input.handoff],
-    ["the last completed action", "--last", input.lastAction],
-    ["the exact next action", "--next", input.nextAction],
-  ];
-  for (const [label, option, value] of fields) {
-    if (!value || !meaningful(value)) {
-      throw new CheckpointError(
-        `A checkpoint needs ${label}; an empty one recalls nothing.`,
-        `wfctl checkpoint --summary "<one line>" --handoff "<the body>" --last "<...>" --next "<...>"`,
-        `${option} was empty or absent.`,
-      );
-    }
-  }
+/**
+ * A field the caller did not name keeps what it had.
+ *
+ * All four were required, so correcting the next action meant retyping the
+ * handoff — and a tool that charges four fields for a one-word correction gets
+ * used at the end of a session instead of during it. Absence now means "leave
+ * it", which is what an agent updating one thing actually means.
+ */
+function carry(next: string | undefined, previous: string | undefined): string {
+  if (next !== undefined && meaningful(next)) return next;
+  return previous ?? "";
+}
 
+/**
+ * Build the head checkpoint, on top of whatever the last one said.
+ *
+ * Nothing here is mandatory any more. A checkpoint that records only what just
+ * happened is a real checkpoint, and refusing it taught the agent that
+ * checkpointing is expensive — which is the opposite of the habit this tool
+ * exists to produce. What is missing is shown by the brief instead, where it
+ * costs a reader nothing and blocks no one.
+ */
+export function buildCheckpoint(
+  input: CheckpointInput,
+  previous?: Checkpoint,
+  now = new Date(),
+): Checkpoint {
   return {
-    summary: oneLine(input.summary),
-    handoff: input.handoff.replace(CONTROL, "").trim(),
-    lastAction: oneLine(input.lastAction),
-    nextAction: oneLine(input.nextAction),
+    summary: oneLine(carry(input.summary, previous?.summary)),
+    handoff: carry(input.handoff, previous?.handoff).replace(CONTROL, "").trim(),
+    lastAction: oneLine(carry(input.lastAction, previous?.lastAction)),
+    nextAction: oneLine(carry(input.nextAction, previous?.nextAction)),
     actor: oneLine(input.actor),
     updatedAt: now.toISOString(),
-    todo: (input.todo ?? []).map(oneLine).filter((item) => item.length > 0),
+    /**
+     * Carried unless this call names its own.
+     *
+     * `todo` was replaced wholesale, so the second checkpoint of a session
+     * deleted the jobs the first had recorded — and checkpointing often is the
+     * thing this workflow asks for most. Doing it correctly was what lost them.
+     */
+    todo:
+      input.todo && input.todo.length > 0
+        ? input.todo.map(oneLine).filter((item) => item.length > 0)
+        : (previous?.todo ?? []),
   };
+}
+
+/** A note is anything at all, so the only thing refused is nothing at all. */
+export function buildNote(
+  text: string,
+  actor: string,
+  about?: string | undefined,
+  now = new Date(),
+): Note {
+  if (!meaningful(text)) {
+    throw new CheckpointError(
+      "A note with nothing in it recalls nothing.",
+      'wfctl checkpoint "<what you want to remember>"',
+    );
+  }
+  const note: Note = {
+    at: now.toISOString(),
+    actor: oneLine(actor),
+    text: text.replace(CONTROL, "").trim(),
+  };
+  if (about && meaningful(about)) note.about = oneLine(about);
+  return note;
+}
+
+/**
+ * How long the work has gone unrecorded, in words.
+ *
+ * This is the whole mechanism for the habit, and it is deliberately not a gate.
+ * An agent that is shown the drift writes; an agent that is refused learns to
+ * avoid the command that refuses it.
+ */
+export function driftLine(since: string | undefined, now = new Date()): string | undefined {
+  /**
+   * Silence when there is nothing to be behind on.
+   *
+   * An earlier version fired the moment a flow existed, so the first command
+   * after `work start` was already being told it had written nothing — which is
+   * true and useless, and a warning that is always on is a warning nobody
+   * reads. The caller passes the flow's own age when nothing has been written,
+   * so the gap is measured from the same place either way.
+   */
+  if (!since) return undefined;
+  const minutes = Math.floor((now.getTime() - new Date(since).getTime()) / 60000);
+  if (Number.isNaN(minutes) || minutes < 20) return undefined;
+  if (minutes < 120) return `${minutes} minutes since anything was written down`;
+  return `${Math.floor(minutes / 60)} hours since anything was written down`;
 }
 
 /**
@@ -131,6 +197,26 @@ export interface BriefExtras {
    * which is why nobody noticed the flow could not bind one.
    */
   stranded?: string[];
+}
+
+/**
+ * The most recent moment anything was written down — or, failing that, the
+ * moment the flow opened.
+ *
+ * Opening counts because the question this answers is "how long has this been
+ * running with nothing recorded", and a flow that has just started is not
+ * behind on anything.
+ */
+export function lastWritten(flow: FlowRecord): string | undefined {
+  const stamps = [
+    flow.createdAt,
+    flow.checkpoint?.updatedAt,
+    ...(flow.notes ?? []).map((note) => note.at),
+    ...(flow.findings ?? []).map((finding) => finding.at),
+    ...(flow.artifacts ?? []).map((artifact) => artifact.at),
+  ].filter((value): value is string => Boolean(value));
+  if (stamps.length === 0) return undefined;
+  return stamps.sort().at(-1);
 }
 
 export function renderBrief(
@@ -207,20 +293,81 @@ export function renderBrief(
     lines.push(current.title);
     lines.push("");
     if (current.checkpoint) {
-      lines.push(fenceBody(current.checkpoint.handoff));
-      lines.push("");
-      lines.push(`last: ${current.checkpoint.lastAction}`);
-      lines.push(`next: ${current.checkpoint.nextAction}`);
+      if (current.checkpoint.handoff) {
+        lines.push(fenceBody(current.checkpoint.handoff));
+        lines.push("");
+      }
+      /**
+       * A field nobody filled says so, and names the one flag that fills it.
+       *
+       * Printing an empty `next:` was worse than printing nothing: it reads as
+       * a next action that happens to be blank rather than one never recorded,
+       * and it is the line recovery depends on most.
+       */
+      lines.push(
+        current.checkpoint.lastAction
+          ? `last: ${current.checkpoint.lastAction}`
+          : 'last: not recorded   ·   wfctl checkpoint --last "<what you just finished>"',
+      );
+      lines.push(
+        current.checkpoint.nextAction
+          ? `next: ${current.checkpoint.nextAction}`
+          : 'next: not recorded   ·   wfctl checkpoint --next "<the exact next action>"',
+      );
       if (current.checkpoint.todo.length > 0) {
         lines.push("todo:");
         for (const item of current.checkpoint.todo) lines.push(`  - ${item}`);
       }
     } else {
-      lines.push("No checkpoint yet. Write one before this session does anything material.");
-      lines.push(
-        '  wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \\',
-      );
-      lines.push('    --last "<last completed action>" --next "<the exact next action>"');
+      lines.push("Nothing written down for this flow yet.");
+      lines.push('  wfctl checkpoint "<whatever you would not want to look up again>"');
+    }
+
+    /**
+     * What the work found, produced and wrote down — the parts of the record
+     * that are not the four checkpoint fields.
+     *
+     * The brief used to render a paragraph and a step, so everything else the
+     * session knew lived in the conversation and died with it. These are
+     * indexes, not contents: the counts and the openings, with the command that
+     * reads the rest.
+     */
+    const openFindings = (current.findings ?? []).filter((finding) => finding.status === "open");
+    if (openFindings.length > 0) {
+      lines.push("");
+      lines.push(`findings, ${openFindings.length} open and this work's to settle:`);
+      for (const finding of openFindings.slice(0, 5)) {
+        lines.push(`  ${finding.id}  ${finding.what}`);
+      }
+      if (openFindings.length > 5) lines.push(`  … ${openFindings.length - 5} more: wfctl finding list`);
+    }
+
+    const standing = (current.artifacts ?? []).filter((artifact) => !artifact.supersededBy);
+    if (standing.length > 0) {
+      lines.push("");
+      lines.push("artifacts this work stands on:");
+      for (const artifact of standing.slice(0, 6)) {
+        lines.push(`  ${artifact.path}`);
+        lines.push(`    ${artifact.what}`);
+      }
+      if (standing.length > 6) lines.push(`  … ${standing.length - 6} more: wfctl artifact list`);
+    }
+
+    const notes = current.notes ?? [];
+    if (notes.length > 0) {
+      lines.push("");
+      lines.push(`written down, ${notes.length} note(s), most recent last:`);
+      for (const note of notes.slice(-4)) {
+        lines.push(fenceBody(note.text));
+      }
+      if (notes.length > 4) lines.push(`  … all of them: wfctl notes`);
+    }
+
+    const drift = driftLine(lastWritten(current));
+    if (drift) {
+      lines.push("");
+      lines.push(`⚠ ${drift}.`);
+      lines.push('  wfctl checkpoint "<what has happened since>"');
     }
 
     const blocker = deriveBlocker(current);

@@ -1,6 +1,16 @@
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { renderBrief, renderHandoff, buildCheckpoint } from "./checkpoint.js";
+import { dirname, relative, resolve } from "node:path";
+import {
+  buildCheckpoint,
+  buildNote,
+  driftLine,
+  fenceBody,
+  meaningful,
+  lastWritten,
+  renderBrief,
+  renderHandoff,
+} from "./checkpoint.js";
 import {
   GateRefusal,
   assertCheckpointCurrent,
@@ -22,7 +32,15 @@ import {
 import { createPromotionDraft } from "./paths.js";
 import { findItem, recordAnswer, recordRoute, renderCounterLine } from "./recall.js";
 import { definitionFor, nextStep, renderStep } from "./steps.js";
-import type { FlowRecord, IssueRecord, RecallRoute, WorkStep, WorkWeight } from "./types.js";
+import type {
+  Artifact,
+  Finding,
+  FlowRecord,
+  IssueRecord,
+  RecallRoute,
+  WorkStep,
+  WorkWeight,
+} from "./types.js";
 
 /**
  * The command layer.
@@ -120,35 +138,94 @@ export async function handoff(context: CommandContext, id?: string): Promise<Com
   return ok(renderHandoff(flow));
 }
 
+/**
+ * The one place the agent writes for itself.
+ *
+ * It is a tool, not a form. `wfctl checkpoint "<anything>"` records a line; the
+ * named fields update the index a next session reads; either may be given
+ * alone. All four fields used to be required, which made the cheapest useful
+ * act — writing down the thing you just learned — cost a composed paragraph,
+ * and a tool that expensive gets reached for at the end of a session rather
+ * than during it.
+ */
 export async function checkpoint(
   context: CommandContext,
-  input: { summary: string; handoff: string; last: string; next: string; todo?: string[] },
+  input: {
+    body?: string;
+    summary?: string;
+    handoff?: string;
+    last?: string;
+    next?: string;
+    todo?: string[];
+    about?: string;
+  },
 ): Promise<CommandResult> {
   const flow = await currentFlow(context.root);
   if (!flow) {
     return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
   }
 
-  await mutateFlow(context.root, flow.id, (current) => ({
-    ...current,
-    checkpoint: buildCheckpoint({
-      summary: input.summary,
-      handoff: input.handoff,
-      lastAction: input.last,
-      nextAction: input.next,
-      actor: context.actor,
-      /**
-       * Carried unless this call names its own.
-       *
-       * `todo` was replaced wholesale, so the second checkpoint of a session
-       * deleted the jobs the first had recorded — and checkpointing often is
-       * the thing this workflow asks for most. Doing it correctly was what
-       * lost them.
-       */
-      todo: input.todo && input.todo.length > 0 ? input.todo : (current.checkpoint?.todo ?? []),
-    }),
-  }));
-  return ok(`checkpoint written for ${flow.id}`);
+  /**
+   * "Supplied" means the same thing here as it does inside the builder.
+   *
+   * This used `trim()`, which does not strip U+200B — so four zero-width spaces
+   * counted as four named fields, the builder correctly declined to store any of
+   * them, and the command reported a checkpoint written having changed nothing.
+   * A fake checkpoint that reports success is worse than one that is refused: it
+   * silences the brief's own prompt for the life of the flow.
+   */
+  const named = [input.summary, input.handoff, input.last, input.next].some(
+    (value) => value !== undefined && meaningful(value),
+  );
+  const hasTodo = (input.todo ?? []).some((item) => meaningful(item));
+  const hasBody = meaningful(input.body ?? "");
+  if (!named && !hasTodo && !hasBody) {
+    return refused(
+      new GateRefusal(
+        "A checkpoint with nothing in it recalls nothing.",
+        'wfctl checkpoint "<whatever you would not want to look up again>"',
+        "Anything is enough. A line, a correction to the next action, a detail " +
+          "too small to be the summary — all of it is kept, and none of it is " +
+          "checked. The four named fields (--summary, --handoff, --last, --next) " +
+          "update the index a fresh session reads; what you are not naming is " +
+          "left as it was.",
+      ),
+    );
+  }
+
+  let noteCount = 0;
+  try {
+    await mutateFlow(context.root, flow.id, (current) => {
+      const next = { ...current };
+      if (hasBody) {
+        const notes = [...(current.notes ?? []), buildNote(input.body ?? "", context.actor, input.about)];
+        next.notes = notes;
+        noteCount = notes.length;
+      } else {
+        noteCount = (current.notes ?? []).length;
+      }
+      if (named || hasTodo) {
+        next.checkpoint = buildCheckpoint(
+          {
+            summary: input.summary,
+            handoff: input.handoff,
+            lastAction: input.last,
+            nextAction: input.next,
+            actor: context.actor,
+            todo: input.todo,
+          },
+          current.checkpoint,
+        );
+      }
+      return next;
+    });
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
+
+  const written = hasBody ? `note ${noteCount} written` : "checkpoint updated";
+  return ok(`${written} for ${flow.id}`);
 }
 
 /**
@@ -1389,4 +1466,336 @@ export async function promote(
     if (error instanceof GateRefusal) return refused(error);
     throw error;
   }
+}
+
+/* ------------------------------------------------- findings, inside the fence */
+
+/**
+ * A finding that belongs to this work.
+ *
+ * `capture` was the only outlet, and it is the outlet that *leaves*: it writes
+ * to the inbox and waits for the maintainer. That is right for a thing outside
+ * the agreed scope and wrong for the thing the agent noticed and could simply
+ * fix — which then had to become somebody else's decision, and came back, if
+ * ever, as a separate bundle nobody asked for.
+ *
+ * Two properties were collapsed into one. Whether it is inside the fence, and
+ * who decides. This records "inside, mine"; capture still records "outside,
+ * theirs"; and a finding that turns out to be neither is released to the inbox
+ * with `finding release`.
+ */
+export async function findingAdd(
+  context: CommandContext,
+  options: { what: string; about?: string; artifacts?: string[] },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(
+      new GateRefusal(
+        "No flow is open, so there is no work for a finding to belong to.",
+        'wfctl capture "<what you found>"',
+        "A finding met with no fence around it is a capture: it goes to the inbox and waits.",
+      ),
+    );
+  }
+  if (!options.what.trim()) {
+    return refused(new GateRefusal("A finding needs what was found.", 'wfctl finding "<what you found>"'));
+  }
+
+  let id = "";
+  await mutateFlow(context.root, flow.id, (current) => {
+    const findings = current.findings ?? [];
+    id = `F${String(findings.length + 1).padStart(3, "0")}`;
+    const finding: Finding = {
+      id,
+      at: new Date().toISOString(),
+      actor: context.actor,
+      what: options.what.trim(),
+      status: "open",
+    };
+    if (options.about?.trim()) finding.about = options.about.trim();
+    if (options.artifacts?.length) finding.artifacts = options.artifacts;
+    return { ...current, findings: [...findings, finding] };
+  });
+
+  return ok(
+    [
+      `${id} recorded against ${flow.id}.`,
+      "",
+      "It stays with this work. Settle it here when it is yours to settle:",
+      `  wfctl finding resolve ${id} --how "<what you did about it>"`,
+      "",
+      "If it turns out to be outside this fence, it belongs to the maintainer:",
+      `  wfctl finding release ${id}`,
+    ].join("\n"),
+  );
+}
+
+export async function findingResolve(
+  context: CommandContext,
+  options: { id: string; how: string },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+
+  const finding = (flow.findings ?? []).find((entry) => entry.id === options.id);
+  if (!finding) {
+    return refused(
+      new GateRefusal(
+        `No finding ${options.id} on this work.`,
+        "wfctl finding list",
+        (flow.findings ?? []).length === 0 ? "Nothing has been recorded against this flow." : undefined,
+      ),
+    );
+  }
+  /**
+   * Resolved, never silently. The reason is the whole value of the record: a
+   * finding closed with no account of what was done reads, six weeks later,
+   * exactly like one that was quietly dropped.
+   */
+  if (!options.how.trim()) {
+    return refused(
+      new GateRefusal(
+        "Say what you did about it.",
+        `wfctl finding resolve ${options.id} --how "<what you did>"`,
+        `${finding.id}: ${finding.what}`,
+      ),
+    );
+  }
+
+  await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    findings: (current.findings ?? []).map((entry) =>
+      entry.id === options.id
+        ? { ...entry, status: "resolved" as const, resolution: options.how.trim(), resolvedAt: new Date().toISOString() }
+        : entry,
+    ),
+  }));
+  return ok(`${options.id} resolved.`);
+}
+
+/**
+ * A finding that turned out not to be this work's to settle.
+ *
+ * It leaves through the same door everything else leaves through, so a
+ * maintainer meets it in one place rather than two.
+ */
+export async function findingRelease(
+  context: CommandContext,
+  options: { id: string },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+
+  const finding = (flow.findings ?? []).find((entry) => entry.id === options.id);
+  if (!finding) {
+    return refused(new GateRefusal(`No finding ${options.id} on this work.`, "wfctl finding list"));
+  }
+
+  const captured = await capture(context, {
+    text: `${finding.what}\n\nFound during ${flow.id}${finding.about ? `, working on ${finding.about}` : ""}, and released to the inbox because it is outside that fence.`,
+  });
+  if (captured.exitCode !== 0) return captured;
+
+  await mutateFlow(context.root, flow.id, (current) => ({
+    ...current,
+    findings: (current.findings ?? []).map((entry) =>
+      entry.id === options.id ? { ...entry, status: "released" as const } : entry,
+    ),
+  }));
+  /**
+   * The path only. Capture prints its own guidance, which is written for an
+   * agent deciding whether to capture — a decision already made by the time
+   * this runs.
+   */
+  const where = captured.stdout.split("\n").filter((line) => line.includes("/changes/inbox/"))[0] ?? "";
+  return ok(`${options.id} released to the inbox.${where ? `\n${where.trim()}` : ""}`);
+}
+
+export async function findingList(context: CommandContext): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+
+  const findings = flow.findings ?? [];
+  if (findings.length === 0) {
+    return ok(
+      [
+        "Nothing recorded against this work yet.",
+        "",
+        "A thing you noticed that this work should settle:",
+        '  wfctl finding "<what you found>" --about <unit>',
+        "",
+        "A thing outside this fence, for the maintainer:",
+        '  wfctl capture "<what you found>"',
+      ].join("\n"),
+    );
+  }
+
+  const lines: string[] = [];
+  for (const finding of findings) {
+    lines.push(`${finding.id}  ${finding.status}${finding.about ? `  (${finding.about})` : ""}`);
+    lines.push(`  ${finding.what}`);
+    if (finding.resolution) lines.push(`  → ${finding.resolution}`);
+    for (const artifact of finding.artifacts ?? []) lines.push(`  evidence: ${artifact}`);
+  }
+  const open = findings.filter((finding) => finding.status === "open").length;
+  lines.push("");
+  lines.push(`${findings.length} recorded, ${open} open.`);
+  return ok(lines.join("\n"));
+}
+
+/* --------------------------------------------------------------- artifacts */
+
+/**
+ * A file this work produced, named by the record.
+ *
+ * Bundles have always had an `artifacts/` directory and the tool has never
+ * known what was in it, so a fresh session met a folder of documents with no
+ * statement of which one mattered and which had been replaced. That statement
+ * used to live in prose at the top of each file, updated by whoever remembered.
+ */
+export async function artifactAdd(
+  context: CommandContext,
+  options: { path: string; what: string; supersedes?: string },
+): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+  if (!options.path.trim()) {
+    return refused(new GateRefusal("Which file?", 'wfctl artifact add <path> --what "<what it is>"'));
+  }
+  if (!options.what.trim()) {
+    return refused(
+      new GateRefusal(
+        "Say what it is.",
+        `wfctl artifact add ${options.path} --what "<what it is>"`,
+        "A path alone is a filename. What a reader needs is why they would open it.",
+      ),
+    );
+  }
+
+  const absolute = resolve(context.root, options.path);
+  if (!existsSync(absolute)) {
+    return refused(
+      new GateRefusal(
+        `${options.path} is not there.`,
+        "Write the file first, then register it.",
+        "An artifact the record names and the disk does not have is worse than one nobody registered.",
+      ),
+    );
+  }
+  const stored = relative(context.root, absolute);
+
+  await mutateFlow(context.root, flow.id, (current) => {
+    const artifacts = (current.artifacts ?? []).filter((entry) => entry.path !== stored);
+    const added: Artifact = {
+      path: stored,
+      what: options.what.trim(),
+      at: new Date().toISOString(),
+      actor: context.actor,
+    };
+    return {
+      ...current,
+      artifacts: [
+        ...artifacts.map((entry) =>
+          options.supersedes && entry.path === relative(context.root, resolve(context.root, options.supersedes))
+            ? { ...entry, supersededBy: stored }
+            : entry,
+        ),
+        added,
+      ],
+    };
+  });
+
+  return ok(
+    options.supersedes
+      ? `${stored} registered, and ${options.supersedes} marked superseded by it.`
+      : `${stored} registered.`,
+  );
+}
+
+export async function artifactList(context: CommandContext): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+
+  const artifacts = flow.artifacts ?? [];
+  if (artifacts.length === 0) {
+    return ok(
+      [
+        "This work has registered no artifacts.",
+        "",
+        "Register what a next session would otherwise have to find by reading the directory:",
+        '  wfctl artifact add <path> --what "<what it is>"',
+      ].join("\n"),
+    );
+  }
+
+  const lines: string[] = [];
+  for (const artifact of artifacts) {
+    lines.push(`${artifact.supersededBy ? "superseded" : "standing  "}  ${artifact.path}`);
+    lines.push(`  ${artifact.what}`);
+    if (artifact.supersededBy) lines.push(`  replaced by ${artifact.supersededBy}`);
+  }
+  return ok(lines.join("\n"));
+}
+
+/* ------------------------------------------------------------------- notes */
+
+/** Everything written down, oldest first. The brief shows the last few. */
+export async function notes(context: CommandContext): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
+
+  const written = flow.notes ?? [];
+  if (written.length === 0) {
+    return ok(
+      [
+        "Nothing written down for this flow.",
+        "",
+        '  wfctl checkpoint "<whatever you would not want to look up again>"',
+      ].join("\n"),
+    );
+  }
+  return ok(
+    written
+      .map((note) => `${note.at}  ${note.actor}${note.about ? `  (${note.about})` : ""}\n${fenceBody(note.text)}`)
+      .join("\n\n"),
+  );
+}
+
+/**
+ * Where this work is, said out loud.
+ *
+ * `wfctl work step` used to refuse an agent that was asking rather than
+ * telling. This answers, and answers with what the step means and what moves it
+ * — the two things the asker actually wanted.
+ */
+export async function workWhere(context: CommandContext): Promise<CommandResult> {
+  const flow = await currentFlow(context.root);
+  if (!flow) {
+    return refused(
+      new GateRefusal(
+        "No flow is open, so no work has a step.",
+        "wfctl brief",
+        "The brief says what this repository is waiting on.",
+      ),
+    );
+  }
+
+  const definition = definitionFor(flow.step);
+  const lines = [
+    `flow ${flow.id}  ·  step ${flow.step}`,
+    flow.title,
+    "",
+    definition.demands,
+    "",
+    `move it on with: ${definition.command}`,
+  ];
+
+  const drift = driftLine(lastWritten(flow));
+  if (drift) {
+    lines.push("");
+    lines.push(`⚠ ${drift}.`);
+    lines.push('  wfctl checkpoint "<what has happened since>"');
+  }
+  return ok(lines.join("\n"));
 }

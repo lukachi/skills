@@ -11,20 +11,58 @@ flushes and the id clears; the next round opens a new one.
 
 ## The checkpoint
 
-One act, two renderings. `wfctl checkpoint` writes the flow's working state; the
-**brief** is its index, the **handoff** is its body.
+Your own surface, and the cheapest thing in the tool.
 
 ```sh
-wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \
-  --last "<last completed action>" --next "<the exact next action>"
+wfctl checkpoint "<whatever you would not want to look up again>"
 ```
+
+Nothing about a note is checked and notes accumulate; the second does not erase
+the first. `wfctl notes` reads them all back and the brief shows the last few.
+
+Four named fields update the index a fresh session reads — `--summary` one line,
+`--handoff` the body, `--last` and `--next` what recovery acts on, `--todo` for
+small jobs noticed in passing. Any of them may be given alone, and **what you do
+not name is left as it was**, so correcting the next action does not cost you the
+handoff.
 
 The brief prints the bound flow's handoff in full and every other flow as one
 line, so a truncated brief cannot hide the state that matters.
 
-Write one after every material turn. Not because a session is about to end —
-that fear is what made runs stop halfway through a context that was still wide
-open — but because it is what a fresh session resumes from.
+Write after every material turn. Not because a session is about to end — that
+fear is what made runs stop halfway through a context that was still wide open —
+but because it is what a fresh session resumes from, and because a run learns
+more than it can hold.
+
+## Findings
+
+Something you noticed that **this work should settle**.
+
+```sh
+wfctl finding "<what you found>" [--about <unit>] [--artifact <path>]
+wfctl finding resolve <id> --how "<what you did about it>"
+wfctl finding release <id>
+```
+
+It stays inside the fence, which is the whole difference from a capture. A
+capture leaves: it goes to the inbox and waits for the maintainer, and that is
+right for something outside this work and wrong for the thing you could simply
+fix. Resolving takes `--how`, because a finding closed with no account of what
+was done reads later exactly like one quietly dropped. `release` sends it to the
+inbox when it turns out not to be yours.
+
+## Artifacts
+
+The files this work produced, and which of them it still stands on.
+
+```sh
+wfctl artifact add <path> --what "<what it is>" [--supersedes <path>]
+wfctl artifact list
+```
+
+Superseding is **recorded, not implied**. The alternative is a note at the top
+of each file saying which one is current, updated by whoever remembers — which
+is what makes a directory of documents unreadable.
 
 **Blockers are not stored.** Where the flow stands in its sequence *is* the
 blocker, and the brief derives it. A stored one is a sentence that was true once

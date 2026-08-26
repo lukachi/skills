@@ -179,24 +179,77 @@ Three guards run whether or not you invoke anything:
 
 `wfctl guards` shows which are on. Turning one off is the maintainer's decision.
 
-## The checkpoint
+## Writing things down
 
-`wfctl checkpoint` writes where the work stands, and it is what a fresh session
-resumes from. Anything left only in a message is lost with the session.
+Four tools, and none of them is a gate. They exist because a long run learns
+more than it can hold, and everything not written down is learned again.
+
+### `wfctl checkpoint` — your own surface
 
 ```
-wfctl checkpoint --summary "<one line>" --handoff "<what the next session needs>" \
-  --last "<last completed action>" --next "<the exact next action>"
+wfctl checkpoint "<whatever you would not want to look up again>"
 ```
 
-**Every step wants one written since the flow last moved.** `wfctl work step`
-refuses otherwise, and says so — a checkpoint written at `opened` and left there
-describes a flow that no longer exists, and a session resuming from it acts on a
-`next:` already done.
+That is the whole command. It costs one argument on purpose. A tool that
+charges a composed paragraph gets reached for at the end of a session instead of
+during it, so anything is enough: a line, a correction, a detail too small to be
+the summary. Nothing about it is checked, and notes accumulate — the second
+does not erase the first.
 
-The `--handoff` body is the substance and can be long: what was found, what it
-rests on, what is still open. `--summary` is one line. `--todo` carries small
-jobs noticed in passing and survives the next checkpoint.
+Four named fields update the index a fresh session reads, and any of them may be
+given alone:
+
+```
+wfctl checkpoint --next "<the exact next action>"
+```
+
+**What you do not name is left as it was.** Correcting the next action does not
+cost you the handoff. `--summary` is one line, `--handoff` is the substance and
+can be long, `--last` and `--next` are what recovery acts on, and `--todo`
+carries small jobs noticed in passing.
+
+`wfctl notes` reads back everything written. The brief shows the last few.
+
+**Every step wants the index written since the flow last moved** — a checkpoint
+left at `opened` describes a flow that no longer exists, and a session resuming
+from it acts on a `next:` already done.
+
+### `wfctl finding` — something this work should settle
+
+```
+wfctl finding "<what you found>" [--about <unit>] [--artifact <path>]
+wfctl finding resolve <id> --how "<what you did about it>"
+wfctl finding release <id>
+```
+
+A finding stays with the work that found it. This is the difference from
+`capture`: a capture *leaves* — it goes to the inbox and waits for the
+maintainer, which is right for something outside this fence and wrong for the
+thing you noticed and could simply fix. That used to become somebody else's
+decision and came back, if ever, as a bundle nobody asked for.
+
+Resolving takes `--how`. A finding closed with no account of what was done
+reads, six weeks later, exactly like one quietly dropped. If it turns out not to
+be yours, `release` sends it to the inbox through the same door as a capture.
+
+### `wfctl artifact` — the files this work stands on
+
+```
+wfctl artifact add <path> --what "<what it is>" [--supersedes <path>]
+wfctl artifact list
+```
+
+Bundles have always had an `artifacts/` directory and the tool never knew what
+was in it, so a fresh session met a folder of documents with no statement of
+which mattered and which had been replaced. Register what a reader would
+otherwise have to reconstruct by opening files, and **record superseding rather
+than implying it** — the alternative is a sentence at the top of each file that
+somebody has to remember to update.
+
+### `wfctl work step` — where the work is
+
+Asked with nothing after it, it answers: the step, what it means, and what moves
+it on. It is a question you may ask at any time.
 
 ## Working habits the tool cannot enforce
 

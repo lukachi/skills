@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, symlinkSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -354,7 +354,8 @@ test("brief --json satisfies the stop guard's contract, not just a stub's", asyn
     env: { ...process.env, PATH: `${resolve(root, "bin")}:${process.env.PATH}` },
   });
   assert.match(decision, /"decision":"block"/, "the guard did not fire on outstanding work");
-  assert.match(decision, /wfctl checkpoint --summary/, "the guard named a command that does not exist");
+  // The reason is JSON, so the quote arrives escaped.
+  assert.match(decision, /wfctl checkpoint \\"/, "the guard named a command that does not exist");
 });
 
 test("the stop guard releases when nothing awaits the agent", async () => {
@@ -1533,4 +1534,179 @@ test("conceding is not the way past verification", async () => {
   const completed = wfctl(root, ["work", "close", "--outcome", "completed"]);
   assert.equal(completed.status, 2);
   assert.match(completed.stdout, /verified/);
+});
+
+// ---------------------------------------------------------------------------
+// The tools the agent reaches for, rather than the gates it is stopped by.
+//
+// Every one of these exists because the record had exactly three shapes — a
+// unit, one overwritable checkpoint, and a capture that leaves the fence — so
+// everything else a long run learns had nowhere to go and was learned again.
+
+test("a checkpoint costs one argument", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "cheap", "--weight", "significant", "--attested", "they asked"]);
+
+  const note = wfctl(root, ["checkpoint", "the parser drops the last token when the body ends in a quote"]);
+  assert.equal(note.status, 0, note.stdout);
+  assert.match(wfctl(root, ["brief"]).stdout, /drops the last token/);
+});
+
+test("notes accumulate; the second does not erase the first", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "accumulate", "--weight", "significant", "--attested", "they asked"]);
+  wfctl(root, ["checkpoint", "the first thing worth keeping"]);
+  wfctl(root, ["checkpoint", "the second thing worth keeping"]);
+
+  const written = wfctl(root, ["notes"]).stdout;
+  assert.match(written, /the first thing worth keeping/, "the first note was lost");
+  assert.match(written, /the second thing worth keeping/);
+});
+
+test("a body that opens with dashes is a body", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "dashes", "--weight", "significant", "--attested", "they asked"]);
+  // A note that has to be re-worded to get past the parser is a note that does
+  // not get written.
+  const result = wfctl(root, ["checkpoint", "--fix the parser, it drops the last token"]);
+  assert.equal(result.status, 0, result.stdout);
+  assert.match(wfctl(root, ["notes"]).stdout, /--fix the parser/);
+});
+
+test("correcting the next action does not cost the handoff", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "carry", "--weight", "significant", "--attested", "they asked"]);
+  wfctl(root, [
+    "checkpoint",
+    "--summary", "a summary", "--handoff", "the body a next session needs",
+    "--last", "read the lock", "--next", "read the paths",
+  ]);
+  wfctl(root, ["checkpoint", "--next", "read the guards"]);
+
+  const brief = wfctl(root, ["brief"]).stdout;
+  assert.match(brief, /the body a next session needs/, "the handoff was dropped by a call that never named it");
+  assert.match(brief, /next: read the guards/);
+  assert.match(brief, /last: read the lock/);
+});
+
+test("an empty checkpoint is refused, and the refusal names the cheap form", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "empty", "--weight", "significant", "--attested", "they asked"]);
+  const result = wfctl(root, ["checkpoint"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /wfctl checkpoint "/);
+});
+
+test("a finding can be settled by the work that found it", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "findings", "--weight", "significant", "--attested", "they asked"]);
+
+  const recorded = wfctl(root, ["finding", "the lock file survives a kill between link and rm"]);
+  assert.equal(recorded.status, 0, recorded.stdout);
+  assert.match(recorded.stdout, /F001/);
+  assert.match(wfctl(root, ["brief"]).stdout, /survives a kill/, "an open finding was invisible in the brief");
+
+  // Resolved, never silently: a finding closed with no account of what was done
+  // reads, six weeks later, exactly like one that was quietly dropped.
+  const silent = wfctl(root, ["finding", "resolve", "F001"]);
+  assert.equal(silent.status, 2);
+
+  const resolved = wfctl(root, ["finding", "resolve", "F001", "--how", "rm moved into a finally"]);
+  assert.equal(resolved.status, 0, resolved.stdout);
+  assert.match(wfctl(root, ["finding", "list"]).stdout, /rm moved into a finally/);
+  assert.doesNotMatch(wfctl(root, ["brief"]).stdout, /survives a kill/);
+});
+
+test("a finding that is not this work's leaves through the same door as a capture", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "release", "--weight", "significant", "--attested", "they asked"]);
+  wfctl(root, ["finding", "the submodule pins do not resolve from their own remotes"]);
+
+  const released = wfctl(root, ["finding", "release", "F001"]);
+  assert.equal(released.status, 0, released.stdout);
+  assert.match(released.stdout, /changes\/inbox\//);
+
+  const inbox = await readdir(resolve(root, "changes/inbox"));
+  assert.equal(inbox.length, 1, "the released finding never reached the inbox");
+  const body = await readFile(resolve(root, "changes/inbox", inbox[0] ?? ""), "utf8");
+  assert.match(body, /submodule pins/);
+  // Where it came from travels with it. A capture that cannot say which work
+  // met it is a capture nobody can put in context.
+  assert.match(body, /release/);
+});
+
+test("a finding needs a fence, and says so when there is none", async () => {
+  const root = await installed();
+  const result = wfctl(root, ["finding", "something I noticed"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /wfctl capture/, "the refusal did not name the outlet that does apply");
+});
+
+test("artifacts are named, and superseding one is recorded rather than implied", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "artifacts", "--weight", "significant", "--attested", "they asked"]);
+  const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+  const dir = resolve(root, "changes/active", id, "artifacts");
+  await mkdir(dir, { recursive: true });
+  await writeFile(resolve(dir, "bench.md"), "43.6ms", "utf8");
+  await writeFile(resolve(dir, "bench-2.md"), "12ms", "utf8");
+
+  const first = wfctl(root, [
+    "artifact", "add", `changes/active/${id}/artifacts/bench.md`,
+    "--what", "the frame timing that killed the WebGPU argument",
+  ]);
+  assert.equal(first.status, 0, first.stdout);
+
+  wfctl(root, [
+    "artifact", "add", `changes/active/${id}/artifacts/bench-2.md`,
+    "--what", "the same bench after the fill-rate fix",
+    "--supersedes", `changes/active/${id}/artifacts/bench.md`,
+  ]);
+
+  const listed = wfctl(root, ["artifact", "list"]).stdout;
+  assert.match(listed, /superseded.*bench\.md/s);
+  assert.match(listed, /standing.*bench-2\.md/s);
+
+  // The brief carries only what the work still stands on.
+  const brief = wfctl(root, ["brief"]).stdout;
+  assert.match(brief, /bench-2\.md/);
+  assert.doesNotMatch(brief, /artifacts\/bench\.md/);
+});
+
+test("an artifact the disk does not have is refused", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "missing", "--weight", "significant", "--attested", "they asked"]);
+  const result = wfctl(root, ["artifact", "add", "nowhere.md", "--what", "nothing"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /is not there/);
+});
+
+test("work step answers when it is asked rather than told", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "asking", "--weight", "significant", "--attested", "they asked"]);
+
+  // It refused — "Unknown step. One of: …" — at an agent that was using it to
+  // ask, and in a real run the flow then sat at `split` through eighteen
+  // delivered units because nothing ever said so out loud.
+  const asked = wfctl(root, ["work", "step"]);
+  assert.equal(asked.status, 0, asked.stdout);
+  assert.match(asked.stdout, /step opened/);
+  assert.match(asked.stdout, /move it on with/);
+});
+
+test("nothing nags a session that has only just started", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "quiet", "--weight", "significant", "--attested", "they asked"]);
+  // A warning that is always on is a warning nobody reads.
+  assert.doesNotMatch(wfctl(root, ["brief"]).stdout, /since anything was written down/);
+  assert.doesNotMatch(wfctl(root, ["work", "issue", "list"]).stdout, /since anything was written down/);
+});
+
+test("the write hook stays machine-readable", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "machine", "--weight", "significant", "--attested", "they asked"]);
+  // Its contract is that empty output means stay silent. Appending a habit
+  // reminder to it makes the guard speak on every edit.
+  const quiet = wfctl(root, ["hook", "write", "--target", resolve(root, "README.md")]);
+  assert.doesNotMatch(quiet.stdout, /wfctl checkpoint/);
 });
