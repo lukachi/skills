@@ -274,9 +274,9 @@ export function renderBrief(
       "No flow is open.",
       ...(waiting.length > 0 ? ["", ...waiting] : []),
       "",
-      "Nothing here holds session state, because state belongs to a flow. If you",
-      "are resuming work, it is one of the bundles above; if you are starting it,",
-      "open the fence first and checkpoint inside it.",
+      "Nothing here holds session state, because state belongs to a piece of",
+      "work. If you are resuming, it is one of the records above; if you are",
+      "starting, open one and write into it as you go.",
       "",
       "Start one explicitly when the maintainer asks for work, and record what",
       "they said — a bundle exists because they asked for it:",
@@ -388,12 +388,21 @@ export function renderBrief(
   const others = open.filter((flow) => flow.id !== currentId);
   if (others.length > 0) {
     lines.push("");
-    lines.push("other open flows:");
+    /**
+     * Other open work is a thing to move between, not a thing to destroy.
+     *
+     * This offered `flow close` and nothing else, which was consistent while
+     * only one flow could be open: the other one was in the way. Now it is
+     * simply other work, so the first suggestion is the one that reaches it.
+     */
+    lines.push("other open work:");
     for (const flow of others) {
-      const summary = flow.checkpoint?.summary ?? "no checkpoint";
-      lines.push(`  ${flow.id}  ·  ${flow.step}  ·  ${summary}`);
-      lines.push(`    close it with: wfctl flow close ${flow.id}`);
+      const summary = flow.checkpoint?.summary?.trim() || "nothing written down";
+      lines.push(`  ${flow.id}  ·  ${flow.step}${flow.parked ? "  ·  parked" : ""}`);
+      lines.push(`      ${summary}`);
     }
+    lines.push("");
+    lines.push(`  wfctl work bind <id>   ·   to work in one of them`);
   }
 
   if (waiting.length > 0) {

@@ -2,12 +2,19 @@
 
 ## The flow
 
-A `flow_id` fences the workload that was agreed. It is not a bundle id and not a
+A `flow_id` names the workload that was agreed. It is not a bundle id and not a
 task id: it groups whatever was settled — several change records, one, or a
 reconstruction.
 
-While it is open, work outside it is out of scope. On completion the checkpoint
-flushes and the id clears; the next round opens a new one.
+**Several may be open.** `.workflow/flows/current` names the one you are working
+in — whose bundle may be written to, and whose state the brief renders in full —
+and `wfctl work bind <id>` moves it. It is a choice, not a lock.
+
+Opening a second one is not refused. It reports what else is in flight, with
+where each stands and which checkouts each is bound to, so you can tell the
+maintainer whether the two collide before starting rather than after.
+
+On completion the checkpoint flushes and the id clears.
 
 ## The checkpoint
 
@@ -44,7 +51,7 @@ wfctl finding resolve <id> --how "<what you did about it>"
 wfctl finding release <id>
 ```
 
-It stays inside the fence, which is the whole difference from a capture. A
+It stays with this work, which is the whole difference from a capture. A
 capture leaves: it goes to the inbox and waits for the maintainer, and that is
 right for something outside this work and wrong for the thing you could simply
 fix. Resolving takes `--how`, because a finding closed with no account of what

@@ -117,16 +117,27 @@ test("the checkpoint is one act, and the brief renders its body for the bound fl
   assert.match(body.stdout, /the detailed recall/);
 });
 
-test("closing clears the fence so the next flow may open", async () => {
+test("a second piece of work opens, and says what else is in flight", async () => {
+  /**
+   * This used to refuse, and the refusal cost more than it saved. One session:
+   * the maintainer attested a second piece of work, was offered only "discard
+   * it as a capture" or "close the flow you are mid-way through", took neither,
+   * and never ran the tool again — six hours and twenty-six files with no
+   * record at all. A finding now has `wfctl finding` inside the fence and
+   * `capture` outside it, and `--attested` already stops a bundle nobody asked
+   * for, so the exclusion was guarding something guarded twice.
+   */
   const ctx = await context();
   await workStart(ctx, { title: "first", weight: "lightweight", attested: "they asked for it" });
-  const blocked = await workStart(ctx, { title: "second", weight: "lightweight", attested: "they asked for it" });
-  assert.equal(blocked.exitCode, 2);
-  assert.match(blocked.stdout, /wfctl capture/);
-
-  await flowClose(ctx);
   const second = await workStart(ctx, { title: "second", weight: "lightweight", attested: "they asked for it" });
-  assert.equal(second.exitCode, 0);
+  assert.equal(second.exitCode, 0, second.stdout);
+
+  // Reported with enough to judge a collision, and offering the move rather
+  // than deciding for them.
+  assert.match(second.stdout, /1 other piece\(s\) of work are open/);
+  assert.match(second.stdout, /work-first/);
+  assert.match(second.stdout, /wfctl work bind/);
+  assert.doesNotMatch(second.stdout, /out of scope/);
 });
 
 test("the promotion draft is created by the tool, never named by the agent", async () => {

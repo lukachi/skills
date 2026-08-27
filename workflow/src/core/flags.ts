@@ -57,6 +57,7 @@ export const COMMAND_FLAGS: Readonly<Record<string, CommandFlags>> = {
   "work start": { value: ["title", "weight", "attested", "from"], boolean: [] },
   "work adopt": { value: ["attested", "weight", "title", "from"], boolean: [] },
   "work list": NONE,
+  "work bind": NONE,
   "work step": NONE,
   "work issue create": { value: ["title", "satisfies"], boolean: [] },
   "work issue list": NONE,

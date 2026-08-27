@@ -164,14 +164,25 @@ test("an attack that broke the work is not accepted", async () => {
   assert.match(result.stdout, /broke the work/);
 });
 
-test("the fence survives deletion of the current pointer", async () => {
+test("a flow the pointer has lost is still reported as open", async () => {
+  /**
+   * This used to assert the fence held after the pointer was deleted, because
+   * a second flow was refused. Nothing is refused now — but the underlying
+   * failure is the same one and still matters: a record the pointer cannot
+   * reach must not become invisible.
+   */
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "first", "--weight", "lightweight", "--attested", "they asked for it"]);
   await writeFile(resolve(root, ".workflow/flows/current"), "", "utf8");
 
   const second = wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight", "--attested", "they asked for it"]);
-  assert.equal(second.status, 2, "a second flow opened once the pointer was gone");
-  assert.match(second.stdout, /out of scope/);
+  assert.equal(second.status, 0, second.stdout);
+  assert.match(second.stdout, /1 other piece\(s\) of work are open/);
+  assert.match(second.stdout, /work-first/);
+
+  const brief = wfctl(root, ["brief"]).stdout;
+  assert.match(brief, /other open work/);
+  assert.match(brief, /work-first/, "the lost flow vanished from the brief");
 });
 
 test("two titles that slug alike do not overwrite each other", async () => {
@@ -842,7 +853,13 @@ test("promoting with nothing drafted is refused", async () => {
   assert.match(result.stdout, /Nothing is waiting to be promoted|no drafted page/);
 });
 
-test("parallel work start opens exactly one flow", async () => {
+test("parallel work start writes every flow it reports opening", async () => {
+  /**
+   * Six concurrent calls each used to read "nothing open", each wrote a record,
+   * and five became unreachable behind a single pointer. Opening several is
+   * legal now, so the property is what it should always have been: every call
+   * that reports success left a record, and none of them clobbered another.
+   */
   const root = await installed();
   await Promise.all(
     Array.from({ length: 6 }, (_, index) =>
@@ -855,23 +872,52 @@ test("parallel work start opens exactly one flow", async () => {
 
   const { readdir } = await import("node:fs/promises");
   const flows = (await readdir(resolve(root, ".workflow/flows"))).filter((n) => n.endsWith(".json"));
-  assert.equal(flows.length, 1, `the fence was raced: ${flows.join(", ")}`);
+  assert.equal(flows.length, 6, `a concurrent open was lost: ${flows.join(", ")}`);
+  assert.equal(new Set(flows).size, 6, "two flows collided on one id");
+
+  // And every one of them is reachable, not just the one the pointer names.
+  const listed = wfctl(root, ["work", "list"]).stdout;
+  for (let index = 0; index < 6; index += 1) {
+    assert.match(listed, new RegExp(`race-${index}`), `race ${index} is unreachable`);
+  }
 });
 
-test("flow close takes the id its own refusal prints", async () => {
+test("flow close takes an id, and a lost pointer is recoverable", async () => {
   const root = await installed();
   wfctl(root, ["work", "start", "--title", "orphan", "--weight", "lightweight", "--attested", "they asked for it"]);
   const id = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
   await writeFile(resolve(root, ".workflow/flows/current"), "", "utf8");
 
-  const blocked = wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight", "--attested", "they asked for it"]);
-  assert.equal(blocked.status, 2);
-  assert.match(blocked.stdout, new RegExp(`flow close ${id}`));
-
-  // The remedy used to ignore its argument, so the repository stayed fenced forever.
+  // `flow close` used to ignore its argument, so a repository with a lost
+  // pointer stayed fenced forever. Nothing fences it now, but the id still has
+  // to be the one acted on.
   const closed = wfctl(root, ["flow", "close", id]);
   assert.equal(closed.status, 0, closed.stdout);
-  assert.equal(wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight", "--attested", "they asked for it"]).status, 0);
+  // The flow is gone; the bundle it opened is still on disk and the brief says
+  // so — stranded work must never become invisible.
+  const brief = wfctl(root, ["brief"]).stdout;
+  assert.doesNotMatch(brief, /other open work/);
+  assert.match(brief, /has no flow, so nothing can reach it/);
+});
+
+test("work bind moves between open work and carries its state over", async () => {
+  const root = await installed();
+  wfctl(root, ["work", "start", "--title", "first", "--weight", "lightweight", "--attested", "go"]);
+  wfctl(root, ["checkpoint", "--summary", "the first thing", "--next", "read the parser"]);
+  const first = (await readFile(resolve(root, ".workflow/flows/current"), "utf8")).trim();
+
+  wfctl(root, ["work", "start", "--title", "second", "--weight", "lightweight", "--attested", "go"]);
+  assert.match(wfctl(root, ["brief"]).stdout, /other open work/);
+
+  const bound = wfctl(root, ["work", "bind", first]);
+  assert.equal(bound.status, 0, bound.stdout);
+  assert.match(bound.stdout, /next: read the parser/);
+  assert.match(wfctl(root, ["brief"]).stdout, new RegExp(`flow ${first}`));
+
+  // A flow that is not there, and one that is closed, are both refused.
+  assert.equal(wfctl(root, ["work", "bind", "nope"]).status, 2);
+  wfctl(root, ["work", "close", "--outcome", "abandoned"]);
+  assert.equal(wfctl(root, ["work", "bind", first]).status, 2);
 });
 
 test("flow close runs the gates work close runs", async () => {

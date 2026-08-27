@@ -149,6 +149,29 @@ export async function currentFlow(root: string): Promise<FlowRecord | undefined>
   return id ? readFlow(root, id) : undefined;
 }
 
+/**
+ * The pointer is which flow the work is in now, not which one is allowed.
+ *
+ * It was a lock: one flow open, and this named it. With several open it names
+ * the one whose bundle may be written to and whose state the brief renders in
+ * full — a thing the maintainer moves, not a thing that forbids.
+ */
+export async function bindFlow(root: string, id: string): Promise<FlowRecord> {
+  const flow = await readFlow(root, id);
+  if (!flow) {
+    throw new GateRefusal(`No flow named ${id}.`, "wfctl work list");
+  }
+  if (flow.closedAt) {
+    throw new GateRefusal(
+      `${id} is closed.`,
+      "wfctl work list",
+      "Closed work is read from the archive; it does not reopen.",
+    );
+  }
+  await setCurrent(root, id);
+  return flow;
+}
+
 async function setCurrent(root: string, id: string | undefined): Promise<void> {
   await mkdir(flowDirectory(root), { recursive: true });
   const path = resolve(root, CURRENT_POINTER);
@@ -193,21 +216,28 @@ export async function openFlow(root: string, options: OpenFlowOptions): Promise<
 
 async function openFlowLocked(root: string, options: OpenFlowOptions): Promise<FlowRecord> {
   /**
-   * The fence reads the records, not the pointer.
+   * Another open flow is reported, never refused.
    *
-   * Consulting only `.workflow/flows/current` meant deleting that one file
-   * opened a second flow while the first was still open — and the brief then
-   * listed both, so the tool could see the state it had just refused to act on.
+   * This used to throw. The reasoning was sound when it was written — it was
+   * "the mechanism behind findings do not become bundles", and an agent that
+   * noticed a bug mid-implementation had exactly one place to put it. But that
+   * was the only tool available then. A finding now has `wfctl finding` inside
+   * the fence and `wfctl capture` outside it, and a bundle nobody asked for is
+   * already impossible because `--attested` demands the maintainer's words. The
+   * exclusion was guarding, at cost, something guarded twice over.
+   *
+   * The cost was measured. One session: the maintainer asked for a second piece
+   * of work, attested it in their own words, and was refused with two options —
+   * discard the intent as a capture, or close a flow they were mid-way through.
+   * The agent took neither and never ran the tool again. Six hours, 619 shell
+   * commands, twenty-six files written, and seven wfctl calls total: no brief,
+   * no checkpoint, no record at all. One refusal turned everything else off.
+   *
+   * So flows are open work, and the agent reads them to know what is happening
+   * rather than meeting a wall it cannot pass. What is open, and what it means
+   * for what was just asked for, is the agent's to raise before running this —
+   * from the brief, which lists it.
    */
-  const open = (await listFlows(root)).find((flow) => !flow.closedAt);
-  if (open) {
-    throw new FlowOpenError(
-      `Flow ${open.id} is open; work outside it is out of scope. ` +
-        `A finding found while working belongs in the capture inbox.`,
-      `wfctl capture "<what you found>"   (or: wfctl flow close ${open.id})`,
-    );
-  }
-
   const now = options.now ?? new Date();
   let id = createFlowId(options.kind, options.title, now);
 

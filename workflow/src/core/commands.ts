@@ -268,15 +268,13 @@ export async function workStart(
   options: { title: string; weight?: WorkWeight; attested: string; from?: string },
 ): Promise<CommandResult> {
   try {
-    /** The fence spans both cases, in this direction too. */
+    /**
+     * An open reconstruction is reported, not refused, for the same reason a
+     * second flow is: it is work in flight, and knowing about it is the agent's
+     * job rather than a wall the tool puts up.
+     */
     const { currentCase } = await import("./reconstruct.js");
-    const open = await currentCase(context.root).catch(() => undefined);
-    if (open && !open.abandoned) {
-      throw new GateRefusal(
-        `Reconstruction ${open.id} is open at stage ${open.stage}; work outside it is out of scope.`,
-        `wfctl reconstruct abandon --reason "<why this pass is not finishing>"`,
-      );
-    }
+    const reconstruction = await currentCase(context.root).catch(() => undefined);
 
     if (!options.weight) {
       const definition = definitionFor("opened");
@@ -291,6 +289,15 @@ export async function workStart(
       'wfctl work start --title "<...>" --weight <significant|lightweight> ' +
         '--attested "<what they said>"',
     );
+
+    /**
+     * What else is in flight, read before the new record exists.
+     *
+     * This is the half of the old fence worth keeping. The refusal is gone,
+     * and what it was reaching for — you may be about to work past something
+     * — is a thing the agent should raise, so the tool hands it the facts.
+     */
+    const alreadyOpen = (await listFlows(context.root)).filter((entry) => !entry.closedAt);
 
     const flow = await openFlow(context.root, {
       kind: "work",
@@ -318,6 +325,7 @@ export async function workStart(
     return ok(
       compose([
         `flow ${flow.id} opened`,
+        renderAlsoOpen(alreadyOpen, reconstruction ?? undefined),
         await guidanceFor(context, "work/framed"),
         renderStep({ ...flow, step: "opened" }),
       ]),
@@ -2175,4 +2183,73 @@ export async function learned(
 export async function learnedList(context: CommandContext): Promise<CommandResult> {
   const { listLearnings, renderLearnings } = await import("./learned.js");
   return ok(renderLearnings(await listLearnings(context.root)));
+}
+
+/**
+ * What else is open, said with enough to act on.
+ *
+ * An id alone tells an agent nothing about whether two pieces of work collide.
+ * Where each stands and which checkouts each is bound to is what makes a
+ * recommendation possible, and the recommendation is the point: this used to be
+ * a refusal, and a refusal decides for the maintainer instead of telling them.
+ */
+function renderAlsoOpen(
+  open: FlowRecord[],
+  reconstruction?: { id: string; stage: string; abandoned?: unknown } | undefined,
+): string | undefined {
+  const live = reconstruction && !reconstruction.abandoned ? reconstruction : undefined;
+  if (open.length === 0 && !live) return undefined;
+
+  const lines = [`${open.length + (live ? 1 : 0)} other piece(s) of work are open:`];
+  for (const entry of open) {
+    const bound = [
+      ...new Set(entry.issues.flatMap((issue) => (issue.claim ? [issue.claim.repository] : []))),
+    ];
+    lines.push(
+      `  ${entry.id}  ·  ${entry.step}` +
+        (bound.length > 0 ? `  ·  ${bound.join(", ")}` : "") +
+        (entry.parked ? "  ·  parked" : ""),
+      `      ${entry.checkpoint?.summary ?? "nothing written down"}`,
+    );
+  }
+  if (live) lines.push(`  reconstruction ${live.id}  ·  stage ${live.stage}`);
+
+  lines.push(
+    "",
+    "None of this refuses the work and none of it is wrong to have open. You are",
+    "the one who can see whether they collide — a shared checkout, an unmerged",
+    "branch, a criterion this would invalidate. If one of them should finish",
+    "first, say so now rather than after.",
+    "",
+    "  wfctl work bind <id>              work in a different one",
+    "  wfctl work close --outcome ...    finish the one you are in",
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Move the pointer to another open flow.
+ *
+ * With one flow allowed, the pointer was a lock and nothing needed to move it.
+ * Several open makes it a choice: which bundle may be written to, and whose
+ * state the brief renders in full.
+ */
+export async function workBind(context: CommandContext, id: string): Promise<CommandResult> {
+  if (!id.trim()) {
+    return refused(new GateRefusal("Which flow?", "wfctl work list"));
+  }
+  try {
+    const { bindFlow } = await import("./flow.js");
+    const flow = await bindFlow(context.root, id.trim());
+    return ok(
+      compose([
+        `working in ${flow.id}  ·  ${flow.step}`,
+        flow.checkpoint?.handoff ? fenceBody(flow.checkpoint.handoff) : undefined,
+        flow.checkpoint?.nextAction ? `next: ${flow.checkpoint.nextAction}` : undefined,
+      ]),
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
 }

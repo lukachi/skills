@@ -675,9 +675,9 @@ function renderBrief(flows, currentId, extras = {}) {
       "No flow is open.",
       ...waiting.length > 0 ? ["", ...waiting] : [],
       "",
-      "Nothing here holds session state, because state belongs to a flow. If you",
-      "are resuming work, it is one of the bundles above; if you are starting it,",
-      "open the fence first and checkpoint inside it.",
+      "Nothing here holds session state, because state belongs to a piece of",
+      "work. If you are resuming, it is one of the records above; if you are",
+      "starting, open one and write into it as you go.",
       "",
       "Start one explicitly when the maintainer asks for work, and record what",
       "they said \u2014 a bundle exists because they asked for it:",
@@ -760,12 +760,14 @@ function renderBrief(flows, currentId, extras = {}) {
   const others = open.filter((flow) => flow.id !== currentId);
   if (others.length > 0) {
     lines.push("");
-    lines.push("other open flows:");
+    lines.push("other open work:");
     for (const flow of others) {
-      const summary = flow.checkpoint?.summary ?? "no checkpoint";
-      lines.push(`  ${flow.id}  \xB7  ${flow.step}  \xB7  ${summary}`);
-      lines.push(`    close it with: wfctl flow close ${flow.id}`);
+      const summary = flow.checkpoint?.summary?.trim() || "nothing written down";
+      lines.push(`  ${flow.id}  \xB7  ${flow.step}${flow.parked ? "  \xB7  parked" : ""}`);
+      lines.push(`      ${summary}`);
     }
+    lines.push("");
+    lines.push(`  wfctl work bind <id>   \xB7   to work in one of them`);
   }
   if (waiting.length > 0) {
     lines.push("");
@@ -963,6 +965,7 @@ var init_lock = __esm({
 var flow_exports = {};
 __export(flow_exports, {
   FlowOpenError: () => FlowOpenError,
+  bindFlow: () => bindFlow,
   clearCurrent: () => clearCurrent,
   closeFlow: () => closeFlow,
   createFlowId: () => createFlowId,
@@ -1048,6 +1051,21 @@ async function currentFlow(root) {
   const id = await currentFlowId(root);
   return id ? readFlow(root, id) : void 0;
 }
+async function bindFlow(root, id) {
+  const flow = await readFlow(root, id);
+  if (!flow) {
+    throw new GateRefusal(`No flow named ${id}.`, "wfctl work list");
+  }
+  if (flow.closedAt) {
+    throw new GateRefusal(
+      `${id} is closed.`,
+      "wfctl work list",
+      "Closed work is read from the archive; it does not reopen."
+    );
+  }
+  await setCurrent(root, id);
+  return flow;
+}
 async function setCurrent(root, id) {
   await mkdir2(flowDirectory(root), { recursive: true });
   const path = resolve4(root, CURRENT_POINTER);
@@ -1062,13 +1080,6 @@ async function openFlow(root, options) {
   return withLock(resolve4(root, FLOW_DIR, "open"), () => openFlowLocked(root, options));
 }
 async function openFlowLocked(root, options) {
-  const open = (await listFlows(root)).find((flow2) => !flow2.closedAt);
-  if (open) {
-    throw new FlowOpenError(
-      `Flow ${open.id} is open; work outside it is out of scope. A finding found while working belongs in the capture inbox.`,
-      `wfctl capture "<what you found>"   (or: wfctl flow close ${open.id})`
-    );
-  }
   const now = options.now ?? /* @__PURE__ */ new Date();
   let id = createFlowId(options.kind, options.title, now);
   for (let suffix = 2; await readFlow(root, id); suffix += 1) {
@@ -3136,6 +3147,7 @@ __export(commands_exports, {
   release: () => release,
   verify: () => verify,
   workAdopt: () => workAdopt,
+  workBind: () => workBind,
   workList: () => workList,
   workStart: () => workStart,
   workWhere: () => workWhere
@@ -3263,13 +3275,7 @@ function assertAttested(words, command) {
 async function workStart(context, options) {
   try {
     const { currentCase: currentCase2 } = await Promise.resolve().then(() => (init_reconstruct(), reconstruct_exports));
-    const open = await currentCase2(context.root).catch(() => void 0);
-    if (open && !open.abandoned) {
-      throw new GateRefusal(
-        `Reconstruction ${open.id} is open at stage ${open.stage}; work outside it is out of scope.`,
-        `wfctl reconstruct abandon --reason "<why this pass is not finishing>"`
-      );
-    }
+    const reconstruction = await currentCase2(context.root).catch(() => void 0);
     if (!options.weight) {
       const definition = definitionFor("opened");
       throw new GateRefusal(
@@ -3282,6 +3288,7 @@ async function workStart(context, options) {
       options.attested,
       'wfctl work start --title "<...>" --weight <significant|lightweight> --attested "<what they said>"'
     );
+    const alreadyOpen = (await listFlows(context.root)).filter((entry) => !entry.closedAt);
     const flow = await openFlow(context.root, {
       kind: "work",
       title: options.title,
@@ -3298,6 +3305,7 @@ async function workStart(context, options) {
     return ok(
       compose([
         `flow ${flow.id} opened`,
+        renderAlsoOpen(alreadyOpen, reconstruction ?? void 0),
         await guidanceFor(context, "work/framed"),
         renderStep({ ...flow, step: "opened" })
       ])
@@ -4497,6 +4505,51 @@ async function learned(context, options) {
 async function learnedList(context) {
   const { listLearnings: listLearnings2, renderLearnings: renderLearnings2 } = await Promise.resolve().then(() => (init_learned(), learned_exports));
   return ok(renderLearnings2(await listLearnings2(context.root)));
+}
+function renderAlsoOpen(open, reconstruction) {
+  const live = reconstruction && !reconstruction.abandoned ? reconstruction : void 0;
+  if (open.length === 0 && !live) return void 0;
+  const lines = [`${open.length + (live ? 1 : 0)} other piece(s) of work are open:`];
+  for (const entry of open) {
+    const bound = [
+      ...new Set(entry.issues.flatMap((issue) => issue.claim ? [issue.claim.repository] : []))
+    ];
+    lines.push(
+      `  ${entry.id}  \xB7  ${entry.step}` + (bound.length > 0 ? `  \xB7  ${bound.join(", ")}` : "") + (entry.parked ? "  \xB7  parked" : ""),
+      `      ${entry.checkpoint?.summary ?? "nothing written down"}`
+    );
+  }
+  if (live) lines.push(`  reconstruction ${live.id}  \xB7  stage ${live.stage}`);
+  lines.push(
+    "",
+    "None of this refuses the work and none of it is wrong to have open. You are",
+    "the one who can see whether they collide \u2014 a shared checkout, an unmerged",
+    "branch, a criterion this would invalidate. If one of them should finish",
+    "first, say so now rather than after.",
+    "",
+    "  wfctl work bind <id>              work in a different one",
+    "  wfctl work close --outcome ...    finish the one you are in"
+  );
+  return lines.join("\n");
+}
+async function workBind(context, id) {
+  if (!id.trim()) {
+    return refused(new GateRefusal("Which flow?", "wfctl work list"));
+  }
+  try {
+    const { bindFlow: bindFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
+    const flow = await bindFlow2(context.root, id.trim());
+    return ok(
+      compose([
+        `working in ${flow.id}  \xB7  ${flow.step}`,
+        flow.checkpoint?.handoff ? fenceBody(flow.checkpoint.handoff) : void 0,
+        flow.checkpoint?.nextAction ? `next: ${flow.checkpoint.nextAction}` : void 0
+      ])
+    );
+  } catch (error) {
+    if (error instanceof GateRefusal) return refused(error);
+    throw error;
+  }
 }
 var init_commands = __esm({
   "src/core/commands.ts"() {
@@ -5751,6 +5804,7 @@ var COMMAND_FLAGS = {
   "work start": { value: ["title", "weight", "attested", "from"], boolean: [] },
   "work adopt": { value: ["attested", "weight", "title", "from"], boolean: [] },
   "work list": NONE,
+  "work bind": NONE,
   "work step": NONE,
   "work issue create": { value: ["title", "satisfies"], boolean: [] },
   "work issue list": NONE,
@@ -5922,6 +5976,7 @@ var USAGE = `wfctl \u2014 project workflow
   work adopt <bundle> --attested "<what they said>"
              [--weight <significant|lightweight>] [--title ...] [--from <where>]
   work list                    every bundle, and whether anything can reach it
+  work bind <flow>             work in a different open flow
   work step                    where this work is, and what moves it on
   work step <step>             record that this step is reached
   work issue create --title ... [--satisfies AC-01]...
@@ -6265,6 +6320,7 @@ async function dispatch(argv, context) {
             ...flag(args, "from") ? { from: flag(args, "from") } : {}
           });
         }
+        if (action === "bind") return await workBind(context, args[0] ?? "");
         if (action === "step") {
           const step = args[0];
           if (!step) return await workWhere(context);

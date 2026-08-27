@@ -34,6 +34,7 @@ need exact flags.
   work adopt <bundle> --attested "<what they said>"
              [--weight <significant|lightweight>] [--title ...] [--from <where>]
   work list                    every bundle, and whether anything can reach it
+  work bind <flow>             work in a different open flow
   work step                    where this work is, and what moves it on
   work step <step>             record that this step is reached
   work issue create --title ... [--satisfies AC-01]...

@@ -49,9 +49,24 @@ Neither is needed for a question. "What does this project do?" is answered by
 reading curated knowledge — search it, follow the graph, read the pages. No
 flow, no record, no gate.
 
-**One at a time.** A flow is a fence around the workload that was agreed. While
-one is open, work outside it is out of scope: something you notice along the way
-goes to `wfctl capture`, never into a new record.
+**Several can be open, and knowing about them is your job.** A flow is a piece
+of work that was agreed. Nothing refuses a second one — but when the maintainer
+asks for something while other work is in flight, say so *before* you start it:
+
+> "You're asking for X. Y is at `framed` and also touches `tbt-api`. Should Y
+> finish first, or run both?"
+
+You can see what they cannot — a shared checkout, an unmerged branch, a
+criterion this would invalidate. **Recommend**, then do what they say. `wfctl
+brief` lists what is open; `wfctl work bind <id>` moves you between them.
+
+This used to refuse, and it cost a real session six hours of records: the
+maintainer attested a second piece of work, was offered only "discard it as a
+capture" or "close the flow you are mid-way through", and the agent — offered no
+honest third option — stopped using the tool entirely.
+
+**What still goes to `wfctl capture`** is something you noticed that nobody
+asked for. Not a second thing they asked for.
 
 ## A bundle exists because the maintainer said so
 
@@ -89,7 +104,7 @@ flow's own steps already ask for it.
 
 ```
 wfctl work adopt <bundle> --weight <significant|lightweight> \
-  --attested "<what they said>"     # opens a fence around that bundle
+  --attested "<what they said>"     # opens a record for that bundle
 wfctl work adopt <other> --attested "<what they said>"   # folds another into it
 ```
 

@@ -106,8 +106,12 @@ test("a capture is written to the inbox and never becomes a record", async () =>
   assert.match(body, /the session cookie never expires/);
   assert.match(body, /awaits: nobody/);
 
+  // A capture is still the right home for something outside this work. What
+  // changed is that it is no longer the *only* home — a second piece of work
+  // the maintainer asked for opens, and says what else is in flight.
   const second = await run(["work", "start", "--title", "another", "--weight", "lightweight", "--attested", "they asked for it"], ctx);
-  assert.equal(second.exitCode, 2);
+  assert.equal(second.exitCode, 0, second.stdout);
+  assert.match(second.stdout, /other piece\(s\) of work are open/);
 });
 
 test("verification refuses a review the acting agent produced", async () => {

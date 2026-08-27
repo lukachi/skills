@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { buildCheckpoint, renderBrief, renderHandoff } from "../src/core/checkpoint.js";
 import { GateRefusal, assertNotParked, assertReached, assertRecall } from "../src/core/gates.js";
-import { FlowOpenError, closeFlow, currentFlow, listFlows, mutateFlow, openFlow } from "../src/core/flow.js";
+import { bindFlow, closeFlow, currentFlow, listFlows, mutateFlow, openFlow } from "../src/core/flow.js";
 import { CLAIM_REQUIREMENT, RECALL_ITEMS, isAnswered, isSatisfied, recordAnswer, recordRoute, renderCounterLine, shortfallFor } from "../src/core/recall.js";
 import { deriveBlocker, renderStep } from "../src/core/steps.js";
 import { assertWriteAllowed } from "../src/core/paths.js";
@@ -16,19 +16,21 @@ async function root(): Promise<string> {
   return mkdtemp(join(tmpdir(), "wfctl-core-"));
 }
 
-test("a second flow is refused while one is open, and the refusal names the capture route", async () => {
+test("a second flow opens, and binds", async () => {
   const target = await root();
-  await openFlow(target, { kind: "work", title: "first thing", attested: "they asked for it" });
+  const first = await openFlow(target, { kind: "work", title: "first thing", attested: "they asked for it" });
+  const second = await openFlow(target, { kind: "work", title: "another thing", attested: "they asked for it" });
 
-  await assert.rejects(
-    () => openFlow(target, { kind: "work", title: "a bug I noticed", attested: "they asked for it" }),
-    (error: unknown) => {
-      assert.ok(error instanceof FlowOpenError);
-      assert.match(error.message, /out of scope/);
-      assert.match(error.remedy, /wfctl capture/);
-      return true;
-    },
-  );
+  assert.notEqual(first.id, second.id);
+  // Opening binds the new one; both stay open and reachable.
+  assert.equal((await currentFlow(target))?.id, second.id);
+  const open = (await listFlows(target)).filter((flow) => !flow.closedAt);
+  assert.equal(open.length, 2);
+
+  // And the pointer moves back, because it is a choice rather than a lock.
+  await bindFlow(target, first.id);
+  assert.equal((await currentFlow(target))?.id, first.id);
+  await assert.rejects(() => bindFlow(target, "nope"));
 });
 
 test("closing clears the pointer and drops the checkpoint", async () => {
