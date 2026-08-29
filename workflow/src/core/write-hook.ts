@@ -128,12 +128,42 @@ export function decideWrite(input: WriteHookInput): WriteHookDecision {
     };
   }
 
+  /**
+   * Say what to do, not only what is wrong.
+   *
+   * This line fired on thirty-two of thirty-four writes in one session and the
+   * agent wrote anyway every time — correctly, because it was advisory and it
+   * named no action. A warning with no route in it is wallpaper by the third
+   * repeat. The trigger was right; the text was a dead end.
+   *
+   * It stays advisory. What changes is that it hands over the order, so the
+   * cheap thing to do is the right one.
+   */
   const reason = first
     ? "first write of this unit"
     : "this file is outside what any traversal or query has covered";
 
+  const route = first
+    ? undefined
+    : [
+        "Before you change it, in this order:",
+        '  qmd query "<the subject>"        what is already settled or written down',
+        "  graphify (in the leaf)          what calls it, and what it reaches",
+        "  read it at a named revision     the only thing that is authority",
+        "",
+        "Then record what that covered, and this goes quiet on it:",
+        "  wfctl recall route <qmd|graphify|read> --covered <path>",
+        "",
+        "wfctl guide structure — the full order, and when grep is the right tool",
+      ].join("\n");
+
   return {
-    message: [`[wfctl] ${reason}`, input.guidance, renderCounterLine(flow.step, flow.recall)]
+    message: [
+      `[wfctl] ${reason}`,
+      input.guidance,
+      route,
+      renderCounterLine(flow.step, flow.recall),
+    ]
       .filter((part): part is string => Boolean(part))
       .join("\n\n"),
   };

@@ -212,4 +212,13 @@ test("the write hook refuses a first write with no traversal, then goes silent o
     writtenThisUnit: ["/leaf/src/thing.ts"],
   });
   assert.match(widened.message ?? "", /outside what any traversal/);
+  /**
+   * The advisory has to name the route, not only the problem. It fired on
+   * thirty-two of thirty-four writes in one real session and the agent wrote
+   * anyway every time, because it named no action.
+   */
+  assert.match(widened.message ?? "", /qmd query/);
+  assert.match(widened.message ?? "", /graphify/);
+  assert.match(widened.message ?? "", /wfctl recall route/);
+  assert.match(widened.message ?? "", /wfctl guide structure/);
 });

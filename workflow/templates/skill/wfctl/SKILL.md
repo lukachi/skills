@@ -35,6 +35,36 @@ If a flow is open, read its handoff before acting:
 wfctl handoff
 ```
 
+## Before you grep
+
+Grep is the reflex. In this repository it is the **last** step, not the first,
+because it can only find names you already thought of — not the decision that
+already settled this, not the canonical term you are not using, not the four
+callers that break.
+
+**The order, every time you need to figure something out:**
+
+| | | |
+| --- | --- | --- |
+| 1 | `wfctl decided "<subject>"` · `wfctl learned list` | already settled? already hit? |
+| 2 | `qmd query "<subject>"` then `qmd get <path>` | what curated knowledge says |
+| 3 | `wfctl repo list` · `graphify build` in the leaf | what calls what, in the source |
+| 4 | read the source at a named revision | **implementation authority** |
+| 5 | `grep` | exact tokens, literals, generated files |
+
+Steps 1–3 *locate*. Only step 4 establishes anything. Step 5 is a real tool for
+a narrow question — reaching for it first is how work gets duplicated and
+written against an architecture nobody read.
+
+Record what the route covered as you go, so the write hook goes quiet on ground
+you actually read:
+
+```sh
+wfctl recall route graphify --covered <path> --covered <path>
+```
+
+Full version: `wfctl guide structure`.
+
 ## Two things can run, and the maintainer starts them
 
 | | When |
@@ -182,6 +212,9 @@ Read the one that matches what you are doing. Each is also served by
 | [deciding](references/deciding.md) | a direction has to be settled with the maintainer |
 | [reading a source repository](references/leaves.md) | the work touches code in a leaf — including which checkout you may write to |
 | [the command surface](references/commands.md) | you need the exact flags for something |
+
+`wfctl guide structure` is the lookup order in full — read it the first time
+you need to find anything in this repository.
 
 `wfctl guide strategy/<name>` and `wfctl guide personality/<name>` read a
 strategy or a subagent brief. `wfctl kit survey` lists them all.

@@ -566,6 +566,7 @@ __export(checkpoint_exports, {
   driftLine: () => driftLine,
   fenceBody: () => fenceBody,
   lastWritten: () => lastWritten,
+  lookupOrderLine: () => lookupOrderLine,
   meaningful: () => meaningful,
   renderBrief: () => renderBrief,
   renderHandoff: () => renderHandoff
@@ -634,6 +635,13 @@ function lastWritten(flow) {
   if (stamps.length === 0) return void 0;
   return stamps.sort().at(-1);
 }
+function lookupOrderLine() {
+  return [
+    "",
+    "finding things out:  wfctl decided \xB7 qmd query \xB7 graphify \xB7 read the source \xB7 then grep",
+    "  wfctl guide structure   \xB7   why grep is step five and not step one"
+  ];
+}
 function renderBrief(flows, currentId, extras = {}) {
   const open = flows.filter((flow) => !flow.closedAt);
   const waiting = [];
@@ -683,7 +691,8 @@ function renderBrief(flows, currentId, extras = {}) {
       "they said \u2014 a bundle exists because they asked for it:",
       '  wfctl work start --title "<what this is>" --weight <significant|lightweight> \\',
       '    --attested "<what they said>"',
-      "  wfctl reconstruct start"
+      "  wfctl reconstruct start",
+      ...lookupOrderLine()
     ].join("\n");
   }
   const lines = [];
@@ -773,6 +782,7 @@ function renderBrief(flows, currentId, extras = {}) {
     lines.push("");
     lines.push(...waiting);
   }
+  lines.push(...lookupOrderLine());
   return lines.join("\n");
 }
 function renderHandoff(flow) {
@@ -5258,8 +5268,24 @@ wfctl guide structure \u2014 searching by graph before by string`
     };
   }
   const reason = first ? "first write of this unit" : "this file is outside what any traversal or query has covered";
+  const route = first ? void 0 : [
+    "Before you change it, in this order:",
+    '  qmd query "<the subject>"        what is already settled or written down',
+    "  graphify (in the leaf)          what calls it, and what it reaches",
+    "  read it at a named revision     the only thing that is authority",
+    "",
+    "Then record what that covered, and this goes quiet on it:",
+    "  wfctl recall route <qmd|graphify|read> --covered <path>",
+    "",
+    "wfctl guide structure \u2014 the full order, and when grep is the right tool"
+  ].join("\n");
   return {
-    message: [`[wfctl] ${reason}`, input.guidance, renderCounterLine(flow.step, flow.recall)].filter((part) => Boolean(part)).join("\n\n")
+    message: [
+      `[wfctl] ${reason}`,
+      input.guidance,
+      route,
+      renderCounterLine(flow.step, flow.recall)
+    ].filter((part) => Boolean(part)).join("\n\n")
   };
 }
 function normalize2(root, path) {

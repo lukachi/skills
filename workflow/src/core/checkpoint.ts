@@ -220,6 +220,25 @@ export function lastWritten(flow: FlowRecord): string | undefined {
   return stamps.sort().at(-1);
 }
 
+/**
+ * The lookup order, on the one surface every session sees.
+ *
+ * A session was read where the agent made 226 greps, 5 wfctl calls and zero
+ * retrievals. Nothing had misfired: no document it had loaded ever named `qmd`
+ * as a command, and the order lived at the bottom of a 400-line skill. Grep is
+ * the tool that needs no introduction, so it wins by default unless something
+ * says otherwise at the moment orientation happens.
+ *
+ * It is a pointer, not a gate. Nothing checks whether it was followed.
+ */
+export function lookupOrderLine(): string[] {
+  return [
+    "",
+    "finding things out:  wfctl decided · qmd query · graphify · read the source · then grep",
+    "  wfctl guide structure   ·   why grep is step five and not step one",
+  ];
+}
+
 export function renderBrief(
   flows: FlowRecord[],
   currentId: string | undefined,
@@ -283,6 +302,7 @@ export function renderBrief(
       '  wfctl work start --title "<what this is>" --weight <significant|lightweight> \\',
       '    --attested "<what they said>"',
       "  wfctl reconstruct start",
+      ...lookupOrderLine(),
     ].join("\n");
   }
 
@@ -409,6 +429,8 @@ export function renderBrief(
     lines.push("");
     lines.push(...waiting);
   }
+
+  lines.push(...lookupOrderLine());
 
   return lines.join("\n");
 }

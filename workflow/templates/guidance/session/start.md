@@ -14,3 +14,8 @@ take without being told again.
 You are in the knowledge repository. Code lives in the leaf repositories this
 repository knows about; you edit it from here, as an orchestrator. There is no
 separate installation there and nothing to open a second session for.
+
+Whenever you need to find something out here — what was decided, what a thing
+means, what calls what — go through the lookup order above rather than
+straight to grep. Grep finds names you already thought of, which is the one
+thing you do not need help with. `wfctl guide structure` is the whole order.
