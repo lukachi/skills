@@ -368,23 +368,43 @@ test("brief --json satisfies the stop guard's contract, not just a stub's", asyn
   assert.match(decision, /wfctl checkpoint \\"/, "the guard named a command that does not exist");
 });
 
-test("the stop guard releases when nothing awaits the agent", async () => {
+test("the stop guard checks the turn, spends its budget, and wfctl continue refills it", async () => {
   const root = await installed();
   const guard = resolve(root, ".workflow/runtime/guard-stop.mjs");
-
-  const decision = execFileSync(process.execPath, [guard], {
-    cwd: root,
-    encoding: "utf8",
-    input: JSON.stringify({
+  const ask = (message: string, active: boolean) =>
+    execFileSync(process.execPath, [guard], {
       cwd: root,
-      session_id: "s",
-      prompt_id: "p",
-      last_assistant_message: "done",
-      transcript_path: "/dev/null",
-      stop_hook_active: false,
-    }),
-  });
-  assert.equal(decision.trim(), "", "an idle repository must end the turn");
+      encoding: "utf8",
+      input: JSON.stringify({
+        cwd: root,
+        session_id: "s",
+        prompt_id: "p",
+        last_assistant_message: message,
+        transcript_path: "/dev/null",
+        stop_hook_active: active,
+      }),
+    }).trim();
+
+  /**
+   * An idle repository used to end the turn here, because the guard armed on
+   * bundle signals. It asks about the turn now, and a repository with nothing
+   * open is exactly where the failure it exists for happens.
+   */
+  const first = ask("Right, I'll start on the parser now.", false);
+  assert.match(first, /"decision":"block"/);
+  assert.match(first, /stated a next action/);
+
+  assert.equal(ask("something else", true), "", "one catch per maintainer message");
+
+  const refilled = wfctl(root, ["continue"]);
+  assert.equal(refilled.status, 0);
+  assert.match(refilled.stdout, /Watching again/);
+
+  assert.match(
+    ask("a third, different thing", true),
+    /"decision":"block"/,
+    "an agent that said it is still working is watched again",
+  );
 });
 
 test("guards can be listed, turned off and turned back on", async () => {

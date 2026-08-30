@@ -119,6 +119,7 @@ export const COMMAND_FLAGS: Readonly<Record<string, CommandFlags>> = {
   "knowledge validate": { value: ["page"], boolean: [] },
   "knowledge hash": { value: ["page"], boolean: [] },
 
+  "continue": NONE,
   "doctor": NONE,
   "guards": NONE,
   "hook write": { value: ["target"], boolean: [] },

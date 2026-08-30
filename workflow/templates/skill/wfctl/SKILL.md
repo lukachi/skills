@@ -326,10 +326,28 @@ Three guards run whether or not you invoke anything:
 
 - the **session brief**, when a session opens;
 - the **write guard**, on the first write of a unit and again when you touch a
-  file no traversal has covered;
-- the **turn guard**, when a turn ends while work still awaits you.
+  file no traversal has covered — through the shell as much as through an edit;
+- the **turn guard**, when a turn ends.
 
 `wfctl guards` shows which are on. Turning one off is the maintainer's decision.
+
+### The turn guard, and the one command that answers it
+
+It asks one question of a turn that ended: **did you say you were about to do
+something, and then stop?** It reads nothing else — not the bundle, not your
+units, not the checkpoint. Whether work is open is not evidence about whether
+this turn should have ended.
+
+It gets **one catch per maintainer message**. After it fires you decide, and you
+decide with an act rather than a sentence:
+
+| | |
+| --- | --- |
+| **Still working** | `wfctl continue` — re-arms it for your next stop |
+| **Waiting on them** | say what you need in one line and end. It will not fire again until they write to you |
+
+Not refilling is the safe answer and costs nothing. Refilling is you asking to
+be watched again, which is what a long run wants.
 
 ## Writing things down
 

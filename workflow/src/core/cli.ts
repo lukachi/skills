@@ -145,6 +145,7 @@ export const USAGE = `wfctl — project workflow
 
   doctor                       verify this installation and what it depends on
 
+  continue                     still working — the turn check re-arms for your next stop
   guards [status]              which runtime guards are on
   guards on|off <stop|write|bash>
 
@@ -1255,6 +1256,11 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
           distribution: resolve(context.assets, "..", ".."),
         });
         return { stdout: renderReport(report), exitCode: exitCodeFor(report) };
+      }
+
+      case "continue": {
+        const { keepWatching } = await import("./continuing.js");
+        return ok_(await keepWatching(context.root));
       }
 
       case "guards": {

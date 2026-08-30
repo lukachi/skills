@@ -26,7 +26,12 @@ export const HOOK_SETTINGS = {
     ],
     PreToolUse: [
       {
-        matcher: "Edit|Write|MultiEdit",
+        /**
+         * The shell is a writing tool. An agent that works through `cat >` and
+         * `python3 - <<PY` made 179 file writes and 0 edits in one session, and
+         * every refusal this guard carries went unenforced for all of them.
+         */
+        matcher: "Edit|Write|MultiEdit|Bash",
         hooks: [
           {
             type: "command",
@@ -617,11 +622,11 @@ const GUARD_EVENTS: Record<GuardName, { event: string; matcher: string; describe
   stop: {
     event: "Stop",
     matcher: "*",
-    describes: "re-enters a turn that ends while work still awaits the agent",
+    describes: "re-enters a turn that stated a next action and then ended",
   },
   write: {
     event: "PreToolUse",
-    matcher: "Edit|Write|MultiEdit",
+    matcher: "Edit|Write|MultiEdit|Bash",
     describes: "delivers the unit's scope on the first write, and refuses writes by hand",
   },
   bash: {

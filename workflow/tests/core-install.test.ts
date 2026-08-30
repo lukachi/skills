@@ -113,7 +113,12 @@ test("installation places the hooks that reach an agent which never runs a comma
   assert.deepEqual(events, ["PreToolUse", "SessionStart", "Stop"]);
 
   const matchers = settings.hooks.PreToolUse.map((entry: { matcher: string }) => entry.matcher);
-  assert.ok(matchers.includes("Edit|Write|MultiEdit"));
+  /**
+   * The shell is in the matcher because an agent that writes through `cat >`
+   * and `python3 - <<PY` is otherwise invisible to every refusal this guard
+   * carries.
+   */
+  assert.ok(matchers.includes("Edit|Write|MultiEdit|Bash"));
   assert.match(settings.hooks.SessionStart[0].hooks[0].command, /wfctl brief/);
 
   const guard = await readFile(resolve(root, ".workflow/runtime/guard-write.mjs"), "utf8");

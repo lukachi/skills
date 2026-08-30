@@ -106,6 +106,18 @@ export async function mutateFlow(
     }
     const next = { ...change(current), updatedAt: new Date().toISOString() };
     await writeAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
+    /**
+     * The readable face is rewritten wherever the record is, so nothing has to
+     * remember to do it and no command can leave the two disagreeing.
+     *
+     * Every write goes through here, which is the only reason this is one line
+     * rather than a call at forty call sites — and forty call sites is how the
+     * previous attempts at this ended up being made by hand instead.
+     */
+    if (next.kind === "work") {
+      const { writeFace } = await import("./face.js");
+      await writeFace(root, next);
+    }
     return next;
   });
 }

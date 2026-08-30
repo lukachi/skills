@@ -93,6 +93,7 @@ need exact flags.
 
   doctor                       verify this installation and what it depends on
 
+  continue                     still working — the turn check re-arms for your next stop
   guards [status]              which runtime guards are on
   guards on|off <stop|write|bash>
 

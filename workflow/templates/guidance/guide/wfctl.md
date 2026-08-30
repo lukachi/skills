@@ -63,13 +63,17 @@ brings one back on demand:
 ## The runtime guards
 
 Three things fire without a command being run: the session brief when a session
-opens, the write guard on the first write of a unit, and the turn guard when a
-turn ends while work still awaits you.
+opens, the write guard on the first write of a unit — through the shell as much
+as through an edit — and the turn guard when a turn ends.
+
+The turn guard asks one question: did the turn say it was about to do something,
+and then stop? It reads the turn and nothing else. It gets one catch per
+maintainer message, and you answer it with an act — `wfctl continue` if you are
+still working, which re-arms it for your next stop; nothing at all if you are
+waiting on them, and it stays quiet until they write to you.
 
 `wfctl guards` shows which are on. They can be turned off — `wfctl guards off
-<stop|write|bash>` — and that is the maintainer's call rather than yours. The
-turn guard in particular is the only thing that catches a turn ending on work
-nobody is waiting for.
+<stop|write|bash>` — and that is the maintainer's call rather than yours.
 
 ## What is the maintainer's
 

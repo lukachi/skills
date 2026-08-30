@@ -378,6 +378,22 @@ export function renderBrief(
         lines.push(`    ${artifact.what}`);
       }
       if (standing.length > 6) lines.push(`  … ${standing.length - 6} more: wfctl artifact list`);
+    } else if (current.step !== "opened" && current.issues.length > 0) {
+      /**
+       * An absence that says so.
+       *
+       * A flow reached 34 units and 0 artifacts. Nothing was broken — the
+       * command simply never came up, because a field with nothing in it
+       * renders as no field at all and an agent cannot reach for what it is not
+       * shown. Everything else in this block prints only when it has content;
+       * this one prints when it does not, which is the only moment it is worth
+       * anything.
+       */
+      lines.push("");
+      lines.push("artifacts: none recorded, with " + `${current.issues.length} unit(s) on the route.`);
+      lines.push('  wfctl artifact add <path> --what "<what it is>"');
+      lines.push("  What this work produced and something else will stand on — a spec, a");
+      lines.push("  review, a schema, a migration. Not every file it touched.");
     }
 
     const notes = current.notes ?? [];

@@ -97,3 +97,98 @@ export function shellCommand(payload) {
   const command = payload?.tool_input?.command;
   return typeof command === "string" ? command : "";
 }
+
+/**
+ * Every file a shell command would write.
+ *
+ * The write guard used to run only on a host's editing tools, and an agent that
+ * works through the shell was invisible to it: one session made 606 tool calls,
+ * 0 of them Edit or Write, and wrote 179 files through `cat > x.ts <<'EOF'` and
+ * `python3 - <<'PY'`. The guard whose own comment calls it the only mechanism
+ * that reaches an agent which never runs a command fired zero times.
+ *
+ * This is a heuristic and says so. A shell is a programming language and no
+ * regex decides what it writes; what these patterns catch is the way files
+ * actually get written in practice, and a miss costs a notice rather than
+ * correctness. False positives are the real risk, so `/dev/null`, descriptor
+ * duplication and process substitution are all excluded rather than guessed at.
+ */
+const NEVER_A_FILE = new Set(["/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"]);
+
+function unquote(value) {
+  const trimmed = value.trim();
+  const quoted = /^(['"])(.*)\1$/.exec(trimmed);
+  return quoted ? quoted[2] : trimmed;
+}
+
+export function shellWriteTargets(payload) {
+  const command = shellCommand(payload);
+  if (!command) return [];
+
+  const found = [];
+  const add = (raw) => {
+    const value = unquote(raw ?? "");
+    if (!value || value.startsWith("&") || value.startsWith("$")) return;
+    if (NEVER_A_FILE.has(value)) return;
+    found.push(value);
+  };
+
+  /**
+   * Redirection. `2>&1` and `>&2` duplicate a descriptor and name no file, and
+   * a digit before the arrow is the descriptor being redirected rather than
+   * part of a path.
+   */
+  for (const match of command.matchAll(/(?<![0-9&<>])>>?\s*(?!&)("[^"]+"|'[^']+'|[^\s;|&<>()]+)/g)) {
+    add(match[1]);
+  }
+
+  // `tee`, with or without -a, writes each of its file arguments.
+  for (const match of command.matchAll(/\btee\b((?:\s+-\S+)*)((?:\s+(?:"[^"]+"|'[^']+'|[^\s;|&<>()]+))+)/g)) {
+    for (const argument of match[2].trim().split(/\s+/)) add(argument);
+  }
+
+  /**
+   * In-place edits name their file last.
+   *
+   * Taking the argument after the script was the first attempt and it read
+   * BSD sed backwards: `sed -i "" 's/a/b/' file` carries an empty suffix
+   * argument, so the script matched as the filename and the file was missed.
+   * The last token of the segment is the same answer on both platforms.
+   */
+  for (const match of command.matchAll(/\bsed\b[^;|&\n]*?\s-i(?:\.\S+)?\s[^;|&\n]*/g)) {
+    const tokens = match[0].trim().match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+    const last = tokens[tokens.length - 1];
+    if (last && !last.startsWith("-")) add(last);
+  }
+
+  /**
+   * A file written from inside an interpreter heredoc.
+   *
+   * The body is another language, so only the two calls that actually appear
+   * are read: Python's `open(path, "w")` and Node's `writeFileSync(path, …)`.
+   * Anything cleverer than that is a miss, and a miss is a missing notice.
+   */
+  for (const match of command.matchAll(/\bopen\(\s*(?:f)?("[^"]+"|'[^']+')\s*,\s*["'][wax]/g)) {
+    add(match[1]);
+  }
+  for (const match of command.matchAll(/\bwrite(?:File|FileSync|_text)\(\s*("[^"]+"|'[^']+')/g)) {
+    add(match[1]);
+  }
+
+  return [...new Set(found)];
+}
+
+/**
+ * Where a shell command's relative paths resolve from.
+ *
+ * A leading `cd` is how nearly every one of these commands starts, and reading
+ * a target as relative to the knowledge repository when the command moved to a
+ * leaf checkout first would put the guard's answer in the wrong repository
+ * entirely.
+ */
+export function shellBaseDir(payload, fallback) {
+  const command = shellCommand(payload);
+  const first = /^\s*cd\s+("[^"]+"|'[^']+'|[^\s;|&]+)/.exec(command);
+  const named = first ? unquote(first[1]) : "";
+  return named.startsWith("/") ? named : fallback;
+}

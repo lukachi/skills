@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,145 +9,115 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const guard = join(root, "templates/runtime/guard-stop.mjs");
 
 /**
- * The guard shells out to `wfctl brief --json`, so the state under test is a
- * stub on PATH whose output the test rewrites between calls. That keeps every
- * case here about the decision and none of it about the collectors, which have
- * their own tests.
+ * The guard reads its payload and its own memory file, and nothing else.
+ *
+ * It used to shell out to `wfctl brief --json`, and every case here was really
+ * a case about the collectors. What it asks now is a question about the turn,
+ * so the workspace is a directory and the payload is the whole input.
  */
 function workspace() {
   const base = mkdtempSync(join(tmpdir(), "wfctl-stop-guard-"));
-  const bin = join(base, "bin");
-  mkdirSync(bin, { recursive: true });
-  const state = (report) => {
-    const stub = report === undefined
-      ? "#!/bin/sh\nexit 1\n"
-      : `#!/bin/sh\ncat <<'JSON'\n${JSON.stringify(report)}\nJSON\n`;
-    writeFileSync(join(bin, "wfctl"), stub, "utf8");
-    chmodSync(join(bin, "wfctl"), 0o755);
-  };
   const ask = (payload) => {
     const result = spawnSync("node", [guard], {
       input: JSON.stringify({ cwd: base, ...payload }),
       encoding: "utf8",
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
       timeout: 30_000,
     });
     assert.equal(result.status, 0, "the guard must never fail a turn");
     return result.stdout.trim() ? JSON.parse(result.stdout) : undefined;
   };
-  return { base, bin, state, ask };
-}
-
-function report(level, awaits, facts) {
-  return {
-    signals: [{
-      id: "work.active",
-      domain: "work",
-      level,
-      summary: "A change bundle is open",
-      subject: "demo",
-      awaits,
-      ...(facts ? { facts } : {}),
-    }],
-    capabilities: [],
-    degraded: [],
+  /** What `wfctl continue` does, without needing the built CLI on PATH. */
+  const refill = () => {
+    const path = join(base, ".workflow/current/hooks/stop-guard.json");
+    const carried = JSON.parse(readFileSync(path, "utf8"));
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify({ ...carried, budget: 1 })}\n`, "utf8");
   };
+  return { base, ask, refill };
 }
-
-const open = report("attention", "agent");
 
 {
   const w = workspace();
-  w.state(open);
   assert.equal(
-    w.ask({ last_assistant_message: "Moving on to wave 5." })?.decision,
+    w.ask({ prompt_id: "p", last_assistant_message: "Moving on to wave 5." })?.decision,
     "block",
-    "a turn ending while work awaits the agent is re-entered",
+    "a turn that ends is checked, whatever the bundle says",
   );
 }
 
 {
-  // The failure this bound was rewritten for: re-enter, do real work, stop
-  // again, and the run parks itself for the night with the frontier full.
+  // The whole reason the bundle came out. A repository where every signal
+  // awaits the maintainer is the normal state of a repository, and it used to
+  // mean this guard allowed every stop in the session without a word.
   const w = workspace();
-  w.state(report("attention", "agent", { filesReviewed: 10 }));
   assert.equal(
-    w.ask({ prompt_id: "p", last_assistant_message: "read ten" })?.decision,
+    w.ask({ prompt_id: "p", last_assistant_message: "I'll start on the parser now." })?.decision,
     "block",
-  );
-  w.state(report("attention", "agent", { filesReviewed: 41 }));
-  assert.equal(
-    w.ask({
-      prompt_id: "p",
-      stop_hook_active: true,
-      last_assistant_message: "read forty-one",
-    })?.decision,
-    "block",
-    "a continuation that moved the repository earns another one",
+    "no bundle state is consulted, so none of it can silence the check",
   );
 }
 
 {
   const w = workspace();
-  w.state(open);
   assert.equal(w.ask({ prompt_id: "p", last_assistant_message: "x" })?.decision, "block");
   assert.equal(
-    w.ask({ prompt_id: "p", stop_hook_active: true, last_assistant_message: "x" }),
+    w.ask({ prompt_id: "p", stop_hook_active: true, last_assistant_message: "y" }),
     undefined,
-    "a continuation that changed nothing observable is released",
+    "one catch per maintainer message: the second stop is clean",
   );
 }
 
 {
   const w = workspace();
-  w.state(open);
+  assert.equal(w.ask({ prompt_id: "p", last_assistant_message: "x" })?.decision, "block");
+  w.refill();
+  assert.equal(
+    w.ask({ prompt_id: "p", stop_hook_active: true, last_assistant_message: "y" })?.decision,
+    "block",
+    "an agent that says it is still working is watched again",
+  );
+}
+
+{
+  const w = workspace();
+  assert.equal(w.ask({ prompt_id: "p", last_assistant_message: "same" })?.decision, "block");
+  w.refill();
+  assert.equal(
+    w.ask({ prompt_id: "p", stop_hook_active: true, last_assistant_message: "same" }),
+    undefined,
+    "a repeated answer releases even after a refill — that is a stuck agent",
+  );
+}
+
+{
+  const w = workspace();
   let blocks = 0;
   for (let turn = 0; turn < 140; turn += 1) {
-    // Every turn moves the state, so only the hard ceiling can end this.
-    w.state(report("attention", "agent", { filesReviewed: turn }));
     const decision = w.ask({
       prompt_id: "p",
       stop_hook_active: turn > 0,
       last_assistant_message: `progress ${turn}`,
     });
-    if (!decision) {
-      break;
-    }
+    if (!decision) break;
     blocks += 1;
+    w.refill();
   }
-  assert.ok(blocks > 1, "steady progress must survive past a single re-entry");
+  assert.ok(blocks > 20, `a run that keeps refilling must not be capped early, got ${blocks}`);
   assert.ok(blocks <= 101, `the ceiling must end the turn, got ${blocks} blocks`);
-  assert.ok(blocks > 20, `a productive run must not be capped early, got ${blocks}`);
-}
-
-{
-  // A repository that moves for reasons unrelated to this turn would otherwise
-  // re-enter forever against an agent repeating itself.
-  const w = workspace();
-  w.state(report("attention", "agent", { filesReviewed: 1 }));
-  assert.equal(w.ask({ prompt_id: "p", last_assistant_message: "same" })?.decision, "block");
-  w.state(report("attention", "agent", { filesReviewed: 2 }));
-  assert.equal(
-    w.ask({ prompt_id: "p", stop_hook_active: true, last_assistant_message: "same" }),
-    undefined,
-    "an unchanged answer releases even while the state moves",
-  );
 }
 
 {
   const w = workspace();
-  w.state(open);
   assert.equal(w.ask({ prompt_id: "p", last_assistant_message: "x" })?.decision, "block");
   assert.equal(
     w.ask({ prompt_id: "next", last_assistant_message: "x" })?.decision,
     "block",
-    "a new maintainer message starts its own count",
+    "a new maintainer message refills the budget",
   );
 }
 
 {
   const w = workspace();
-  w.state(open);
   assert.equal(
     w.ask({ background_tasks: [{ id: "1" }], last_assistant_message: "x" }),
     undefined,
@@ -157,43 +127,25 @@ const open = report("attention", "agent");
 
 {
   const w = workspace();
-  w.state(report("attention", "maintainer"));
+  mkdirSync(join(w.base, ".workflow"), { recursive: true });
+  writeFileSync(join(w.base, ".workflow/guards.json"), JSON.stringify({ stop: false }), "utf8");
   assert.equal(
-    w.ask({ last_assistant_message: "x" }),
+    w.ask({ prompt_id: "p", last_assistant_message: "x" }),
     undefined,
-    "a signal awaiting the maintainer is a question for them, not a task",
+    "the maintainer's switch is obeyed",
   );
 }
 
 {
+  // Without durable memory the budget cannot be spent, so a block could repeat
+  // without bound. Allowing costs one missed catch.
   const w = workspace();
-  w.state({ signals: [], capabilities: [], degraded: [] });
-  assert.equal(w.ask({ last_assistant_message: "x" }), undefined, "an idle repository ends the turn");
-}
-
-{
-  const w = workspace();
-  w.state(undefined);
-  assert.equal(
-    w.ask({ last_assistant_message: "x" }),
-    undefined,
-    "an unreadable state never traps the session",
-  );
-}
-
-{
-  // Progress-based re-entry needs durable memory. Without it the guard must
-  // degrade to the weaker single re-entry rather than risk a turn that cannot
-  // end.
-  const w = workspace();
-  w.state(open);
   mkdirSync(join(w.base, ".workflow"), { recursive: true });
   writeFileSync(join(w.base, ".workflow/current"), "not a directory\n", "utf8");
-  assert.equal(w.ask({ prompt_id: "p", last_assistant_message: "x" })?.decision, "block");
   assert.equal(
-    w.ask({ prompt_id: "p", stop_hook_active: true, last_assistant_message: "x" }),
+    w.ask({ prompt_id: "p", last_assistant_message: "x" }),
     undefined,
-    "an unwritable memory falls back to one re-entry",
+    "an unwritable memory never traps the session",
   );
 }
 
@@ -209,18 +161,34 @@ const open = report("attention", "agent");
 
 {
   const w = workspace();
-  w.state(open);
-  const decision = w.ask({ last_assistant_message: "x".repeat(5000) });
+  const decision = w.ask({ prompt_id: "p", last_assistant_message: "x".repeat(5000) });
   assert.ok(
     decision.reason.length < 2500,
     "the quoted turn is truncated so a long report cannot dominate the reason",
   );
   assert.ok(
-    decision.reason.includes("A change bundle is open (demo)"),
-    "the reason names the outstanding work rather than asserting a verdict",
+    decision.reason.includes("stated a next action"),
+    "the first catch names the failure it exists for, with the turn as evidence",
+  );
+  assert.ok(
+    decision.reason.includes("wfctl continue"),
+    "and names the one command that re-arms it",
+  );
+}
+
+{
+  // A wall of identical thirty-line messages is what makes the maintainer
+  // scroll for the one turn that mattered.
+  const w = workspace();
+  const first = w.ask({ prompt_id: "p", last_assistant_message: "a" }).reason;
+  w.refill();
+  const second = w.ask({ prompt_id: "p", stop_hook_active: true, last_assistant_message: "b" }).reason;
+  assert.ok(
+    second.length < first.length / 2,
+    `a fire the agent asked for is short: ${second.length} vs ${first.length}`,
   );
 }
 
 process.stdout.write(
-  "stop-guard: re-enters while the repository moves, judges no completion\n",
+  "stop-guard: checks the turn, one catch per message, refilled by the agent\n",
 );

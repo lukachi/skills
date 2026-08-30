@@ -1,38 +1,48 @@
 #!/usr/bin/env node
-// Stop hook. Autonomous work dies when a turn ends while nothing is blocked:
-// nothing failed, the transcript simply stops, and hours pass before anyone
-// notices. Instructions do not fix it — the managed agent block already says to
-// continue and is ignored. What fixes it is costing the model another turn,
-// because inside that turn the next action is the cheapest thing to do.
+// Stop hook.
 //
-// The question asked is whether the agent is waiting on the maintainer, not
-// what its last message said. Framing it around a stated next action missed the
-// larger half of the failure: a turn that ends on "the work continues by
-// itself" or "the rest can wait" announces nothing, blocks on nothing, and
-// parks just as completely.
+// A turn that ends on a stated next action is the most common way autonomous
+// work dies: nothing is blocked, nothing failed, and the transcript simply
+// stops. Instructions do not fix it — the managed agent block already says
+// "announce it and continue" and is ignored. What fixes it is costing the model
+// another turn, because inside that turn the announced action is the cheapest
+// thing to do.
 //
-// This never decides whether the work is done. It reports what the turn ended
-// with and what the repository says is outstanding, and hands the judgment
-// back. Deciding completion here is exactly how a Stop hook burns a session:
-// a hook that keeps answering "not finished" forces turns the model cannot
-// satisfy until the token cap ends it.
+// It asks one question, of the turn: did you say you were about to do
+// something, and then stop? The evidence is the turn's own last message, which
+// is handed straight back.
 //
-// The bound is progress rather than a single re-entry. One re-entry was the
-// first attempt and it was too weak: an agent re-entered once, did real work,
-// stopped again, and the second stop passed unconditionally, so the run parked
-// itself for the night with the frontier still full. Progress is observable
-// without judging anything — the state report either moved between two stops or
-// it did not — so re-entry continues while the repository keeps changing and
-// releases the moment it stops, under a hard ceiling that guarantees the turn
-// always ends.
-import { spawnSync } from "node:child_process";
+// WHAT THIS DELIBERATELY DOES NOT DO. It does not read the bundle. For most of
+// a month it armed on `wfctl brief --json` signals awaiting the agent, which
+// made it a second opinion about work state — the checkpoint's job — and left
+// the utterance test with nothing behind it. In a repository whose signals all
+// awaited the maintainer it then fired 204 times in one session and allowed
+// every one of them, silently. Whether a bundle has open units is not evidence
+// about whether this turn should have ended.
+//
+// THE BUDGET. One catch per maintainer message. A guard that can fire twice
+// unprompted is a guard that can argue with an agent that is right, and the
+// maintainer is sitting there anyway. If the agent is genuinely mid-flight it
+// says so with `wfctl continue`, which refills the budget and re-arms this for
+// the next stop. That is the whole protocol: the refill is the agent's answer,
+// taken as an act rather than read out of prose, so nothing here has to judge
+// anything.
+//
+// Neither branch can strand a run. Not refilling means the next stop is clean,
+// which is what an agent waiting on a person wants. Refilling means it is still
+// working, and being caught again is what it just asked for.
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { projectDir, readPayload } from "./hook-input.mjs";
 
 const MESSAGE_LIMIT = 600;
-const MAX_REENTRIES = 100;
+/**
+ * A runaway backstop and nothing more. The budget bounds this to one fire per
+ * maintainer message on its own; only an agent refilling in a loop can reach
+ * here, and then the turn still has to end.
+ */
+const MAX_FIRES = 100;
 const BLOCK_HISTORY = 50;
 
 function allow() {
@@ -49,104 +59,93 @@ function main() {
     return;
   }
 
+  /**
+   * The turn is the evidence, so no turn means nothing to ask about.
+   *
+   * This also covers a payload that did not parse and a host that does not
+   * supply the field. The old guard got that for free by failing to read state
+   * and allowing; asking about the turn instead, it has to be said.
+   */
+  const message = typeof input.last_assistant_message === "string"
+    ? input.last_assistant_message
+    : "";
+  if (!message.trim()) {
+    allow();
+    return;
+  }
+
   const cwd = projectDir(input);
-  // Turned off deliberately. The switch is a marker file rather than the absence
-  // of the settings entry, because an upgrade reinstalls the entry and would
-  // silently undo the maintainer's choice.
+  // Turned off deliberately. `wfctl guards` owns the switch, so every surface
+  // that reports on this guard reports the same answer.
   if (disabled(cwd)) {
     allow();
     return;
   }
-  const report = readState(cwd);
-  if (!report) {
-    allow();
-    return;
-  }
-  // Every signal that awaits the agent arms this, including the ones that look
-  // like housekeeping. Filtering by level was the wrong trade: a spent turn
-  // costs seconds and the failure it catches costs a day. A signal awaiting the
-  // maintainer stays out — that is a question for them, and forcing a turn on
-  // it would only make the agent answer itself.
-  const awaiting = (report.signals ?? []).filter((signal) => signal.awaits === "agent");
-  if (awaiting.length === 0) {
-    allow();
-    return;
-  }
 
-  const fingerprint = stateFingerprint(report);
   const key = `${input.session_id ?? ""}:${input.prompt_id ?? ""}`;
-  const previous = readMemory(cwd);
-  const carried = previous.key === key
-    ? previous
-    : { key, count: 0, fingerprint: "", answer: "" };
-  const answer = createHash("sha256")
-    .update(input.last_assistant_message ?? "")
-    .digest("hex");
+  const carried = readMemory(cwd);
+  /**
+   * A new maintainer message refills the budget.
+   *
+   * Without this the guard is spent after its first catch and never fires
+   * again for the rest of the session, which is the same as not being
+   * installed.
+   */
+  const fresh = carried.key !== key;
+  const budget = fresh ? 1 : carried.budget;
+  const fires = fresh ? 0 : carried.fires;
 
-  const remembered = writeMemory(cwd, {
-    key,
-    count: carried.count + 1,
-    fingerprint,
-    answer,
-  });
-  if (input.stop_hook_active) {
-    // Without durable memory there is no way to tell a productive continuation
-    // from a stuck one, so fall back to the weaker single re-entry rather than
-    // risk a turn that cannot end.
-    if (!remembered) {
-      allow();
-      return;
-    }
-    if (carried.fingerprint === fingerprint) {
-      // The last re-entry changed nothing the repository can see. Asking again
-      // would be asking the same question of the same state.
-      writeMemory(cwd, { key, count: 0, fingerprint, answer });
-      allow();
-      return;
-    }
-    if (carried.answer === answer) {
-      // The repository moved but the agent gave the same answer, which is what
-      // a genuinely stuck one does while something else writes underneath it.
-      writeMemory(cwd, { key, count: 0, fingerprint, answer });
-      allow();
-      return;
-    }
-    if (carried.count >= MAX_REENTRIES) {
-      // A runaway backstop and nothing more. It was six, chosen from a rigged
-      // test where the state moved on its own while the agent was stuck, and it
-      // became the only bound that ever fired: a productive overnight run hit
-      // it after six re-entries and parked for nine hours with work left. The
-      // two content bounds above are the real ones — unchanged state and a
-      // repeated answer both mean the next re-entry buys nothing — so this only
-      // has to guarantee the turn ends.
-      writeMemory(cwd, { key, count: 0, fingerprint, answer });
-      allow();
-      return;
-    }
+  if (budget <= 0) {
+    // The agent was caught once and chose not to refill. That is it saying it
+    // is waiting on the maintainer, and it does not get asked twice.
+    allow();
+    return;
+  }
+
+  const answer = createHash("sha256").update(message).digest("hex");
+
+  if (!fresh && carried.answer === answer) {
+    // The same answer to the same question. Asking again buys nothing and is
+    // what a genuinely stuck agent looks like from out here.
+    writeMemory(cwd, { key, budget: 0, fires, answer });
+    allow();
+    return;
+  }
+
+  if (fires >= MAX_FIRES) {
+    writeMemory(cwd, { key, budget: 0, fires, answer });
+    allow();
+    return;
+  }
+
+  const spent = writeMemory(cwd, { key, budget: budget - 1, fires: fires + 1, answer });
+  if (!spent) {
+    // Without durable memory the budget cannot be spent, so a block here could
+    // repeat without bound. Allowing costs one missed catch; the alternative
+    // costs the session.
+    allow();
+    return;
   }
 
   recordBlock(cwd, {
     at: new Date().toISOString(),
     session: input.session_id ?? "",
-    reentry: carried.count + 1,
-    awaiting: awaiting.map((signal) => ({ id: signal.id, subject: signal.subject ?? "" })),
+    fire: fires + 1,
   });
 
   process.stdout.write(JSON.stringify({
     decision: "block",
-    reason: reason(input.last_assistant_message ?? "", awaiting),
+    reason: reason(message, fires),
   }));
   process.exit(0);
 }
 
 /**
- * Every block, with what armed it. Deciding whether this guard needs a way to
- * end a turn that is not a blocker takes evidence about the blocks it actually
- * makes, and the only alternative on offer was re-reading session transcripts by
- * hand and hoping the interesting one was among them.
+ * Every block. Deciding whether this guard needs a way to end a turn that is
+ * not a blocker takes evidence about the blocks it actually makes, and the only
+ * alternative on offer was re-reading session transcripts by hand.
  *
- * Bounded and rewritten whole: a log nobody prunes becomes its own problem, and
- * the recent blocks are the ones that answer anything.
+ * Bounded and rewritten whole: a log nobody prunes becomes its own problem.
  */
 function recordBlock(cwd, entry) {
   try {
@@ -166,17 +165,11 @@ function recordBlock(cwd, entry) {
     writeFileSync(temporary, `${JSON.stringify(history.slice(-BLOCK_HISTORY), null, 1)}\n`, "utf8");
     renameSync(temporary, path);
   } catch {
-    // Recording is for us, never for the turn. A hook that fails here would
-    // cost the run something the evidence is not worth.
+    // Recording is for us, never for the turn.
   }
 }
 
 // One switch, and `wfctl guards` owns it.
-//
-// This used to read its own marker file, which `wfctl guards` and `wfctl
-// doctor` could not see — so a guard the maintainer had disabled was reported
-// as armed by every surface while doing nothing. The choice now lives where the
-// tool records it.
 function disabled(cwd) {
   try {
     const choices = JSON.parse(readFileSync(join(cwd, ".workflow/guards.json"), "utf8"));
@@ -184,34 +177,6 @@ function disabled(cwd) {
   } catch {
     return false;
   }
-}
-
-function readState(cwd) {
-  const result = spawnSync("wfctl", ["brief", "--json"], {
-    cwd,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (result.status !== 0 || !result.stdout) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Everything the collectors observed, minus the timestamp that changes on every
- * run. Counters inside signal facts — files reviewed, packets accepted, pending
- * captures — move whenever work lands, so this distinguishes a turn that did
- * something from a turn that only spoke.
- */
-function stateFingerprint(report) {
-  return createHash("sha256")
-    .update(JSON.stringify(report.signals ?? []))
-    .digest("hex");
 }
 
 /**
@@ -234,12 +199,12 @@ function readMemory(cwd) {
     const value = JSON.parse(readFileSync(memoryPath(cwd), "utf8"));
     return {
       key: typeof value.key === "string" ? value.key : "",
-      count: Number.isInteger(value.count) ? value.count : 0,
-      fingerprint: typeof value.fingerprint === "string" ? value.fingerprint : "",
+      budget: Number.isInteger(value.budget) ? value.budget : 0,
+      fires: Number.isInteger(value.fires) ? value.fires : 0,
       answer: typeof value.answer === "string" ? value.answer : "",
     };
   } catch {
-    return { key: "", count: 0, fingerprint: "", answer: "" };
+    return { key: "", budget: 0, fires: 0, answer: "" };
   }
 }
 
@@ -256,18 +221,34 @@ function writeMemory(cwd, value) {
   }
 }
 
-function reason(message, awaiting) {
+/**
+ * The message, and why it is two lengths.
+ *
+ * The first catch of a maintainer message carries the whole thing. Anything
+ * after it is a fire the agent asked for by refilling, and it already knows why
+ * — repeating thirty lines there buries the one message the maintainer is
+ * scrolling for.
+ *
+ * Written as targets rather than bans. Steering by prohibition drags the
+ * forbidden behaviour into context and makes it more available: the ban
+ * half-reads as an instruction to do the thing.
+ */
+function reason(message, fires) {
   const tail = message.length > MESSAGE_LIMIT
     ? `…${message.slice(-MESSAGE_LIMIT)}`
     : message;
-  const outstanding = awaiting
-    .map((signal) => `  - ${signal.summary}${signal.subject ? ` (${signal.subject})` : ""}`)
-    .join("\n");
-  // Written as targets rather than bans. Steering by prohibition drags the
-  // forbidden behaviour into context and makes it more available: the ban
-  // half-reads as an instruction to do the thing. This message closed on four
-  // prohibitions in one sentence — acknowledge, agree, explain, answer empty —
-  // and collected all four in the wild.
+
+  if (fires > 0) {
+    return [
+      "wfctl turn check. You asked to be watched again, so: the turn ended.",
+      "",
+      "If it named something you have not done, do it now. If you are waiting on",
+      "the maintainer, say what you need in one line and end.",
+      "",
+      "  wfctl continue     still working, watch me again",
+    ].join("\n");
+  }
+
   return [
     "Automatic turn check from wfctl. This is the workflow speaking, not the",
     "maintainer.",
@@ -275,31 +256,28 @@ function reason(message, awaiting) {
     "The turn ended with this text:",
     tail,
     "",
-    "The repository reports work awaiting the agent:",
-    outstanding,
+    "If that text stated a next action and did not take it, take it now — inside",
+    "this turn, where it is the cheapest thing to do. That is the failure this",
+    "check exists for: nothing was blocked, nothing failed, and the work simply",
+    "stopped.",
     "",
-    "Ending a turn hands control to the maintainer. The test is whether you are",
-    "waiting on them, and the list above is the evidence. When you can act alone,",
-    "act: take the next action, whether you named it or not.",
+    "Ending a turn hands control to the maintainer. If that is what you want,",
+    "say what you need from them in one line and end. This check will not fire",
+    "again until they write to you.",
     "",
-    "You are not waiting on the maintainer, so the next action is yours to take.",
+    "If you are still working, say so and it re-arms for your next stop:",
     "",
-    "If this session genuinely has to stop, say where the work stands first —",
-    "prose is not state, and an explanation that lives only in a message goes",
-    "with the session:",
+    "  wfctl continue",
+    "",
+    "Whichever you do, the state of the work belongs in the record rather than",
+    "in a message — prose is not state, and an explanation that lives only in a",
+    "turn goes with the session:",
     "",
     "  wfctl checkpoint \"<what has happened since>\"",
-    "",
-    "That is the whole command. Name --summary, --handoff, --last or --next when",
-    "you want the index a fresh session reads to change; what you do not name is",
-    "left as it was.",
     "",
     "Do not stop to protect context. That fear is what made runs park themselves",
     "halfway through a window that was still wide open; the checkpoint is what",
     "recovery reads, and it costs one command.",
-    "",
-    "This check returns while each turn moves the repository, and releases on the",
-    "first turn that does not. Answer with the next action, taken.",
   ].join("\n");
 }
 
