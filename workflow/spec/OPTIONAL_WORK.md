@@ -15,6 +15,8 @@ A bundle is an agreed delivery scope. It may be a feature, a collection of featu
 
 A unit is an agreed task contract inside exactly one bundle. Its document records the intended outcome, boundary, decisions, progress, and completion evidence. An action, file, bug, step, or session is not automatically a unit.
 
+Its `Status:` line starts at `planned` and can be edited to `in progress` or `done` as the document changes. Status summarizes progress; it does not control whether ordinary work may proceed.
+
 The authoritative documents are human-editable Markdown:
 
 ```text

@@ -15,6 +15,8 @@ A **bundle** is an agreed delivery scope. It can contain one feature, several fe
 
 Bundle and unit Markdown is the project record. Edit it directly to preserve agreed decisions, meaningful progress, outcomes, and evidence. Keep useful supporting work in tracked files beside the relevant record when its meaning warrants retention. The CLI creates and locates records; it does not replace human judgment about their content.
 
+New units have `Status: planned` below the heading. Change it to `in progress` when work begins and `done` when the agreed outcome is reached. Update the document's progress, plan, specification, and useful completion evidence as needed; the status is a readable summary, not a command gate.
+
 ```sh
 wfctl bundle list
 wfctl bundle show --id <bundle-id>

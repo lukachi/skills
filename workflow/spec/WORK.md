@@ -16,6 +16,8 @@ A unit is an agreed contract for one specific task within exactly one bundle. It
 
 The canonical document is `changes/active/<bundle-id>/units/<unit-id>.md`. The CLI creates a unit only under an existing bundle using the current Markdown contract, with agreement text. It refuses an existing unit file. Agents may edit the document as work proceeds; a changed task contract or bundle scope needs agreement.
 
+New units start with `Status: planned` below the heading. Edit that line to `in progress` when work begins and `done` when the agreed outcome is reached. Record useful completion evidence in the document. Status is a readable summary, not a CLI transition or permission gate.
+
 ## Supporting information
 
 Keep useful research, plans, specifications, and evidence with the relevant delivery when their meaning warrants retention. Distinguish durable material from reproducible or disposable output by reading its contents and purpose, not by file name alone. Do not blanket-ignore a directory that may contain durable material. The bundle and unit documents link to supporting files; they do not have to duplicate them.

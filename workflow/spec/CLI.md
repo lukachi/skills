@@ -15,6 +15,8 @@ wfctl unit show --bundle <bundle> --id <id>
 
 Creation requires an explicit agreement field and refuses an existing directory or file. IDs are safe lowercase path segments. Bundle and unit files are Markdown, not generated views of a flow record. Listing and showing are read-only. Normal document edits record later progress and agreed contract changes.
 
+The unit template includes `Status: planned`. People and agents edit it in Markdown as work moves to `in progress` and `done`; the CLI does not manage transitions.
+
 ## Agent recovery
 
 ```text

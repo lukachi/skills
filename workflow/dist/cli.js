@@ -628,6 +628,7 @@ async function unitCreate(root, input) {
   await create(path, [
     `# ${title}`,
     "",
+    "Status: planned",
     `Unit: ${id}`,
     `Bundle: ${bundle}`,
     `Agreed: ${agreed}`,
