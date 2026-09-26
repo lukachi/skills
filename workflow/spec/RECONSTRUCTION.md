@@ -1,10 +1,12 @@
 # Reconstruction contract
 
+> Existing explicit reconstruction subsystem. It is not a prerequisite for ordinary work or for creating a bundle or unit under [OPTIONAL_WORK.md](OPTIONAL_WORK.md). Its promotion stage does not settle the future promotion policy.
+
 ## Status
 
-Normative for the `reconstruction` case: what it is, its stages, its gates, and
-the trajectories it produces. The engine contract owns instruction delivery and
-installation; the knowledge contract owns trust boundaries and curation.
+This document describes the existing `reconstruction` case, its stages, and
+trajectories. The optional work contract owns ordinary work and change records.
+Promotion and curation are deferred beyond this redesign.
 
 ## What it is, and what it is not
 

@@ -1,21 +1,9 @@
-import { realpathSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { dirname, resolve, sep } from "node:path";
-import { GateRefusal } from "./gates.js";
-import { canonical, contains } from "./paths-resolve.js";
+import { resolve } from "node:path";
 import { label } from "./registry.js";
 import type { RegisteredRepository } from "./registry.js";
 
-/**
- * What a leaf offers the tools the agent is told to use.
- *
- * The workflow tells the agent to traverse the graph before touching code, and
- * never said where the graph comes from — or that it lives in the leaf rather
- * than in the knowledge repository. So the instruction was unfollowable in
- * exactly the case it exists for: a leaf nobody had analysed yet.
- *
- * Nothing is installed into a leaf. This only observes.
- */
+/** Observe registered source checkouts without installing files into them. */
 export const GRAPH_PATH = "graphify-out/graph.json";
 
 export type GraphState = "ready" | "missing" | "stale" | "unreachable";
@@ -87,45 +75,6 @@ export function graphSetup(path: string): string {
   ].join("\n");
 }
 
-/**
- * The refusal an agent meets when a traversal is required.
- *
- * It has to distinguish two states that look identical from inside the work:
- * you have not traversed, and there is nothing to traverse. Reporting only the
- * first sends the agent to a command that cannot succeed.
- */
-/**
- * Only the leaf being written to has to be traversable.
- *
- * It checked every registered repository, so one stale registration blocked
- * writes everywhere — and the refusal named a graph build that could not
- * unblock it, because the real cause was the flow's step.
- */
-export function assertTraversable(leaves: LeafState[], target?: string): void {
-  const relevant = target ? leaves.filter((leaf) => contains(leaf.path, target)) : leaves;
-
-  const blocked = relevant.filter((leaf) => leaf.graph === "missing" || leaf.graph === "unreachable");
-  if (blocked.length === 0) return;
-
-  const missing = blocked.filter((leaf) => leaf.graph === "missing");
-  const gone = blocked.filter((leaf) => leaf.graph === "unreachable");
-
-  const detail = [
-    ...missing.map((leaf) => graphSetup(leaf.path)),
-    ...gone.map(
-      (leaf) =>
-        `${leaf.repository} is registered at ${leaf.path}, which is not there. ` +
-        `Re-register it, or remove it: wfctl repo remove ${leaf.repository} --worktree ${leaf.worktreeId}`,
-    ),
-  ].join("\n\n");
-
-  throw new GateRefusal(
-    `${blocked.length} registered repositor${blocked.length === 1 ? "y has" : "ies have"} no graph to traverse.`,
-    missing[0] ? `graphify build   (in ${missing[0].path})` : "wfctl repo list",
-    detail,
-  );
-}
-
 export function renderLeaves(leaves: LeafState[]): string {
   if (leaves.length === 0) {
     return [
@@ -153,75 +102,6 @@ export function renderLeaves(leaves: LeafState[]): string {
         ]
       : []),
   ].join("\n");
-}
-
-
-/**
- * The write is inside a registered checkout, and inside the claimed one.
- *
- * This is what registration was for. An agent working across several worktrees
- * loses track of which one it is in — the failure that produced the registry in
- * the first place — and the symptom is code landing in a sibling checkout,
- * where it looks entirely correct and belongs to different work.
- *
- * Two questions, refused separately because they have different remedies. A
- * target in no registered checkout may be a repository nobody registered. A
- * target in the wrong one is a claim pointing somewhere else.
- */
-export function assertInsideClaim(options: {
-  target: string;
-  leaves: LeafState[];
-  /** The knowledge repository, whose own files this rule does not govern. */
-  knowledgeRoot?: string;
-  /** The checkout the current unit is claimed from, when one is claimed. */
-  claim?: { repository: string; worktreeId: string };
-}): void {
-  const target = resolve(options.target);
-
-  /**
-   * The knowledge repository is not a leaf and never will be.
-   *
-   * This rule is about source code landing in the wrong checkout. Applying it
-   * to the repository the agent is standing in refused the promotion draft the
-   * tool had created one command earlier, and pointed at registering a source
-   * repository, which has nothing to do with it. What may be written *here* is
-   * the write guard's own business, and it has already ruled on it.
-   */
-  if (options.knowledgeRoot) {
-    const base = resolve(options.knowledgeRoot);
-    if (target === base || target.startsWith(`${base}${sep}`)) return;
-  }
-  /**
-   * Resolve before comparing. A lexical prefix check let any symlink placed
-   * inside a registered checkout point anywhere on disk — `src/etclink → /etc`
-   * made `/etc/passwd` a legitimate write target.
-   */
-  const containing = options.leaves.find((leaf) => contains(leaf.path, target));
-
-  if (!containing) {
-    throw new GateRefusal(
-      `${options.target} is not inside any registered repository.`,
-      'wfctl repo add <owner/name> --path <dir> [--worktree <id>]',
-      options.leaves.length === 0
-        ? "Nothing is registered, so there is nowhere this write could legitimately land."
-        : `Registered:\n${options.leaves.map((leaf) => `  ${leaf.repository}  ${label(leaf)}  ${leaf.path}`).join("\n")}`,
-    );
-  }
-
-  if (!options.claim) return;
-
-  if (
-    containing.repository !== options.claim.repository ||
-    containing.worktreeId !== options.claim.worktreeId
-  ) {
-    throw new GateRefusal(
-      `This unit is claimed from ${options.claim.repository} (${options.claim.worktreeId}), and that path is in ${containing.repository} (${containing.worktreeId}).`,
-      `wfctl work issue claim <id> --repository ${containing.repository} --worktree ${containing.worktreeId}`,
-      "A worktree is an exact workspace, not an alias for its repository. Code " +
-        "written into a sibling checkout looks entirely correct there and belongs " +
-        "to different work.",
-    );
-  }
 }
 
 

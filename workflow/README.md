@@ -1,123 +1,35 @@
 # wfctl
 
-`wfctl` is a project collaboration and knowledge workflow that keeps
-maintainers and agents aligned through a durable, navigable project model
-without treating code, old notes, or generated indexes as automatically true.
+`wfctl` is an optional tool for durable project records and agent recovery. The user and agent work normally; a task does not have to become a workflow object.
 
-## Why use it?
+## Records
 
-A long-lived project becomes hard to steer when product meaning and engineering
-reality drift apart:
+- **Bundle:** an agreed delivery scope, stored as `changes/active/<bundle-id>/change.md`.
+- **Unit:** an agreed task contract inside a bundle, stored as `changes/active/<bundle-id>/units/<unit-id>.md`. A bundle may have no units.
+- **Flow:** a short agent checkpoint and handoff under an explicitly selected namespace. It is local and Git ignored.
 
-- a maintainer should not have to reconstruct the product from source code,
-  chats, and disconnected specifications;
-- an agent must understand the product before changing its implementation;
-- product intent and delivered behavior must remain comparable;
-- important decisions must survive chat compaction and team changes;
-- work across several repositories must still describe one coherent project;
-- “done” must be supported by evidence, not by the agent's confidence.
-
-`wfctl` turns those needs into an installed, vendor-neutral agent workflow.
-It creates two linked, first-class roads through the same project:
-
-- the **maintainer/product road** explains purpose, capabilities, behavior,
-  rules, delivery, and evolution in human language;
-- the **engineering road** explains architecture, ownership, source
-  realization, contracts, operations, and verification.
-
-Both maintainers and agents may follow either road. Neither is a derivative of
-the other, and shared Areas, changes, and decision history keep them aligned.
-
-## Built on reviewed practice
-
-The flow openly reuses selected MIT-licensed skills from Matt Pocock's
-[`mattpocock/skills`](https://github.com/mattpocock/skills), re-cut into guidance
-the tool delivers rather than skills an agent has to choose to load. See
-[provenance](THIRD_PARTY.md).
-
-## One skill, and it is a map
-
-The `wfctl` skill says which flows exist, when to start one, and what the
-maintainer decides — the part an agent needs before it runs anything.
-
-Everything else arrives from the tool. Each command prints what the current
-state demands, the next one refuses until that exists, and three hooks cover the
-moments no command reaches: the session opening, a file about to change, and a
-turn ending with work outstanding.
-
-The guidance ships inside `wfctl` and is read from there, so upgrading the tool
-upgrades what every project is told. Nothing is copied into your repositories to
-drift.
-
-## What you get
-
-- A human-readable project road that lets maintainers, product people, and new
-  team members recover the current project without reverse-engineering code.
-- A linked engineering road that lets agents and engineers trace product
-  meaning to exact implementation and evidence.
-- A central change bundle that survives interruptions and carries discussion,
-  optional direction maps, bounded issues, hash-bound checkpoints, and
-  verification together.
-- Source-first reconstruction for projects that already contain working code.
-- Safe intake for raw notes, ideas, research, and legacy specifications.
-- A pending-capture queue for useful material that has no active or curated
-  owner yet, with explicit routing or discard.
-- Graphify-first source navigation, QMD retrieval, and Git-pinned evidence, with the routes actually used counted and reported at every gate.
-- Mechanical checks that reject broken knowledge links, invalid decision
-  history, stale review receipts, incomplete work records, and unaccounted raw
-  intake or source reconstruction scope.
-- One workflow across a single repository, a monorepo, or many independent
-  repositories and worktrees.
-
-## How the pieces work together
-
-| Place | What belongs there |
-| --- | --- |
-| Knowledge repository | Shared product and engineering knowledge, work records, decision history, and unreviewed intake |
-| Leaf repository | Source code, tests, implementation, and verification evidence — edited from the knowledge session, never installed into |
-
-Work moves between them in two ways:
-
-- **Ongoing change:** shared context and maintainer intent → central change
-  bundle → optional Wayfinder map → bounded implementation and verification in
-  leaves → maintainer review → updated curated knowledge and decision history.
-- **Existing project or raw material:** raw material and selected leaves →
-  intake or reconstruction → evidence checks and maintainer review → curated
-  knowledge.
-
-There is one knowledge repository and any number of leaf repositories. A leaf
-may be a normal checkout or a Git worktree. Raw material and reconstruction
-results remain evidence, not project truth, until they are reviewed and curated.
-
-## Start in five minutes
-
-Install `wfctl` from source, then connect the repositories. Git, QMD 2.5.3+,
-and — for source repositories — Graphify with its native agent skill are also
-required.
+Bundle and unit Markdown is the source of truth. The CLI creates documents explicitly, then people and agents can edit them as documents. It does not generate Markdown from flow JSON or make a flow a precondition for work.
 
 ```sh
-git clone https://github.com/lukachi/skills.git
-cd skills/workflow && bun install && bun run build && bun link
-
-cd /path/to/project-knowledge && wfctl init knowledge
+wfctl bundle list
+wfctl bundle create --id delivery-one --title "Delivery one" --scope "Agreed delivery" --agreed "User agreement"
+wfctl unit create --bundle delivery-one --id task-one --title "Task one" --outcome "Expected result" --boundary "Task limits" --agreed "User agreement"
+wfctl flow checkpoint --namespace agent-one --id current-thread --instruction "Current request" --last "Completed action" --next "Next action" --link changes/active/delivery-one/change.md
+wfctl flow handoff --namespace agent-one --id current-thread
 ```
 
-Restart your coding agent. Everything runs from the knowledge repository: the
-agent is bootstrapped there and edits leaf code from it as an orchestrator, so
-there is nothing to install in a source repository.
+The agent may offer to record meaningful work at a natural pause. Declining leaves the ordinary work alone. No significant/lightweight classification, automatic bundle or unit creation, startup brief, write guard, or stop guard is part of the current work path.
 
-You own product intent, corrections, and two decisions: what a piece of work is
-before it starts, and what the project says about itself afterwards. Closing is
-neither — the checks have already answered it. The shared knowledge remains
-directly readable without an agent.
+## Installation
 
-## Read next
+`wfctl init knowledge` installs the agent skill, a small instruction block, and the local ignore rule for recovery notes. It does not install project-local runtime scripts or mandatory host hooks. An explicit update replaces installed wfctl files and removes retired wfctl runtime scripts and hooks. Editing this source tree does not change an installed CLI.
 
-1. [Why this workflow exists](IDEA.md)
-2. [The engine contract](spec/ENGINE.md)
-3. [The changes flow](spec/WORK.md)
+## Documentation
 
-Workflow authors can continue with the [engine](spec/ENGINE.md),
-[changes flow](spec/WORK.md), [knowledge](spec/KNOWLEDGE.md), and
-[verification](spec/VERIFICATION.md) contracts. Reconstruction is the next pass
-and its contract still describes the previous implementation.
+- [Active work contract](spec/OPTIONAL_WORK.md)
+- [Engine](spec/ENGINE.md), [records](spec/WORK.md), and [CLI](spec/CLI.md) contracts
+- [Development](spec/DEVELOPMENT.md) and [verification status](spec/VERIFICATION.md)
+- [Installed agent skill](templates/skill/wfctl/SKILL.md)
+- [Tidying guide](templates/skill/wfctl/references/tidying.md)
+
+Promotion, review, and knowledge curation are separate design areas and are not defined by the optional work records.

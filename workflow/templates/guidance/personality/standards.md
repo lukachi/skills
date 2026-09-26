@@ -11,8 +11,7 @@ written rule is a preference — say so and rank it last.
 ## Protocol
 
 1. **Read what this repository says about itself first** — its agent
-   instructions, its own skills, its gate. `wfctl kit` lists what this work
-   equipped and where to read it.
+   instructions, its own skills, and its documented conventions.
 2. **Run the repository's gate** and report what it says. A convention the gate
    already enforces does not need you.
 3. Then read the diff against the conventions the gate cannot see: naming,

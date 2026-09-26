@@ -1,235 +1,32 @@
-# CLI reference
+# CLI contract
 
-## Audience
+The current command surface is optional. `wfctl --help` is the concise runtime reference.
 
-Workflow authors and automation. In ordinary use the maintainer types two
-commands — `wfctl init knowledge` and nothing else — and the agent runs the
-rest. Every command prints what the current state demands and the command that
-records it, so the surface below is documentation rather than something anyone
-needs to memorise.
+## Durable records
 
-## Orientation
-
-```sh
-wfctl brief                 # the state of this repository, and what awaits whom
-wfctl handoff [<flow>]      # the full recall body for a flow
+```text
+wfctl bundle create --id <id> --title <title> --scope <delivery> --agreed <agreement>
+wfctl bundle list
+wfctl bundle show --id <id>
+wfctl unit create --bundle <bundle> --id <id> --title <title> --outcome <result> --boundary <limits> --agreed <agreement>
+wfctl unit list --bundle <bundle>
+wfctl unit show --bundle <bundle> --id <id>
 ```
 
-`brief` is emitted by the session-start hook. It prints the bound flow's handoff
-in full and every other open flow as one line.
+Creation requires an explicit agreement field and refuses an existing directory or file. IDs are safe lowercase path segments. Bundle and unit files are Markdown, not generated views of a flow record. Listing and showing are read-only. Normal document edits record later progress and agreed contract changes.
 
-## Writing things down
+## Agent recovery
 
-```sh
-wfctl checkpoint "<whatever you would not want to look up again>" [--about <unit>]
-wfctl checkpoint [--summary "<one line>"] [--handoff "<the body>"] \
-                 [--last "<last completed action>"] [--next "<exact next action>"] \
-                 [--todo "<small job>"]...
-wfctl notes                 # everything written down for this flow
+```text
+wfctl flow checkpoint --namespace <agent> --id <thread> --instruction <request> --last <done> --next <action> [--link <path>]... [--blocker <text>] [--checkout <path>] [--revision <sha>]
+wfctl flow handoff --namespace <agent> --id <thread>
+wfctl flow list --namespace <agent>
 ```
 
-A body writes a note; the named fields update the index a fresh session reads.
-Either may be given alone, and **what is not named is left as it was** — so
-correcting the next action does not cost the handoff. Notes accumulate; the
-second does not erase the first. Only a checkpoint with nothing at all in it is
-refused.
+The namespace and thread are always explicit. A checkpoint replaces one ignored local note. Handoff reads that note. Neither command creates a bundle or unit.
 
-All four fields were required until 2026-08-26, which made the cheapest useful
-act cost a composed paragraph, and a tool that expensive is reached for at the
-end of a session rather than during it.
+## Installation and guidance
 
-```sh
-wfctl finding "<what you found>" [--about <unit>] [--artifact <path>]
-wfctl finding list
-wfctl finding resolve <id> --how "<what you did about it>"
-wfctl finding release <id>          # it turned out not to be this work's
-```
+`wfctl init knowledge [--target <dir>]` installs the optional skill and local ignore rule without runtime scripts or mandatory hooks. `wfctl guide tidy` reads the semantic tidying guide. Other explicit knowledge, repository lookup, and reconstruction commands remain separate from ordinary work.
 
-A finding stays with the work that found it. A capture leaves — inbox,
-maintainer, later — which is right for something outside the fence and wrong for
-what the agent noticed and could simply fix.
-
-```sh
-wfctl artifact add <path> --what "<what it is>" [--supersedes <path>]
-wfctl artifact list
-```
-
-Superseding is recorded, not implied.
-
-## Work
-
-```sh
-wfctl work start --title "<what this is>" --weight <significant|lightweight>
-wfctl work step             # where this work is, and what moves it on
-wfctl work step <opened|aligned|framed|split|implement|verified|closed|promoted>
-
-wfctl work issue create --title "<what it delivers>" [--satisfies AC-01]...
-wfctl work issue list
-wfctl work issue note <id> --note "<what you learned>"
-wfctl work issue claim <id> --repository <owner/name> [--worktree <id>]
-wfctl work issue complete <id>
-
-wfctl work park --reason "<why starting now is premature>"
-wfctl work release --attested "<their own words>"
-
-wfctl work verify --review <artifact>
-wfctl work close --outcome <completed|partial|abandoned>
-wfctl work promotion draft "<area>/<page>.md"
-wfctl work promotion list
-
-wfctl capture "<what you found>" [--awaits]
-```
-
-A claim records repository and worktree identity and **never** branch or commit.
-Every recorded binding deadlock in the previous implementation came from pinning
-a revision that then moved under the record.
-
-Units carry a status and the agent's own notes. There are no blocking edges and
-no frontier: where order genuinely matters, it goes in the notes.
-
-`work verify` reads a review artifact produced by a **different** agent. wfctl
-does not spawn it — what the tool checks is that the reviewer was not the acting
-agent and that every attack carries a test that was actually run.
-
-`work close` refuses while a unit is claimed. A record holding drafted pages
-waits in the promotion queue whatever its outcome; one with nothing to say
-archives directly.
-
-`capture` is the only place a finding met during work can go. Opening a second
-flow is refused while one is open, and so is creating a record directory by
-hand.
-
-`work start` refuses while a flow is open, and refuses without a weight. `work
-step` refuses when the current step's recall is short, or when its precondition
-step has not been recorded.
-
-## Recall
-
-```sh
-wfctl recall list
-wfctl recall answer <item> --answer "<what you found>" \
-                    --route <qmd|graphify|grep|read|maintainer> --source "<where>"
-wfctl recall route <route> [--covered <path>]...
-```
-
-An answer with no source is refused. `recall route` records that a retrieval
-route was used and what it covered, which is also what tells the write guard
-which files are known ground.
-
-## Flow
-
-```sh
-wfctl flow close            # flush the checkpoint and drop the fence
-```
-
-## Installation
-
-```sh
-wfctl init knowledge [--target <dir>]
-```
-
-There is one profile. `wfctl init leaf` is refused with what replaced it: the
-agent is bootstrapped in the knowledge repository and edits leaf code from
-there.
-
-Installation writes the `wfctl` skill into both agent conventions, the runtime
-guards, the hook settings that point at them, the directories the flows use, and
-a managed block that points at the skill. Guidance is not installed: it ships
-inside the CLI and is read from there, so upgrading wfctl upgrades it. Settings entries wfctl did not write are preserved,
-as is everything outside the managed markers. A file the maintainer edited is
-reported rather than replaced.
-
-## Verifying an installation
-
-```sh
-wfctl doctor
-```
-
-Exit 1 on any failure, 0 when everything is healthy or merely degraded. The
-distinction is load-bearing: a failure means the workflow cannot do its job, a
-warning means it can with something reduced. Reporting a warning as a failure
-trains people to ignore the output.
-
-It checks the installation and its drift, the knowledge layout, the skill in
-both agent conventions, the managed block, each guard and whether its script is
-there, **whether `wfctl` is on PATH at all** — the guards shell out to it by
-name and fail open when it is absent, which looks exactly like a healthy session
-— every registered leaf and the age of its graph, graphify and QMD availability,
-whether documents await embedding, and the queues nobody has opened.
-
-## Runtime guards
-
-```sh
-wfctl guards [status]                # which guards are on
-wfctl guards on|off <stop|write|bash>
-wfctl hook write --target <path>     # used by the pre-write guard, not by hand
-```
-
-Three guards fire without a command being run: the session brief, the write
-guard on the first write of a unit, and the turn guard when a turn ends while
-work still awaits the agent.
-
-Turning one off is the maintainer's decision. A guard that cannot be turned off
-gets turned off by hand — by editing the settings file, where it then looks like
-a maintainer entry and survives every upgrade. Turning one off leaves the
-maintainer's own hooks for the same event untouched.
-
-`brief --json` is what the turn guard reads. It emits the signals the guard
-filters on, and existed as a stub in the guard's own tests long before the flag
-was implemented.
-
-## Exit codes
-
-| Code | Meaning |
-| --- | --- |
-| 0 | done |
-| 1 | the command was not understood |
-| 2 | refused — the output names the remedy |
-
-## Repositories
-
-```sh
-wfctl repo add <owner/name> --path <dir> [--worktree <id>] [--checkout <name>]
-wfctl repo list
-wfctl repo remove <owner/name> [--worktree <id>]
-```
-
-Its own operation, run after installation and again whenever a checkout appears.
-
-`repo list` reports each checkout's structure graph as `ready`, `stale`,
-`missing` or `unreachable`, with its age. `repo add` says the same for the one
-it just registered — that is the cheapest moment to say what a leaf still needs,
-because the path is known and nothing is in flight.
-
-Nothing is installed into a leaf. The graph is built there by `graphify build`,
-and a gate that requires a traversal says so when the leaf has none, rather than
-naming a command that cannot succeed.
-
-## Reconstruction
-
-```sh
-wfctl reconstruct start
-wfctl reconstruct status
-wfctl reconstruct scope --repository <owner/name> --revision <sha> \
-                        [--raw all|selected|none] [--in <path>]...
-wfctl reconstruct read <path>
-wfctl reconstruct exclude <path> --reason "<why>"
-wfctl reconstruct contradiction --subject "<...>" --side "<...>" --side "<...>"
-wfctl reconstruct resolve <id> --resolution "<what they decided>"
-wfctl reconstruct subject <trajectory-id>
-wfctl reconstruct probe --question "<...>" --page <path> --asker <agent> [--passed]
-wfctl reconstruct stage
-wfctl reconstruct close
-```
-
-`stage` advances when the current stage's gate passes, and prints the guidance
-for the stage it entered.
-
-## Trajectories
-
-```sh
-wfctl trajectory append --subject "<product subject>" --summary "<what happened>" \
-                        --axis <intent|delivery|vision> [--change <id>]
-wfctl trajectory list
-wfctl trajectory show <subject>
-```
+The old `work`, `brief`, `checkpoint`, `capture`, `recall`, `guards`, and `hook` routes are retired. There is no `--weight` route for new records. Promotion and review commands from the earlier work sequence are not carried forward as policy by this contract.

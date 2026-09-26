@@ -315,21 +315,6 @@ export async function validateCurated(root: string, only?: string): Promise<Page
   return issues;
 }
 
-/**
- * The gate promotion runs before anything is copied into the corpus.
- *
- * A refusal here writes nothing and leaves the pages where they are, so the
- * record stays in the queue and correctable rather than half-promoted.
- */
-export function assertPromotable(issues: PageIssue[]): void {
-  if (issues.length === 0) return;
-  throw new GateRefusal(
-    `${issues.length} page problem(s) would enter curated knowledge.`,
-    issues[0]?.remedy ?? "Repair the page, then promote again",
-    issues.map((issue) => `  ${issue.path}: ${issue.problem}\n    → ${issue.remedy}`).join("\n"),
-  );
-}
-
 export function renderIssues(issues: PageIssue[], pages = 1): string {
   if (pages === 0) {
     return [
@@ -344,6 +329,6 @@ export function renderIssues(issues: PageIssue[], pages = 1): string {
     ...issues.map((issue) => `${issue.path}\n  ${issue.problem}\n  → ${issue.remedy}`),
     "",
     `${issues.length} problem(s). Structural validation cannot tell whether a page`,
-    "is true or whether a reader can act on it — that is the semantic gate's job.",
+    "is true or whether a reader can act on it — that requires human judgment.",
   ].join("\n");
 }

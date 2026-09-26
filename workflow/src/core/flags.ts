@@ -1,128 +1,48 @@
 import { GateRefusal } from "./gates.js";
 
-/**
- * What each command accepts, and nothing else.
- *
- * There was one global set of flag names, so every flag was legal on every
- * command: `wfctl capture --worktree x "…"` passed the check and the flag was
- * then read by nobody. A name being spelled correctly somewhere in the tool is
- * not evidence that the command in front of you reads it.
- *
- * The split into value-taking and boolean matters for the same reason it
- * matters in every argument parser, and here it mattered destructively.
- * `--name=value` was accepted by the unknown-flag scan — which split on `=`
- * before looking the name up — and then never seen by `flag()`, which searched
- * for the exact token `--name`. The value vanished and the whole token stayed
- * behind as a positional. `wfctl capture --awaits=true "probe"` recorded a
- * capture whose entire body was the string `--awaits=true`, discarded the real
- * body, and marked it awaiting nobody. A form that silently writes a wrong
- * record is worse than one that is rejected.
- */
+/** Flags accepted by each current command. */
 export interface CommandFlags {
-  /** Flags that take the next argument as their value. */
   value: readonly string[];
-  /** Flags whose presence is the whole meaning. */
   boolean: readonly string[];
 }
 
 const NONE: CommandFlags = { value: [], boolean: [] };
 
-/**
- * Keyed by the longest command prefix that identifies the action, so
- * `work issue claim` and `work issue drop` are separate entries rather than one
- * permissive `work`.
- */
+/** Accepted flags for the current command surface. */
 export const COMMAND_FLAGS: Readonly<Record<string, CommandFlags>> = {
-  "brief": { value: [], boolean: ["json"] },
-  "handoff": NONE,
-  "checkpoint": { value: ["summary", "handoff", "last", "next", "todo", "about"], boolean: [] },
-  "notes": NONE,
-
-  "finding": { value: ["about", "artifact"], boolean: [] },
-  "finding list": NONE,
-  "finding resolve": { value: ["how"], boolean: [] },
-  "finding release": NONE,
-
-  "learned": { value: ["detail", "attested"], boolean: [] },
-  "learned list": NONE,
-
-  "kit": NONE,
-  "kit survey": NONE,
-  "kit adopt": { value: ["attested"], boolean: [] },
-
-  "artifact": NONE,
-  "artifact add": { value: ["what", "supersedes"], boolean: [] },
-  "artifact list": NONE,
-
-  "work start": { value: ["title", "weight", "attested", "from"], boolean: [] },
-  "work adopt": { value: ["attested", "weight", "title", "from"], boolean: [] },
-  "work list": NONE,
-  "work bind": NONE,
-  "work step": NONE,
-  "work issue create": { value: ["title", "satisfies"], boolean: [] },
-  "work issue list": NONE,
-  "work issue note": { value: ["note"], boolean: [] },
-  "work issue claim": { value: ["repository", "worktree"], boolean: [] },
-  "work issue complete": { value: ["evidence", "remainder"], boolean: [] },
-  "work issue drop": { value: ["reason"], boolean: [] },
-  "work park": { value: ["reason", "attested"], boolean: [] },
-  "work release": { value: ["attested"], boolean: [] },
-  "work verify": { value: ["review", "brief", "at"], boolean: [] },
-  "work close": { value: ["outcome"], boolean: [] },
-  "work promote": { value: ["subject", "summary", "bundle", "settles"], boolean: [] },
-  "work promotion draft": NONE,
-  "work promotion list": NONE,
-
-  "capture": { value: [], boolean: ["awaits"] },
-
+  "bundle create": { value: ["id", "title", "scope", "agreed"], boolean: [] },
+  "bundle list": NONE,
+  "bundle show": { value: ["id"], boolean: [] },
+  "unit create": { value: ["bundle", "id", "title", "outcome", "boundary", "agreed"], boolean: [] },
+  "unit list": { value: ["bundle"], boolean: [] },
+  "unit show": { value: ["bundle", "id"], boolean: [] },
+  "flow checkpoint": { value: ["namespace", "id", "instruction", "last", "next", "link", "blocker", "checkout", "revision"], boolean: [] },
+  "flow handoff": { value: ["namespace", "id"], boolean: [] },
+  "flow list": { value: ["namespace"], boolean: [] },
   "repo add": { value: ["path", "worktree", "checkout"], boolean: [] },
   "repo list": NONE,
   "repo remove": { value: ["worktree"], boolean: [] },
-
+  "trajectory append": { value: ["subject", "summary", "axis", "claim", "at", "change", "settles"], boolean: [] },
+  "trajectory list": NONE,
+  "trajectory show": NONE,
   "reconstruct start": NONE,
   "reconstruct status": NONE,
-  "reconstruct scope": {
-    value: ["repository", "revision", "raw", "in", "not"],
-    boolean: [],
-  },
+  "reconstruct scope": { value: ["repository", "revision", "raw", "in", "not"], boolean: [] },
   "reconstruct read": { value: ["at"], boolean: [] },
   "reconstruct exclude": { value: ["reason"], boolean: [] },
   "reconstruct contradiction": { value: ["subject", "side"], boolean: [] },
   "reconstruct resolve": { value: ["resolution"], boolean: [] },
   "reconstruct subject": NONE,
-  "reconstruct probe": {
-    value: ["question", "page", "asker", "answer"],
-    boolean: ["passed"],
-  },
+  "reconstruct probe": { value: ["question", "page", "asker", "answer"], boolean: ["passed"] },
   "reconstruct stage": NONE,
   "reconstruct abandon": { value: ["reason"], boolean: [] },
   "reconstruct close": NONE,
-
-  "trajectory append": {
-    value: ["subject", "summary", "axis", "claim", "at", "change", "settles"],
-    boolean: [],
-  },
-  "trajectory list": NONE,
-  "trajectory show": NONE,
-
-  "recall list": NONE,
-  "recall answer": { value: ["answer", "route", "source"], boolean: [] },
-  "recall route": { value: ["covered"], boolean: [] },
-
-  "flow close": NONE,
-
   "init": { value: ["target"], boolean: [] },
   "guide": NONE,
-  "debts": NONE,
   "decided": NONE,
-
   "knowledge validate": { value: ["page"], boolean: [] },
   "knowledge hash": { value: ["page"], boolean: [] },
-
-  "continue": NONE,
   "doctor": NONE,
-  "guards": NONE,
-  "hook write": { value: ["target"], boolean: [] },
   "help": NONE,
 };
 
@@ -149,33 +69,6 @@ function flagName(token: string): string {
 }
 
 /**
- * Whether a token could be a flag at all.
- *
- * A real flag name is one word of lowercase letters, digits and hyphens.
- * Anything else opening with dashes is prose — which is what makes a capture
- * body like "--fix the parser, it drops the last token" recordable without
- * exempting capture from flag checking altogether.
- */
-const FLAG_SHAPED = /^--[a-z][a-z0-9-]*(=.*)?$/;
-
-/**
- * Commands whose body is prose the agent typed.
- *
- * A finding phrased "--fix the parser" has to be recordable, and these are the
- * commands that take one. Only the flags they actually declare are treated as
- * flags; everything else is their text. `checkpoint` and `finding` are here for
- * the same reason capture is — they are the cheap places to write something
- * down, and a body that has to be re-worded to avoid the parser is a body that
- * does not get written.
- */
-const BODY_COMMANDS = new Set(["capture", "checkpoint", "finding", "learned"]);
-
-function isBody(argv: string[], index: number): boolean {
-  if (index === 0 || !BODY_COMMANDS.has(argv[0] ?? "")) return false;
-  return !FLAG_SHAPED.test(argv[index] ?? "");
-}
-
-/**
  * Rewrite `--name=value` into `--name value` for flags that take one, and
  * refuse it for flags that do not. Everything downstream reads the plain form.
  */
@@ -185,8 +78,8 @@ export function normalize(argv: string[]): string[] {
   const { spec } = resolved;
 
   const out: string[] = [];
-  for (const [index, token] of argv.entries()) {
-    if (!token.startsWith("--") || !token.includes("=") || isBody(argv, index)) {
+  for (const token of argv) {
+    if (!token.startsWith("--") || !token.includes("=")) {
       out.push(token);
       continue;
     }
@@ -220,8 +113,8 @@ export function validate(argv: string[]): void {
   const { key, spec } = resolved;
 
   const unknown: string[] = [];
-  for (const [index, token] of argv.entries()) {
-    if (!token.startsWith("--") || isBody(argv, index)) continue;
+  for (const token of argv) {
+    if (!token.startsWith("--")) continue;
     const name = flagName(token);
     if (!name || spec.value.includes(name) || spec.boolean.includes(name)) continue;
     unknown.push(name);

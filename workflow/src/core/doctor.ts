@@ -1,8 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { access, readFile, readdir, stat } from "node:fs/promises";
+import { access, readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { KNOWLEDGE_DIRECTORIES, RUNTIME_DIR, SKILL_DIRS, planInstall, readInstallState } from "./install.js";
-import { guardStatus } from "./install.js";
+import { KNOWLEDGE_DIRECTORIES, SKILL_DIRS, planInstall, readInstallState } from "./install.js";
 import { inspectLeaves } from "./leaves.js";
 import { readRegistry } from "./registry.js";
 
@@ -115,27 +114,16 @@ export async function runDoctor(
     message: `wfctl ${state.installedVersion}, ${Object.keys(state.files).length} owned file(s)`,
   });
 
-  /**
-   * Drift, in both directions: a file wfctl owns that is gone, and one the
-   * maintainer edited. The second is not a failure — it is theirs to edit —
-   * but an upgrade will leave it behind, and knowing that before the upgrade is
-   * the whole point.
-   */
-  if (options.distribution) {
-    const plan = await planInstall({
+  /** Report files that an explicit init would replace or remove. */
+  const plan = options.distribution
+    ? await planInstall({
       target,
       distribution: options.distribution,
       version: state.installedVersion,
-    });
+    })
+    : undefined;
+  if (plan) {
     const pending = plan.operations.filter((operation) => operation.kind === "write");
-    if (plan.edited.length > 0) {
-      checks.push({
-        name: "installation-edited",
-        status: "warn",
-        message: `${plan.edited.length} owned file(s) edited since install: ${plan.edited.join(", ")}`,
-        remedy: "Keep them, or delete them and run: wfctl init knowledge",
-      });
-    }
     if (pending.length > 0) {
       checks.push({
         name: "installation-pending",
@@ -144,10 +132,19 @@ export async function runDoctor(
         remedy: "wfctl init knowledge",
       });
     }
+    if (plan.obsolete.length > 0) {
+      checks.push({
+        name: "installation-obsolete",
+        status: "warn",
+        message: `${plan.obsolete.length} retired wfctl file(s) will be removed by init`,
+      });
+    }
   }
 
+  const obsolete = new Set(plan?.obsolete ?? []);
   const missing: string[] = [];
   for (const path of Object.keys(state.files)) {
+    if (obsolete.has(path)) continue;
     if (!(await exists(resolve(target, path)))) missing.push(path);
   }
   checks.push({
@@ -213,56 +210,6 @@ export async function runDoctor(
     ...(block.includes("wfctl:begin") ? {} : { remedy: "wfctl init knowledge" }),
   });
 
-  /* ------------------------------------------------------------- guards */
-
-  /**
-   * Same rule as the state file: settings.json is a thing that gets edited by
-   * hand and by other tools, and an unreadable one is a finding to report, not
-   * a reason to abandon every remaining check.
-   */
-  let guards: Awaited<ReturnType<typeof guardStatus>> = [];
-  try {
-    guards = await guardStatus(target);
-  } catch (error) {
-    checks.push({
-      name: "guards",
-      status: "fail",
-      message: `.claude/settings.json cannot be read: ${(error as Error).message}`,
-      remedy: "Repair the file, then: wfctl init knowledge",
-    });
-  }
-  for (const guard of guards) {
-    const script = await exists(
-      resolve(target, RUNTIME_DIR, guard.guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard.guard}.mjs`),
-    );
-    checks.push({
-      name: `guard:${guard.guard}`,
-      status: guard.installed && script ? "pass" : guard.installed ? "fail" : "warn",
-      message: !script
-        ? "Armed in settings, but its script is missing"
-        : guard.installed
-          ? guard.describes
-          : `Off — ${guard.describes}`,
-      ...(guard.installed && script ? {} : { remedy: `wfctl guards on ${guard.guard}` }),
-    });
-  }
-
-  /**
-   * The guards shell out to `wfctl` by name. When it is not on PATH they fail
-   * open and report nothing, which looks exactly like a healthy session — the
-   * failure that made the whole hook layer inert without anyone noticing.
-   */
-  const onPath = runner("wfctl", ["--help"], { cwd: target });
-  checks.push({
-    name: "wfctl-on-path",
-    status: onPath.status === 0 && onPath.stdout.includes("project workflow") ? "pass" : "fail",
-    message:
-      onPath.status === 0 && onPath.stdout.includes("project workflow")
-        ? "The guards can reach it"
-        : "Not on PATH — every guard will fail open and report nothing",
-    remedy: "Put wfctl on PATH (bun link, or npm i -g wfctl)",
-  });
-
   /* ------------------------------------------------------------- leaves */
 
   const registry = await readRegistry(target);
@@ -270,7 +217,7 @@ export async function runDoctor(
     checks.push({
       name: "repositories",
       status: "warn",
-      message: "None registered; no source code can be read or written",
+      message: "None registered for optional cross-repository lookup",
       remedy: "wfctl repo add <owner/name> --path <dir>",
     });
   } else {
@@ -313,8 +260,7 @@ export async function runDoctor(
     checks.push({
       name: "curated-knowledge",
       status: "warn",
-      message: "Empty; nothing has been recorded about this project yet",
-      remedy: "wfctl reconstruct start",
+      message: "No curated pages yet",
     });
   } else {
     const issues = await validateCurated(target);
@@ -354,30 +300,6 @@ export async function runDoctor(
         ? "Documents await embedding; semantic retrieval will silently fall back to lexical"
         : "Ready",
       ...(pending ? { remedy: "qmd embed" } : {}),
-    });
-  }
-
-  /* ------------------------------------------------------------- queues */
-
-  const inbox = await readdir(resolve(target, "changes/inbox")).catch(() => []);
-  const captures = inbox.filter((entry) => entry.endsWith(".md"));
-  checks.push({
-    name: "capture-inbox",
-    status: captures.length > 0 ? "warn" : "pass",
-    message:
-      captures.length > 0
-        ? `${captures.length} unresolved capture(s); a queue nobody opens is the same as no queue`
-        : "Empty",
-    ...(captures.length > 0 ? { remedy: "Route or discard each one" } : {}),
-  });
-
-  const queued = await readdir(resolve(target, "changes/promotion")).catch(() => []);
-  if (queued.length > 0) {
-    checks.push({
-      name: "promotion-queue",
-      status: "warn",
-      message: `${queued.length} record(s) waiting on the maintainer`,
-      remedy: "wfctl work promotion list",
     });
   }
 

@@ -10,352 +10,15 @@ var __esm = (fn, res, err) => function __init() {
   }
 };
 var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
+  for (var name3 in all)
+    __defProp(target, name3, { get: all[name3], enumerable: true });
 };
 
-// src/core/types.ts
-function settleStep(step) {
-  if (WORK_STEPS.includes(step)) return step;
-  return LEGACY_STEPS[step] ?? "opened";
-}
-var FLOW_SCHEMA_VERSION, WORK_WEIGHTS, WORK_STEPS, LEGACY_STEPS, RECALL_ROUTES;
-var init_types = __esm({
-  "src/core/types.ts"() {
-    "use strict";
-    FLOW_SCHEMA_VERSION = 1;
-    WORK_WEIGHTS = ["significant", "lightweight"];
-    WORK_STEPS = ["opened", "framed", "verified", "closed", "promoted"];
-    LEGACY_STEPS = {
-      aligned: "opened",
-      split: "framed",
-      implement: "framed"
-    };
-    RECALL_ROUTES = ["qmd", "graphify", "grep", "read", "maintainer"];
-  }
-});
-
-// src/core/recall.ts
-var recall_exports = {};
-__export(recall_exports, {
-  CLAIM_REQUIREMENT: () => CLAIM_REQUIREMENT,
-  RECALL_ITEMS: () => RECALL_ITEMS,
-  STEP_REQUIREMENTS: () => STEP_REQUIREMENTS,
-  emptyCounters: () => emptyCounters,
-  emptyRecall: () => emptyRecall,
-  findItem: () => findItem,
-  isAnswered: () => isAnswered,
-  isSatisfied: () => isSatisfied,
-  itemsForGroup: () => itemsForGroup,
-  recordAnswer: () => recordAnswer,
-  recordRoute: () => recordRoute,
-  recordWritten: () => recordWritten,
-  renderCounterLine: () => renderCounterLine,
-  shortfallFor: () => shortfallFor
-});
-function emptyCounters() {
-  return RECALL_ROUTES.reduce((counters, route) => {
-    counters[route] = 0;
-    return counters;
-  }, {});
-}
-function emptyRecall() {
-  return { answers: [], counters: emptyCounters(), covered: [], written: [] };
-}
-function itemsForGroup(group) {
-  return RECALL_ITEMS.filter((item) => item.group === group);
-}
-function findItem(id) {
-  return RECALL_ITEMS.find((item) => item.id.toUpperCase() === id.toUpperCase());
-}
-function isAnswered(state, itemId) {
-  return state.answers.some(
-    (answer) => answer.item.toUpperCase() === itemId.toUpperCase() && answer.answer.trim().length > 0 && answer.source.trim().length > 0
-  );
-}
-function shortfallFor(step, state, override) {
-  const requirement = override ?? STEP_REQUIREMENTS[step];
-  if (!requirement) {
-    return { missingItems: [], missingFloor: [] };
-  }
-  const missingItems = requirement.groups.flatMap((group) => itemsForGroup(group)).filter((item) => !isAnswered(state, item.id));
-  const missingFloor = Object.entries(requirement.floor).map(([route, required]) => ({
-    route,
-    required: required ?? 0,
-    actual: state.counters[route] ?? 0
-  })).filter((entry) => entry.actual < entry.required);
-  return { missingItems, missingFloor };
-}
-function isSatisfied(shortfall) {
-  return shortfall.missingItems.length === 0 && shortfall.missingFloor.length === 0;
-}
-function renderCounterLine(step, state, override) {
-  const requirement = override ?? STEP_REQUIREMENTS[step];
-  const required = requirement ? requirement.groups.flatMap((group) => itemsForGroup(group)) : [];
-  const answered = required.filter((item) => isAnswered(state, item.id)).length;
-  const counters = RECALL_ROUTES.map((route) => `${route} ${state.counters[route] ?? 0}`).join(
-    " \xB7 "
-  );
-  const lines = [`recall: ${answered}/${required.length} required answered \xB7 ${counters}`];
-  const shortfall = shortfallFor(step, state, override);
-  if (shortfall.missingItems.length > 0) {
-    const missing = shortfall.missingItems.map((item) => `${item.id} ${item.question}`).join("\n         ");
-    lines.push(`missing: ${missing}`);
-  }
-  for (const entry of shortfall.missingFloor) {
-    lines.push(
-      `floor:   ${entry.route} used ${entry.actual}, this step requires ${entry.required}`
-    );
-  }
-  return lines.join("\n");
-}
-function recordAnswer(state, answer) {
-  const answers = state.answers.filter(
-    (existing) => existing.item.toUpperCase() !== answer.item.toUpperCase()
-  );
-  answers.push(answer);
-  const counters = { ...state.counters };
-  counters[answer.route] = (counters[answer.route] ?? 0) + 1;
-  return { ...state, answers, counters };
-}
-function recordRoute(state, route, covered = []) {
-  const counters = { ...state.counters };
-  counters[route] = (counters[route] ?? 0) + 1;
-  const merged = /* @__PURE__ */ new Set([...state.covered, ...covered]);
-  return { ...state, counters, covered: [...merged].sort() };
-}
-function recordWritten(state, path) {
-  return { ...state, written: [.../* @__PURE__ */ new Set([...state.written ?? [], path])].sort() };
-}
-var RECALL_ITEMS, STEP_REQUIREMENTS, CLAIM_REQUIREMENT;
-var init_recall = __esm({
-  "src/core/recall.ts"() {
-    "use strict";
-    init_types();
-    RECALL_ITEMS = [
-      { id: "A1", group: "A", question: "Has the maintainer already answered this?" },
-      { id: "A2", group: "A", question: "Is there a current decision record on this subject? A superseded one?" },
-      { id: "A3", group: "A", question: "Was this proposed and rejected before?" },
-      { id: "A4", group: "A", question: "Does a recorded non-goal forbid it?" },
-      { id: "B5", group: "B", question: "What is the canonical term for this subject, and its aliases?" },
-      { id: "B6", group: "B", question: "Which discouraged names would hide it from a search?" },
-      { id: "B7", group: "B", question: "Am I searching with those terms, or with my own paraphrase?" },
-      { id: "C8", group: "C", question: "Which Area owns this responsibility?" },
-      { id: "C9", group: "C", question: "Which repository owns the code?" },
-      { id: "C10", group: "C", question: "Does a capability already cover it?" },
-      { id: "D11", group: "D", question: "Does an implementation already exist? (graph traversal, not grep)" },
-      { id: "D12", group: "D", question: "What calls it, and what depends on it \u2014 the blast radius?" },
-      { id: "D13", group: "D", question: "Is there an existing pattern for this that I should match?" },
-      { id: "E14", group: "E", question: "Does curated knowledge already say something that contradicts this?" },
-      { id: "E15", group: "E", question: "Is any page for this subject marked drifted?" },
-      { id: "E16", group: "E", question: "Is there an open uncertainty record on it?" },
-      { id: "F17", group: "F", question: "Is another flow or bundle touching this subject?" },
-      { id: "F18", group: "F", question: "Is there an inbox capture about it?" },
-      { id: "F19", group: "F", question: "Is a debt scheduled against it?" },
-      { id: "G20", group: "G", question: "Is what I read production code, or a fixture, mock, demo, or test?" },
-      { id: "G21", group: "G", question: "Is this claim implementation authority, or a clue from a note?" },
-      { id: "G22", group: "G", question: "At which exact revision did I observe it?" },
-      { id: "H23", group: "H", question: "If I found nothing, how many independent routes did I try?" },
-      { id: "H24", group: "H", question: "Am I recording not-found, or asserting it does not exist?" }
-    ];
-    STEP_REQUIREMENTS = {
-      framed: { groups: ["A", "B", "C", "E"], floor: { qmd: 1 } },
-      verified: { groups: ["G"], floor: {} },
-      promoted: { groups: ["E", "H"], floor: {} }
-    };
-    CLAIM_REQUIREMENT = { groups: ["D"], floor: { graphify: 1 } };
-  }
-});
-
-// src/core/steps.ts
-var steps_exports = {};
-__export(steps_exports, {
-  WORK_STEP_DEFINITIONS: () => WORK_STEP_DEFINITIONS,
-  definitionFor: () => definitionFor,
-  deriveBlocker: () => deriveBlocker,
-  nextStep: () => nextStep,
-  renderStep: () => renderStep
-});
-function definitionFor(step) {
-  const found = WORK_STEP_DEFINITIONS.find((definition) => definition.step === step);
-  if (!found) throw new Error(`Unknown step ${step}`);
-  return found;
-}
-function nextStep(step) {
-  const index = WORK_STEPS.indexOf(step);
-  return index >= 0 ? WORK_STEPS[index + 1] : void 0;
-}
-function deriveBlocker(flow) {
-  if (flow.closedAt) return void 0;
-  if (flow.parked) {
-    return {
-      step: flow.step,
-      awaits: "maintainer",
-      summary: `Parked: ${flow.parked.reason}`,
-      remedy: 'wfctl work release --attested "<what they said>"'
-    };
-  }
-  if (flow.step === "opened" && flow.weight) {
-    const following = nextStep("opened");
-    if (following) {
-      const next = definitionFor(following);
-      return { step: following, awaits: "agent", summary: next.demands, remedy: next.command };
-    }
-  }
-  const definition = definitionFor(flow.step);
-  const shortfall = shortfallFor(flow.step, flow.recall);
-  if (!isSatisfied(shortfall)) {
-    return {
-      step: flow.step,
-      awaits: "agent",
-      summary: `Recall incomplete for ${flow.step}.`,
-      remedy: "wfctl recall answer <item> --answer ... --route ... --source ..."
-    };
-  }
-  if (flow.step === "verified" && flow.review) {
-    return {
-      step: "closed",
-      awaits: "agent",
-      summary: "Draft the pages this work changes, then close. Closure asks nobody: the checks have already answered it.",
-      remedy: 'wfctl work promotion draft "<area>/<page>.md"'
-    };
-  }
-  if (flow.step === "closed") {
-    return {
-      step: "promoted",
-      awaits: "maintainer",
-      summary: definitionFor("promoted").demands,
-      remedy: definitionFor("promoted").command
-    };
-  }
-  const awaitsMaintainer = flow.step === "framed" || flow.step === "promoted";
-  return {
-    step: flow.step,
-    awaits: awaitsMaintainer ? "maintainer" : "agent",
-    summary: definition.demands,
-    remedy: definition.command
-  };
-}
-function renderStep(flow) {
-  const definition = definitionFor(flow.step);
-  const following = nextStep(flow.step);
-  const shortfall = shortfallFor(flow.step, flow.recall);
-  const checkpointStale = flow.step !== "opened" && (flow.checkpoint?.updatedAt ?? "") < (flow.steppedAt ?? "");
-  const next = !isSatisfied(shortfall) ? 'wfctl recall answer <item> --answer "<what you found>" --route <route> --source "<where>"' : checkpointStale ? 'wfctl checkpoint "<what has happened since>"   \xB7   or name fields: --summary --handoff --last --next' : following ? definitionFor(following).command : "wfctl work close --outcome <completed|partial|abandoned>";
-  return [
-    `flow ${flow.id}  \xB7  step ${flow.step}`,
-    "",
-    definition.demands,
-    "",
-    `record it with: ${definition.command}`,
-    `next: ${next}`,
-    "",
-    renderCounterLine(flow.step, flow.recall)
-  ].join("\n");
-}
-var WORK_STEP_DEFINITIONS;
-var init_steps = __esm({
-  "src/core/steps.ts"() {
-    "use strict";
-    init_recall();
-    init_types();
-    WORK_STEP_DEFINITIONS = [
-      {
-        step: "opened",
-        demands: "Whether this work is significant or lightweight. Significant work changes behaviour, meaning, contracts, data, or operations; lightweight work is local and preserves both behaviour and contracts. Put the distinction to the maintainer in your own words \u2014 do not read this out, and do not decide it yourself.",
-        command: 'wfctl work start --title "<what this is>" --weight <significant|lightweight>'
-      },
-      {
-        step: "framed",
-        demands: "What the work is: the outcome, the boundary, the acceptance criteria, and what the project already says about the subject. If nothing is written yet, record that nothing covers it \u2014 an empty corpus passes a conflict check silently, and that reads exactly like a check that found nothing wrong. This is the cheapest moment to change the scope and the last one where it is free.",
-        command: "wfctl work step framed"
-      },
-      {
-        step: "verified",
-        demands: "An adversarial review, run by a separate agent, whose every attack is an executable test. You cannot run it yourself: the agent that wrote the tests can write the review that approves them. Nobody authorises it \u2014 verification is the second half of implementing, not a milestone the maintainer grants, and asking spends a turn on an answer that is yes every time. Start it as soon as the units are delivered.",
-        command: "wfctl work verify --review <artifact>"
-      },
-      {
-        step: "closed",
-        demands: "Nothing from anybody. Every part of 'is this done' is already answered by the checks, and asking the maintainer to confirm arithmetic is not a decision.",
-        command: "wfctl work close --outcome <completed|partial|abandoned>"
-      },
-      {
-        step: "promoted",
-        demands: "What the project now says about itself. This one is the maintainer's, and it is the second and last thing they are asked.",
-        command: 'wfctl work promote --subject "<product subject>" --summary "<what it now does>"'
-      }
-    ];
-  }
-});
-
 // src/core/gates.ts
-function assertReached(flow, step) {
-  const required = PRECONDITION[step];
-  if (!required) return;
-  const order = WORK_STEPS;
-  if (order.indexOf(flow.step) < order.indexOf(required)) {
-    const definition = definitionFor(required);
-    throw new GateRefusal(
-      `This flow is at ${flow.step}; ${step} needs ${required} recorded first.`,
-      definition.command,
-      definition.demands
-    );
-  }
-}
-function assertRecall(flow, step) {
-  const shortfall = shortfallFor(step, flow.recall);
-  if (isSatisfied(shortfall)) return;
-  throw new GateRefusal(
-    `Recall is incomplete for ${step}.`,
-    'wfctl recall answer <item> --answer "<what you found>" --route <qmd|graphify|grep|read|maintainer> --source "<where>"',
-    `${renderCounterLine(step, flow.recall)}
-
-wfctl guide recall \u2014 why this checklist exists`
-  );
-}
-function assertReviewed(flow, step) {
-  if (step !== "verified" && step !== "closed" && step !== "promoted") return;
-  if (flow.review) return;
-  throw new GateRefusal(
-    "No review is on record for this work.",
-    "wfctl work verify --review <artifact from a separate agent>",
-    "The agent that wrote the tests can write the review that approves them, so the review is produced elsewhere and this checks what came back."
-  );
-}
-function assertNotParked(flow) {
-  if (!flow.parked) return;
-  throw new GateRefusal(
-    `Flow ${flow.id} is parked: ${flow.parked.reason}`,
-    'wfctl work release --attested "<what they said>"',
-    "Approving a framing settles what the work is, never that it begins. The condition that held it ending is not the same as being told to go."
-  );
-}
-function assertCheckpointCurrent(flow, step) {
-  if (flow.step === step) return;
-  const checkpoint2 = flow.checkpoint;
-  if (!checkpoint2) {
-    throw new GateRefusal(
-      `This flow has no checkpoint, and ${step} is not reachable without one.`,
-      'wfctl checkpoint "<what has happened since>"',
-      "The checkpoint is the only thing a session that is not this one recovers from. Work whose state lives in a conversation is lost with the conversation, and nothing reports that it was."
-    );
-  }
-  if (checkpoint2.updatedAt < (flow.steppedAt ?? "")) {
-    throw new GateRefusal(
-      `The checkpoint predates this flow reaching ${flow.step}.`,
-      'wfctl checkpoint "<what has happened since>"',
-      `It was written at ${checkpoint2.updatedAt} and says the next action is "${checkpoint2.nextAction}". A session resuming here would act on that.`
-    );
-  }
-}
-var GateRefusal, PRECONDITION;
+var GateRefusal;
 var init_gates = __esm({
   "src/core/gates.ts"() {
     "use strict";
-    init_recall();
-    init_steps();
-    init_types();
     GateRefusal = class extends Error {
       constructor(message, remedy, detail) {
         super(message);
@@ -372,513 +35,88 @@ var init_gates = __esm({
         return [this.message, this.detail, `remedy: ${this.remedy}`].filter((part) => Boolean(part)).join("\n");
       }
     };
-    PRECONDITION = {
-      framed: "opened",
-      verified: "framed",
-      closed: "verified",
-      promoted: "closed"
-    };
   }
 });
 
-// src/core/kit.ts
-var kit_exports = {};
-__export(kit_exports, {
-  assertAdoptable: () => assertAdoptable,
-  renderKit: () => renderKit,
-  renderSurvey: () => renderSurvey,
-  shipped: () => shipped,
-  skillsIn: () => skillsIn,
-  summariseKit: () => summariseKit
+// src/core/paths-resolve.ts
+var paths_resolve_exports = {};
+__export(paths_resolve_exports, {
+  canonical: () => canonical,
+  contains: () => contains,
+  findRepositoryRoot: () => findRepositoryRoot
 });
-import { readFile, readdir } from "node:fs/promises";
-import { basename, resolve } from "node:path";
-function describe(body) {
-  const match = /^---\n([\s\S]*?)\n---/.exec(body);
-  const block = match?.[1] ?? "";
-  const described = /^description:\s*(?:["']?)([\s\S]*?)(?:["']?)\s*$/m.exec(block);
-  const inline = described?.[1]?.split("\n")[0]?.trim();
-  if (inline) return clip(inline);
-  const heading = /^#\s+(.+)$/m.exec(body.replace(/^---[\s\S]*?---/, ""));
-  return heading?.[1]?.trim() ?? "";
-}
-function clip(value) {
-  const flat = value.replace(/\s+/g, " ").trim();
-  if (flat.length <= LIMIT) return flat;
-  const cut = flat.slice(0, LIMIT);
-  const boundary = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf(", "), cut.lastIndexOf(" "));
-  return `${cut.slice(0, boundary > LIMIT / 2 ? boundary : LIMIT).trimEnd()}\u2026`;
-}
-async function skillsIn(path, repository) {
-  const found = /* @__PURE__ */ new Map();
-  for (const convention of [".claude/skills", ".agents/skills"]) {
-    const base = resolve(path, convention);
-    const entries = await readdir(base, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const file = resolve(base, entry.name, "SKILL.md");
-      const body = await readFile(file, "utf8").catch(() => void 0);
-      if (body === void 0) continue;
-      if (found.has(entry.name)) continue;
-      found.set(entry.name, {
-        id: `${repository}:${entry.name}`,
-        kind: "skill",
-        path: `${convention}/${entry.name}/SKILL.md`,
-        what: describe(body),
-        repository
-      });
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
+function settle(from, trailing) {
+  let node = from;
+  const rest = [...trailing];
+  for (; ; ) {
+    try {
+      return [realpathSync.native(node), ...rest].join(sep);
+    } catch {
+      const parent = dirname(node);
+      if (parent === node) return [node, ...rest].join(sep);
+      rest.unshift(node.slice(parent.length + 1));
+      node = parent;
     }
   }
-  return [...found.values()].sort((left, right) => left.id.localeCompare(right.id));
 }
-async function shipped(guidanceRoot, kind) {
-  const base = resolve(guidanceRoot, kind === "strategy" ? "strategy" : "personality");
-  const entries = await readdir(base).catch(() => []);
-  const candidates = [];
-  for (const entry of entries.sort()) {
-    if (!entry.endsWith(".md")) continue;
-    const name = basename(entry, ".md");
-    const body = await readFile(resolve(base, entry), "utf8").catch(() => "");
-    candidates.push({
-      id: `${kind}:${name}`,
-      kind,
-      path: `wfctl guide ${kind}/${name}`,
-      what: firstSentence(body)
-    });
-  }
-  return candidates;
-}
-function firstSentence(body) {
-  const withoutHeading = body.replace(/^#[^\n]*\n+/, "");
-  const when = /\*\*(Use when[\s\S]*?)\*\*([^\n]*)/.exec(withoutHeading);
-  if (when) return clip(`${when[1] ?? ""}${when[2] ?? ""}`);
-  const stance = /\*\*Stance\.\*\*\s*([\s\S]*?)(?:\n\s*\n)/.exec(withoutHeading);
-  if (stance?.[1]) return clip(stance[1]);
-  return clip(withoutHeading.split(/\n\s*\n/)[0] ?? "");
-}
-function plural(kind) {
-  return PLURAL[kind];
-}
-function renderSurvey(candidates, equipped) {
-  if (candidates.length === 0) {
-    return [
-      "Nothing to survey.",
-      "",
-      "Strategies and personalities ship with wfctl; skills come from the",
-      "checkouts this repository has registered. If you expected a checkout's",
-      "skills here, it may not be registered yet:",
-      "  wfctl repo list"
-    ].join("\n");
-  }
-  const held = new Set(equipped.map((entry) => entry.id));
-  const lines = [];
-  for (const kind of ["skill", "strategy", "personality"]) {
-    const group = candidates.filter((candidate) => candidate.kind === kind);
-    if (group.length === 0) continue;
-    lines.push(`${plural(kind)} (${group.length})`);
-    for (const candidate of group) {
-      lines.push(`  ${held.has(candidate.id) ? "\u2713" : " "} ${candidate.id}`);
-      if (candidate.what) lines.push(`      ${candidate.what}`);
-      lines.push(`      read: ${candidate.repository ? `${candidate.repository} \xB7 ` : ""}${candidate.path}`);
-    }
-    lines.push("");
-  }
-  lines.push(
-    "This is a list, not a briefing. Nothing here has been read for you and",
-    "nothing has been added to this work.",
-    "",
-    "Read the ones that look relevant \u2014 the descriptions are what they claim,",
-    "not what they contain \u2014 then put a short list to the maintainer with your",
-    "recommendations marked and why each one earns its place. Their answer is",
-    "what this work carries:",
-    "",
-    '  wfctl kit adopt <id>... --attested "<what they said>"',
-    "",
-    "It is recorded on the flow, so it survives a cleared session: the brief",
-    "prints it at the start of the next one."
-  );
-  return lines.join("\n");
-}
-function renderKit(equipped) {
-  if (equipped.length === 0) {
-    return [
-      "This work is equipped with nothing yet.",
-      "",
-      "  wfctl kit survey        what this repository and this tool can offer it",
-      "",
-      "Equipping is not required and it is not a gate. It is worth a survey when",
-      "the work is about to touch a checkout you have not worked in, when it is",
-      "large enough that its shape matters, or when something else will review it."
-    ].join("\n");
-  }
-  const lines = [];
-  for (const kind of ["skill", "strategy", "personality"]) {
-    const group = equipped.filter((entry) => entry.kind === kind);
-    if (group.length === 0) continue;
-    lines.push(plural(kind));
-    for (const entry of group) {
-      lines.push(`  ${entry.id}`);
-      if (entry.what) lines.push(`      ${entry.what}`);
-      lines.push(`      read: ${entry.repository ? `${entry.repository} \xB7 ` : ""}${entry.path}`);
-    }
-    lines.push("");
-  }
-  lines.push(`Adopted on the maintainer's word: "${equipped[0]?.attested ?? ""}"`);
-  return lines.join("\n");
-}
-function summariseKit(equipped) {
-  if (equipped.length === 0) return void 0;
-  const counts = ["skill", "strategy", "personality"].map((kind) => [kind, equipped.filter((entry) => entry.kind === kind).length]).filter(([, count]) => count > 0).map(([kind, count]) => `${count} ${count === 1 ? kind : plural(kind)}`);
-  return `equipped: ${counts.join(", ")}   \xB7   wfctl kit`;
-}
-function assertAdoptable(ids, candidates) {
-  const known = new Map(candidates.map((candidate) => [candidate.id, candidate]));
-  const missing = ids.filter((id) => !known.has(id));
-  if (missing.length > 0) {
-    throw new GateRefusal(
-      `Nothing here is called ${missing.join(", ")}.`,
-      "wfctl kit survey",
-      "Ids are exactly as the survey prints them \u2014 a skill's is its checkout and its name, a strategy's and a personality's is its kind and its name."
-    );
-  }
-  return ids.map((id) => known.get(id));
-}
-var LIMIT, PLURAL;
-var init_kit = __esm({
-  "src/core/kit.ts"() {
-    "use strict";
-    init_gates();
-    LIMIT = 220;
-    PLURAL = {
-      skill: "skills",
-      strategy: "strategies",
-      personality: "personalities"
-    };
-  }
-});
-
-// src/core/checkpoint.ts
-var checkpoint_exports = {};
-__export(checkpoint_exports, {
-  CheckpointError: () => CheckpointError,
-  buildCheckpoint: () => buildCheckpoint,
-  buildNote: () => buildNote,
-  driftLine: () => driftLine,
-  fenceBody: () => fenceBody,
-  lastWritten: () => lastWritten,
-  lookupOrderLine: () => lookupOrderLine,
-  meaningful: () => meaningful,
-  renderBrief: () => renderBrief,
-  renderHandoff: () => renderHandoff
-});
-function meaningful(value) {
-  return value.replace(INVISIBLE, "").replace(CONTROL, "").trim().length > 0;
-}
-function oneLine(value) {
-  return value.replace(CONTROL, "").replace(/\s*\n+\s*/g, " ").trim();
-}
-function fenceBody(value) {
-  return value.replace(CONTROL, "").split("\n").map((line) => line.trim().length === 0 ? "" : `  ${line}`).join("\n");
-}
-function carry(next, previous) {
-  if (next !== void 0 && meaningful(next)) return next;
-  return previous ?? "";
-}
-function buildCheckpoint(input, previous, now = /* @__PURE__ */ new Date()) {
-  return {
-    summary: oneLine(carry(input.summary, previous?.summary)),
-    handoff: carry(input.handoff, previous?.handoff).replace(CONTROL, "").trim(),
-    lastAction: oneLine(carry(input.lastAction, previous?.lastAction)),
-    nextAction: oneLine(carry(input.nextAction, previous?.nextAction)),
-    actor: oneLine(input.actor),
-    updatedAt: now.toISOString(),
-    /**
-     * Carried unless this call names its own.
-     *
-     * `todo` was replaced wholesale, so the second checkpoint of a session
-     * deleted the jobs the first had recorded — and checkpointing often is the
-     * thing this workflow asks for most. Doing it correctly was what lost them.
-     */
-    todo: input.todo && input.todo.length > 0 ? input.todo.map(oneLine).filter((item) => item.length > 0) : previous?.todo ?? []
-  };
-}
-function buildNote(text, actor, about, now = /* @__PURE__ */ new Date()) {
-  if (!meaningful(text)) {
-    throw new CheckpointError(
-      "A note with nothing in it recalls nothing.",
-      'wfctl checkpoint "<what you want to remember>"'
-    );
-  }
-  const note = {
-    at: now.toISOString(),
-    actor: oneLine(actor),
-    text: text.replace(CONTROL, "").trim()
-  };
-  if (about && meaningful(about)) note.about = oneLine(about);
-  return note;
-}
-function driftLine(since, now = /* @__PURE__ */ new Date()) {
-  if (!since) return void 0;
-  const minutes = Math.floor((now.getTime() - new Date(since).getTime()) / 6e4);
-  if (Number.isNaN(minutes) || minutes < 20) return void 0;
-  if (minutes < 120) return `${minutes} minutes since anything was written down`;
-  return `${Math.floor(minutes / 60)} hours since anything was written down`;
-}
-function lastWritten(flow) {
-  const stamps = [
-    flow.createdAt,
-    flow.checkpoint?.updatedAt,
-    ...(flow.notes ?? []).map((note) => note.at),
-    ...(flow.findings ?? []).map((finding) => finding.at),
-    ...(flow.artifacts ?? []).map((artifact) => artifact.at)
-  ].filter((value) => Boolean(value));
-  if (stamps.length === 0) return void 0;
-  return stamps.sort().at(-1);
-}
-function lookupOrderLine() {
-  return [
-    "",
-    "finding things out:  wfctl decided \xB7 qmd query \xB7 graphify \xB7 read the source \xB7 then grep",
-    "  wfctl guide structure   \xB7   why grep is step five and not step one"
-  ];
-}
-function renderBrief(flows, currentId, extras = {}) {
-  const open = flows.filter((flow) => !flow.closedAt);
-  const waiting = [];
-  if (extras.reconstruction) {
-    waiting.push(
-      `reconstruction ${extras.reconstruction.id} \xB7 stage ${extras.reconstruction.stage}
-  awaits agent: wfctl reconstruct status`
-    );
-  }
-  for (const id of extras.queued ?? []) {
-    waiting.push(
-      `${id} waits in the promotion queue
-  awaits maintainer: what the project now says about itself
-  remedy: wfctl work promote --subject "<product subject>" --summary "<what it now does>"`
-    );
-  }
-  if (extras.awaitingCaptures) {
-    waiting.push(
-      `${extras.awaitingCaptures} capture(s) await the maintainer
-  remedy: put them one decision at a time, not as a backlog`
-    );
-  }
-  for (const broken of extras.unreadable ?? []) {
-    waiting.push(
-      `${broken.id} cannot be read: ${broken.problem}
-  awaits agent: repair .workflow/flows/${broken.id}.json
-  remedy: open that file \u2014 a record left with merge-conflict markers is the usual cause`
-    );
-  }
-  for (const id of extras.stranded ?? []) {
-    waiting.push(
-      `${id} has no flow, so nothing can reach it
-  awaits maintainer: whether this work resumes at all
-  remedy: wfctl work adopt ${id} --weight <significant|lightweight> --attested "<what they said>"`
-    );
-  }
-  if (open.length === 0) {
-    return [
-      "No flow is open.",
-      ...waiting.length > 0 ? ["", ...waiting] : [],
-      "",
-      "Nothing here holds session state, because state belongs to a piece of",
-      "work. If you are resuming, it is one of the records above; if you are",
-      "starting, open one and write into it as you go.",
-      "",
-      "Start one explicitly when the maintainer asks for work, and record what",
-      "they said \u2014 a bundle exists because they asked for it:",
-      '  wfctl work start --title "<what this is>" --weight <significant|lightweight> \\',
-      '    --attested "<what they said>"',
-      "  wfctl reconstruct start",
-      ...lookupOrderLine()
-    ].join("\n");
-  }
-  const lines = [];
-  const current = open.find((flow) => flow.id === currentId);
-  if (current) {
-    lines.push(`flow ${current.id}  \xB7  ${current.kind}  \xB7  step ${current.step}`);
-    lines.push(current.title);
-    lines.push("");
-    if (current.checkpoint) {
-      if (current.checkpoint.handoff) {
-        lines.push(fenceBody(current.checkpoint.handoff));
-        lines.push("");
+function canonical(path) {
+  let current = resolve(path);
+  const trailing = [];
+  for (let depth = 0; depth < MAX_LINKS; depth += 1) {
+    try {
+      if (lstatSync(current).isSymbolicLink()) {
+        const target = readlinkSync(current);
+        current = isAbsolute(target) ? target : resolve(dirname(current), target);
+        continue;
       }
-      lines.push(
-        current.checkpoint.lastAction ? `last: ${current.checkpoint.lastAction}` : 'last: not recorded   \xB7   wfctl checkpoint --last "<what you just finished>"'
-      );
-      lines.push(
-        current.checkpoint.nextAction ? `next: ${current.checkpoint.nextAction}` : 'next: not recorded   \xB7   wfctl checkpoint --next "<the exact next action>"'
-      );
-      if (current.checkpoint.todo.length > 0) {
-        lines.push("todo:");
-        for (const item of current.checkpoint.todo) lines.push(`  - ${item}`);
-      }
-    } else {
-      lines.push("Nothing written down for this flow yet.");
-      lines.push('  wfctl checkpoint "<whatever you would not want to look up again>"');
+    } catch {
     }
-    const equipped = summariseKit(current.kit ?? []);
-    if (equipped) {
-      lines.push("");
-      lines.push(equipped);
-    }
-    const openFindings = (current.findings ?? []).filter((finding) => finding.status === "open");
-    if (openFindings.length > 0) {
-      lines.push("");
-      lines.push(`findings, ${openFindings.length} open and this work's to settle:`);
-      for (const finding of openFindings.slice(0, 5)) {
-        lines.push(`  ${finding.id}  ${finding.what}`);
-      }
-      if (openFindings.length > 5) lines.push(`  \u2026 ${openFindings.length - 5} more: wfctl finding list`);
-    }
-    const standing = (current.artifacts ?? []).filter((artifact) => !artifact.supersededBy);
-    if (standing.length > 0) {
-      lines.push("");
-      lines.push("artifacts this work stands on:");
-      for (const artifact of standing.slice(0, 6)) {
-        lines.push(`  ${artifact.path}`);
-        lines.push(`    ${artifact.what}`);
-      }
-      if (standing.length > 6) lines.push(`  \u2026 ${standing.length - 6} more: wfctl artifact list`);
-    } else if (current.step !== "opened" && current.issues.length > 0) {
-      lines.push("");
-      lines.push(`artifacts: none recorded, with ${current.issues.length} unit(s) on the route.`);
-      lines.push('  wfctl artifact add <path> --what "<what it is>"');
-      lines.push("  What this work produced and something else will stand on \u2014 a spec, a");
-      lines.push("  review, a schema, a migration. Not every file it touched.");
-    }
-    const notes2 = current.notes ?? [];
-    if (notes2.length > 0) {
-      lines.push("");
-      lines.push(`written down, ${notes2.length} note(s), most recent last:`);
-      for (const note of notes2.slice(-4)) {
-        lines.push(fenceBody(note.text));
-      }
-      if (notes2.length > 4) lines.push(`  \u2026 all of them: wfctl notes`);
-    }
-    const drift = driftLine(lastWritten(current));
-    if (drift) {
-      lines.push("");
-      lines.push(`\u26A0 ${drift}.`);
-      lines.push('  wfctl checkpoint "<what has happened since>"');
-    }
-    const blocker = deriveBlocker(current);
-    if (blocker) {
-      lines.push("");
-      lines.push(`awaits ${blocker.awaits}: ${blocker.summary}`);
-      lines.push(`remedy: ${blocker.remedy}`);
-    }
+    return settle(current, trailing);
   }
-  const others = open.filter((flow) => flow.id !== currentId);
-  if (others.length > 0) {
-    lines.push("");
-    lines.push("other open work:");
-    for (const flow of others) {
-      const summary = flow.checkpoint?.summary?.trim() || "nothing written down";
-      lines.push(`  ${flow.id}  \xB7  ${flow.step}${flow.parked ? "  \xB7  parked" : ""}`);
-      lines.push(`      ${summary}`);
-    }
-    lines.push("");
-    lines.push(`  wfctl work bind <id>   \xB7   to work in one of them`);
-  }
-  if (waiting.length > 0) {
-    lines.push("");
-    lines.push(...waiting);
-  }
-  lines.push(...lookupOrderLine());
-  return lines.join("\n");
+  return settle(current, trailing);
 }
-function renderHandoff(flow) {
-  if (!flow.checkpoint) {
-    return `Flow ${flow.id} has no checkpoint.`;
-  }
-  return [
-    `flow ${flow.id}  \xB7  step ${flow.step}`,
-    "",
-    fenceBody(flow.checkpoint.handoff),
-    "",
-    `last: ${flow.checkpoint.lastAction}`,
-    `next: ${flow.checkpoint.nextAction}`,
-    `actor: ${flow.checkpoint.actor}   updated: ${flow.checkpoint.updatedAt}`
-  ].join("\n");
+function contains(base, target) {
+  const root = canonical(base);
+  const path = canonical(target);
+  return path === root || path.startsWith(`${root}${sep}`);
 }
-var CheckpointError, CONTROL, INVISIBLE;
-var init_checkpoint = __esm({
-  "src/core/checkpoint.ts"() {
-    "use strict";
-    init_gates();
-    init_kit();
-    init_steps();
-    CheckpointError = class extends GateRefusal {
-    };
-    CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
-    INVISIBLE = /[\u00ad\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\ufeff]/g;
+function findRepositoryRoot(from) {
+  let current = canonical(from);
+  for (let depth = 0; depth < 32; depth += 1) {
+    if (exists(resolve(current, ".workflow/state.json"))) return current;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
   }
-});
-
-// src/core/guidance.ts
-var guidance_exports = {};
-__export(guidance_exports, {
-  GUIDE_TOPICS: () => GUIDE_TOPICS,
-  compose: () => compose,
-  loadGuidance: () => loadGuidance
-});
-import { readFile as readFile2 } from "node:fs/promises";
-import { resolve as resolve2 } from "node:path";
-async function loadGuidance(source, key) {
-  const path = resolve2(source.root, `${key}.md`);
+  return canonical(from);
+}
+function exists(path) {
   try {
-    const text = await readFile2(path, "utf8");
-    return text.trim().length > 0 ? text.trim() : void 0;
-  } catch (error) {
-    if (error.code === "ENOENT") return void 0;
-    throw error;
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
   }
 }
-function compose(parts) {
-  return parts.filter((part) => Boolean(part && part.trim())).join("\n\n");
-}
-var GUIDE_TOPICS;
-var init_guidance = __esm({
-  "src/core/guidance.ts"() {
+var MAX_LINKS;
+var init_paths_resolve = __esm({
+  "src/core/paths-resolve.ts"() {
     "use strict";
-    GUIDE_TOPICS = {
-      wfctl: "guide/wfctl",
-      recall: "recall/checklist",
-      structure: "recall/structure",
-      interview: "decide/interview",
-      "domain-language": "decide/domain-language",
-      prototype: "decide/prototype",
-      research: "decide/research",
-      adversarial: "verify/adversarial",
-      "curate-product": "curate/product",
-      "curate-engineering": "curate/engineering",
-      quality: "curate/quality",
-      routing: "curate/routing",
-      discoveries: "work/discoveries",
-      wayfind: "work/wayfind",
-      scope: "reconstruct/scope",
-      crawl: "reconstruct/crawl",
-      assemble: "reconstruct/assemble",
-      adjudicate: "reconstruct/adjudicate",
-      probe: "reconstruct/probe",
-      sources: "reconstruct/sources"
-    };
+    MAX_LINKS = 64;
   }
 });
 
 // src/core/lock.ts
-import { link, mkdir, readFile as readFile3, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, resolve as resolve3 } from "node:path";
+import { link, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname as dirname2, resolve as resolve2 } from "node:path";
 function lockPath(target) {
-  return `${resolve3(target)}.lock`;
+  return `${resolve2(target)}.lock`;
 }
 async function readHolderAt(path) {
   try {
-    const parsed = JSON.parse(await readFile3(path, "utf8"));
+    const parsed = JSON.parse(await readFile(path, "utf8"));
     return typeof parsed?.token === "string" ? parsed : void 0;
   } catch {
     return void 0;
@@ -935,7 +173,7 @@ async function withLock(target, work) {
   const path = lockPath(target);
   const token = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   const deadline = Date.now() + WAIT_MS;
-  await mkdir(dirname(path), { recursive: true });
+  await mkdir(dirname2(path), { recursive: true });
   for (; ; ) {
     if (await take(target, token)) break;
     const holder = await readHolder(target);
@@ -963,8 +201,8 @@ async function withLock(target, work) {
 async function writeAtomic(path, body) {
   const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   await writeFile(temporary, body, "utf8");
-  const { rename: rename4 } = await import("node:fs/promises");
-  await rename4(temporary, path);
+  const { rename: rename2 } = await import("node:fs/promises");
+  await rename2(temporary, path);
 }
 var STALE_AFTER_MS, RETRY_MS, WAIT_MS;
 var init_lock = __esm({
@@ -977,858 +215,761 @@ var init_lock = __esm({
   }
 });
 
-// src/core/bundles.ts
-var bundles_exports = {};
-__export(bundles_exports, {
-  ACTIVE_DIR: () => ACTIVE_DIR,
-  bundleExists: () => bundleExists,
-  bundleNames: () => bundleNames,
-  joinBundlePath: () => join,
-  listBundles: () => listBundles,
-  markSuperseded: () => markSuperseded,
-  readSupersession: () => readSupersession,
-  renderBundles: () => renderBundles,
-  renderStranded: () => renderStranded,
-  writeBundleFile: () => writeBundleFile
-});
-import { readFile as readFile4, readdir as readdir2, writeFile as writeFile2 } from "node:fs/promises";
-import { join, resolve as resolve4 } from "node:path";
-async function readSupersession(root, bundle) {
+// src/core/install.ts
+import { createHash } from "node:crypto";
+import { mkdir as mkdir2, readFile as readFile2, readdir, rm as rm2, rmdir, stat, writeFile as writeFile2 } from "node:fs/promises";
+import { dirname as dirname3, join, relative, resolve as resolve3 } from "node:path";
+function hash(content) {
+  return createHash("sha256").update(content).digest("hex");
+}
+async function readIfPresent(path) {
   try {
-    return JSON.parse(
-      await readFile4(resolve4(root, ACTIVE_DIR, bundle, SUPERSEDED), "utf8")
-    );
-  } catch {
-    return void 0;
+    return await readFile2(path, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return void 0;
+    throw error;
   }
 }
-async function markSuperseded(root, bundle, into) {
-  await writeAtomic(
-    resolve4(root, ACTIVE_DIR, bundle, SUPERSEDED),
-    `${JSON.stringify(into, null, 2)}
-`
-  );
-}
-async function listBundles(root) {
-  let names;
-  try {
-    names = (await readdir2(resolve4(root, ACTIVE_DIR), { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  } catch {
-    return [];
-  }
-  const flows = (await listFlows(root)).filter((flow) => !flow.closedAt);
-  const held = /* @__PURE__ */ new Map();
-  for (const flow of flows) {
-    for (const member of flow.members) held.set(member, flow);
-  }
-  const states = [];
-  for (const bundle of names) {
-    const into = await readSupersession(root, bundle);
-    if (into) {
-      states.push({ state: "superseded", bundle, into });
+async function collect(root, prefix = "") {
+  const entries = await readdir(join(root, prefix), { withFileTypes: true });
+  const files = [];
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    const rel = prefix ? join(prefix, entry.name) : entry.name;
+    if (entry.isDirectory()) {
+      files.push(...await collect(root, rel));
       continue;
     }
-    const holder = held.get(bundle);
-    states.push(
-      holder ? { state: "held", bundle, flow: holder.id } : { state: "stranded", bundle }
+    files.push({ path: rel, content: await readFile2(join(root, rel), "utf8") });
+  }
+  return files;
+}
+async function readInstallState(target) {
+  const raw = await readIfPresent(resolve3(target, ".workflow/state.json"));
+  return raw ? JSON.parse(raw) : void 0;
+}
+async function planInstall(options) {
+  const state = await readInstallState(options.target);
+  const operations = [];
+  for (const directory of KNOWLEDGE_DIRECTORIES) {
+    const path = resolve3(options.target, directory);
+    const present = await stat(path).then(
+      (entry) => entry.isDirectory(),
+      () => false
     );
+    if (!present) operations.push({ kind: "create-directory", path: directory });
   }
-  return states;
-}
-function renderStranded(states) {
-  const stranded = states.filter((entry) => entry.state === "stranded");
-  if (stranded.length === 0) return void 0;
-  return [
-    `${stranded.length} bundle(s) in ${ACTIVE_DIR} have no flow, so nothing can reach them:`,
-    ...stranded.map((entry) => `  ${entry.bundle}`),
-    "",
-    "Resuming one is the maintainer's decision, not a tidy-up. Put it to them in",
-    "your own words \u2014 what the work was, where it stopped \u2014 and record their",
-    "answer:",
-    "",
-    "  wfctl work adopt <bundle> --weight <significant|lightweight> \\",
-    '    --attested "<what they said>"'
-  ].join("\n");
-}
-function renderBundles(states) {
-  if (states.length === 0) return `No bundles in ${ACTIVE_DIR}.`;
-  const lines = states.map((entry) => {
-    if (entry.state === "held") return `  held        ${entry.bundle}  (flow ${entry.flow})`;
-    if (entry.state === "superseded") return `  superseded  ${entry.bundle}  -> ${entry.into.by}`;
-    return `  stranded    ${entry.bundle}`;
-  });
-  const stranded = renderStranded(states);
-  return [`${states.length} bundle(s):`, ...lines, ...stranded ? ["", stranded] : []].join("\n");
-}
-async function bundleExists(root, bundle) {
-  try {
-    await readdir2(resolve4(root, ACTIVE_DIR, bundle));
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function bundleNames(root) {
-  return (await listBundles(root)).map((entry) => entry.bundle);
-}
-async function writeBundleFile(root, bundle, name, body) {
-  await writeFile2(resolve4(root, ACTIVE_DIR, bundle, name), body, "utf8");
-}
-var ACTIVE_DIR, SUPERSEDED;
-var init_bundles = __esm({
-  "src/core/bundles.ts"() {
-    "use strict";
-    init_flow();
-    init_lock();
-    ACTIVE_DIR = "changes/active";
-    SUPERSEDED = "superseded.json";
-  }
-});
-
-// src/core/learned.ts
-var learned_exports = {};
-__export(learned_exports, {
-  LEARNINGS_DIR: () => LEARNINGS_DIR,
-  listLearnings: () => listLearnings,
-  renderLearnings: () => renderLearnings,
-  slugify: () => slugify,
-  summariseLearnings: () => summariseLearnings,
-  writeLearning: () => writeLearning
-});
-import { mkdir as mkdir2, readFile as readFile5, readdir as readdir3, writeFile as writeFile3 } from "node:fs/promises";
-import { resolve as resolve5 } from "node:path";
-function slugify(title) {
-  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 72);
-  return slug || "learning";
-}
-async function writeLearning(root, options, now = /* @__PURE__ */ new Date()) {
-  if (!options.title.trim()) {
-    throw new GateRefusal(
-      "A learning needs to say what it is, in one line.",
-      'wfctl learned "<the one line>" --detail "<what happened and what to do>" --attested "<what they said>"',
-      "The one line is what a future session sees in a list of thirty. If it does not distinguish this from the others, it will not be opened."
-    );
-  }
-  if (!options.body.trim()) {
-    throw new GateRefusal(
-      "A learning with no detail is a title.",
-      `wfctl learned "${options.title}" --detail "<what happened, and what to do about it>"`,
-      "Say what was hit, what it cost, and what the next person should do instead. A learning that only names the topic sends a reader to find out for themselves, which is the situation it exists to prevent."
-    );
-  }
-  if (!options.attested.trim()) {
-    throw new GateRefusal(
-      "A learning outlives the work that found it, and that is the maintainer's call.",
-      `wfctl learned "${options.title}" --detail "<...>" --attested "<what they said>"`,
-      `A finding stays inside this bundle's fence and goes when it does. This is read by work nobody has started yet, so it is theirs to allow \u2014 put it to them in one sentence and record their answer.
-
-If they have not answered, it is a finding: wfctl finding "<what you found>"`
-    );
-  }
-  const directory = resolve5(root, LEARNINGS_DIR);
-  await mkdir2(directory, { recursive: true });
-  const day = now.toISOString().slice(0, 10);
-  const stem = `${day}-${slugify(options.title)}`;
-  for (let attempt = 0; attempt < 64; attempt += 1) {
-    const path = resolve5(directory, `${attempt === 0 ? stem : `${stem}-${attempt}`}.md`);
-    const body = [
-      "---",
-      `title: ${JSON.stringify(options.title.trim())}`,
-      `learned_at: ${now.toISOString()}`,
-      `actor: ${options.actor}`,
-      ...options.flow ? [`from: ${options.flow}`] : [],
-      `attested: ${JSON.stringify(options.attested.trim())}`,
-      "---",
-      "",
-      `# ${options.title.trim()}`,
-      "",
-      options.body.trim(),
-      ""
-    ].join("\n");
-    try {
-      await writeFile3(path, body, { flag: "wx" });
-      return path;
-    } catch (error) {
-      if (error.code !== "EEXIST") throw error;
+  const installable = [];
+  for (const file of await collect(resolve3(options.distribution, "templates/skill/wfctl"))) {
+    if (!["SKILL.md", "references/commands.md", "references/tidying.md"].includes(file.path)) continue;
+    for (const directory of SKILL_DIRS) {
+      installable.push({ path: join(directory, file.path), content: file.content });
     }
   }
-  throw new GateRefusal(
-    "Could not create a file for this learning.",
-    "Check that learnings/ is writable."
+  installable.push({
+    path: ".workflow/.gitignore",
+    content: await readFile2(resolve3(options.distribution, "templates/workflow/gitignore"), "utf8")
+  });
+  for (const file of installable) {
+    const rel = file.path;
+    const current = await readIfPresent(resolve3(options.target, rel));
+    const next = hash(file.content);
+    if (current === void 0) {
+      operations.push({ kind: "write", path: rel });
+      continue;
+    }
+    if (hash(current) === next) {
+      operations.push({ kind: "skip-unchanged", path: rel });
+      continue;
+    }
+    operations.push({ kind: "write", path: rel });
+  }
+  const shipped = new Set(installable.map((file) => file.path));
+  const obsolete = /* @__PURE__ */ new Set();
+  for (const rel of Object.keys(state?.files ?? {})) {
+    if (shipped.has(rel)) continue;
+    const path = resolve3(options.target, rel);
+    if (!contains(options.target, path) || path === resolve3(options.target)) {
+      throw new GateRefusal(`Invalid installed file path: ${rel}.`, "Repair .workflow/state.json before updating.");
+    }
+    if (await readIfPresent(path) === void 0) continue;
+    obsolete.add(rel);
+  }
+  for (const name3 of ["guard-stop.mjs", "guard-write.mjs", "guard-background-bash.mjs", "hook-input.mjs", "idle-guard.sh"]) {
+    const rel = join(RUNTIME_DIR, name3);
+    if (await readIfPresent(resolve3(options.target, rel)) !== void 0) obsolete.add(rel);
+  }
+  if (await readIfPresent(resolve3(options.target, ".workflow/guards.json")) !== void 0) {
+    obsolete.add(".workflow/guards.json");
+  }
+  return { target: options.target, operations, obsolete: [...obsolete].sort() };
+}
+async function applyInstall(plan, options) {
+  const result = {
+    written: [],
+    created: [],
+    skipped: [],
+    removed: [],
+    replacedHooks: []
+  };
+  const state = await readInstallState(plan.target) ?? {
+    schemaVersion: INSTALL_SCHEMA_VERSION,
+    installedVersion: options.version,
+    files: {}
+  };
+  state.installedVersion = options.version;
+  state.schemaVersion = INSTALL_SCHEMA_VERSION;
+  for (const operation of plan.operations) {
+    const absolute = resolve3(plan.target, operation.path);
+    if (operation.kind === "create-directory") {
+      await mkdir2(absolute, { recursive: true });
+      result.created.push(operation.path);
+      continue;
+    }
+    if (operation.kind === "skip-unchanged") {
+      result.skipped.push(operation.path);
+      state.files[operation.path] = { sha256: hash(await readFile2(absolute, "utf8")) };
+      continue;
+    }
+    const skillDir = SKILL_DIRS.find((directory) => operation.path.startsWith(`${directory}/`));
+    const source = operation.path === ".workflow/.gitignore" ? resolve3(options.distribution, "templates/workflow/gitignore") : resolve3(
+      options.distribution,
+      "templates/skill/wfctl",
+      relative(skillDir ?? "", operation.path)
+    );
+    const content = await readFile2(source, "utf8");
+    await mkdir2(dirname3(absolute), { recursive: true });
+    await writeFile2(absolute, content, "utf8");
+    state.files[operation.path] = { sha256: hash(content) };
+    result.written.push(operation.path);
+  }
+  for (const rel of plan.obsolete) {
+    const path = resolve3(plan.target, rel);
+    if (!contains(plan.target, path) || path === resolve3(plan.target)) {
+      throw new GateRefusal(`Refusing to remove ${rel}.`, "Use a path inside the installation target.");
+    }
+    await rm2(path, { force: true });
+    delete state.files[rel];
+    result.removed.push(rel);
+  }
+  const currentFiles = new Set(plan.operations.filter((operation) => operation.kind !== "create-directory").map((operation) => operation.path));
+  state.files = Object.fromEntries(Object.entries(state.files).filter(([path]) => currentFiles.has(path)));
+  await rmdir(resolve3(plan.target, RUNTIME_DIR)).catch((error) => {
+    if (error.code !== "ENOTEMPTY" && error.code !== "ENOENT") throw error;
+  });
+  await mkdir2(resolve3(plan.target, ".workflow"), { recursive: true });
+  await writeFile2(
+    resolve3(plan.target, ".workflow/state.json"),
+    `${JSON.stringify(state, null, 2)}
+`,
+    "utf8"
   );
+  result.replacedHooks = await installHooks(plan.target);
+  await installManagedBlock(plan.target, options.distribution);
+  return result;
 }
-async function listLearnings(root) {
-  const directory = resolve5(root, LEARNINGS_DIR);
-  const entries = await readdir3(directory).catch(() => []);
-  const learnings = [];
-  for (const entry of entries.sort()) {
-    if (!entry.endsWith(".md")) continue;
-    const body = await readFile5(resolve5(directory, entry), "utf8").catch(() => "");
-    const titled = /^title:\s*"?(.*?)"?\s*$/m.exec(body);
-    learnings.push({
-      path: `${LEARNINGS_DIR}/${entry}`,
-      title: titled?.[1] ?? entry.replace(/\.md$/, ""),
-      body
-    });
+function assertProfileSupported(profile) {
+  if (profile === "knowledge") return;
+  if (profile === "leaf") {
+    throw new GateRefusal(
+      "There is no leaf installation any more.",
+      "wfctl init knowledge   (run in the knowledge repository)",
+      "The agent is bootstrapped in the knowledge repository and edits leaf code from there. Register the repository instead of installing into it."
+    );
   }
-  return learnings;
+  throw new GateRefusal(`Unknown profile ${profile}.`, "wfctl init knowledge");
 }
-function summariseLearnings(learnings) {
-  if (learnings.length === 0) return void 0;
-  return `${learnings.length} learning(s) from earlier work   \xB7   wfctl learned list`;
+async function installHooks(target) {
+  if (await readIfPresent(resolve3(target, ".claude/settings.json")) === void 0) return [];
+  return withLock(resolve3(target, ".claude/settings.json"), () => installHooksLocked(target));
 }
-function renderLearnings(learnings) {
-  if (learnings.length === 0) {
-    return [
-      "Nothing has been written down as a learning yet.",
-      "",
-      "A learning is one problem, solved, written so the next piece of work reads",
-      "it before starting rather than after failing:",
-      "",
-      '  wfctl learned "<the one line>" --detail "<what happened, and what to do>" \\',
-      '    --attested "<what they said>"',
-      "",
-      "It is not a curated page. It makes no claim about what the project means,",
-      "and it does not go through promotion \u2014 it is a note from someone who has",
-      "been here before."
-    ].join("\n");
-  }
-  return [
-    ...learnings.map((learning) => `${learning.title}
-  ${learning.path}`),
-    "",
-    `${learnings.length} learning(s). Read the ones this work could hit.`
-  ].join("\n");
+function looksInstalled(command) {
+  return /(^|[;&|\s])wfctl\s+(brief(?:\s+--hook)?|hook\s+write)(?=\s|$)/.test(command) || command.includes(`$CLAUDE_PROJECT_DIR/${RUNTIME_DIR}/`);
 }
-var LEARNINGS_DIR;
-var init_learned = __esm({
-  "src/core/learned.ts"() {
-    "use strict";
-    init_gates();
-    LEARNINGS_DIR = "learnings";
-  }
-});
-
-// src/core/face.ts
-var face_exports = {};
-__export(face_exports, {
-  FACE_DIR: () => FACE_DIR,
-  writeFace: () => writeFace
-});
-import { mkdir as mkdir3, readdir as readdir4, rm as rm2, writeFile as writeFile4 } from "node:fs/promises";
-import { resolve as resolve6 } from "node:path";
-function frontMatter(flow, issue) {
-  const claim = issue.claim ? `${issue.claim.repository}${issue.claim.worktreeId ? ` (${issue.claim.worktreeId})` : ""}` : "";
-  return [
-    "---",
-    `unit: ${issue.id}`,
-    `title: ${JSON.stringify(issue.title)}`,
-    `status: ${issue.status}`,
-    ...claim ? [`claimed: ${JSON.stringify(claim)}`] : [],
-    ...issue.acceptance.length > 0 ? [`satisfies: [${issue.acceptance.join(", ")}]`] : [],
-    ...issue.addedDuring ? [`added_during: ${issue.addedDuring}`] : [],
-    ...issue.from ? [`split_from: ${issue.from}`] : [],
-    `flow: ${flow.id}`,
-    "---"
-  ];
-}
-function unitPage(flow, issue) {
-  const lines = [
-    ...frontMatter(flow, issue),
-    "",
-    `# ${issue.id} \xB7 ${issue.title}`,
-    "",
-    "*Written by wfctl from the flow record. Editing this page changes nothing \u2014*",
-    `*\`wfctl work issue note ${issue.id} --note "\u2026"\` is what changes it.*`,
-    ""
-  ];
-  if (issue.notes.length > 0) {
-    lines.push("## What is known", "");
-    for (const note of issue.notes) lines.push(note.trim(), "");
-  } else {
-    lines.push("## What is known", "", "Nothing written down yet.", "");
-  }
-  if (issue.evidence) {
-    lines.push("## What proves it done", "", issue.evidence.trim(), "");
-  }
-  return `${lines.join("\n").trimEnd()}
-`;
-}
-function indexPage(flow) {
-  const byStatus = (status) => flow.issues.filter((issue) => issue.status === status);
-  const lines = [
-    "---",
-    `flow: ${flow.id}`,
-    `step: ${flow.step}`,
-    `title: ${JSON.stringify(flow.title)}`,
-    "---",
-    "",
-    `# ${flow.title}`,
-    "",
-    "*Written by wfctl from the flow record, and rewritten whole whenever it*",
-    "*changes. Nothing here is read back \u2014 `wfctl brief` is authoritative.*",
-    "",
-    `step: **${flow.step}**   \xB7   ${flow.issues.length} unit(s)`,
-    ""
-  ];
-  for (const status of ["claimed", "open", "done", "dropped"]) {
-    const group = byStatus(status);
-    if (group.length === 0) continue;
-    lines.push(`## ${status} \u2014 ${group.length}`, "");
-    for (const issue of group) {
-      lines.push(`- [\`${issue.id}\`](${issue.id}-${slugify(issue.title)}.md) ${issue.title}`);
-    }
-    lines.push("");
-  }
-  if (flow.findings && flow.findings.length > 0) {
-    const open = flow.findings.filter((finding) => finding.status === "open");
-    if (open.length > 0) {
-      lines.push(`## findings this work owes \u2014 ${open.length}`, "");
-      for (const finding of open) lines.push(`- \`${finding.id}\` ${finding.what}`);
-      lines.push("");
-    }
-  }
-  return `${lines.join("\n").trimEnd()}
-`;
-}
-async function writeFace(root, flow) {
-  const bundle = flow.members[0] ?? flow.id;
-  const directory = resolve6(root, ACTIVE_DIR, bundle, FACE_DIR);
-  try {
-    await mkdir3(directory, { recursive: true });
-    const wanted = /* @__PURE__ */ new Map();
-    wanted.set("README.md", indexPage(flow));
-    for (const issue of flow.issues) {
-      wanted.set(`${issue.id}-${slugify(issue.title)}.md`, unitPage(flow, issue));
-    }
-    for (const [name, body] of wanted) {
-      await writeFile4(resolve6(directory, name), body, "utf8");
-    }
-    for (const entry of await readdir4(directory).catch(() => [])) {
-      if (!entry.endsWith(".md") || wanted.has(entry)) continue;
-      await rm2(resolve6(directory, entry), { force: true });
-    }
-  } catch {
-  }
-}
-var FACE_DIR;
-var init_face = __esm({
-  "src/core/face.ts"() {
-    "use strict";
-    init_bundles();
-    init_learned();
-    FACE_DIR = "units";
-  }
-});
-
-// src/core/flow.ts
-var flow_exports = {};
-__export(flow_exports, {
-  FlowOpenError: () => FlowOpenError,
-  bindFlow: () => bindFlow,
-  clearCurrent: () => clearCurrent,
-  closeFlow: () => closeFlow,
-  createFlowId: () => createFlowId,
-  currentFlow: () => currentFlow,
-  currentFlowId: () => currentFlowId,
-  flowDirectory: () => flowDirectory,
-  flowPath: () => flowPath,
-  listFlows: () => listFlows,
-  mutateFlow: () => mutateFlow,
-  openFlow: () => openFlow,
-  readFlow: () => readFlow,
-  unreadableFlows: () => unreadableFlows
-});
-import { mkdir as mkdir4, readFile as readFile6, readdir as readdir5, rm as rm3 } from "node:fs/promises";
-import { join as join2, resolve as resolve7 } from "node:path";
-function flowDirectory(root) {
-  return resolve7(root, FLOW_DIR);
-}
-function flowPath(root, id) {
-  return join2(flowDirectory(root), `${id}.json`);
-}
-function createFlowId(kind, title, now) {
-  const date = now.toISOString().slice(0, 10);
-  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
-  return `${date}-${kind}-${slug || "untitled"}`;
-}
-function settleRecord(record) {
-  const step = settleStep(record.step);
-  return step === record.step ? record : { ...record, step };
-}
-async function readFlow(root, id) {
-  try {
-    const raw = await readFile6(flowPath(root, id), "utf8");
-    return settleRecord(JSON.parse(raw));
-  } catch (error) {
-    if (error.code === "ENOENT") return void 0;
-    throw error;
-  }
-}
-async function createFlowRecord(root, flow) {
-  await mkdir4(flowDirectory(root), { recursive: true });
-  const path = flowPath(root, flow.id);
-  await withLock(path, async () => {
-    const next = { ...flow, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
-    await writeAtomic(path, `${JSON.stringify(next, null, 2)}
-`);
-  });
-}
-async function mutateFlow(root, id, change) {
-  const path = flowPath(root, id);
-  return withLock(path, async () => {
-    const current = await readFlow(root, id);
-    if (!current) {
-      throw new GateRefusal(`No flow named ${id}.`, "wfctl brief");
-    }
-    const next = { ...change(current), updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
-    await writeAtomic(path, `${JSON.stringify(next, null, 2)}
-`);
-    if (next.kind === "work") {
-      const { writeFace: writeFace2 } = await Promise.resolve().then(() => (init_face(), face_exports));
-      await writeFace2(root, next);
-    }
-    return next;
-  });
-}
-function isFlowId(id) {
-  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) && !id.includes("..");
-}
-async function currentFlowId(root) {
-  try {
-    const raw = await readFile6(resolve7(root, CURRENT_POINTER), "utf8");
-    const id = raw.trim();
-    if (id.length > 0 && !isFlowId(id)) {
+async function installHooksLocked(target) {
+  const path = resolve3(target, ".claude/settings.json");
+  const existing = await readIfPresent(path);
+  let settings = {};
+  if (existing) {
+    try {
+      settings = JSON.parse(existing);
+    } catch {
       throw new GateRefusal(
-        `${CURRENT_POINTER} does not name a flow in this repository.`,
-        "wfctl work list",
-        `It reads ${JSON.stringify(id)}. A flow id names a record under ${FLOW_DIR}/ and never a path.`
+        `${path} is not valid JSON, so its hooks cannot be merged.`,
+        "Repair the file, then run init again."
       );
     }
-    return id.length > 0 ? id : void 0;
+  }
+  if (Array.isArray(settings) || typeof settings !== "object" || settings === null) {
+    throw new GateRefusal(
+      `${path} is not a JSON object, so its hooks cannot be merged.`,
+      "Repair the file, then run init again.",
+      "Merging into an array would have written the hooks onto a property that JSON.stringify discards, leaving the install reporting success with no hooks at all."
+    );
+  }
+  const existingHooks = settings.hooks;
+  if (existingHooks !== void 0 && (typeof existingHooks !== "object" || existingHooks === null || Array.isArray(existingHooks))) {
+    throw new GateRefusal(
+      `${path} has a "hooks" value that is not an object.`,
+      "Repair the file, then run init again."
+    );
+  }
+  const replaced = [];
+  const hooks = { ...existingHooks ?? {} };
+  for (const [event, value] of Object.entries(hooks)) {
+    if (!Array.isArray(value)) continue;
+    const remaining2 = [];
+    for (const entry of value) {
+      const record = entry;
+      if (!record || !Array.isArray(record.hooks)) {
+        remaining2.push(entry);
+        continue;
+      }
+      const kept = record.hooks.filter((hook) => {
+        const command = hook?.command;
+        if (typeof command !== "string" || !looksInstalled(command)) return true;
+        replaced.push(`${event}: ${command}`);
+        return false;
+      });
+      if (kept.length > 0) remaining2.push({ ...record, hooks: kept });
+    }
+    if (remaining2.length > 0) hooks[event] = remaining2;
+    else delete hooks[event];
+  }
+  if (replaced.length === 0) return replaced;
+  if (Object.keys(hooks).length > 0) settings.hooks = hooks;
+  else delete settings.hooks;
+  await writeAtomic(path, `${JSON.stringify(settings, null, 2)}
+`);
+  return replaced;
+}
+async function installManagedBlock(target, distribution) {
+  const body = (await readFile2(resolve3(distribution, "templates/agents/managed.md"), "utf8")).trim();
+  const block = `${MANAGED_BEGIN}
+${body}
+${MANAGED_END}
+`;
+  const written = /* @__PURE__ */ new Set();
+  for (const name3 of ["AGENTS.md", "CLAUDE.md"]) {
+    const path = resolve3(target, name3);
+    const real = canonical(path);
+    if (written.has(real)) continue;
+    written.add(real);
+    const existing = await readIfPresent(path);
+    if (existing === void 0) {
+      await writeFile2(path, block, "utf8");
+      continue;
+    }
+    const begin = existing.indexOf(MANAGED_BEGIN);
+    const end = existing.indexOf(MANAGED_END);
+    const begins = existing.split(MANAGED_BEGIN).length - 1;
+    const ends = existing.split(MANAGED_END).length - 1;
+    if (begins !== ends || begins > 1 || begins === 1 && end < begin) {
+      throw new GateRefusal(
+        `${name3} has an unbalanced wfctl marker block.`,
+        `Repair the markers in ${name3} so one ${MANAGED_BEGIN} is followed by one ${MANAGED_END}, then run init again.`,
+        `Found ${begins} begin marker(s) and ${ends} end marker(s). Writing past that would move the boundary and take your own text with it.`
+      );
+    }
+    if (begin >= 0 && end > begin) {
+      const next = existing.slice(0, begin) + block.trimEnd() + existing.slice(end + MANAGED_END.length);
+      await writeFile2(path, next, "utf8");
+      continue;
+    }
+    await writeFile2(path, `${existing.trimEnd()}
+
+${block}`, "utf8");
+  }
+}
+var MANAGED_BEGIN, MANAGED_END, INSTALL_SCHEMA_VERSION, RUNTIME_DIR, SKILL_DIRS, KNOWLEDGE_DIRECTORIES;
+var init_install = __esm({
+  "src/core/install.ts"() {
+    "use strict";
+    init_gates();
+    init_paths_resolve();
+    init_lock();
+    MANAGED_BEGIN = "<!-- wfctl:begin -->";
+    MANAGED_END = "<!-- wfctl:end -->";
+    INSTALL_SCHEMA_VERSION = 2;
+    RUNTIME_DIR = ".workflow/runtime";
+    SKILL_DIRS = [".claude/skills/wfctl", ".agents/skills/wfctl"];
+    KNOWLEDGE_DIRECTORIES = [
+      "knowledge",
+      "changes/active",
+      "changes/archive",
+      "reconstruction/raw",
+      "reconstruction/active",
+      "reconstruction/archive",
+      "trajectories"
+    ];
+  }
+});
+
+// src/core/voluntary-records.ts
+var voluntary_records_exports = {};
+__export(voluntary_records_exports, {
+  bundleCreate: () => bundleCreate,
+  bundleList: () => bundleList,
+  bundleShow: () => bundleShow,
+  unitCreate: () => unitCreate,
+  unitList: () => unitList,
+  unitShow: () => unitShow
+});
+import { mkdir as mkdir3, readFile as readFile3, readdir as readdir2, writeFile as writeFile3 } from "node:fs/promises";
+import { resolve as resolve4 } from "node:path";
+function name(value, kind) {
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(value) || value.includes("..")) {
+    throw new GateRefusal(
+      `Invalid ${kind}: ${value || "(empty)"}.`,
+      `Use a short lowercase ${kind} with letters, numbers, dots, dashes, or underscores.`
+    );
+  }
+  return value;
+}
+function required(value, label2) {
+  if (!value.trim()) throw new GateRefusal(`${label2} is required.`, `Provide --${label2} "<text>".`);
+  return value.trim();
+}
+function line(value, label2) {
+  const text = required(value, label2);
+  if (/[\r\n]/.test(text)) throw new GateRefusal(`${label2} must be one line.`, `Provide --${label2} "<text>".`);
+  return text;
+}
+function inside(root, ...parts) {
+  const base = resolve4(root, ACTIVE);
+  const path = resolve4(base, ...parts);
+  if (!contains(base, path)) throw new GateRefusal("Record path leaves changes/active.", "Use a record inside this repository.");
+  return path;
+}
+async function read(path, label2) {
+  try {
+    return await readFile3(path, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new GateRefusal(`${label2} does not exist.`, "List records and choose an existing one.");
+    }
+    throw error;
+  }
+}
+async function create(path, body, label2) {
+  try {
+    await writeFile3(path, body, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if (error.code === "EEXIST") {
+      throw new GateRefusal(`${label2} already exists.`, "Read and edit the existing Markdown record.");
+    }
+    throw error;
+  }
+}
+async function bundleCreate(root, input) {
+  const id = name(input.id, "bundle id");
+  const title = line(input.title, "title");
+  const scope = required(input.scope, "scope");
+  const agreed = line(input.agreed, "agreed");
+  const base = inside(root);
+  await mkdir3(base, { recursive: true });
+  const directory = inside(root, id);
+  try {
+    await mkdir3(directory);
+  } catch (error) {
+    if (error.code === "EEXIST") {
+      throw new GateRefusal(`Bundle ${id} already exists.`, `Read changes/active/${id}/ before creating another record.`);
+    }
+    throw error;
+  }
+  const path = inside(root, id, "change.md");
+  await create(path, [
+    `# ${title}`,
+    "",
+    `Bundle: ${id}`,
+    `Agreed: ${agreed}`,
+    "",
+    "## Delivery scope",
+    "",
+    scope,
+    "",
+    "## Decisions and changes to scope",
+    "",
+    "## Progress and outcome",
+    "",
+    "## Evidence and references",
+    ""
+  ].join("\n"), `Bundle ${id}`);
+  return `Created changes/active/${id}/change.md. The bundle may contain zero units.`;
+}
+async function bundleShow(root, idInput) {
+  const id = name(idInput, "bundle id");
+  return read(inside(root, id, "change.md"), `Bundle ${id}`);
+}
+async function bundleList(root) {
+  const entries = await readdir2(inside(root), { withFileTypes: true }).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const names = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  return names.length ? names.join("\n") : "No bundles in changes/active/.";
+}
+async function unitCreate(root, input) {
+  const bundle = name(input.bundle, "bundle id");
+  const id = name(input.id, "unit id");
+  const title = line(input.title, "title");
+  const outcome = required(input.outcome, "outcome");
+  const boundary = required(input.boundary, "boundary");
+  const agreed = line(input.agreed, "agreed");
+  const bundleRecord = await bundleShow(root, bundle);
+  if (!bundleRecord.split("\n").includes(`Bundle: ${bundle}`)) {
+    throw new GateRefusal(
+      `Bundle ${bundle} does not use the new Markdown contract.`,
+      "Reconcile the existing bundle before adding a new unit through this command."
+    );
+  }
+  const directory = inside(root, bundle, "units");
+  await mkdir3(directory, { recursive: true });
+  const path = inside(root, bundle, "units", `${id}.md`);
+  await create(path, [
+    `# ${title}`,
+    "",
+    `Unit: ${id}`,
+    `Bundle: ${bundle}`,
+    `Agreed: ${agreed}`,
+    "",
+    "## Intended outcome",
+    "",
+    outcome,
+    "",
+    "## Boundary",
+    "",
+    boundary,
+    "",
+    "## Progress and decisions",
+    "",
+    "## Completion evidence",
+    ""
+  ].join("\n"), `Unit ${id}`);
+  return `Created changes/active/${bundle}/units/${id}.md.`;
+}
+async function unitShow(root, bundleInput, idInput) {
+  const bundle = name(bundleInput, "bundle id");
+  const id = name(idInput, "unit id");
+  return read(inside(root, bundle, "units", `${id}.md`), `Unit ${id} in ${bundle}`);
+}
+async function unitList(root, bundleInput) {
+  const bundle = name(bundleInput, "bundle id");
+  await bundleShow(root, bundle);
+  const entries = await readdir2(inside(root, bundle, "units"), { withFileTypes: true }).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const names = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => entry.name.slice(0, -3)).sort();
+  return names.length ? names.join("\n") : `Bundle ${bundle} has no units.`;
+}
+var ACTIVE;
+var init_voluntary_records = __esm({
+  "src/core/voluntary-records.ts"() {
+    "use strict";
+    init_gates();
+    init_paths_resolve();
+    ACTIVE = "changes/active";
+  }
+});
+
+// src/core/recovery-notes.ts
+var recovery_notes_exports = {};
+__export(recovery_notes_exports, {
+  recoveryCheckpoint: () => recoveryCheckpoint,
+  recoveryHandoff: () => recoveryHandoff,
+  recoveryList: () => recoveryList
+});
+import { mkdir as mkdir4, readFile as readFile4, readdir as readdir3 } from "node:fs/promises";
+import { resolve as resolve5 } from "node:path";
+function name2(value, label2) {
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(value) || value.includes("..")) {
+    throw new GateRefusal(`Invalid ${label2}: ${value || "(empty)"}.`, `Select a lowercase ${label2} explicitly.`);
+  }
+  return value;
+}
+function required2(value, label2) {
+  if (!value.trim()) throw new GateRefusal(`${label2} is required.`, `Provide --${label2} "<text>".`);
+  return value.trim();
+}
+function pathFor(root, namespaceInput, idInput) {
+  const namespace = name2(namespaceInput, "namespace");
+  const base = resolve5(root, FLOWS);
+  const path = idInput === void 0 ? resolve5(base, namespace) : resolve5(base, namespace, `${name2(idInput, "recovery id")}.md`);
+  if (!contains(base, path)) throw new GateRefusal("Recovery path leaves .workflow/flows.", "Use a local namespace.");
+  return path;
+}
+async function recoveryCheckpoint(root, input) {
+  const instruction = required2(input.instruction, "instruction");
+  const last = required2(input.last, "last");
+  const next = required2(input.next, "next");
+  const path = pathFor(root, input.namespace, input.id);
+  await mkdir4(pathFor(root, input.namespace), { recursive: true });
+  const body = [
+    `# Recovery: ${name2(input.id, "recovery id")}`,
+    "",
+    `Namespace: ${name2(input.namespace, "namespace")}`,
+    `Updated: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+    ...input.checkout ? [`Checkout: ${input.checkout.trim()}`] : [],
+    ...input.revision ? [`Revision: ${input.revision.trim()}`] : [],
+    "",
+    "## Current instruction",
+    "",
+    instruction,
+    "",
+    "## Last completed action",
+    "",
+    last,
+    "",
+    "## Next action",
+    "",
+    next,
+    "",
+    ...input.blocker ? ["## Blockers or open questions", "", input.blocker.trim(), ""] : [],
+    "## References",
+    "",
+    ...input.links.length ? input.links.map((link2) => `- ${link2.trim()}`) : ["None recorded."],
+    ""
+  ].join("\n");
+  await withLock(path, () => writeAtomic(path, body));
+  return `Updated local recovery note in namespace ${input.namespace}: ${input.id}.`;
+}
+async function recoveryHandoff(root, namespace, id) {
+  const path = pathFor(root, namespace, id);
+  try {
+    return await readFile4(path, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new GateRefusal(`No recovery note ${id} in namespace ${namespace}.`, `wfctl flow list --namespace ${namespace}`);
+    }
+    throw error;
+  }
+}
+async function recoveryList(root, namespace) {
+  const directory = pathFor(root, namespace);
+  const entries = await readdir3(directory, { withFileTypes: true }).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const names = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => entry.name.slice(0, -3)).sort();
+  return names.length ? names.join("\n") : `No recovery notes in namespace ${namespace}.`;
+}
+var FLOWS;
+var init_recovery_notes = __esm({
+  "src/core/recovery-notes.ts"() {
+    "use strict";
+    init_gates();
+    init_lock();
+    init_paths_resolve();
+    FLOWS = ".workflow/flows";
+  }
+});
+
+// src/core/guidance.ts
+var guidance_exports = {};
+__export(guidance_exports, {
+  GUIDE_TOPICS: () => GUIDE_TOPICS,
+  compose: () => compose,
+  loadGuidance: () => loadGuidance
+});
+import { readFile as readFile5 } from "node:fs/promises";
+import { resolve as resolve6 } from "node:path";
+async function loadGuidance(source, key) {
+  const path = resolve6(source.root, `${key}.md`);
+  try {
+    const text = await readFile5(path, "utf8");
+    return text.trim().length > 0 ? text.trim() : void 0;
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
     throw error;
   }
 }
-async function currentFlow(root) {
-  const id = await currentFlowId(root);
-  return id ? readFlow(root, id) : void 0;
+function compose(parts) {
+  return parts.filter((part) => Boolean(part && part.trim())).join("\n\n");
 }
-async function bindFlow(root, id) {
-  const flow = await readFlow(root, id);
-  if (!flow) {
-    throw new GateRefusal(`No flow named ${id}.`, "wfctl work list");
-  }
-  if (flow.closedAt) {
-    throw new GateRefusal(
-      `${id} is closed.`,
-      "wfctl work list",
-      "Closed work is read from the archive; it does not reopen."
-    );
-  }
-  await setCurrent(root, id);
-  return flow;
-}
-async function setCurrent(root, id) {
-  await mkdir4(flowDirectory(root), { recursive: true });
-  const path = resolve7(root, CURRENT_POINTER);
-  if (id === void 0) {
-    await rm3(path, { force: true });
-    return;
-  }
-  await writeAtomic(path, `${id}
-`);
-}
-async function openFlow(root, options) {
-  return withLock(resolve7(root, FLOW_DIR, "open"), () => openFlowLocked(root, options));
-}
-async function openFlowLocked(root, options) {
-  const now = options.now ?? /* @__PURE__ */ new Date();
-  let id = createFlowId(options.kind, options.title, now);
-  for (let suffix = 2; await readFlow(root, id); suffix += 1) {
-    id = `${createFlowId(options.kind, options.title, now)}-${suffix}`;
-  }
-  const flow = {
-    schemaVersion: FLOW_SCHEMA_VERSION,
-    id,
-    kind: options.kind,
-    title: options.title,
-    step: "opened",
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-    attested: { words: options.attested, at: now.toISOString() },
-    members: options.members ?? [],
-    ...options.sources ? { sources: options.sources } : {},
-    repositories: [],
-    issues: [],
-    recall: emptyRecall(),
-    ...options.weight ? { weight: options.weight } : {}
-  };
-  await createFlowRecord(root, flow);
-  await setCurrent(root, id);
-  return flow;
-}
-async function closeFlow(root, id) {
-  const flow = await readFlow(root, id);
-  if (!flow) {
-    throw new FlowOpenError(
-      `No flow named ${id}.`,
-      "wfctl brief",
-      "The brief lists every open flow, including ones the pointer has lost."
-    );
-  }
-  const closed = await mutateFlow(root, id, (current2) => {
-    const next = { ...current2, closedAt: (/* @__PURE__ */ new Date()).toISOString() };
-    delete next.checkpoint;
-    return next;
-  });
-  const current = await currentFlowId(root);
-  if (current === id) await setCurrent(root, void 0);
-  return closed;
-}
-async function clearCurrent(root) {
-  await setCurrent(root, void 0);
-}
-async function listFlows(root) {
-  let entries;
-  try {
-    entries = await readdir5(flowDirectory(root));
-  } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
-  const flows = [];
-  for (const entry of entries) {
-    if (!entry.endsWith(".json")) continue;
-    const id = entry.slice(0, -".json".length);
-    try {
-      const flow = await readFlow(root, id);
-      if (flow) flows.push(flow);
-    } catch {
-    }
-  }
-  return flows.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-}
-async function unreadableFlows(root) {
-  let entries;
-  try {
-    entries = await readdir5(flowDirectory(root));
-  } catch {
-    return [];
-  }
-  const broken = [];
-  for (const entry of entries) {
-    if (!entry.endsWith(".json")) continue;
-    const id = entry.slice(0, -".json".length);
-    try {
-      await readFlow(root, id);
-    } catch (error) {
-      broken.push({ id, problem: error.message });
-    }
-  }
-  return broken;
-}
-var FLOW_DIR, CURRENT_POINTER, FlowOpenError;
-var init_flow = __esm({
-  "src/core/flow.ts"() {
+var GUIDE_TOPICS;
+var init_guidance = __esm({
+  "src/core/guidance.ts"() {
     "use strict";
-    init_gates();
-    init_lock();
-    init_recall();
-    init_types();
-    FLOW_DIR = ".workflow/flows";
-    CURRENT_POINTER = ".workflow/flows/current";
-    FlowOpenError = class extends GateRefusal {
+    GUIDE_TOPICS = {
+      interview: "decide/interview",
+      "domain-language": "decide/domain-language",
+      prototype: "decide/prototype",
+      research: "decide/research",
+      scope: "reconstruct/scope",
+      crawl: "reconstruct/crawl",
+      assemble: "reconstruct/assemble",
+      adjudicate: "reconstruct/adjudicate",
+      probe: "reconstruct/probe",
+      sources: "reconstruct/sources"
     };
   }
 });
 
-// src/core/paths-resolve.ts
-var paths_resolve_exports = {};
-__export(paths_resolve_exports, {
-  canonical: () => canonical,
-  contains: () => contains,
-  findRepositoryRoot: () => findRepositoryRoot
+// src/core/registry.ts
+var registry_exports = {};
+__export(registry_exports, {
+  REGISTRY_PATH: () => REGISTRY_PATH,
+  addRepository: () => addRepository,
+  label: () => label,
+  readRegistry: () => readRegistry,
+  removeRepository: () => removeRepository,
+  renderRegistry: () => renderRegistry,
+  writeRegistry: () => writeRegistry
 });
-import { lstatSync, readlinkSync, realpathSync } from "node:fs";
-import { dirname as dirname2, isAbsolute, resolve as resolve8, sep } from "node:path";
-function settle(from, trailing) {
-  let node = from;
-  const rest = [...trailing];
-  for (; ; ) {
-    try {
-      return [realpathSync.native(node), ...rest].join(sep);
-    } catch {
-      const parent = dirname2(node);
-      if (parent === node) return [node, ...rest].join(sep);
-      rest.unshift(node.slice(parent.length + 1));
-      node = parent;
-    }
-  }
+import { mkdir as mkdir5, readFile as readFile6, writeFile as writeFile4 } from "node:fs/promises";
+import { dirname as dirname4, resolve as resolve7 } from "node:path";
+function label(entry) {
+  return entry.checkout || entry.worktreeId;
 }
-function canonical(path) {
-  let current = resolve8(path);
-  const trailing = [];
-  for (let depth = 0; depth < MAX_LINKS; depth += 1) {
-    try {
-      if (lstatSync(current).isSymbolicLink()) {
-        const target = readlinkSync(current);
-        current = isAbsolute(target) ? target : resolve8(dirname2(current), target);
-        continue;
-      }
-    } catch {
-    }
-    return settle(current, trailing);
-  }
-  return settle(current, trailing);
-}
-function contains(base, target) {
-  const root = canonical(base);
-  const path = canonical(target);
-  return path === root || path.startsWith(`${root}${sep}`);
-}
-function findRepositoryRoot(from) {
-  let current = canonical(from);
-  for (let depth = 0; depth < 32; depth += 1) {
-    if (exists(resolve8(current, ".workflow/state.json"))) return current;
-    const parent = dirname2(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return canonical(from);
-}
-function exists(path) {
+async function readRegistry(root) {
   try {
-    lstatSync(path);
-    return true;
-  } catch {
-    return false;
+    const raw = await readFile6(resolve7(root, REGISTRY_PATH), "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed.repositories ?? [];
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
   }
 }
-var MAX_LINKS;
-var init_paths_resolve = __esm({
-  "src/core/paths-resolve.ts"() {
-    "use strict";
-    MAX_LINKS = 64;
-  }
-});
-
-// src/core/paths.ts
-import { mkdir as mkdir5, writeFile as writeFile6 } from "node:fs/promises";
-import { dirname as dirname3, relative, resolve as resolve9, sep as sep2 } from "node:path";
-function promotionDirectory(knowledgeRoot, bundleId) {
-  return resolve9(knowledgeRoot, "changes", "active", bundleId, "promotion");
+async function writeRegistry(root, repositories) {
+  const path = resolve7(root, REGISTRY_PATH);
+  await mkdir5(dirname4(path), { recursive: true });
+  await writeFile4(path, `${JSON.stringify({ repositories }, null, 2)}
+`, "utf8");
 }
-async function createPromotionDraft(knowledgeRoot, bundleId, page) {
-  const withoutRoot = page.replace(/^\/+/, "").replace(/^knowledge\//, "");
-  const normalized = withoutRoot;
-  if (!normalized.trim() || normalized === "." || normalized === "..") {
-    throw new GateRefusal(
-      "A promotion draft needs the page it will become.",
-      'wfctl work promotion draft "<area>/<page>.md"',
-      "An empty name resolved to the promotion directory itself and replaced it with a file, after which no draft could be created in that record at all."
-    );
-  }
-  if (!normalized.endsWith(".md")) {
-    throw new GateRefusal(
-      "A curated page is Markdown.",
-      `wfctl work promotion draft "${normalized}.md"`
-    );
-  }
-  if (normalized.split(/[\\/]/).includes("..")) {
-    throw new GateRefusal(
-      "A promotion page path may not climb out of the bundle.",
-      'wfctl work promotion draft "<area>/<page>.md"'
-    );
-  }
-  const path = resolve9(promotionDirectory(knowledgeRoot, bundleId), normalized);
-  await mkdir5(dirname3(path), { recursive: true });
-  await writeFile6(path, "", { flag: "wx" }).catch((error) => {
-    if (error.code !== "EEXIST") throw error;
-  });
-  return path;
-}
-function assertWriteAllowed(options) {
-  const target = canonical(options.target);
-  const knowledge = canonical(options.knowledgeRoot);
-  const rel = relative(knowledge, target);
-  if (rel.startsWith("..") || rel === "") return;
-  const segments = rel.split(sep2);
-  if (segments[0] === "knowledge") {
-    throw new GateRefusal(
-      "A curated page cannot be written directly into knowledge/.",
-      'wfctl work promotion draft "<area>/<page>.md"',
-      "Pages enter curated knowledge through promotion, which is the maintainer's decision. Drafts live in the bundle until then."
-    );
-  }
-  if (segments[0] === "changes" && (segments[1] === "promotion" || segments[1] === "archive")) {
-    const correctable = segments[1] === "promotion" && segments[3] === "promotion" && segments.length > 4;
-    if (!correctable) {
+async function addRepository(root, entry) {
+  for (const [field, value] of Object.entries(entry)) {
+    if (!String(value).trim()) {
       throw new GateRefusal(
-        `${segments[1]} is written by the tool, not by hand.`,
-        segments[1] === "promotion" ? 'Edit the drafted page under <record>/promotion/, or: wfctl work promotion draft "<area>/<page>.md"' : "wfctl work close --outcome <completed|partial|abandoned>",
-        "A record that appears here without passing the flow is promotable without ever having been reviewed."
+        `A registered repository needs its ${field}.`,
+        "wfctl repo add <owner/name> --path <dir> [--checkout <name>] [--worktree <id>]"
       );
     }
   }
-  if (segments[0] === ".workflow" || segments[0] === "trajectories") {
+  const existing = await readRegistry(root);
+  const duplicate = existing.find(
+    (candidate) => candidate.repository === entry.repository && candidate.worktreeId === entry.worktreeId
+  );
+  if (duplicate) {
     throw new GateRefusal(
-      `${segments[0]} is the tool's own state.`,
-      "wfctl brief",
-      "Editing it by hand is how a fence stops holding."
+      `${entry.repository} worktree ${entry.worktreeId} is already registered at ${duplicate.path}.`,
+      `wfctl repo remove ${entry.repository} --worktree ${entry.worktreeId}`,
+      "Two checkouts of one repository are distinct only by worktree identity. Registering the same one twice makes the second silently shadow the first."
     );
   }
-  if (segments[0] === "changes" && segments[1] === "active") {
-    const bundle = segments[2];
-    if (!bundle) return;
-    if (options.bundleId && bundle !== options.bundleId) {
-      throw new GateRefusal(
-        `This flow does not own bundle ${bundle}.`,
-        'wfctl capture "<what you found>"',
-        "A finding met during work belongs in the capture inbox, not in a new bundle."
-      );
-    }
-    if (!options.bundleId) {
-      throw new GateRefusal(
-        "No flow is open, so no bundle may be created.",
-        'wfctl work start --title "<what this is>"',
-        "Bundles are opened at flow start, with the maintainer \u2014 never by hand in the middle of other work."
-      );
-    }
-  }
+  const next = [...existing, entry].sort(
+    (left, right) => left.repository.localeCompare(right.repository) || left.worktreeId.localeCompare(right.worktreeId)
+  );
+  await writeRegistry(root, next);
+  return next;
 }
-var init_paths = __esm({
-  "src/core/paths.ts"() {
+async function removeRepository(root, repository, worktreeId) {
+  const existing = await readRegistry(root);
+  const next = existing.filter(
+    (entry) => entry.repository !== repository || worktreeId !== void 0 && entry.worktreeId !== worktreeId
+  );
+  if (next.length === existing.length) {
+    throw new GateRefusal(`${repository} is not registered.`, "wfctl repo list");
+  }
+  await writeRegistry(root, next);
+  return next;
+}
+function renderRegistry(repositories) {
+  if (repositories.length === 0) {
+    return [
+      "No repositories are registered.",
+      "",
+      "Register each checkout the project keeps, including worktrees:",
+      "  wfctl repo add <owner/name> --path <dir> [--worktree <id>]"
+    ].join("\n");
+  }
+  return repositories.map((entry) => `${entry.repository}  ${label(entry).padEnd(14)}  ${entry.path}`).join("\n");
+}
+var REGISTRY_PATH;
+var init_registry = __esm({
+  "src/core/registry.ts"() {
     "use strict";
     init_gates();
-    init_paths_resolve();
+    REGISTRY_PATH = ".workflow/repositories.json";
   }
 });
 
-// src/core/promotion-queue.ts
-var promotion_queue_exports = {};
-__export(promotion_queue_exports, {
-  ACTIVE: () => ACTIVE,
-  ARCHIVE: () => ARCHIVE,
-  QUEUE: () => QUEUE,
-  assertCorrectable: () => assertCorrectable,
-  closeBundle: () => closeBundle,
-  destinationFor: () => destinationFor,
-  hasDraftedPages: () => hasDraftedPages,
-  listQueue: () => listQueue,
-  promote: () => promote,
-  queuePath: () => queuePath,
-  readOutcome: () => readOutcome
+// src/core/leaves.ts
+var leaves_exports = {};
+__export(leaves_exports, {
+  GRAPH_PATH: () => GRAPH_PATH,
+  graphSetup: () => graphSetup,
+  inspectLeaf: () => inspectLeaf,
+  inspectLeaves: () => inspectLeaves,
+  renderLeaves: () => renderLeaves
 });
-import { copyFile, mkdir as mkdir6, readdir as readdir6, rename as rename2, stat } from "node:fs/promises";
-import { dirname as dirname4, join as join3, relative as relative2, resolve as resolve10 } from "node:path";
-function destinationFor(outcome, hasDrafts) {
-  return hasDrafts ? QUEUE : ARCHIVE;
-}
-async function isDirectory(path) {
-  return stat(path).then(
-    (entry) => entry.isDirectory(),
+import { stat as stat2 } from "node:fs/promises";
+import { resolve as resolve8 } from "node:path";
+async function inspectLeaf(entry, now = /* @__PURE__ */ new Date()) {
+  const base = {
+    repository: entry.repository,
+    worktreeId: entry.worktreeId,
+    checkout: entry.checkout,
+    path: entry.path,
+    graph: "unreachable"
+  };
+  const reachable = await stat2(entry.path).then(
+    (found) => found.isDirectory(),
     () => false
   );
+  if (!reachable) return base;
+  const graph = await stat2(resolve8(entry.path, GRAPH_PATH)).catch(() => void 0);
+  if (!graph) return { ...base, graph: "missing" };
+  const ageDays = Math.floor((now.getTime() - graph.mtimeMs) / 864e5);
+  return { ...base, graph: ageDays > STALE_AFTER_DAYS ? "stale" : "ready", ageDays };
 }
-async function hasDraftedPages(knowledgeRoot, bundleId) {
-  const promotion = resolve10(knowledgeRoot, ACTIVE, bundleId, "promotion");
-  if (!await isDirectory(promotion)) return false;
-  const entries = await readdir6(promotion, { recursive: true, withFileTypes: true });
-  return entries.some((entry) => entry.isFile() && entry.name.endsWith(".md"));
+async function inspectLeaves(entries, now = /* @__PURE__ */ new Date()) {
+  return Promise.all(entries.map((entry) => inspectLeaf(entry, now)));
 }
-async function readOutcome(knowledgeRoot, bundleId) {
-  const { readFile: readFile18 } = await import("node:fs/promises");
-  const raw = await readFile18(
-    resolve10(knowledgeRoot, QUEUE, bundleId, "outcome"),
-    "utf8"
-  ).catch(() => "completed");
-  const outcome = raw.trim();
-  return outcome === "partial" || outcome === "abandoned" ? outcome : "completed";
+function graphSetup(path) {
+  return [
+    `No graph in ${path}.`,
+    "",
+    "Nothing is installed into a source repository, but its structure has to be",
+    "readable before anything here can traverse it. In that checkout:",
+    "",
+    "  uv tool install graphifyy      # once per machine, if the CLI is absent",
+    "  graphify build                 # in the leaf, produces graphify-out/",
+    "",
+    "The maintainer runs the install; the build is yours. Rebuild it when the",
+    "source has moved \u2014 a stale graph answers confidently about code that is gone."
+  ].join("\n");
 }
-async function closeBundle(options) {
-  const from = resolve10(options.knowledgeRoot, ACTIVE, options.bundleId);
-  if (!await isDirectory(from)) {
-    throw new GateRefusal(
-      `No active record named ${options.bundleId}.`,
-      "wfctl work promotion list"
-    );
+function renderLeaves(leaves) {
+  if (leaves.length === 0) {
+    return [
+      "No repositories are registered.",
+      "",
+      "Register each checkout the project keeps, including worktrees:",
+      "  wfctl repo add <owner/name> --path <dir> [--worktree <id>]"
+    ].join("\n");
   }
-  const drafts = await hasDraftedPages(options.knowledgeRoot, options.bundleId);
-  const destination = destinationFor(options.outcome, drafts);
-  const to = resolve10(options.knowledgeRoot, destination, options.bundleId);
-  await mkdir6(resolve10(options.knowledgeRoot, destination), { recursive: true });
-  await rename2(from, to);
-  const { writeFile: writeFile13 } = await import("node:fs/promises");
-  await writeFile13(resolve10(to, "outcome"), `${options.outcome}
-`, "utf8");
-  return { from, to, outcome: options.outcome, waitingOnPromotion: destination === QUEUE };
+  const rows = leaves.map((leaf) => {
+    const age = leaf.graph === "ready" || leaf.graph === "stale" ? `${leaf.ageDays}d` : "";
+    return `${leaf.graph.padEnd(11)} ${age.padEnd(5)} ${leaf.repository}  ${label(leaf).padEnd(14)}  ${leaf.path}`;
+  });
+  const needing = leaves.filter((leaf) => leaf.graph === "missing" || leaf.graph === "stale");
+  return [
+    ...rows,
+    ...needing.length > 0 ? [
+      "",
+      `${needing.length} need a graph built before it can be traversed:`,
+      ...needing.map((leaf) => `  graphify build   (in ${leaf.path})`)
+    ] : []
+  ].join("\n");
 }
-async function assertCorrectable(knowledgeRoot, bundleId) {
-  const queued = resolve10(knowledgeRoot, QUEUE, bundleId);
-  if (await isDirectory(queued)) return queued;
-  const active = resolve10(knowledgeRoot, ACTIVE, bundleId);
-  if (await isDirectory(active)) return active;
-  const archived = resolve10(knowledgeRoot, ARCHIVE, bundleId);
-  if (await isDirectory(archived)) {
-    throw new GateRefusal(
-      `${bundleId} is archived; its pages are already in curated knowledge.`,
-      "Correct the curated page through a new flow.",
-      "An archived record is history. Editing it would change what the project says it decided, without anything recording that it changed."
-    );
-  }
-  throw new GateRefusal(`No record named ${bundleId}.`, "wfctl work promotion list");
-}
-async function listQueue(knowledgeRoot) {
-  const path = resolve10(knowledgeRoot, QUEUE);
-  if (!await isDirectory(path)) return [];
-  const entries = await readdir6(path, { withFileTypes: true });
-  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-}
-async function promote(options) {
-  const queued = resolve10(options.knowledgeRoot, QUEUE, options.bundleId);
-  if (!await isDirectory(queued)) {
-    throw new GateRefusal(
-      `${options.bundleId} is not waiting in the promotion queue.`,
-      "wfctl work promotion list"
-    );
-  }
-  const drafts = resolve10(queued, "promotion");
-  const entries = await readdir6(drafts, { recursive: true, withFileTypes: true }).catch(() => []);
-  const pages = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
-    const from = join3(entry.parentPath ?? drafts, entry.name);
-    const page = relative2(drafts, from);
-    const to = resolve10(options.knowledgeRoot, "knowledge", page);
-    await mkdir6(dirname4(to), { recursive: true });
-    await copyFile(from, to);
-    pages.push(page);
-  }
-  if (pages.length === 0) {
-    throw new GateRefusal(
-      `${options.bundleId} is in the queue with no drafted page.`,
-      `wfctl work promotion draft "<area>/<page>.md"`,
-      "A record waits here because it has something to say. One with nothing to say archives at closure instead."
-    );
-  }
-  const archived = resolve10(options.knowledgeRoot, ARCHIVE, options.bundleId);
-  await mkdir6(resolve10(options.knowledgeRoot, ARCHIVE), { recursive: true });
-  await rename2(queued, archived);
-  return { archived, pages };
-}
-function queuePath(knowledgeRoot, bundleId) {
-  return join3(resolve10(knowledgeRoot, QUEUE), bundleId);
-}
-var ACTIVE, QUEUE, ARCHIVE;
-var init_promotion_queue = __esm({
-  "src/core/promotion-queue.ts"() {
+var GRAPH_PATH, STALE_AFTER_DAYS;
+var init_leaves = __esm({
+  "src/core/leaves.ts"() {
     "use strict";
-    init_gates();
-    ACTIVE = "changes/active";
-    QUEUE = "changes/promotion";
-    ARCHIVE = "changes/archive";
+    init_registry();
+    GRAPH_PATH = "graphify-out/graph.json";
+    STALE_AFTER_DAYS = 30;
   }
 });
 
@@ -1879,7 +1020,7 @@ function filesAt(path, revision, run3 = runGit) {
       result.stderr.trim()
     );
   }
-  return result.stdout.split("\n").filter((line) => line.trim().length > 0).sort();
+  return result.stdout.split("\n").filter((line2) => line2.trim().length > 0).sort();
 }
 function readAt(path, revision, file, run3 = runGit) {
   const result = run3(["show", `${revision}:${file}`], path);
@@ -1898,8 +1039,8 @@ function citation(repository, revision, file) {
 function currentBranch(path, run3 = runGit) {
   const result = run3(["rev-parse", "--abbrev-ref", "HEAD"], path);
   if (result.status !== 0) return "";
-  const name = result.stdout.trim();
-  return name === "HEAD" ? "" : name;
+  const name3 = result.stdout.trim();
+  return name3 === "HEAD" ? "" : name3;
 }
 var runGit;
 var init_git = __esm({
@@ -1922,11 +1063,156 @@ var init_git = __esm({
   }
 });
 
+// src/core/trajectory.ts
+var trajectory_exports = {};
+__export(trajectory_exports, {
+  AXES: () => AXES,
+  TRAJECTORY_DIR: () => TRAJECTORY_DIR,
+  appendEvent: () => appendEvent,
+  deriveGap: () => deriveGap,
+  listTrajectories: () => listTrajectories,
+  readTrajectory: () => readTrajectory,
+  renderTrajectory: () => renderTrajectory,
+  subjectId: () => subjectId,
+  trajectoryPath: () => trajectoryPath,
+  writeTrajectory: () => writeTrajectory
+});
+import { createHash as createHash2 } from "node:crypto";
+import { mkdir as mkdir6, readFile as readFile7, readdir as readdir4 } from "node:fs/promises";
+import { dirname as dirname5, resolve as resolve9 } from "node:path";
+function trajectoryPath(root, id) {
+  return resolve9(root, TRAJECTORY_DIR, `${id}.json`);
+}
+async function readTrajectory(root, id) {
+  try {
+    return JSON.parse(await readFile7(trajectoryPath(root, id), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return void 0;
+    throw error;
+  }
+}
+async function writeTrajectory(root, trajectory) {
+  const path = trajectoryPath(root, trajectory.id);
+  await mkdir6(dirname5(path), { recursive: true });
+  await withLock(path, () => writeAtomic(path, `${JSON.stringify({ ...trajectory, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+`));
+}
+async function listTrajectories(root) {
+  let entries;
+  try {
+    entries = await readdir4(resolve9(root, TRAJECTORY_DIR));
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  const found = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue;
+    const trajectory = await readTrajectory(root, entry.slice(0, -".json".length));
+    if (trajectory) found.push(trajectory);
+  }
+  return found.sort((left, right) => left.subject.localeCompare(right.subject));
+}
+function subjectId(subject) {
+  const normalized = subject.trim().toLowerCase();
+  const slug = normalized.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  const digest = createHash2("sha256").update(normalized).digest("hex").slice(0, 8);
+  return slug ? `${slug}-${digest}` : digest;
+}
+async function appendEvent(root, subject, event) {
+  if (!subject.trim()) {
+    throw new GateRefusal(
+      "An event needs the subject whose line it belongs to.",
+      'wfctl trajectory append --subject "<the product subject>" --summary "<what happened>"'
+    );
+  }
+  if (!event.summary.trim()) {
+    throw new GateRefusal(
+      "An event needs its summary, in product language.",
+      'wfctl trajectory append --subject "<...>" --summary "<what happened>"'
+    );
+  }
+  const id = subjectId(subject);
+  return withLock(trajectoryPath(root, id), async () => appendLocked(root, id, subject, event));
+}
+async function appendLocked(root, id, subject, event) {
+  const existing = await readTrajectory(root, id);
+  const trajectory = existing ?? {
+    id,
+    subject: subject.trim(),
+    events: [],
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  if (event.settles && !trajectory.events.some((entry) => entry.id === event.settles)) {
+    throw new GateRefusal(
+      `${trajectory.subject} has no event ${event.settles}.`,
+      `wfctl trajectory show "${trajectory.subject}"`,
+      "A delivery settles an intent that was recorded; naming one that was not closes nothing and hides that it closed nothing."
+    );
+  }
+  trajectory.events = [
+    ...trajectory.events,
+    {
+      ...event,
+      id: event.id || `E${String(trajectory.events.length + 1).padStart(3, "0")}`,
+      at: event.at ?? (/* @__PURE__ */ new Date()).toISOString()
+    }
+  ];
+  const path = trajectoryPath(root, trajectory.id);
+  await mkdir6(dirname5(path), { recursive: true });
+  await writeAtomic(path, `${JSON.stringify({ ...trajectory, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+`);
+  return trajectory;
+}
+function deriveGap(trajectory) {
+  const settled = new Set(
+    trajectory.events.filter((event) => event.axis === "delivery" && event.settles).map((event) => event.settles)
+  );
+  const outstanding = (axis) => trajectory.events.filter((event) => event.axis === axis && !settled.has(event.id)).map((event) => event.summary);
+  return {
+    subject: trajectory.subject,
+    delivery: outstanding("intent"),
+    direction: outstanding("vision")
+  };
+}
+function renderTrajectory(trajectory) {
+  const lines = [`${trajectory.subject}  (${trajectory.id})`, ""];
+  const settled = new Set(
+    trajectory.events.filter((event) => event.settles).map((event) => event.settles)
+  );
+  for (const event of trajectory.events) {
+    const when = event.at ? `${event.at.slice(0, 10)}  ` : "";
+    const from = event.change ? `  \u2190 ${event.change}` : "";
+    const mark = settled.has(event.id) ? " \u2713" : "";
+    const closes = event.settles ? `  settles ${event.settles}` : "";
+    lines.push(`  ${event.id}  ${event.axis.padEnd(8)} ${when}${event.summary}${from}${closes}${mark}`);
+  }
+  const gap = deriveGap(trajectory);
+  if (gap.delivery.length > 0) {
+    lines.push("", "  not delivered:");
+    for (const item of gap.delivery) lines.push(`    ${item}`);
+  }
+  if (gap.direction.length > 0) {
+    lines.push("", "  direction not reached:");
+    for (const item of gap.direction) lines.push(`    ${item}`);
+  }
+  return lines.join("\n");
+}
+var TRAJECTORY_DIR, AXES;
+var init_trajectory = __esm({
+  "src/core/trajectory.ts"() {
+    "use strict";
+    init_gates();
+    init_lock();
+    TRAJECTORY_DIR = "trajectories";
+    AXES = ["intent", "delivery", "vision"];
+  }
+});
+
 // src/core/curated.ts
 var curated_exports = {};
 __export(curated_exports, {
   KNOWLEDGE_DIR: () => KNOWLEDGE_DIR,
-  assertPromotable: () => assertPromotable,
   collectPages: () => collectPages,
   contentHash: () => contentHash,
   inspectLinks: () => inspectLinks,
@@ -1936,11 +1222,11 @@ __export(curated_exports, {
   stripSeal: () => stripSeal,
   validateCurated: () => validateCurated
 });
-import { createHash } from "node:crypto";
-import { readFile as readFile7, readdir as readdir7 } from "node:fs/promises";
-import { join as join4, relative as relative3, resolve as resolve11 } from "node:path";
+import { createHash as createHash3 } from "node:crypto";
+import { readFile as readFile8, readdir as readdir5 } from "node:fs/promises";
+import { join as join2, relative as relative2, resolve as resolve10 } from "node:path";
 function contentHash(body) {
-  return createHash("sha256").update(body.trim()).digest("hex");
+  return createHash3("sha256").update(body.trim()).digest("hex");
 }
 function frontmatter(body) {
   const match = /^---\n([\s\S]*?)\n---/.exec(body);
@@ -1961,19 +1247,19 @@ function frontmatter(body) {
   return fields;
 }
 function isMap(path) {
-  const name = path.split("/").pop() ?? "";
-  return name === "index.md" || name === "log.md";
+  const name3 = path.split("/").pop() ?? "";
+  return name3 === "index.md" || name3 === "log.md";
 }
 function inspectPage(path, body) {
   const issues = [];
   const fields = frontmatter(body);
   if (!isMap(path)) {
-    for (const required of ["view", "purpose", "audience"]) {
-      if (!fields[required]) {
+    for (const required3 of ["view", "purpose", "audience"]) {
+      if (!fields[required3]) {
         issues.push({
           path,
-          problem: `no ${required} declared`,
-          remedy: `Add ${required}: to the frontmatter`
+          problem: `no ${required3} declared`,
+          remedy: `Add ${required3}: to the frontmatter`
         });
       }
     }
@@ -2036,10 +1322,10 @@ function stripSeal(body) {
   return body.replace(/^content_hash:.*\n/m, "");
 }
 async function collectPages(root) {
-  const base = resolve11(root, KNOWLEDGE_DIR);
+  const base = resolve10(root, KNOWLEDGE_DIR);
   try {
-    const entries = await readdir7(base, { recursive: true, withFileTypes: true });
-    return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => relative3(base, join4(entry.parentPath ?? base, entry.name))).sort();
+    const entries = await readdir5(base, { recursive: true, withFileTypes: true });
+    return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => relative2(base, join2(entry.parentPath ?? base, entry.name))).sort();
   } catch {
     return [];
   }
@@ -2051,13 +1337,13 @@ async function inspectLinks(root) {
   const linkedTo = /* @__PURE__ */ new Set();
   const issues = [];
   for (const page of pages) {
-    const body = await readFile7(resolve11(root, KNOWLEDGE_DIR, page), "utf8").catch(() => "");
+    const body = await readFile8(resolve10(root, KNOWLEDGE_DIR, page), "utf8").catch(() => "");
     for (const match of body.matchAll(/\]\(([^)]+\.md)(?:#[^)]*)?\)/g)) {
       const href = match[1] ?? "";
       if (/^[a-z]+:\/\//.test(href)) continue;
-      const target = relative3(
-        resolve11(root, KNOWLEDGE_DIR),
-        resolve11(root, KNOWLEDGE_DIR, page, "..", href)
+      const target = relative2(
+        resolve10(root, KNOWLEDGE_DIR),
+        resolve10(root, KNOWLEDGE_DIR, page, "..", href)
       );
       if (!known.has(target)) {
         issues.push({
@@ -2081,11 +1367,11 @@ async function inspectLinks(root) {
   return issues;
 }
 function normalizePage(root, page) {
-  const base = resolve11(root, KNOWLEDGE_DIR);
-  const absolute = resolve11(root, page);
-  const inside = relative3(base, absolute);
-  if (!inside.startsWith("..") && inside !== "") return inside;
-  const fromRoot = relative3(base, resolve11(base, page));
+  const base = resolve10(root, KNOWLEDGE_DIR);
+  const absolute = resolve10(root, page);
+  const inside2 = relative2(base, absolute);
+  if (!inside2.startsWith("..") && inside2 !== "") return inside2;
+  const fromRoot = relative2(base, resolve10(base, page));
   if (!fromRoot.startsWith("..") && fromRoot !== "") return fromRoot;
   throw new GateRefusal(
     `${page} is not a curated page.`,
@@ -2097,7 +1383,7 @@ async function validateCurated(root, only) {
   const pages = only ? [normalizePage(root, only)] : await collectPages(root);
   const issues = [];
   for (const page of pages) {
-    const body = await readFile7(resolve11(root, KNOWLEDGE_DIR, page), "utf8").catch(() => void 0);
+    const body = await readFile8(resolve10(root, KNOWLEDGE_DIR, page), "utf8").catch(() => void 0);
     if (body === void 0) {
       issues.push({ path: page, problem: "cannot be read", remedy: "Check the path" });
       continue;
@@ -2106,15 +1392,6 @@ async function validateCurated(root, only) {
   }
   if (!only) issues.push(...await inspectLinks(root));
   return issues;
-}
-function assertPromotable(issues) {
-  if (issues.length === 0) return;
-  throw new GateRefusal(
-    `${issues.length} page problem(s) would enter curated knowledge.`,
-    issues[0]?.remedy ?? "Repair the page, then promote again",
-    issues.map((issue) => `  ${issue.path}: ${issue.problem}
-    \u2192 ${issue.remedy}`).join("\n")
-  );
 }
 function renderIssues(issues, pages = 1) {
   if (pages === 0) {
@@ -2132,7 +1409,7 @@ function renderIssues(issues, pages = 1) {
   \u2192 ${issue.remedy}`),
     "",
     `${issues.length} problem(s). Structural validation cannot tell whether a page`,
-    "is true or whether a reader can act on it \u2014 that is the semantic gate's job."
+    "is true or whether a reader can act on it \u2014 that requires human judgment."
   ].join("\n");
 }
 var KNOWLEDGE_DIR, UNTRUSTED, VIEWS;
@@ -2183,14 +1460,14 @@ __export(reconstruct_exports, {
   setCurrentCase: () => setCurrentCase,
   writeCase: () => writeCase
 });
-import { mkdir as mkdir7, readFile as readFile8, readdir as readdir8, stat as stat2 } from "node:fs/promises";
-import { dirname as dirname5, join as join5, resolve as resolve12 } from "node:path";
+import { mkdir as mkdir7, readFile as readFile9, readdir as readdir6, stat as stat3 } from "node:fs/promises";
+import { dirname as dirname6, join as join3, resolve as resolve11 } from "node:path";
 function casePath(root, id) {
-  return resolve12(root, RECONSTRUCTION_DIR, id, "case.json");
+  return resolve11(root, RECONSTRUCTION_DIR, id, "case.json");
 }
 async function readCase(root, id) {
   try {
-    return JSON.parse(await readFile8(casePath(root, id), "utf8"));
+    return JSON.parse(await readFile9(casePath(root, id), "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
     throw error;
@@ -2198,7 +1475,7 @@ async function readCase(root, id) {
 }
 async function writeCase(root, record) {
   const path = casePath(root, record.id);
-  await mkdir7(dirname5(path), { recursive: true });
+  await mkdir7(dirname6(path), { recursive: true });
   await withLock(path, () => writeAtomic(path, `${JSON.stringify(record, null, 2)}
 `));
 }
@@ -2216,9 +1493,9 @@ async function mutateCase(root, id, change) {
   });
 }
 async function hasBaseline(root) {
-  const knowledge = resolve12(root, "knowledge");
+  const knowledge = resolve11(root, "knowledge");
   try {
-    const entries = await readdir8(knowledge, { recursive: true, withFileTypes: true });
+    const entries = await readdir6(knowledge, { recursive: true, withFileTypes: true });
     return entries.some((entry) => {
       if (!entry.isFile() || !entry.name.endsWith(".md")) return false;
       const parent = entry.parentPath ?? knowledge;
@@ -2229,10 +1506,10 @@ async function hasBaseline(root) {
   }
 }
 async function rawInventory(root) {
-  const raw = resolve12(root, RAW_DIR);
+  const raw = resolve11(root, RAW_DIR);
   try {
-    const entries = await readdir8(raw, { recursive: true, withFileTypes: true });
-    return entries.filter((entry) => entry.isFile()).map((entry) => join5(entry.parentPath ?? raw, entry.name).slice(raw.length + 1)).sort();
+    const entries = await readdir6(raw, { recursive: true, withFileTypes: true });
+    return entries.filter((entry) => entry.isFile()).map((entry) => join3(entry.parentPath ?? raw, entry.name).slice(raw.length + 1)).sort();
   } catch {
     return [];
   }
@@ -2329,38 +1606,38 @@ function assertClosable(record, actor) {
   assertProbed(record, actor);
 }
 async function closeCase(root, id) {
-  const from = resolve12(root, RECONSTRUCTION_DIR, id);
-  const present = await stat2(from).then(
+  const from = resolve11(root, RECONSTRUCTION_DIR, id);
+  const present = await stat3(from).then(
     (entry) => entry.isDirectory(),
     () => false
   );
   if (!present) {
     throw new GateRefusal(`No active reconstruction named ${id}.`, "wfctl reconstruct status");
   }
-  const { rename: rename4, rm: rm4, stat: statPath } = await import("node:fs/promises");
-  await mkdir7(resolve12(root, RECONSTRUCTION_ARCHIVE), { recursive: true });
-  let to = resolve12(root, RECONSTRUCTION_ARCHIVE, id);
+  const { rename: rename2, rm: rm3, stat: statPath } = await import("node:fs/promises");
+  await mkdir7(resolve11(root, RECONSTRUCTION_ARCHIVE), { recursive: true });
+  let to = resolve11(root, RECONSTRUCTION_ARCHIVE, id);
   for (let suffix = 2; suffix < 100; suffix += 1) {
     const taken = await statPath(to).then(
       () => true,
       () => false
     );
     if (!taken) break;
-    to = resolve12(root, RECONSTRUCTION_ARCHIVE, `${id}-${suffix}`);
+    to = resolve11(root, RECONSTRUCTION_ARCHIVE, `${id}-${suffix}`);
   }
-  await rename4(from, to);
-  await rm4(resolve12(root, RECONSTRUCTION_DIR, "current"), { force: true });
+  await rename2(from, to);
+  await rm3(resolve11(root, RECONSTRUCTION_DIR, "current"), { force: true });
   return to;
 }
 async function setCurrentCase(root, id) {
-  const path = resolve12(root, CURRENT_POINTER2);
-  await mkdir7(dirname5(path), { recursive: true });
+  const path = resolve11(root, CURRENT_POINTER);
+  await mkdir7(dirname6(path), { recursive: true });
   await writeAtomic(path, `${id}
 `);
 }
 async function currentCase(root) {
   try {
-    const id = (await readFile8(resolve12(root, CURRENT_POINTER2), "utf8")).trim();
+    const id = (await readFile9(resolve11(root, CURRENT_POINTER), "utf8")).trim();
     return id ? readCase(root, id) : void 0;
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
@@ -2630,7 +1907,7 @@ ${open.map((entry) => `  ${entry.id}  ${entry.subject}`).join("\n")}` : "open co
     `probes: ${record.probes.filter((probe) => probe.passed === true).length}/${record.probes.length} passed`
   ].join("\n");
 }
-var RECONSTRUCTION_DIR, RECONSTRUCTION_ARCHIVE, RAW_DIR, STAGES, STAGE_PRESENCE, CURRENT_POINTER2, lastContradictionId;
+var RECONSTRUCTION_DIR, RECONSTRUCTION_ARCHIVE, RAW_DIR, STAGES, STAGE_PRESENCE, CURRENT_POINTER, lastContradictionId;
 var init_reconstruct = __esm({
   "src/core/reconstruct.ts"() {
     "use strict";
@@ -2658,2829 +1935,8 @@ var init_reconstruct = __esm({
       probe: "nobody",
       promote: "maintainer"
     };
-    CURRENT_POINTER2 = "reconstruction/active/current";
+    CURRENT_POINTER = "reconstruction/active/current";
     lastContradictionId = "";
-  }
-});
-
-// src/core/registry.ts
-var registry_exports = {};
-__export(registry_exports, {
-  REGISTRY_PATH: () => REGISTRY_PATH,
-  addRepository: () => addRepository,
-  label: () => label,
-  readRegistry: () => readRegistry,
-  removeRepository: () => removeRepository,
-  renderRegistry: () => renderRegistry,
-  writeRegistry: () => writeRegistry
-});
-import { mkdir as mkdir8, readFile as readFile9, writeFile as writeFile8 } from "node:fs/promises";
-import { dirname as dirname6, resolve as resolve13 } from "node:path";
-function label(entry) {
-  return entry.checkout || entry.worktreeId;
-}
-async function readRegistry(root) {
-  try {
-    const raw = await readFile9(resolve13(root, REGISTRY_PATH), "utf8");
-    const parsed = JSON.parse(raw);
-    return parsed.repositories ?? [];
-  } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
-}
-async function writeRegistry(root, repositories) {
-  const path = resolve13(root, REGISTRY_PATH);
-  await mkdir8(dirname6(path), { recursive: true });
-  await writeFile8(path, `${JSON.stringify({ repositories }, null, 2)}
-`, "utf8");
-}
-async function addRepository(root, entry) {
-  for (const [field, value] of Object.entries(entry)) {
-    if (!String(value).trim()) {
-      throw new GateRefusal(
-        `A registered repository needs its ${field}.`,
-        "wfctl repo add <owner/name> --path <dir> [--checkout <name>] [--worktree <id>]"
-      );
-    }
-  }
-  const existing = await readRegistry(root);
-  const duplicate = existing.find(
-    (candidate) => candidate.repository === entry.repository && candidate.worktreeId === entry.worktreeId
-  );
-  if (duplicate) {
-    throw new GateRefusal(
-      `${entry.repository} worktree ${entry.worktreeId} is already registered at ${duplicate.path}.`,
-      `wfctl repo remove ${entry.repository} --worktree ${entry.worktreeId}`,
-      "Two checkouts of one repository are distinct only by worktree identity. Registering the same one twice makes the second silently shadow the first."
-    );
-  }
-  const next = [...existing, entry].sort(
-    (left, right) => left.repository.localeCompare(right.repository) || left.worktreeId.localeCompare(right.worktreeId)
-  );
-  await writeRegistry(root, next);
-  return next;
-}
-async function removeRepository(root, repository, worktreeId) {
-  const existing = await readRegistry(root);
-  const next = existing.filter(
-    (entry) => entry.repository !== repository || worktreeId !== void 0 && entry.worktreeId !== worktreeId
-  );
-  if (next.length === existing.length) {
-    throw new GateRefusal(`${repository} is not registered.`, "wfctl repo list");
-  }
-  await writeRegistry(root, next);
-  return next;
-}
-function renderRegistry(repositories) {
-  if (repositories.length === 0) {
-    return [
-      "No repositories are registered.",
-      "",
-      "Register each checkout the project keeps, including worktrees:",
-      "  wfctl repo add <owner/name> --path <dir> [--worktree <id>]"
-    ].join("\n");
-  }
-  return repositories.map((entry) => `${entry.repository}  ${label(entry).padEnd(14)}  ${entry.path}`).join("\n");
-}
-var REGISTRY_PATH;
-var init_registry = __esm({
-  "src/core/registry.ts"() {
-    "use strict";
-    init_gates();
-    REGISTRY_PATH = ".workflow/repositories.json";
-  }
-});
-
-// src/core/verify.ts
-var verify_exports = {};
-__export(verify_exports, {
-  LENS_QUESTIONS: () => LENS_QUESTIONS,
-  VERIFY_LENSES: () => VERIFY_LENSES,
-  assertReviewUsable: () => assertReviewUsable,
-  renderReviewerBrief: () => renderReviewerBrief
-});
-function assertReviewUsable(flow, review) {
-  if (review.reviewer.trim().length === 0) {
-    throw new GateRefusal(
-      "The review records no reviewer.",
-      "wfctl work verify --review <artifact naming its reviewer>",
-      "The implementing agent cannot review its own work: the agent that wrote the tests can write the review that approves them."
-    );
-  }
-  if (review.attacks.length === 0 && review.findings.length === 0) {
-    throw new GateRefusal(
-      "The review is empty: no findings and no recorded attacks.",
-      "wfctl work verify --review <artifact carrying its attacks>",
-      'A reviewer that broke nothing must still say what it tried. "Looks correct" is not an allowed answer.'
-    );
-  }
-  if (!review.stubPass) {
-    throw new GateRefusal(
-      "The review does not say whether the stub pass ran.",
-      'Add "stubPass": { "ran": true, "note": "<what was stubbed and what went red>" }',
-      `Stub each implementation under review to a constant and run the tests again. Anything still green asserts nothing. An empty stubSurvivors list means both 'I stubbed and everything failed correctly' and 'I never stubbed', and this tool cannot tell them apart.
-
-If the suite cannot be stubbed, say so: "ran": false with the reason.`
-    );
-  }
-  if (!review.stubPass.note.trim()) {
-    throw new GateRefusal(
-      review.stubPass.ran ? "The stub pass ran and the review does not say what it found." : "The stub pass did not run and the review does not say why.",
-      'Record it in "stubPass": { "note": "<what was stubbed and what happened>" }',
-      "A pass with no account of itself is indistinguishable from one that was not run."
-    );
-  }
-  const unknownStub = review.stubSurvivors.filter(
-    (survivor) => survivor.status !== "open" && survivor.status !== "accepted"
-  );
-  if (unknownStub.length > 0) {
-    throw new GateRefusal(
-      `${unknownStub.length} stub survivor(s) declare a status that is not open or accepted.`,
-      "Set each to open, or to accepted with a reason.",
-      unknownStub.map((survivor) => `  ${String(survivor.status)}: ${survivor.test}`).join("\n")
-    );
-  }
-  const openStubs = review.stubSurvivors.filter((survivor) => survivor.status === "open");
-  if (openStubs.length > 0) {
-    throw new GateRefusal(
-      `${openStubs.length} test(s) still pass with the implementation stubbed.`,
-      'Repair the test, or accept it in the artifact: "status": "accepted", "acceptedBecause": "<why not here>"',
-      `Those tests assert nothing:
-${openStubs.map((survivor) => `  ${survivor.test}`).join("\n")}
-
-Accepting is for a test this work does not own \u2014 one that belongs to a repository outside the fence, or to a suite this change did not author. It records the weakness rather than repairing it, and the reason is read by whoever meets it next.`
-    );
-  }
-  const silentStubs = review.stubSurvivors.filter(
-    (survivor) => survivor.status === "accepted" && !survivor.acceptedBecause?.trim()
-  );
-  if (silentStubs.length > 0) {
-    throw new GateRefusal(
-      `${silentStubs.length} stub survivor(s) were accepted without a reason.`,
-      "Record the reason in the artifact, then verify again.",
-      "A test that asserts nothing may be accepted, never silently."
-    );
-  }
-  const broke = review.attacks.filter((attack) => attack.broke);
-  if (broke.length > 0) {
-    throw new GateRefusal(
-      `${broke.length} attack(s) broke the work.`,
-      "Fix what they broke, then run the review again.",
-      broke.map((attack) => `  [${attack.lens}] ${attack.target}
-    ${attack.output}`).join("\n")
-    );
-  }
-  const unknown = review.findings.filter(
-    (finding) => finding.status !== "open" && finding.status !== "accepted"
-  );
-  if (unknown.length > 0) {
-    throw new GateRefusal(
-      `${unknown.length} finding(s) declare a status that is not open or accepted.`,
-      "Set each to open, or to accepted with a reason.",
-      unknown.map((finding) => `  [${finding.lens}] ${String(finding.status)}: ${finding.summary}`).join("\n")
-    );
-  }
-  const open = review.findings.filter((finding) => finding.status === "open");
-  if (open.length > 0) {
-    throw new GateRefusal(
-      `${open.length} finding(s) are unresolved.`,
-      "Resolve them, or accept each with a recorded reason.",
-      open.map((finding) => `  [${finding.lens}] ${finding.summary}`).join("\n")
-    );
-  }
-  const silent = review.findings.filter(
-    (finding) => finding.status === "accepted" && !finding.acceptedBecause?.trim()
-  );
-  if (silent.length > 0) {
-    throw new GateRefusal(
-      `${silent.length} finding(s) were accepted without a reason.`,
-      "Record the reason in the artifact's finding, then verify again.",
-      "A finding may be accepted, never silently."
-    );
-  }
-  if (flow.framingDigest && flow.framingDigest !== review.framingDigest) {
-    throw new GateRefusal(
-      "The acceptance criteria have changed since the framing was approved.",
-      "wfctl work close --outcome partial   (the framing they approved no longer matches)",
-      "This is the one case where closure returns to the maintainer: delivery no longer matches the framing they agreed to."
-    );
-  }
-}
-function renderReviewerBrief(personality, body, fixedPoint, lens = "correctness") {
-  return [
-    `You are reviewing work at the fixed point ${fixedPoint}.`,
-    "",
-    body.trim(),
-    "",
-    "---",
-    "",
-    "Every attack must be an executable test. Write it, run it, and return the",
-    "source, its output, and whether it broke the work. If you could not break",
-    "it, say exactly what you tried and why it held.",
-    "",
-    "RUN THE STUB PASS. Replace each implementation under review with a constant",
-    "and run the tests again. Anything still green asserts nothing, and this is",
-    "the highest-yield check here: it needs no judgment and it catches most fake",
-    "green. Report it whether or not it found something \u2014 an empty list with no",
-    "account of the pass is indistinguishable from never having run it.",
-    "",
-    "You will not be given the implementer's reasoning. Do not ask for it.",
-    "",
-    "Tag each finding and each attack with the lens it answers:",
-    ...VERIFY_LENSES.map((entry) => `  ${entry} \u2014 ${LENS_QUESTIONS[entry]}`),
-    "",
-    "Return this shape, and nothing else:",
-    "",
-    JSON.stringify(
-      {
-        reviewer: `agent:${personality} <and not the implementer>`,
-        fixedPoint,
-        framingDigest: "<the digest the framing was approved at>",
-        attacks: [
-          {
-            lens,
-            target: "what this attack tried to break",
-            test: "the test source, verbatim",
-            output: "what running it produced",
-            broke: false
-          }
-        ],
-        findings: [
-          {
-            lens,
-            summary: "one sentence",
-            failure: "inputs or state \u2192 wrong output",
-            status: "open",
-            acceptedBecause: "required only when status is accepted"
-          }
-        ],
-        stubPass: { ran: true, note: "what was stubbed, and what went red" },
-        stubSurvivors: [
-          { test: "which test survived, and what stubbing it proved", status: "open" }
-        ]
-      },
-      null,
-      2
-    ),
-    "",
-    "A stub survivor is answered like a finding: repair it, or accept it with a",
-    "reason. Accepting is for a test this work does not own."
-  ].join("\n");
-}
-var VERIFY_LENSES, LENS_QUESTIONS;
-var init_verify = __esm({
-  "src/core/verify.ts"() {
-    "use strict";
-    init_gates();
-    VERIFY_LENSES = [
-      "intent",
-      "correctness",
-      "contract",
-      "failure-paths",
-      "state-and-data",
-      "delivery-reality",
-      "test-integrity",
-      "complexity"
-    ];
-    LENS_QUESTIONS = {
-      intent: "Does the diff do what the framing asked, and only that?",
-      correctness: "Which input makes this produce the wrong answer?",
-      contract: "What existing caller breaks? What shape changed?",
-      "failure-paths": "What happens on error, empty, concurrent, retried, partial?",
-      "state-and-data": "What happens to data written by the previous version?",
-      "delivery-reality": "Is the only caller a test, fixture, demo, or mock?",
-      "test-integrity": "Would these tests catch a broken implementation?",
-      /**
-       * Added with the personality that reports under it. Its findings are about
-       * branching and coverage together, which `test-integrity` half-covers and the
-       * other six do not touch at all — so a reviewer had a protocol and no way to
-       * tag what it found.
-       */
-      complexity: "Is this both hard to follow and undertested?"
-    };
-  }
-});
-
-// src/core/review-artifact.ts
-var review_artifact_exports = {};
-__export(review_artifact_exports, {
-  readReviewArtifact: () => readReviewArtifact
-});
-import { readFile as readFile10 } from "node:fs/promises";
-function readStubSurvivors(raw) {
-  if (raw === void 0 || raw === null) return [];
-  if (!Array.isArray(raw)) {
-    fail(
-      "stubSurvivors is not a list.",
-      'Return a list of strings, or of {"test": "...", "status": "open"|"accepted"}.'
-    );
-  }
-  return raw.map((entry, index) => {
-    if (typeof entry === "string") {
-      if (!entry.trim()) {
-        fail(`Stub survivor ${index + 1} is empty.`, "Say which test survived, and what stubbing it proved.");
-      }
-      return { test: entry, status: "open" };
-    }
-    if (typeof entry !== "object" || entry === null) {
-      fail(
-        `Stub survivor ${index + 1} is a ${typeof entry}, not a test.`,
-        'Return a string, or {"test": "...", "status": "open"|"accepted"}.'
-      );
-    }
-    const record = entry;
-    const named = record.test ?? record.target;
-    if (typeof named !== "string" || !named.trim()) {
-      fail(
-        `Stub survivor ${index + 1} does not say which test survived.`,
-        'Give it a "test" naming the test and what stubbing it proved.',
-        `It carries: ${Object.keys(record).join(", ") || "nothing"}`
-      );
-    }
-    const extra = Object.entries(record).filter(([key]) => !["test", "target", "status", "acceptedBecause"].includes(key)).map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
-    const survivor = {
-      test: [named, ...extra].join("\n    "),
-      status: record.status ?? "open"
-    };
-    if (typeof record.acceptedBecause === "string") survivor.acceptedBecause = record.acceptedBecause;
-    return survivor;
-  });
-}
-function fail(message, remedy, detail) {
-  throw new GateRefusal(message, remedy, detail);
-}
-async function readReviewArtifact(path, actor) {
-  const raw = await readFile10(path, "utf8").catch(() => {
-    fail(`No review artifact at ${path}.`, "wfctl work verify --review <path to the returned artifact>");
-  });
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    fail(
-      `The review artifact at ${path} is not valid JSON.`,
-      "Have the reviewer return the artifact verbatim rather than summarizing it."
-    );
-  }
-  if (!parsed.reviewer?.trim()) {
-    fail("The review names no reviewer.", "Have the reviewer record its own identity.");
-  }
-  if (parsed.reviewer.trim() === actor) {
-    fail(
-      "The review was produced by the agent under review.",
-      "Delegate the review to a separate agent and pass back its artifact.",
-      "The agent that wrote the tests can write the review that approves them."
-    );
-  }
-  for (const [index, attack] of (parsed.attacks ?? []).entries()) {
-    if (!VERIFY_LENSES.includes(attack.lens)) {
-      fail(
-        `Attack ${index + 1} declares an unknown lens ${String(attack.lens)}.`,
-        `Use one of: ${VERIFY_LENSES.join(", ")}`
-      );
-    }
-    if (!attack.test?.trim()) {
-      fail(
-        `Attack ${index + 1} carries no test.`,
-        "Every attack is an executable test, written and run.",
-        "A prose finding is settled by whoever writes more confidently. A test is settled by running it."
-      );
-    }
-    if (!attack.output?.trim()) {
-      fail(
-        `Attack ${index + 1} carries a test that was never run.`,
-        "Run each attack and return its output."
-      );
-    }
-    if (!attack.target?.trim()) {
-      fail(`Attack ${index + 1} does not say what it tried to break.`, "Record the target of each attack.");
-    }
-  }
-  let stubPass;
-  const reported = parsed.stubPass;
-  if (reported !== void 0 && reported !== null) {
-    if (typeof reported !== "object") {
-      fail(
-        `stubPass is a ${typeof reported}, not a report.`,
-        'Return "stubPass": { "ran": true|false, "note": "<what happened>" }'
-      );
-    }
-    const record = reported;
-    if (typeof record.ran !== "boolean") {
-      fail(
-        "stubPass does not say whether the pass ran.",
-        'Set "ran" to true or false. False carries the reason it could not run.'
-      );
-    }
-    stubPass = {
-      ran: record.ran,
-      note: typeof record.note === "string" ? record.note : ""
-    };
-  }
-  return {
-    fixedPoint: parsed.fixedPoint ?? "",
-    framingDigest: parsed.framingDigest ?? "",
-    reviewer: parsed.reviewer.trim(),
-    attacks: parsed.attacks ?? [],
-    findings: parsed.findings ?? [],
-    stubSurvivors: readStubSurvivors(parsed.stubSurvivors),
-    ...stubPass ? { stubPass } : {}
-  };
-}
-var init_review_artifact = __esm({
-  "src/core/review-artifact.ts"() {
-    "use strict";
-    init_gates();
-    init_verify();
-  }
-});
-
-// src/core/trajectory.ts
-var trajectory_exports = {};
-__export(trajectory_exports, {
-  AXES: () => AXES,
-  TRAJECTORY_DIR: () => TRAJECTORY_DIR,
-  appendEvent: () => appendEvent,
-  deriveGap: () => deriveGap,
-  listTrajectories: () => listTrajectories,
-  readTrajectory: () => readTrajectory,
-  renderTrajectory: () => renderTrajectory,
-  subjectId: () => subjectId,
-  trajectoryPath: () => trajectoryPath,
-  writeTrajectory: () => writeTrajectory
-});
-import { createHash as createHash2 } from "node:crypto";
-import { mkdir as mkdir9, readFile as readFile11, readdir as readdir9 } from "node:fs/promises";
-import { dirname as dirname7, resolve as resolve14 } from "node:path";
-function trajectoryPath(root, id) {
-  return resolve14(root, TRAJECTORY_DIR, `${id}.json`);
-}
-async function readTrajectory(root, id) {
-  try {
-    return JSON.parse(await readFile11(trajectoryPath(root, id), "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return void 0;
-    throw error;
-  }
-}
-async function writeTrajectory(root, trajectory) {
-  const path = trajectoryPath(root, trajectory.id);
-  await mkdir9(dirname7(path), { recursive: true });
-  await withLock(path, () => writeAtomic(path, `${JSON.stringify({ ...trajectory, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
-`));
-}
-async function listTrajectories(root) {
-  let entries;
-  try {
-    entries = await readdir9(resolve14(root, TRAJECTORY_DIR));
-  } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
-  const found = [];
-  for (const entry of entries) {
-    if (!entry.endsWith(".json")) continue;
-    const trajectory = await readTrajectory(root, entry.slice(0, -".json".length));
-    if (trajectory) found.push(trajectory);
-  }
-  return found.sort((left, right) => left.subject.localeCompare(right.subject));
-}
-function subjectId(subject) {
-  const normalized = subject.trim().toLowerCase();
-  const slug = normalized.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
-  const digest = createHash2("sha256").update(normalized).digest("hex").slice(0, 8);
-  return slug ? `${slug}-${digest}` : digest;
-}
-async function appendEvent(root, subject, event) {
-  if (!subject.trim()) {
-    throw new GateRefusal(
-      "An event needs the subject whose line it belongs to.",
-      'wfctl trajectory append --subject "<the product subject>" --summary "<what happened>"'
-    );
-  }
-  if (!event.summary.trim()) {
-    throw new GateRefusal(
-      "An event needs its summary, in product language.",
-      'wfctl trajectory append --subject "<...>" --summary "<what happened>"'
-    );
-  }
-  const id = subjectId(subject);
-  return withLock(trajectoryPath(root, id), async () => appendLocked(root, id, subject, event));
-}
-async function appendLocked(root, id, subject, event) {
-  const existing = await readTrajectory(root, id);
-  const trajectory = existing ?? {
-    id,
-    subject: subject.trim(),
-    events: [],
-    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  if (event.settles && !trajectory.events.some((entry) => entry.id === event.settles)) {
-    throw new GateRefusal(
-      `${trajectory.subject} has no event ${event.settles}.`,
-      `wfctl trajectory show "${trajectory.subject}"`,
-      "A delivery settles an intent that was recorded; naming one that was not closes nothing and hides that it closed nothing."
-    );
-  }
-  trajectory.events = [
-    ...trajectory.events,
-    {
-      ...event,
-      id: event.id || `E${String(trajectory.events.length + 1).padStart(3, "0")}`,
-      at: event.at ?? (/* @__PURE__ */ new Date()).toISOString()
-    }
-  ];
-  const path = trajectoryPath(root, trajectory.id);
-  await mkdir9(dirname7(path), { recursive: true });
-  await writeAtomic(path, `${JSON.stringify({ ...trajectory, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
-`);
-  return trajectory;
-}
-function deriveGap(trajectory) {
-  const settled = new Set(
-    trajectory.events.filter((event) => event.axis === "delivery" && event.settles).map((event) => event.settles)
-  );
-  const outstanding = (axis) => trajectory.events.filter((event) => event.axis === axis && !settled.has(event.id)).map((event) => event.summary);
-  return {
-    subject: trajectory.subject,
-    delivery: outstanding("intent"),
-    direction: outstanding("vision")
-  };
-}
-function renderTrajectory(trajectory) {
-  const lines = [`${trajectory.subject}  (${trajectory.id})`, ""];
-  const settled = new Set(
-    trajectory.events.filter((event) => event.settles).map((event) => event.settles)
-  );
-  for (const event of trajectory.events) {
-    const when = event.at ? `${event.at.slice(0, 10)}  ` : "";
-    const from = event.change ? `  \u2190 ${event.change}` : "";
-    const mark = settled.has(event.id) ? " \u2713" : "";
-    const closes = event.settles ? `  settles ${event.settles}` : "";
-    lines.push(`  ${event.id}  ${event.axis.padEnd(8)} ${when}${event.summary}${from}${closes}${mark}`);
-  }
-  const gap = deriveGap(trajectory);
-  if (gap.delivery.length > 0) {
-    lines.push("", "  not delivered:");
-    for (const item of gap.delivery) lines.push(`    ${item}`);
-  }
-  if (gap.direction.length > 0) {
-    lines.push("", "  direction not reached:");
-    for (const item of gap.direction) lines.push(`    ${item}`);
-  }
-  return lines.join("\n");
-}
-var TRAJECTORY_DIR, AXES;
-var init_trajectory = __esm({
-  "src/core/trajectory.ts"() {
-    "use strict";
-    init_gates();
-    init_lock();
-    TRAJECTORY_DIR = "trajectories";
-    AXES = ["intent", "delivery", "vision"];
-  }
-});
-
-// src/core/commands.ts
-var commands_exports = {};
-__export(commands_exports, {
-  advance: () => advance,
-  artifactAdd: () => artifactAdd,
-  artifactList: () => artifactList,
-  brief: () => brief,
-  briefExtras: () => briefExtras,
-  capture: () => capture,
-  checkpoint: () => checkpoint,
-  close: () => close,
-  findingAdd: () => findingAdd,
-  findingList: () => findingList,
-  findingRelease: () => findingRelease,
-  findingResolve: () => findingResolve,
-  flowClose: () => flowClose,
-  handoff: () => handoff,
-  issueClaim: () => issueClaim,
-  issueComplete: () => issueComplete,
-  issueCreate: () => issueCreate,
-  issueDrop: () => issueDrop,
-  issueList: () => issueList,
-  issueNote: () => issueNote,
-  kitAdopt: () => kitAdopt,
-  kitList: () => kitList,
-  kitSurvey: () => kitSurvey,
-  learned: () => learned,
-  learnedList: () => learnedList,
-  notes: () => notes,
-  park: () => park,
-  promote: () => promote2,
-  promotionDraft: () => promotionDraft,
-  recallAnswer: () => recallAnswer,
-  recallRoute: () => recallRoute,
-  release: () => release,
-  verify: () => verify,
-  workAdopt: () => workAdopt,
-  workBind: () => workBind,
-  workList: () => workList,
-  workStart: () => workStart,
-  workWhere: () => workWhere
-});
-import { existsSync } from "node:fs";
-import { mkdir as mkdir10, readFile as readFile12, writeFile as writeFile10 } from "node:fs/promises";
-import { relative as relative4, resolve as resolve15 } from "node:path";
-function ok(stdout) {
-  return { stdout, exitCode: 0 };
-}
-function refused(error) {
-  return { stdout: error.render(), exitCode: 2 };
-}
-async function guidanceFor(context, key) {
-  return loadGuidance({ root: context.assets }, key);
-}
-async function brief(context) {
-  const flows = await listFlows(context.root);
-  const current = await currentFlow(context.root);
-  const { listLearnings: listLearnings2, summariseLearnings: summariseLearnings2 } = await Promise.resolve().then(() => (init_learned(), learned_exports));
-  const learnings = summariseLearnings2(await listLearnings2(context.root));
-  return ok(
-    compose([
-      renderBrief(flows, current?.id, await briefExtras(context)),
-      learnings,
-      await guidanceFor(context, "session/start")
-    ])
-  );
-}
-async function briefExtras(context) {
-  const { listQueue: listQueue2 } = await Promise.resolve().then(() => (init_promotion_queue(), promotion_queue_exports));
-  const { currentCase: currentCase2 } = await Promise.resolve().then(() => (init_reconstruct(), reconstruct_exports));
-  const { readdir: readdir13, readFile: read2 } = await import("node:fs/promises");
-  const queued = await listQueue2(context.root).catch(() => []);
-  const inbox = await readdir13(resolve15(context.root, "changes/inbox")).catch(() => []);
-  let awaitingCaptures = 0;
-  for (const entry of inbox) {
-    if (!entry.endsWith(".md")) continue;
-    const body = await read2(resolve15(context.root, "changes/inbox", entry), "utf8").catch(() => "");
-    if (/^awaits:\s*maintainer/m.test(body)) awaitingCaptures += 1;
-  }
-  const reconstruction = await currentCase2(context.root).catch(() => void 0);
-  const { listBundles: listBundles2 } = await Promise.resolve().then(() => (init_bundles(), bundles_exports));
-  const stranded = (await listBundles2(context.root).catch(() => [])).filter((entry) => entry.state === "stranded").map((entry) => entry.bundle);
-  const { unreadableFlows: unreadableFlows2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
-  const unreadable = await unreadableFlows2(context.root).catch(() => []);
-  return {
-    queued,
-    awaitingCaptures,
-    stranded,
-    unreadable,
-    ...reconstruction ? { reconstruction: { id: reconstruction.id, stage: reconstruction.stage } } : {}
-  };
-}
-async function handoff(context, id) {
-  const flow = id ? await readFlow(context.root, id) : await currentFlow(context.root);
-  if (!flow) {
-    return refused(
-      new GateRefusal("No flow is open.", 'wfctl work start --title "<what this is>"')
-    );
-  }
-  return ok(renderHandoff(flow));
-}
-async function checkpoint(context, input) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
-  }
-  const named = [input.summary, input.handoff, input.last, input.next].some(
-    (value) => value !== void 0 && meaningful(value)
-  );
-  const hasTodo = (input.todo ?? []).some((item) => meaningful(item));
-  const hasBody = meaningful(input.body ?? "");
-  if (!named && !hasTodo && !hasBody) {
-    return refused(
-      new GateRefusal(
-        "A checkpoint with nothing in it recalls nothing.",
-        'wfctl checkpoint "<whatever you would not want to look up again>"',
-        "Anything is enough. A line, a correction to the next action, a detail too small to be the summary \u2014 all of it is kept, and none of it is checked. The four named fields (--summary, --handoff, --last, --next) update the index a fresh session reads; what you are not naming is left as it was."
-      )
-    );
-  }
-  let noteCount = 0;
-  try {
-    await mutateFlow(context.root, flow.id, (current) => {
-      const next = { ...current };
-      if (hasBody) {
-        const notes2 = [...current.notes ?? [], buildNote(input.body ?? "", context.actor, input.about)];
-        next.notes = notes2;
-        noteCount = notes2.length;
-      } else {
-        noteCount = (current.notes ?? []).length;
-      }
-      if (named || hasTodo) {
-        next.checkpoint = buildCheckpoint(
-          {
-            summary: input.summary,
-            handoff: input.handoff,
-            lastAction: input.last,
-            nextAction: input.next,
-            actor: context.actor,
-            todo: input.todo
-          },
-          current.checkpoint
-        );
-      }
-      return next;
-    });
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-  const written = hasBody ? `note ${noteCount} written` : "checkpoint updated";
-  return ok(`${written} for ${flow.id}`);
-}
-function assertAttested(words, command) {
-  const said = words.trim();
-  if (said) return said;
-  throw new GateRefusal(
-    "A bundle exists because the maintainer asked for it, and nothing here says they did.",
-    command,
-    'Put the work to them in your own words \u2014 what it is, and whether it changes behaviour, meaning, contracts, data or operations \u2014 then record their answer verbatim.\n\nIf you cannot quote them, this is not a bundle:\n  wfctl capture "<what you found>"'
-  );
-}
-async function workStart(context, options) {
-  try {
-    const { currentCase: currentCase2 } = await Promise.resolve().then(() => (init_reconstruct(), reconstruct_exports));
-    const reconstruction = await currentCase2(context.root).catch(() => void 0);
-    if (!options.weight) {
-      const definition = definitionFor("opened");
-      throw new GateRefusal(
-        "This flow needs its weight settled before it opens.",
-        'wfctl work start --title "<...>" --weight <significant|lightweight>',
-        definition.demands
-      );
-    }
-    const attested = assertAttested(
-      options.attested,
-      'wfctl work start --title "<...>" --weight <significant|lightweight> --attested "<what they said>"'
-    );
-    const alreadyOpen = (await listFlows(context.root)).filter((entry) => !entry.closedAt);
-    const flow = await openFlow(context.root, {
-      kind: "work",
-      title: options.title,
-      weight: options.weight,
-      attested,
-      ...options.from ? {
-        sources: [
-          { from: options.from, attested, at: (/* @__PURE__ */ new Date()).toISOString() }
-        ]
-      } : {}
-    });
-    await mkdir10(resolve15(context.root, "changes/active", flow.id), { recursive: true });
-    await mutateFlow(context.root, flow.id, (current) => ({ ...current, members: [flow.id] }));
-    return ok(
-      compose([
-        `flow ${flow.id} opened`,
-        renderAlsoOpen(alreadyOpen, reconstruction ?? void 0),
-        await guidanceFor(context, "work/framed"),
-        renderStep({ ...flow, step: "opened" })
-      ])
-    );
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    if (error instanceof Error && "remedy" in error) {
-      return refused(new GateRefusal(error.message, String(error.remedy)));
-    }
-    throw error;
-  }
-}
-async function advance(context, to) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
-  }
-  try {
-    assertNotParked(flow);
-    assertReached(flow, to);
-    assertRecall(flow, to);
-    assertReviewed(flow, to);
-    assertCheckpointCurrent(flow, to);
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-  const moved = flow.step !== to;
-  const advanced = await mutateFlow(context.root, flow.id, (current) => ({
-    ...current,
-    step: to,
-    ...moved ? { steppedAt: (/* @__PURE__ */ new Date()).toISOString() } : {}
-  }));
-  const following = nextStep(to) ?? to;
-  const owed = (advanced.checkpoint?.updatedAt ?? "") < (advanced.steppedAt ?? "");
-  return ok(
-    compose([
-      `flow ${flow.id} is now at ${to}`,
-      await guidanceFor(context, `work/${to}`),
-      renderStep(advanced),
-      following !== to && !owed ? `then: ${definitionFor(following).command}` : void 0
-    ])
-  );
-}
-async function recallAnswer(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
-  }
-  const item = findItem(options.item);
-  if (!item) {
-    return refused(
-      new GateRefusal(`No recall item named ${options.item}.`, "wfctl recall list")
-    );
-  }
-  if (!options.source.trim()) {
-    return refused(
-      new GateRefusal(
-        "An answer needs the source it came from.",
-        'wfctl recall answer <item> ... --source "<where you found it>"',
-        "An answer with no source is a guess with a sentence around it."
-      )
-    );
-  }
-  const next = await mutateFlow(context.root, flow.id, (current) => ({
-    ...current,
-    recall: recordAnswer(current.recall, {
-      item: item.id,
-      answer: options.answer,
-      route: options.route,
-      source: options.source,
-      at: (/* @__PURE__ */ new Date()).toISOString()
-    })
-  }));
-  return ok(renderCounterLine(next.step, next.recall));
-}
-async function recallRoute(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
-  }
-  const covered = (options.covered ?? []).filter((path) => path.trim().length > 0);
-  if (covered.length === 0) {
-    return refused(
-      new GateRefusal(
-        `A ${options.route} route records what it covered, and nothing named it.`,
-        `wfctl recall route ${options.route} --covered "<path>" [--covered "<path>"...]`,
-        "Raising a counter without saying what it traversed satisfies the floor with one empty query, which is the reading this checklist exists to distinguish from the real thing."
-      )
-    );
-  }
-  const next = await mutateFlow(context.root, flow.id, (current) => ({
-    ...current,
-    recall: recordRoute(current.recall, options.route, covered)
-  }));
-  return ok(renderCounterLine(next.step, next.recall));
-}
-async function promotionDraft(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
-  }
-  try {
-    assertNotParked(flow);
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-  const bundle = flow.members[0] ?? flow.id;
-  const path = await createPromotionDraft(options.knowledgeRoot, bundle, options.page);
-  return ok(
-    compose([await guidanceFor(context, "work/promotion-path"), `draft created at:
-${path}`])
-  );
-}
-async function flowClose(context, id) {
-  const flow = id ? await readFlow(context.root, id) : await currentFlow(context.root);
-  if (!flow) {
-    const open = (await listFlows(context.root)).filter((entry) => !entry.closedAt);
-    return refused(
-      new GateRefusal(
-        id ? `No flow named ${id}.` : "No flow is open.",
-        open.length > 0 ? `wfctl flow close ${open[0]?.id}` : "wfctl brief",
-        open.length > 0 ? `Open:
-${open.map((entry) => `  ${entry.id}`).join("\n")}` : void 0
-      )
-    );
-  }
-  if (flow.parked) {
-    return refused(
-      new GateRefusal(
-        `${flow.id} is parked: ${flow.parked.reason}`,
-        `wfctl work release --attested "<what they said>"`,
-        "The maintainer held this work. Dropping the fence would discard that without telling them."
-      )
-    );
-  }
-  if (flow.step !== "opened" && !flow.closedAt) {
-    return refused(
-      new GateRefusal(
-        `${flow.id} reached ${flow.step}; dropping the fence would discard that.`,
-        "wfctl work close --outcome <completed|partial|abandoned>",
-        "`flow close` is for a flow that never started. Work that moved is closed with its outcome, which is what the archive and the promotion queue read."
-      )
-    );
-  }
-  const unfinished = flow.issues.filter(
-    (issue) => issue.status !== "done" && issue.status !== "dropped"
-  );
-  if (unfinished.length > 0) {
-    return refused(
-      new GateRefusal(
-        `${unfinished.length} unit(s) are not terminal.`,
-        `wfctl work issue complete ${unfinished[0]?.id}`,
-        `${unfinished.map((issue) => `  ${issue.id}  ${issue.status}  ${issue.title}`).join("\n")}
-
-Drop one deliberately if it left the route; closing over it reports undelivered work as delivered.`
-      )
-    );
-  }
-  const closed = await closeFlow(context.root, flow.id);
-  return ok(`flow ${closed.id} closed; the fence is down and the checkpoint is flushed.`);
-}
-async function workAdopt(context, options) {
-  try {
-    const { bundleExists: bundleExists2, listBundles: listBundles2, markSuperseded: markSuperseded2, readSupersession: readSupersession2 } = await Promise.resolve().then(() => (init_bundles(), bundles_exports));
-    const bundle = options.bundle.trim();
-    if (!bundle) {
-      throw new GateRefusal(
-        "Adoption needs the bundle it is assembling from.",
-        'wfctl work adopt <bundle> --weight <significant|lightweight> --attested "<what they said>"'
-      );
-    }
-    if (bundle.includes("/") || bundle.includes("..")) {
-      throw new GateRefusal(
-        "A bundle is named, not pathed.",
-        "wfctl work list",
-        `Give the name as it appears under changes/active, not ${bundle}.`
-      );
-    }
-    if (!await bundleExists2(context.root, bundle)) {
-      const known = (await listBundles2(context.root)).map((entry) => entry.bundle);
-      throw new GateRefusal(
-        `There is no bundle named ${bundle}.`,
-        "wfctl work list",
-        known.length ? `Under changes/active:
-${known.map((n) => `  ${n}`).join("\n")}` : void 0
-      );
-    }
-    const already = await readSupersession2(context.root, bundle);
-    if (already) {
-      throw new GateRefusal(
-        `${bundle} was already absorbed into ${already.by}.`,
-        `wfctl work adopt ${already.by} --weight <significant|lightweight> --attested "<what they said>"`,
-        "Absorbing it twice would give one body of work two live records, which is the state adoption exists to end."
-      );
-    }
-    const attested = assertAttested(
-      options.attested,
-      `wfctl work adopt ${bundle} --weight <significant|lightweight> --attested "<what they said>"`
-    );
-    const at = (/* @__PURE__ */ new Date()).toISOString();
-    const source = { from: options.from ?? `changes/active/${bundle}`, bundle, attested, at };
-    const open = await currentFlow(context.root);
-    if (open) {
-      const canonical4 = open.members[0];
-      if (!canonical4) {
-        throw new GateRefusal(
-          `Flow ${open.id} carries no bundle to absorb into.`,
-          "wfctl brief"
-        );
-      }
-      if (open.members.includes(bundle)) {
-        throw new GateRefusal(
-          `${bundle} is already part of flow ${open.id}.`,
-          "wfctl work list"
-        );
-      }
-      await markSuperseded2(context.root, bundle, { by: canonical4, at, attested });
-      const updated = await mutateFlow(context.root, open.id, (flow2) => ({
-        ...flow2,
-        members: [...flow2.members, bundle],
-        sources: [...flow2.sources ?? [], source]
-      }));
-      return ok(
-        compose([
-          [
-            `${bundle} absorbed into ${canonical4}.`,
-            "It stays in changes/active, marked superseded \u2014 the duplicate is the",
-            "evidence of whatever produced it, and deleting it would take that with it.",
-            "",
-            `Flow ${updated.id} now spans ${updated.members.length} bundle(s).`
-          ].join("\n"),
-          renderStep(updated)
-        ])
-      );
-    }
-    const { currentCase: currentCase2 } = await Promise.resolve().then(() => (init_reconstruct(), reconstruct_exports));
-    const openCase = await currentCase2(context.root).catch(() => void 0);
-    if (openCase && !openCase.abandoned) {
-      throw new GateRefusal(
-        `Reconstruction ${openCase.id} is open at stage ${openCase.stage}; work outside it is out of scope.`,
-        `wfctl reconstruct abandon --reason "<why this pass is not finishing>"`
-      );
-    }
-    if (!options.weight) {
-      throw new GateRefusal(
-        "This flow needs its weight settled before it opens.",
-        `wfctl work adopt ${bundle} --weight <significant|lightweight> --attested "<what they said>"`,
-        definitionFor("opened").demands
-      );
-    }
-    const flow = await openFlow(context.root, {
-      kind: "work",
-      title: options.title ?? bundle,
-      weight: options.weight,
-      attested,
-      members: [bundle],
-      sources: [source]
-    });
-    return ok(
-      compose([
-        `flow ${flow.id} opened around ${bundle}`,
-        [
-          "Nothing about where it stopped is carried over. Every gate is walked here,",
-          "because a step recorded elsewhere is a check this tool never ran \u2014 and a",
-          "flow that reports checks nobody ran is the green gate the review exists to",
-          "stop."
-        ].join("\n"),
-        adoptedCheckpointDemand(bundle),
-        await guidanceFor(context, "work/framed"),
-        renderStep({ ...flow, step: "opened" })
-      ])
-    );
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    if (error instanceof Error && "remedy" in error) {
-      return refused(new GateRefusal(error.message, String(error.remedy)));
-    }
-    throw error;
-  }
-}
-function unsettledNotice(trajectory, settled) {
-  const closed = new Set(
-    trajectory.events.filter((event) => event.axis === "delivery" && event.settles).map((event) => event.settles)
-  );
-  const open = trajectory.events.filter(
-    (event) => event.axis === "intent" && !closed.has(event.id)
-  );
-  if (open.length === 0) return void 0;
-  return [
-    settled ? `${open.length} intent(s) on this subject are still outstanding:` : `This delivery settled nothing. ${open.length} intent(s) on this subject remain outstanding:`,
-    ...open.map((event) => `  ${event.id}  ${event.summary}`),
-    "",
-    "A debt closes when a delivery names the intent it settles, and nothing else",
-    "closes it. If one of these is what you just delivered, say so:",
-    "",
-    `  wfctl trajectory append --subject "${trajectory.subject}" \\`,
-    `    --summary "<what the source does now>" --axis delivery --settles <id>`
-  ].join("\n");
-}
-function adoptedCheckpointDemand(bundle) {
-  return [
-    "Read what is in that record, then write the checkpoint. It is the only",
-    "thing a fresh session recovers from, and this flow has none \u2014 everything",
-    `known about this work is in changes/active/${bundle}/ and nothing points a`,
-    "later session at it.",
-    "",
-    '  wfctl checkpoint --summary "<what this work is, in one line>" \\',
-    '    --handoff "<the substance: what was found, what it rests on, what is open>" \\',
-    '    --last "<the last thing actually completed>" \\',
-    '    --next "<the exact next action>"'
-  ].join("\n");
-}
-async function workList(context) {
-  const { listBundles: listBundles2, renderBundles: renderBundles2 } = await Promise.resolve().then(() => (init_bundles(), bundles_exports));
-  return ok(renderBundles2(await listBundles2(context.root)));
-}
-function grownDuring(step) {
-  return step !== "opened";
-}
-async function issueCreate(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(new GateRefusal("No flow is open.", 'wfctl work start --title "<...>"'));
-  }
-  try {
-    assertNotParked(flow);
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-  if (!options.title.trim()) {
-    return refused(
-      new GateRefusal("A unit needs a title.", 'wfctl work issue create --title "<what it delivers>"')
-    );
-  }
-  let created = "";
-  let discovered = false;
-  await mutateFlow(context.root, flow.id, (current) => {
-    const id = `U${String(current.issues.length + 1).padStart(3, "0")}`;
-    created = id;
-    discovered = grownDuring(current.step);
-    const issue = {
-      id,
-      title: options.title.trim(),
-      status: "open",
-      notes: [],
-      acceptance: options.acceptance,
-      addedDuring: current.step
-    };
-    if (options.from) issue.from = options.from;
-    return { ...current, issues: [...current.issues, issue] };
-  });
-  const first = flow.issues.length === 0;
-  return ok(
-    compose([
-      discovered ? `${created}  ${options.title.trim()}
-
-Added during ${flow.step}. The route grows: a unit list is a prediction, and this is one reality asked for.` : `${created}  ${options.title.trim()}`,
-      first ? await guidanceFor(context, "work/split") : void 0
-    ])
-  );
-}
-async function issueList(context) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  }
-  if (flow.issues.length === 0) {
-    return ok("no units yet.");
-  }
-  const lines = flow.issues.map((issue) => {
-    const notes2 = issue.notes.length > 0 ? `
-      ${issue.notes.join("\n      ")}` : "";
-    const claim = issue.claim ? `  [${issue.claim.repository}/${issue.claim.worktreeId}]` : "";
-    const origin = issue.from ? `  \u2190 ${issue.from}` : "";
-    const evidence = issue.status === "done" ? issue.evidence ? `
-      \u2713 ${issue.evidence}` : "\n      \u2713 done with no evidence recorded" : "";
-    return `${issue.id}  ${issue.status.padEnd(8)}  ${issue.title}${claim}${origin}${evidence}${notes2}`;
-  });
-  const grown = flow.issues.filter((issue) => issue.addedDuring && grownDuring(issue.addedDuring));
-  return ok(
-    [
-      lines.join("\n"),
-      ...grown.length > 0 ? [
-        "",
-        `${grown.length} of these were added after the route was laid down. That is the route working, not the route failing.`
-      ] : []
-    ].join("\n")
-  );
-}
-async function withIssue(context, id, change) {
-  const bound = await currentFlow(context.root);
-  if (!bound) {
-    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  }
-  try {
-    assertNotParked(bound);
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-  if (!bound.issues.some((issue) => issue.id.toUpperCase() === id.toUpperCase())) {
-    return refused(new GateRefusal(`No unit named ${id}.`, "wfctl work issue list"));
-  }
-  const flow = await mutateFlow(context.root, bound.id, (current) => ({
-    ...current,
-    issues: current.issues.map(
-      (issue) => issue.id.toUpperCase() === id.toUpperCase() ? change(issue) : issue
-    )
-  }));
-  const next = flow.issues.find((issue) => issue.id.toUpperCase() === id.toUpperCase());
-  return ok(`${next?.id}  ${next?.status}  ${next?.title}`);
-}
-async function issueNote(context, options) {
-  if (!options.note.trim()) {
-    return refused(new GateRefusal("An empty note records nothing.", 'wfctl work issue note <id> --note "<...>"'));
-  }
-  return withIssue(context, options.id, (issue) => ({
-    ...issue,
-    notes: [...issue.notes, options.note.trim()]
-  }));
-}
-async function issueClaim(context, options) {
-  const flow = await currentFlow(context.root);
-  if (flow) {
-    try {
-      assertNotParked(flow);
-      const { readRegistry: readRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
-      const registered = await readRegistry2(context.root);
-      const match = registered.find(
-        (entry) => entry.repository === options.repository && entry.worktreeId === options.worktreeId
-      );
-      if (!match) {
-        throw new GateRefusal(
-          `${options.repository} (${options.worktreeId}) is not a registered checkout.`,
-          `wfctl repo add ${options.repository} --path <dir> --worktree ${options.worktreeId}`,
-          registered.length > 0 ? `Registered:
-${registered.map((entry) => `  ${entry.repository}  ${entry.worktreeId}  ${entry.path}`).join("\n")}` : "Nothing is registered, so no checkout can be claimed."
-        );
-      }
-      const { CLAIM_REQUIREMENT: CLAIM_REQUIREMENT2, isSatisfied: isSatisfied2, renderCounterLine: renderCounterLine2, shortfallFor: shortfallFor2 } = await Promise.resolve().then(() => (init_recall(), recall_exports));
-      const shortfall = shortfallFor2("implement", flow.recall, CLAIM_REQUIREMENT2);
-      if (!isSatisfied2(shortfall)) {
-        throw new GateRefusal(
-          "Nothing here says whether this already exists.",
-          'wfctl recall answer <item> --answer "<what you found>" --route graphify --source "<where>"',
-          `${renderCounterLine2("implement", flow.recall, CLAIM_REQUIREMENT2)}
-
-A claim is about to bind a checkout and change code in it. The one thing worth knowing first is whether the thing already exists, and text search finds only the names you thought of.
-
-wfctl guide recall \u2014 why this checklist exists`
-        );
-      }
-    } catch (error) {
-      if (error instanceof GateRefusal) return refused(error);
-      throw error;
-    }
-  }
-  const page = await guidanceFor(context, "work/implement");
-  const claimed = await withIssue(context, options.id, (issue) => ({
-    ...issue,
-    status: "claimed",
-    claim: {
-      repository: options.repository,
-      checkout: options.checkout,
-      worktreeId: options.worktreeId
-    }
-  }));
-  if (claimed.exitCode !== 0) return claimed;
-  const equipped = (flow?.kit ?? []).filter(
-    (entry) => entry.kind === "skill" && entry.repository === options.repository
-  );
-  if (equipped.length === 0) return ok(compose([page, claimed.stdout]));
-  const { readRegistry: readForPath } = await Promise.resolve().then(() => (init_registry(), registry_exports));
-  const checkout = (await readForPath(context.root)).find(
-    (entry) => entry.repository === options.repository && entry.worktreeId === options.worktreeId
-  );
-  return ok(
-    [
-      ...page ? [page, ""] : [],
-      claimed.stdout,
-      "",
-      `what this work equipped for ${options.repository}:`,
-      ...equipped.flatMap((entry) => [
-        `  ${entry.id}`,
-        ...entry.what ? [`      ${entry.what}`] : [],
-        `      read: ${checkout ? `${checkout.path}/` : ""}${entry.path}`
-      ])
-    ].join("\n")
-  );
-}
-async function issueDrop(context, options) {
-  if (!options.reason.trim()) {
-    return refused(
-      new GateRefusal(
-        "Dropping a unit records why it left the route.",
-        `wfctl work issue drop ${options.id} --reason "<why it is not being built>"`,
-        "An undated, unexplained drop is indistinguishable from work that was forgotten."
-      )
-    );
-  }
-  return withIssue(context, options.id, (issue) => {
-    const next = {
-      ...issue,
-      status: "dropped",
-      notes: [...issue.notes, `dropped: ${options.reason.trim()}`]
-    };
-    delete next.claim;
-    return next;
-  });
-}
-async function issueComplete(context, options) {
-  const before = await currentFlow(context.root);
-  if (before) {
-    try {
-      assertNotParked(before);
-    } catch (error) {
-      if (error instanceof GateRefusal) return refused(error);
-      throw error;
-    }
-  }
-  const existing = (before?.issues ?? []).find(
-    (issue) => issue.id.toUpperCase() === options.id.toUpperCase()
-  );
-  if (existing?.status === "done") {
-    return refused(
-      new GateRefusal(
-        `${existing.id} is already done.`,
-        "wfctl work issue list",
-        existing.evidence ? `It was completed on: ${existing.evidence}` : void 0
-      )
-    );
-  }
-  if (!options.evidence.trim()) {
-    return refused(
-      new GateRefusal(
-        "Say what proves it is done.",
-        `wfctl work issue complete ${options.id} --evidence "<what proves it>"`,
-        `A test that ran, a gate that passed, a commit, a thing you watched happen. Not a restatement of the title \u2014 a unit that is done because you say it is done is not evidence, and six weeks from now nobody can tell it from one that was quietly given up on.
-
-If part of it landed and part did not:
-  wfctl work issue complete ${options.id} --evidence "<what did land>" --remainder "<what is left>"`
-      )
-    );
-  }
-  const result = await withIssue(context, options.id, (issue) => {
-    const next = { ...issue, status: "done", evidence: options.evidence.trim() };
-    delete next.claim;
-    return next;
-  });
-  if (result.exitCode !== 0) return result;
-  let carried;
-  if (options.remainder?.trim()) {
-    carried = await issueCreate(context, {
-      title: options.remainder.trim(),
-      acceptance: existing?.acceptance ?? [],
-      from: existing?.id ?? options.id
-    });
-    if (carried.exitCode !== 0) return carried;
-  }
-  const flow = await currentFlow(context.root);
-  const remaining2 = (flow?.issues ?? []).filter((issue) => issue.status === "open");
-  return ok(
-    compose([
-      result.stdout,
-      carried ? `remainder carried forward:
-  ${carried.stdout.split("\n")[0]}` : void 0,
-      remaining2.length > 0 ? `${remaining2.length} unit(s) still open:
-  ${remaining2.map((issue) => `${issue.id}  ${issue.title}`).join("\n  ")}
-
-Finishing a unit is not finishing. The next unit is available work, and available work is yours.` : "every unit is terminal."
-    ])
-  );
-}
-async function capture(context, options) {
-  if (!options.text.trim()) {
-    return refused(new GateRefusal("A capture needs its finding.", 'wfctl capture "<what you found>"'));
-  }
-  const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-  await mkdir10(resolve15(context.root, "changes/inbox"), { recursive: true });
-  let path = "";
-  for (let attempt = 0; attempt < 64; attempt += 1) {
-    const suffix = attempt === 0 ? "" : `-${attempt}`;
-    const candidate = resolve15(context.root, "changes/inbox", `${stamp}${suffix}.md`);
-    try {
-      await writeFile10(candidate, "", { flag: "wx" });
-      path = candidate;
-      break;
-    } catch (error) {
-      if (error.code !== "EEXIST") throw error;
-    }
-  }
-  if (!path) {
-    return refused(
-      new GateRefusal("Could not create a capture file.", "wfctl doctor")
-    );
-  }
-  await writeFile10(
-    path,
-    [
-      "---",
-      `captured_at: ${(/* @__PURE__ */ new Date()).toISOString()}`,
-      `awaits: ${options.awaits ?? "nobody"}`,
-      "status: pending",
-      "---",
-      "",
-      options.text.trim(),
-      ""
-    ].join("\n"),
-    "utf8"
-  );
-  return ok(compose([await guidanceFor(context, "work/capture"), `captured at:
-${path}`]));
-}
-async function verify(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  }
-  try {
-    assertNotParked(flow);
-    assertReached(flow, "verified");
-    assertRecall(flow, flow.step);
-    const { readReviewArtifact: readReviewArtifact2 } = await Promise.resolve().then(() => (init_review_artifact(), review_artifact_exports));
-    const { assertReviewUsable: assertReviewUsable2 } = await Promise.resolve().then(() => (init_verify(), verify_exports));
-    const review = await readReviewArtifact2(options.review, context.actor);
-    assertReviewUsable2(flow, review);
-    await mutateFlow(context.root, flow.id, (current) => ({
-      ...current,
-      step: "verified",
-      steppedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      /**
-       * The whole artifact, not a count of it.
-       *
-       * Keeping only totals meant the record could never show what was
-       * attacked, which is the one thing a review exists to prove — and the
-       * same artifact replayed across four flows in two repositories without
-       * anything noticing.
-       */
-      review: {
-        reviewer: review.reviewer,
-        at: (/* @__PURE__ */ new Date()).toISOString(),
-        attacks: review.attacks,
-        findings: review.findings,
-        stubSurvivors: review.stubSurvivors,
-        fixedPoint: review.fixedPoint,
-        source: resolve15(options.review)
-      }
-    }));
-    return ok(
-      compose([
-        `review accepted from ${review.reviewer}: ${review.attacks.length} attack(s), ${review.findings.length} finding(s)`,
-        await guidanceFor(context, "work/closed"),
-        'next: wfctl work promotion draft "<area>/<page>.md"   (then: wfctl work close --outcome <completed|partial|abandoned>)'
-      ])
-    );
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-}
-async function park(context, reason, attested) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  if (!reason.trim()) {
-    return refused(
-      new GateRefusal(
-        "Parking needs their reason.",
-        'wfctl work park --reason "<why starting now is premature>" --attested "<what they said>"'
-      )
-    );
-  }
-  if (!attested.trim()) {
-    return refused(
-      new GateRefusal(
-        "A hold is the maintainer's, and nothing here says they placed one.",
-        `wfctl work park --reason "${reason.trim()}" --attested "<what they said>"`,
-        "This command stops the turn guard from ever firing again on this flow. An agent may not quietly decide that work waits."
-      )
-    );
-  }
-  await mutateFlow(context.root, flow.id, (current) => ({
-    ...current,
-    parked: {
-      at: (/* @__PURE__ */ new Date()).toISOString(),
-      reason: reason.trim(),
-      attested: attested.trim()
-    }
-  }));
-  return ok(
-    `${flow.id} is parked: ${reason.trim()}
-
-Approving a framing settles what the work is, never that it begins. Only their own word starts it \u2014 never an answer to a different question, and never the condition that held it having cleared.`
-  );
-}
-async function release(context, attested) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  if (!flow.parked) return ok(`${flow.id} is not parked.`);
-  if (!attested.trim()) {
-    return refused(
-      new GateRefusal(
-        "A release carries their own words.",
-        'wfctl work release --attested "<what they said>"',
-        "This is one of the two places wording is recorded, because a release inferred from anything else is a start nobody agreed to."
-      )
-    );
-  }
-  await mutateFlow(context.root, flow.id, (current) => {
-    const next = { ...current };
-    delete next.parked;
-    return next;
-  });
-  return ok(`${flow.id} released: "${attested.trim()}"`);
-}
-async function close(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  const concedes = options.outcome !== "completed";
-  try {
-    assertNotParked(flow);
-    if (!concedes) {
-      assertReached(flow, "closed");
-      assertReviewed(flow, "closed");
-    }
-    assertRecall(flow, flow.step);
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-  const unfinished = options.outcome === "abandoned" ? [] : flow.issues.filter((issue) => issue.status !== "done" && issue.status !== "dropped");
-  if (unfinished.length > 0) {
-    return refused(
-      new GateRefusal(
-        `${unfinished.length} unit(s) are not terminal.`,
-        `wfctl work issue complete ${unfinished[0]?.id}`,
-        `${unfinished.map((issue) => `  ${issue.id}  ${issue.status}  ${issue.title}`).join("\n")}
-
-Drop one deliberately if it left the route: wfctl work issue drop <id> --reason "<why>"`
-      )
-    );
-  }
-  try {
-    const { closeBundle: closeBundle2 } = await Promise.resolve().then(() => (init_promotion_queue(), promotion_queue_exports));
-    const bundle = flow.members[0] ?? flow.id;
-    const result = await closeBundle2({
-      knowledgeRoot: context.root,
-      bundleId: bundle,
-      outcome: options.outcome
-    });
-    await mutateFlow(context.root, flow.id, (current) => ({
-      ...current,
-      step: "closed",
-      steppedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      closedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      outcome: options.outcome
-    }));
-    await clearCurrent(context.root);
-    const unreviewed = concedes && !flow.review ? "\n\nClosed with no review on record. That is allowed for this outcome and not for `completed`, and promotion will still ask for one." : "";
-    return ok(
-      (result.waitingOnPromotion ? `${bundle} closed as ${options.outcome} and waits in the promotion queue.
-
-Its pages are what the maintainer is asked about. Nothing else is.` : `${bundle} closed as ${options.outcome} and archived; it had nothing to say about itself.`) + unreviewed
-    );
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-}
-async function promote2(context, options) {
-  const { listQueue: listQueue2, promote: movePages, readOutcome: readOutcome2 } = await Promise.resolve().then(() => (init_promotion_queue(), promotion_queue_exports));
-  const { appendEvent: appendEvent2, renderTrajectory: renderTrajectory2 } = await Promise.resolve().then(() => (init_trajectory(), trajectory_exports));
-  const queued = await listQueue2(context.root);
-  if (queued.length === 0) {
-    return refused(
-      new GateRefusal("Nothing is waiting to be promoted.", "wfctl work promotion list")
-    );
-  }
-  const bundle = options.bundle ?? (queued.length === 1 ? queued[0] : void 0);
-  if (!bundle) {
-    return refused(
-      new GateRefusal(
-        `${queued.length} records are waiting; name the one they answered about.`,
-        `wfctl work promote --bundle ${queued[0]} --subject "<...>" --summary "<...>"`,
-        queued.map((id) => `  ${id}`).join("\n")
-      )
-    );
-  }
-  if (!queued.includes(bundle)) {
-    return refused(
-      new GateRefusal(
-        `${bundle} is not waiting to be promoted.`,
-        "wfctl work promotion list",
-        queued.map((id) => `  ${id}`).join("\n")
-      )
-    );
-  }
-  if (!options.subject.trim()) {
-    return refused(
-      new GateRefusal(
-        "Promotion needs the product subject this work belongs to.",
-        'wfctl work promote --subject "<the product subject>" --summary "<what it now does>"',
-        "The pages say what is true now. The subject's line says how it got there, and a promotion that writes only pages leaves that line to be rediscovered by the next reconstruction."
-      )
-    );
-  }
-  try {
-    const { assertPromotable: assertPromotable2 } = await Promise.resolve().then(() => (init_curated(), curated_exports));
-    const { inspectPage: inspectPage2 } = await Promise.resolve().then(() => (init_curated(), curated_exports));
-    const { readdir: readdir13 } = await import("node:fs/promises");
-    const drafts = resolve15(context.root, "changes/promotion", bundle, "promotion");
-    const entries = await readdir13(drafts, { recursive: true, withFileTypes: true }).catch(() => []);
-    const issues = [];
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
-      const path = resolve15(entry.parentPath ?? drafts, entry.name);
-      const body = await readFile12(path, "utf8");
-      issues.push(...inspectPage2(path.slice(drafts.length + 1), body));
-    }
-    assertPromotable2(issues);
-    const outcome = await readOutcome2(context.root, bundle);
-    const trajectory = await appendEvent2(context.root, options.subject, {
-      summary: outcome === "abandoned" ? `abandoned: ${options.summary.trim() || options.subject.trim()}` : options.summary.trim() || options.subject.trim(),
-      axis: outcome === "abandoned" ? "intent" : "delivery",
-      claims: [],
-      change: bundle,
-      at: (/* @__PURE__ */ new Date()).toISOString(),
-      ...options.settles ? { settles: options.settles } : {}
-    });
-    const result = await movePages({ knowledgeRoot: context.root, bundleId: bundle });
-    return ok(
-      compose([
-        `${result.pages.length} page(s) now in curated knowledge:`,
-        result.pages.map((page) => `  knowledge/${page}`).join("\n"),
-        `${bundle} archived at:
-${result.archived}`,
-        renderTrajectory2(trajectory),
-        unsettledNotice(trajectory, options.settles)
-      ])
-    );
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-}
-async function findingAdd(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(
-      new GateRefusal(
-        "No flow is open, so there is no work for a finding to belong to.",
-        'wfctl capture "<what you found>"',
-        "A finding met with no fence around it is a capture: it goes to the inbox and waits."
-      )
-    );
-  }
-  if (!options.what.trim()) {
-    return refused(new GateRefusal("A finding needs what was found.", 'wfctl finding "<what you found>"'));
-  }
-  let id = "";
-  await mutateFlow(context.root, flow.id, (current) => {
-    const findings = current.findings ?? [];
-    id = `F${String(findings.length + 1).padStart(3, "0")}`;
-    const finding = {
-      id,
-      at: (/* @__PURE__ */ new Date()).toISOString(),
-      actor: context.actor,
-      what: options.what.trim(),
-      status: "open"
-    };
-    if (options.about?.trim()) finding.about = options.about.trim();
-    if (options.artifacts?.length) finding.artifacts = options.artifacts;
-    return { ...current, findings: [...findings, finding] };
-  });
-  return ok(
-    [
-      `${id} recorded against ${flow.id}.`,
-      "",
-      "It stays with this work. Settle it here when it is yours to settle:",
-      `  wfctl finding resolve ${id} --how "<what you did about it>"`,
-      "",
-      "If it turns out to be outside this fence, it belongs to the maintainer:",
-      `  wfctl finding release ${id}`
-    ].join("\n")
-  );
-}
-async function findingResolve(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  const finding = (flow.findings ?? []).find((entry) => entry.id === options.id);
-  if (!finding) {
-    return refused(
-      new GateRefusal(
-        `No finding ${options.id} on this work.`,
-        "wfctl finding list",
-        (flow.findings ?? []).length === 0 ? "Nothing has been recorded against this flow." : void 0
-      )
-    );
-  }
-  if (!options.how.trim()) {
-    return refused(
-      new GateRefusal(
-        "Say what you did about it.",
-        `wfctl finding resolve ${options.id} --how "<what you did>"`,
-        `${finding.id}: ${finding.what}`
-      )
-    );
-  }
-  await mutateFlow(context.root, flow.id, (current) => ({
-    ...current,
-    findings: (current.findings ?? []).map(
-      (entry) => entry.id === options.id ? { ...entry, status: "resolved", resolution: options.how.trim(), resolvedAt: (/* @__PURE__ */ new Date()).toISOString() } : entry
-    )
-  }));
-  return ok(`${options.id} resolved.`);
-}
-async function findingRelease(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  const finding = (flow.findings ?? []).find((entry) => entry.id === options.id);
-  if (!finding) {
-    return refused(new GateRefusal(`No finding ${options.id} on this work.`, "wfctl finding list"));
-  }
-  const captured = await capture(context, {
-    text: `${finding.what}
-
-Found during ${flow.id}${finding.about ? `, working on ${finding.about}` : ""}, and released to the inbox because it is outside that fence.`
-  });
-  if (captured.exitCode !== 0) return captured;
-  await mutateFlow(context.root, flow.id, (current) => ({
-    ...current,
-    findings: (current.findings ?? []).map(
-      (entry) => entry.id === options.id ? { ...entry, status: "released" } : entry
-    )
-  }));
-  const where = captured.stdout.split("\n").filter((line) => line.includes("/changes/inbox/"))[0] ?? "";
-  return ok(`${options.id} released to the inbox.${where ? `
-${where.trim()}` : ""}`);
-}
-async function findingList(context) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  const findings = flow.findings ?? [];
-  if (findings.length === 0) {
-    return ok(
-      [
-        "Nothing recorded against this work yet.",
-        "",
-        "A thing you noticed that this work should settle:",
-        '  wfctl finding "<what you found>" --about <unit>',
-        "",
-        "A thing outside this fence, for the maintainer:",
-        '  wfctl capture "<what you found>"'
-      ].join("\n")
-    );
-  }
-  const lines = [];
-  for (const finding of findings) {
-    lines.push(`${finding.id}  ${finding.status}${finding.about ? `  (${finding.about})` : ""}`);
-    lines.push(`  ${finding.what}`);
-    if (finding.resolution) lines.push(`  \u2192 ${finding.resolution}`);
-    for (const artifact of finding.artifacts ?? []) lines.push(`  evidence: ${artifact}`);
-  }
-  const open = findings.filter((finding) => finding.status === "open").length;
-  lines.push("");
-  lines.push(`${findings.length} recorded, ${open} open.`);
-  return ok(lines.join("\n"));
-}
-async function artifactAdd(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  if (!options.path.trim()) {
-    return refused(new GateRefusal("Which file?", 'wfctl artifact add <path> --what "<what it is>"'));
-  }
-  if (!options.what.trim()) {
-    return refused(
-      new GateRefusal(
-        "Say what it is.",
-        `wfctl artifact add ${options.path} --what "<what it is>"`,
-        "A path alone is a filename. What a reader needs is why they would open it."
-      )
-    );
-  }
-  const absolute = resolve15(context.root, options.path);
-  if (!existsSync(absolute)) {
-    return refused(
-      new GateRefusal(
-        `${options.path} is not there.`,
-        "Write the file first, then register it.",
-        "An artifact the record names and the disk does not have is worse than one nobody registered."
-      )
-    );
-  }
-  const stored = relative4(context.root, absolute);
-  await mutateFlow(context.root, flow.id, (current) => {
-    const artifacts = (current.artifacts ?? []).filter((entry) => entry.path !== stored);
-    const added = {
-      path: stored,
-      what: options.what.trim(),
-      at: (/* @__PURE__ */ new Date()).toISOString(),
-      actor: context.actor
-    };
-    return {
-      ...current,
-      artifacts: [
-        ...artifacts.map(
-          (entry) => options.supersedes && entry.path === relative4(context.root, resolve15(context.root, options.supersedes)) ? { ...entry, supersededBy: stored } : entry
-        ),
-        added
-      ]
-    };
-  });
-  return ok(
-    options.supersedes ? `${stored} registered, and ${options.supersedes} marked superseded by it.` : `${stored} registered.`
-  );
-}
-async function artifactList(context) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  const artifacts = flow.artifacts ?? [];
-  if (artifacts.length === 0) {
-    return ok(
-      [
-        "This work has registered no artifacts.",
-        "",
-        "Register what a next session would otherwise have to find by reading the directory:",
-        '  wfctl artifact add <path> --what "<what it is>"'
-      ].join("\n")
-    );
-  }
-  const lines = [];
-  for (const artifact of artifacts) {
-    lines.push(`${artifact.supersededBy ? "superseded" : "standing  "}  ${artifact.path}`);
-    lines.push(`  ${artifact.what}`);
-    if (artifact.supersededBy) lines.push(`  replaced by ${artifact.supersededBy}`);
-  }
-  return ok(lines.join("\n"));
-}
-async function notes(context) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  const written = flow.notes ?? [];
-  if (written.length === 0) {
-    return ok(
-      [
-        "Nothing written down for this flow.",
-        "",
-        '  wfctl checkpoint "<whatever you would not want to look up again>"'
-      ].join("\n")
-    );
-  }
-  return ok(
-    written.map((note) => `${note.at}  ${note.actor}${note.about ? `  (${note.about})` : ""}
-${fenceBody(note.text)}`).join("\n\n")
-  );
-}
-async function workWhere(context) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(
-      new GateRefusal(
-        "No flow is open, so no work has a step.",
-        "wfctl brief",
-        "The brief says what this repository is waiting on."
-      )
-    );
-  }
-  const definition = definitionFor(flow.step);
-  const lines = [
-    `flow ${flow.id}  \xB7  step ${flow.step}`,
-    flow.title,
-    "",
-    definition.demands,
-    "",
-    `move it on with: ${definition.command}`
-  ];
-  const drift = driftLine(lastWritten(flow));
-  if (drift) {
-    lines.push("");
-    lines.push(`\u26A0 ${drift}.`);
-    lines.push('  wfctl checkpoint "<what has happened since>"');
-  }
-  return ok(lines.join("\n"));
-}
-async function kitSurvey(context) {
-  const flow = await currentFlow(context.root);
-  const { readRegistry: readRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
-  const { renderSurvey: renderSurvey2, shipped: shipped2, skillsIn: skillsIn2 } = await Promise.resolve().then(() => (init_kit(), kit_exports));
-  const candidates = [
-    ...await shipped2(context.assets, "strategy"),
-    ...await shipped2(context.assets, "personality")
-  ];
-  for (const leaf of await readRegistry2(context.root)) {
-    candidates.push(...await skillsIn2(leaf.path, leaf.repository));
-  }
-  return ok(renderSurvey2(candidates, flow?.kit ?? []));
-}
-async function kitAdopt(context, options) {
-  const flow = await currentFlow(context.root);
-  if (!flow) {
-    return refused(
-      new GateRefusal(
-        "No flow is open, so there is no work to equip.",
-        'wfctl work start --title "<what this is>"',
-        "The kit belongs to a piece of work, which is what makes it survive the session that chose it."
-      )
-    );
-  }
-  if (options.ids.length === 0) {
-    return refused(new GateRefusal("Which ones?", "wfctl kit survey"));
-  }
-  const attested = options.attested.trim();
-  if (!attested) {
-    return refused(
-      new GateRefusal(
-        "What this work carries is the maintainer's call, and nothing here says they made it.",
-        `wfctl kit adopt ${options.ids.join(" ")} --attested "<what they said>"`,
-        "Put your short list to them \u2014 the ones you recommend, and why each earns its place \u2014 and record their answer. A selection made alone is indistinguishable from one they asked for once it is on the record, and the next session reads it as theirs."
-      )
-    );
-  }
-  const { readRegistry: readRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
-  const { assertAdoptable: assertAdoptable2, shipped: shipped2, skillsIn: skillsIn2 } = await Promise.resolve().then(() => (init_kit(), kit_exports));
-  const candidates = [
-    ...await shipped2(context.assets, "strategy"),
-    ...await shipped2(context.assets, "personality")
-  ];
-  for (const leaf of await readRegistry2(context.root)) {
-    candidates.push(...await skillsIn2(leaf.path, leaf.repository));
-  }
-  let adopted = [];
-  try {
-    const chosen = assertAdoptable2(options.ids, candidates);
-    await mutateFlow(context.root, flow.id, (current) => {
-      const held = current.kit ?? [];
-      const fresh = chosen.filter((candidate) => !held.some((entry) => entry.id === candidate.id)).map((candidate) => ({
-        id: candidate.id,
-        kind: candidate.kind,
-        path: candidate.path,
-        what: candidate.what,
-        ...candidate.repository ? { repository: candidate.repository } : {},
-        attested,
-        at: (/* @__PURE__ */ new Date()).toISOString()
-      }));
-      adopted = fresh.map((entry) => entry.id);
-      return { ...current, kit: [...held, ...fresh] };
-    });
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-  const already = options.ids.filter((id) => !adopted.includes(id));
-  return ok(
-    [
-      adopted.length > 0 ? `${adopted.length} added to ${flow.id}: ${adopted.join(", ")}` : "Nothing new; all of those were already equipped.",
-      ...already.length > 0 && adopted.length > 0 ? [`Already equipped: ${already.join(", ")}`] : [],
-      "",
-      "The brief prints this at the start of every session on this work, so a",
-      "cleared context does not lose it. Read them when the work reaches what",
-      "they are for, not now."
-    ].join("\n")
-  );
-}
-async function kitList(context) {
-  const flow = await currentFlow(context.root);
-  if (!flow) return refused(new GateRefusal("No flow is open.", "wfctl brief"));
-  const { renderKit: renderKit2 } = await Promise.resolve().then(() => (init_kit(), kit_exports));
-  return ok(renderKit2(flow.kit ?? []));
-}
-async function learned(context, options) {
-  const flow = await currentFlow(context.root);
-  try {
-    const { writeLearning: writeLearning2 } = await Promise.resolve().then(() => (init_learned(), learned_exports));
-    const path = await writeLearning2(context.root, {
-      title: options.title,
-      body: options.detail,
-      attested: options.attested,
-      actor: context.actor,
-      ...flow ? { flow: flow.id } : {}
-    });
-    return ok(
-      [
-        `written to ${relative4(context.root, path)}`,
-        "",
-        "It outlives this work. The brief names the count at the start of every",
-        "session in this repository, so the next piece of work can read it before",
-        "starting rather than after failing."
-      ].join("\n")
-    );
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-}
-async function learnedList(context) {
-  const { listLearnings: listLearnings2, renderLearnings: renderLearnings2 } = await Promise.resolve().then(() => (init_learned(), learned_exports));
-  return ok(renderLearnings2(await listLearnings2(context.root)));
-}
-function renderAlsoOpen(open, reconstruction) {
-  const live = reconstruction && !reconstruction.abandoned ? reconstruction : void 0;
-  if (open.length === 0 && !live) return void 0;
-  const lines = [`${open.length + (live ? 1 : 0)} other piece(s) of work are open:`];
-  for (const entry of open) {
-    const bound = [
-      ...new Set(entry.issues.flatMap((issue) => issue.claim ? [issue.claim.repository] : []))
-    ];
-    lines.push(
-      `  ${entry.id}  \xB7  ${entry.step}` + (bound.length > 0 ? `  \xB7  ${bound.join(", ")}` : "") + (entry.parked ? "  \xB7  parked" : ""),
-      `      ${entry.checkpoint?.summary ?? "nothing written down"}`
-    );
-  }
-  if (live) lines.push(`  reconstruction ${live.id}  \xB7  stage ${live.stage}`);
-  lines.push(
-    "",
-    "None of this refuses the work and none of it is wrong to have open. You are",
-    "the one who can see whether they collide \u2014 a shared checkout, an unmerged",
-    "branch, a criterion this would invalidate. If one of them should finish",
-    "first, say so now rather than after.",
-    "",
-    "  wfctl work bind <id>              work in a different one",
-    "  wfctl work close --outcome ...    finish the one you are in"
-  );
-  return lines.join("\n");
-}
-async function workBind(context, id) {
-  if (!id.trim()) {
-    return refused(new GateRefusal("Which flow?", "wfctl work list"));
-  }
-  try {
-    const { bindFlow: bindFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
-    const flow = await bindFlow2(context.root, id.trim());
-    return ok(
-      compose([
-        `working in ${flow.id}  \xB7  ${flow.step}`,
-        flow.checkpoint?.handoff ? fenceBody(flow.checkpoint.handoff) : void 0,
-        flow.checkpoint?.nextAction ? `next: ${flow.checkpoint.nextAction}` : void 0
-      ])
-    );
-  } catch (error) {
-    if (error instanceof GateRefusal) return refused(error);
-    throw error;
-  }
-}
-var init_commands = __esm({
-  "src/core/commands.ts"() {
-    "use strict";
-    init_checkpoint();
-    init_gates();
-    init_guidance();
-    init_flow();
-    init_paths();
-    init_recall();
-    init_steps();
-  }
-});
-
-// src/core/install.ts
-var install_exports = {};
-__export(install_exports, {
-  FLOWS_DIR: () => FLOWS_DIR,
-  GUARD_CHOICES: () => GUARD_CHOICES,
-  GUARD_NAMES: () => GUARD_NAMES,
-  HOOK_SETTINGS: () => HOOK_SETTINGS,
-  INSTALL_SCHEMA_VERSION: () => INSTALL_SCHEMA_VERSION,
-  KNOWLEDGE_DIRECTORIES: () => KNOWLEDGE_DIRECTORIES,
-  MANAGED_BEGIN: () => MANAGED_BEGIN,
-  MANAGED_END: () => MANAGED_END,
-  RUNTIME_DIR: () => RUNTIME_DIR,
-  SKILL_DIRS: () => SKILL_DIRS,
-  applyInstall: () => applyInstall,
-  assertProfileSupported: () => assertProfileSupported,
-  disabledGuards: () => disabledGuards,
-  guardStatus: () => guardStatus,
-  installHooks: () => installHooks,
-  installManagedBlock: () => installManagedBlock,
-  planInstall: () => planInstall,
-  readInstallState: () => readInstallState,
-  renderGuards: () => renderGuards,
-  setGuard: () => setGuard
-});
-import { createHash as createHash3 } from "node:crypto";
-import { chmod, mkdir as mkdir11, readFile as readFile13, readdir as readdir10, stat as stat3, writeFile as writeFile11 } from "node:fs/promises";
-import { dirname as dirname9, join as join6, relative as relative5, resolve as resolve16 } from "node:path";
-function hash(content) {
-  return createHash3("sha256").update(content).digest("hex");
-}
-async function readIfPresent(path) {
-  try {
-    return await readFile13(path, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return void 0;
-    throw error;
-  }
-}
-async function collect(root, prefix = "") {
-  const entries = await readdir10(join6(root, prefix), { withFileTypes: true });
-  const files = [];
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    const rel = prefix ? join6(prefix, entry.name) : entry.name;
-    if (entry.isDirectory()) {
-      files.push(...await collect(root, rel));
-      continue;
-    }
-    files.push({ path: rel, content: await readFile13(join6(root, rel), "utf8") });
-  }
-  return files;
-}
-async function readInstallState(target) {
-  const raw = await readIfPresent(resolve16(target, ".workflow/state.json"));
-  return raw ? JSON.parse(raw) : void 0;
-}
-async function planInstall(options) {
-  const state = await readInstallState(options.target);
-  const operations = [];
-  const edited = [];
-  for (const directory of KNOWLEDGE_DIRECTORIES) {
-    const path = resolve16(options.target, directory);
-    const present = await stat3(path).then(
-      (entry) => entry.isDirectory(),
-      () => false
-    );
-    if (!present) operations.push({ kind: "create-directory", path: directory });
-  }
-  const installable = [];
-  for (const file of await collect(resolve16(options.distribution, "templates/runtime"))) {
-    installable.push({ path: join6(RUNTIME_DIR, file.path), content: file.content });
-  }
-  for (const file of await collect(resolve16(options.distribution, "templates/skill/wfctl"))) {
-    for (const directory of SKILL_DIRS) {
-      installable.push({ path: join6(directory, file.path), content: file.content });
-    }
-  }
-  installable.push({
-    path: ".workflow/.gitignore",
-    content: await readFile13(resolve16(options.distribution, "templates/workflow/gitignore"), "utf8")
-  });
-  for (const file of installable) {
-    const rel = file.path;
-    const current = await readIfPresent(resolve16(options.target, rel));
-    const recorded = state?.files[rel]?.sha256;
-    const next = hash(file.content);
-    if (current === void 0) {
-      operations.push({ kind: "write", path: rel });
-      continue;
-    }
-    if (hash(current) === next) {
-      operations.push({ kind: "skip-unchanged", path: rel });
-      continue;
-    }
-    if (recorded && hash(current) !== recorded) {
-      edited.push(rel);
-      operations.push({
-        kind: "conflict",
-        path: rel,
-        reason: "edited since it was installed; it will not be replaced silently"
-      });
-      continue;
-    }
-    operations.push({ kind: "write", path: rel });
-  }
-  const shipped2 = new Set(installable.map((file) => file.path));
-  const obsolete = [];
-  for (const rel of Object.keys(state?.files ?? {})) {
-    if (shipped2.has(rel)) continue;
-    if (await readIfPresent(resolve16(options.target, rel)) === void 0) continue;
-    obsolete.push(rel);
-  }
-  obsolete.push(...await strandedSkills(options.target));
-  return { target: options.target, operations, edited, obsolete: obsolete.sort() };
-}
-async function strandedSkills(target) {
-  const found = [];
-  const parents = new Set(SKILL_DIRS.map((directory) => dirname9(directory)));
-  const ours = new Set(SKILL_DIRS.map((directory) => directory.split("/").pop()));
-  for (const parent of parents) {
-    let entries;
-    try {
-      entries = await readdir10(resolve16(target, parent), { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory() || ours.has(entry.name)) continue;
-      found.push(join6(parent, entry.name));
-    }
-  }
-  if (await readIfPresent(resolve16(target, "skills-lock.json")) !== void 0) {
-    found.push("skills-lock.json");
-  }
-  return found.sort();
-}
-async function applyInstall(plan, options) {
-  const result = {
-    written: [],
-    created: [],
-    skipped: [],
-    conflicts: [],
-    obsolete: plan.obsolete,
-    replacedHooks: []
-  };
-  const state = await readInstallState(plan.target) ?? {
-    schemaVersion: INSTALL_SCHEMA_VERSION,
-    installedVersion: options.version,
-    files: {}
-  };
-  state.installedVersion = options.version;
-  for (const operation of plan.operations) {
-    const absolute = resolve16(plan.target, operation.path);
-    if (operation.kind === "create-directory") {
-      await mkdir11(absolute, { recursive: true });
-      result.created.push(operation.path);
-      continue;
-    }
-    if (operation.kind === "skip-unchanged") {
-      result.skipped.push(operation.path);
-      continue;
-    }
-    if (operation.kind === "conflict") {
-      result.conflicts.push(operation.path);
-      continue;
-    }
-    const runtime = operation.path.startsWith(`${RUNTIME_DIR}/`);
-    const skillDir = SKILL_DIRS.find((directory) => operation.path.startsWith(`${directory}/`));
-    const source = operation.path === ".workflow/.gitignore" ? resolve16(options.distribution, "templates/workflow/gitignore") : runtime ? resolve16(options.distribution, "templates/runtime", relative5(RUNTIME_DIR, operation.path)) : resolve16(
-      options.distribution,
-      "templates/skill/wfctl",
-      relative5(skillDir ?? "", operation.path)
-    );
-    const content = await readFile13(source, "utf8");
-    await mkdir11(dirname9(absolute), { recursive: true });
-    await writeFile11(absolute, content, "utf8");
-    if (runtime) await chmod(absolute, 493);
-    state.files[operation.path] = { sha256: hash(content) };
-    result.written.push(operation.path);
-  }
-  await mkdir11(resolve16(plan.target, ".workflow"), { recursive: true });
-  await writeFile11(
-    resolve16(plan.target, ".workflow/state.json"),
-    `${JSON.stringify(state, null, 2)}
-`,
-    "utf8"
-  );
-  result.replacedHooks = await installHooks(plan.target);
-  await installManagedBlock(plan.target, options.distribution);
-  return result;
-}
-function assertProfileSupported(profile) {
-  if (profile === "knowledge") return;
-  if (profile === "leaf") {
-    throw new GateRefusal(
-      "There is no leaf installation any more.",
-      "wfctl init knowledge   (run in the knowledge repository)",
-      "The agent is bootstrapped in the knowledge repository and edits leaf code from there. Register the repository instead of installing into it."
-    );
-  }
-  throw new GateRefusal(`Unknown profile ${profile}.`, "wfctl init knowledge");
-}
-async function installHooks(target) {
-  return withLock(resolve16(target, ".claude/settings.json"), () => installHooksLocked(target));
-}
-function looksInstalled(command) {
-  return /(^|[;&|\s])wfctl\s/.test(command) || command.includes(`$CLAUDE_PROJECT_DIR/${RUNTIME_DIR}/`);
-}
-async function installHooksLocked(target) {
-  const path = resolve16(target, ".claude/settings.json");
-  const existing = await readIfPresent(path);
-  let settings = {};
-  if (existing) {
-    try {
-      settings = JSON.parse(existing);
-    } catch {
-      throw new GateRefusal(
-        `${path} is not valid JSON, so its hooks cannot be merged.`,
-        "Repair the file, then run init again."
-      );
-    }
-  }
-  if (Array.isArray(settings) || typeof settings !== "object" || settings === null) {
-    throw new GateRefusal(
-      `${path} is not a JSON object, so its hooks cannot be merged.`,
-      "Repair the file, then run init again.",
-      "Merging into an array would have written the hooks onto a property that JSON.stringify discards, leaving the install reporting success with no hooks at all."
-    );
-  }
-  const existingHooks = settings.hooks;
-  if (existingHooks !== void 0 && (typeof existingHooks !== "object" || existingHooks === null || Array.isArray(existingHooks))) {
-    throw new GateRefusal(
-      `${path} has a "hooks" value that is not an object.`,
-      "Repair the file, then run init again."
-    );
-  }
-  const ourCommands = new Set(
-    Object.values(HOOK_SETTINGS.hooks).flat().flatMap((entry) => entry.hooks).map((hook) => hook.command)
-  );
-  const commandsOf = (entry) => {
-    const hooks2 = entry?.hooks;
-    if (!Array.isArray(hooks2) || hooks2.length === 0) return [];
-    return hooks2.map((hook) => hook?.command).filter((command) => typeof command === "string");
-  };
-  const isOurs = (entry) => {
-    const commands = commandsOf(entry);
-    if (commands.length === 0) return false;
-    return commands.every((command) => ourCommands.has(command) || looksInstalled(command));
-  };
-  const replaced = [];
-  const off = new Set(await disabledGuards(target));
-  const skip = new Set(
-    [...off].map((guard) => guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard}.mjs`)
-  );
-  const hooks = { ...existingHooks ?? {} };
-  for (const [event, entries] of Object.entries(HOOK_SETTINGS.hooks)) {
-    const current = hooks[event];
-    const mine = (Array.isArray(current) ? current : []).filter((entry) => isOurs(entry));
-    for (const entry of mine) {
-      for (const command of commandsOf(entry)) {
-        if (!ourCommands.has(command)) replaced.push(`${event}: ${command}`);
-      }
-    }
-    const theirs = (Array.isArray(current) ? current : []).filter((entry) => !isOurs(entry));
-    const ours = entries.filter(
-      (entry) => !entry.hooks.some((hook) => [...skip].some((name) => hook.command.includes(name)))
-    );
-    hooks[event] = [...theirs, ...ours];
-  }
-  settings.hooks = hooks;
-  await mkdir11(dirname9(path), { recursive: true });
-  await writeAtomic(path, `${JSON.stringify(settings, null, 2)}
-`);
-  return replaced;
-}
-async function installManagedBlock(target, distribution) {
-  const body = (await readFile13(resolve16(distribution, "templates/agents/managed.md"), "utf8")).trim();
-  const block = `${MANAGED_BEGIN}
-${body}
-${MANAGED_END}
-`;
-  const written = /* @__PURE__ */ new Set();
-  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
-    const path = resolve16(target, name);
-    const real = canonical(path);
-    if (written.has(real)) continue;
-    written.add(real);
-    const existing = await readIfPresent(path);
-    if (existing === void 0) {
-      await writeFile11(path, block, "utf8");
-      continue;
-    }
-    const begin = existing.indexOf(MANAGED_BEGIN);
-    const end = existing.indexOf(MANAGED_END);
-    const begins = existing.split(MANAGED_BEGIN).length - 1;
-    const ends = existing.split(MANAGED_END).length - 1;
-    if (begins !== ends || begins > 1 || begins === 1 && end < begin) {
-      throw new GateRefusal(
-        `${name} has an unbalanced wfctl marker block.`,
-        `Repair the markers in ${name} so one ${MANAGED_BEGIN} is followed by one ${MANAGED_END}, then run init again.`,
-        `Found ${begins} begin marker(s) and ${ends} end marker(s). Writing past that would move the boundary and take your own text with it.`
-      );
-    }
-    if (begin >= 0 && end > begin) {
-      const next = existing.slice(0, begin) + block.trimEnd() + existing.slice(end + MANAGED_END.length);
-      await writeFile11(path, next, "utf8");
-      continue;
-    }
-    await writeFile11(path, `${existing.trimEnd()}
-
-${block}`, "utf8");
-  }
-}
-async function readSettings(target) {
-  const raw = await readIfPresent(resolve16(target, ".claude/settings.json"));
-  if (!raw) return {};
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new GateRefusal(
-      `${resolve16(target, ".claude/settings.json")} is not valid JSON.`,
-      "Repair the file, then try again."
-    );
-  }
-  if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
-    throw new GateRefusal(
-      `${resolve16(target, ".claude/settings.json")} is not a JSON object.`,
-      "Repair the file, then try again."
-    );
-  }
-  return parsed;
-}
-async function guardStatus(target) {
-  const settings = await readSettings(target);
-  const hooks = settings.hooks ?? {};
-  const choices = await readGuardChoices(target);
-  return GUARD_NAMES.map((guard) => {
-    const { event, matcher, describes } = GUARD_EVENTS[guard];
-    const entries = Array.isArray(hooks[event]) ? hooks[event] : [];
-    const armed = entries.some(
-      (entry) => entry.matcher === matcher && (entry.hooks ?? []).some((hook) => (hook.command ?? "").includes(scriptFor(guard)))
-    );
-    const installed = choices[guard] === false ? false : armed;
-    return { guard, installed, describes };
-  });
-}
-function scriptFor(guard) {
-  return guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard}.mjs`;
-}
-async function setGuard(target, guard, enabled) {
-  return withLock(
-    resolve16(target, ".claude/settings.json"),
-    () => setGuardLocked(target, guard, enabled)
-  );
-}
-async function setGuardLocked(target, guard, enabled) {
-  const path = resolve16(target, ".claude/settings.json");
-  const settings = await readSettings(target);
-  const hooks = { ...settings.hooks ?? {} };
-  const { event, matcher } = GUARD_EVENTS[guard];
-  const script = scriptFor(guard);
-  const entries = Array.isArray(hooks[event]) ? [...hooks[event]] : [];
-  const ourCommand = (HOOK_SETTINGS.hooks[event] ?? []).flatMap((entry) => entry.hooks.map((hook) => hook.command)).find((command) => command.includes(script));
-  const isThisGuard = (entry) => (entry?.hooks ?? []).some(
-    (hook) => hook.command === ourCommand
-  );
-  const others = entries.filter((entry) => !isThisGuard(entry));
-  await recordGuardChoice(target, guard, enabled);
-  if (!enabled) {
-    hooks[event] = others;
-    settings.hooks = hooks;
-    await mkdir11(dirname9(path), { recursive: true });
-    await writeAtomic(path, `${JSON.stringify(settings, null, 2)}
-`);
-    return `${guard} guard off, and it stays off across upgrades.`;
-  }
-  const ours = HOOK_SETTINGS.hooks[event]?.find(
-    (entry) => isThisGuard(entry)
-  );
-  if (!ours) {
-    throw new GateRefusal(`No installed definition for the ${guard} guard.`, "wfctl init knowledge");
-  }
-  hooks[event] = [...others, ours];
-  settings.hooks = hooks;
-  await mkdir11(dirname9(path), { recursive: true });
-  await writeAtomic(path, `${JSON.stringify(settings, null, 2)}
-`);
-  return `${guard} guard on. Restart the session for it to take effect.`;
-}
-async function readGuardChoices(target) {
-  const raw = await readIfPresent(resolve16(target, GUARD_CHOICES));
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
-}
-async function recordGuardChoice(target, guard, enabled) {
-  const choices = { ...await readGuardChoices(target), [guard]: enabled };
-  const path = resolve16(target, GUARD_CHOICES);
-  await mkdir11(dirname9(path), { recursive: true });
-  await writeAtomic(path, `${JSON.stringify(choices, null, 2)}
-`);
-}
-async function disabledGuards(target) {
-  const choices = await readGuardChoices(target);
-  return GUARD_NAMES.filter((guard) => choices[guard] === false);
-}
-function renderGuards(status) {
-  return [
-    ...status.map(
-      (entry) => `${entry.installed ? "on " : "off"}  ${entry.guard.padEnd(6)}  ${entry.describes}`
-    ),
-    "",
-    "wfctl guards on <stop|write|bash>   \xB7   wfctl guards off <stop|write|bash>",
-    "",
-    "Turning one off is a decision worth recording. The stop guard is the only",
-    "mechanism that catches a turn ending on work nobody is waiting for."
-  ].join("\n");
-}
-var MANAGED_BEGIN, MANAGED_END, HOOK_SETTINGS, INSTALL_SCHEMA_VERSION, RUNTIME_DIR, SKILL_DIRS, FLOWS_DIR, KNOWLEDGE_DIRECTORIES, GUARD_NAMES, GUARD_EVENTS, GUARD_CHOICES;
-var init_install = __esm({
-  "src/core/install.ts"() {
-    "use strict";
-    init_gates();
-    init_paths_resolve();
-    init_lock();
-    MANAGED_BEGIN = "<!-- wfctl:begin -->";
-    MANAGED_END = "<!-- wfctl:end -->";
-    HOOK_SETTINGS = {
-      hooks: {
-        SessionStart: [
-          {
-            matcher: "*",
-            hooks: [{ type: "command", command: "wfctl brief" }]
-          }
-        ],
-        PreToolUse: [
-          {
-            /**
-             * The shell is a writing tool. An agent that works through `cat >` and
-             * `python3 - <<PY` made 179 file writes and 0 edits in one session, and
-             * every refusal this guard carries went unenforced for all of them.
-             */
-            matcher: "Edit|Write|MultiEdit|Bash",
-            hooks: [
-              {
-                type: "command",
-                command: '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-write.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-write.mjs" || true'
-              }
-            ]
-          },
-          {
-            matcher: "Bash",
-            hooks: [
-              {
-                type: "command",
-                command: '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-background-bash.mjs" || true'
-              }
-            ]
-          }
-        ],
-        Stop: [
-          {
-            matcher: "*",
-            hooks: [
-              {
-                type: "command",
-                command: '[ -f "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" ] && node "$CLAUDE_PROJECT_DIR/.workflow/runtime/guard-stop.mjs" || true'
-              }
-            ]
-          }
-        ]
-      }
-    };
-    INSTALL_SCHEMA_VERSION = 1;
-    RUNTIME_DIR = ".workflow/runtime";
-    SKILL_DIRS = [".claude/skills/wfctl", ".agents/skills/wfctl"];
-    FLOWS_DIR = ".workflow/flows";
-    KNOWLEDGE_DIRECTORIES = [
-      "knowledge",
-      "changes/active",
-      "changes/promotion",
-      "changes/archive",
-      "changes/archive/captures",
-      "changes/inbox",
-      "reconstruction/raw",
-      "reconstruction/active",
-      "reconstruction/archive",
-      "trajectories",
-      /** What earlier work found out, kept past the bundle that found it. */
-      "learnings",
-      RUNTIME_DIR,
-      FLOWS_DIR
-    ];
-    GUARD_NAMES = ["stop", "write", "bash"];
-    GUARD_EVENTS = {
-      stop: {
-        event: "Stop",
-        matcher: "*",
-        describes: "re-enters a turn that stated a next action and then ended"
-      },
-      write: {
-        event: "PreToolUse",
-        matcher: "Edit|Write|MultiEdit|Bash",
-        describes: "delivers the unit's scope on the first write, and refuses writes by hand"
-      },
-      bash: {
-        event: "PreToolUse",
-        matcher: "Bash",
-        describes: "reports a background command that has gone silent"
-      }
-    };
-    GUARD_CHOICES = ".workflow/guards.json";
-  }
-});
-
-// src/core/leaves.ts
-var leaves_exports = {};
-__export(leaves_exports, {
-  GRAPH_PATH: () => GRAPH_PATH,
-  assertInsideClaim: () => assertInsideClaim,
-  assertTraversable: () => assertTraversable,
-  graphSetup: () => graphSetup,
-  inspectLeaf: () => inspectLeaf,
-  inspectLeaves: () => inspectLeaves,
-  renderLeaves: () => renderLeaves
-});
-import { stat as stat4 } from "node:fs/promises";
-import { resolve as resolve17, sep as sep3 } from "node:path";
-async function inspectLeaf(entry, now = /* @__PURE__ */ new Date()) {
-  const base = {
-    repository: entry.repository,
-    worktreeId: entry.worktreeId,
-    checkout: entry.checkout,
-    path: entry.path,
-    graph: "unreachable"
-  };
-  const reachable = await stat4(entry.path).then(
-    (found) => found.isDirectory(),
-    () => false
-  );
-  if (!reachable) return base;
-  const graph = await stat4(resolve17(entry.path, GRAPH_PATH)).catch(() => void 0);
-  if (!graph) return { ...base, graph: "missing" };
-  const ageDays = Math.floor((now.getTime() - graph.mtimeMs) / 864e5);
-  return { ...base, graph: ageDays > STALE_AFTER_DAYS ? "stale" : "ready", ageDays };
-}
-async function inspectLeaves(entries, now = /* @__PURE__ */ new Date()) {
-  return Promise.all(entries.map((entry) => inspectLeaf(entry, now)));
-}
-function graphSetup(path) {
-  return [
-    `No graph in ${path}.`,
-    "",
-    "Nothing is installed into a source repository, but its structure has to be",
-    "readable before anything here can traverse it. In that checkout:",
-    "",
-    "  uv tool install graphifyy      # once per machine, if the CLI is absent",
-    "  graphify build                 # in the leaf, produces graphify-out/",
-    "",
-    "The maintainer runs the install; the build is yours. Rebuild it when the",
-    "source has moved \u2014 a stale graph answers confidently about code that is gone."
-  ].join("\n");
-}
-function assertTraversable(leaves, target) {
-  const relevant = target ? leaves.filter((leaf) => contains(leaf.path, target)) : leaves;
-  const blocked = relevant.filter((leaf) => leaf.graph === "missing" || leaf.graph === "unreachable");
-  if (blocked.length === 0) return;
-  const missing = blocked.filter((leaf) => leaf.graph === "missing");
-  const gone = blocked.filter((leaf) => leaf.graph === "unreachable");
-  const detail = [
-    ...missing.map((leaf) => graphSetup(leaf.path)),
-    ...gone.map(
-      (leaf) => `${leaf.repository} is registered at ${leaf.path}, which is not there. Re-register it, or remove it: wfctl repo remove ${leaf.repository} --worktree ${leaf.worktreeId}`
-    )
-  ].join("\n\n");
-  throw new GateRefusal(
-    `${blocked.length} registered repositor${blocked.length === 1 ? "y has" : "ies have"} no graph to traverse.`,
-    missing[0] ? `graphify build   (in ${missing[0].path})` : "wfctl repo list",
-    detail
-  );
-}
-function renderLeaves(leaves) {
-  if (leaves.length === 0) {
-    return [
-      "No repositories are registered.",
-      "",
-      "Register each checkout the project keeps, including worktrees:",
-      "  wfctl repo add <owner/name> --path <dir> [--worktree <id>]"
-    ].join("\n");
-  }
-  const rows = leaves.map((leaf) => {
-    const age = leaf.graph === "ready" || leaf.graph === "stale" ? `${leaf.ageDays}d` : "";
-    return `${leaf.graph.padEnd(11)} ${age.padEnd(5)} ${leaf.repository}  ${label(leaf).padEnd(14)}  ${leaf.path}`;
-  });
-  const needing = leaves.filter((leaf) => leaf.graph === "missing" || leaf.graph === "stale");
-  return [
-    ...rows,
-    ...needing.length > 0 ? [
-      "",
-      `${needing.length} need a graph built before it can be traversed:`,
-      ...needing.map((leaf) => `  graphify build   (in ${leaf.path})`)
-    ] : []
-  ].join("\n");
-}
-function assertInsideClaim(options) {
-  const target = resolve17(options.target);
-  if (options.knowledgeRoot) {
-    const base = resolve17(options.knowledgeRoot);
-    if (target === base || target.startsWith(`${base}${sep3}`)) return;
-  }
-  const containing = options.leaves.find((leaf) => contains(leaf.path, target));
-  if (!containing) {
-    throw new GateRefusal(
-      `${options.target} is not inside any registered repository.`,
-      "wfctl repo add <owner/name> --path <dir> [--worktree <id>]",
-      options.leaves.length === 0 ? "Nothing is registered, so there is nowhere this write could legitimately land." : `Registered:
-${options.leaves.map((leaf) => `  ${leaf.repository}  ${label(leaf)}  ${leaf.path}`).join("\n")}`
-    );
-  }
-  if (!options.claim) return;
-  if (containing.repository !== options.claim.repository || containing.worktreeId !== options.claim.worktreeId) {
-    throw new GateRefusal(
-      `This unit is claimed from ${options.claim.repository} (${options.claim.worktreeId}), and that path is in ${containing.repository} (${containing.worktreeId}).`,
-      `wfctl work issue claim <id> --repository ${containing.repository} --worktree ${containing.worktreeId}`,
-      "A worktree is an exact workspace, not an alias for its repository. Code written into a sibling checkout looks entirely correct there and belongs to different work."
-    );
-  }
-}
-var GRAPH_PATH, STALE_AFTER_DAYS;
-var init_leaves = __esm({
-  "src/core/leaves.ts"() {
-    "use strict";
-    init_gates();
-    init_paths_resolve();
-    init_registry();
-    GRAPH_PATH = "graphify-out/graph.json";
-    STALE_AFTER_DAYS = 30;
-  }
-});
-
-// src/core/write-hook.ts
-var write_hook_exports = {};
-__export(write_hook_exports, {
-  decideWrite: () => decideWrite
-});
-import { relative as relative6, resolve as resolve18 } from "node:path";
-function decideWrite(input) {
-  const { flow, knowledgeRoot, target } = input;
-  try {
-    assertWriteAllowed({
-      knowledgeRoot,
-      target,
-      ...flow ? { bundleId: flow.members[0] ?? flow.id } : {}
-    });
-  } catch (error) {
-    if (error instanceof GateRefusal) return { refusal: error };
-    throw error;
-  }
-  if (!flow) return {};
-  if (contains(knowledgeRoot, target)) return {};
-  const claimed = flow.issues.find((issue) => issue.status === "claimed")?.claim;
-  try {
-    assertInsideClaim({
-      target,
-      knowledgeRoot,
-      leaves: input.leaves ?? [],
-      ...claimed ? { claim: { repository: claimed.repository, worktreeId: claimed.worktreeId } } : {}
-    });
-  } catch (error) {
-    if (error instanceof GateRefusal) return { refusal: error };
-    throw error;
-  }
-  const normalized = normalize2(knowledgeRoot, target);
-  const first = input.writtenThisUnit.length === 0;
-  const covered = flow.recall.covered.some(
-    (entry) => normalize2(knowledgeRoot, entry) === normalized
-  );
-  if (!first && covered) return {};
-  if (first && (flow.recall.counters.graphify ?? 0) === 0) {
-    try {
-      assertTraversable(input.leaves ?? [], target);
-    } catch (error) {
-      if (error instanceof GateRefusal) return { refusal: error };
-      throw error;
-    }
-    return {
-      refusal: new GateRefusal(
-        "No structural traversal has been made for this unit.",
-        "wfctl recall route graphify --covered <files>",
-        `${renderCounterLine(flow.step, flow.recall)}
-
-wfctl guide structure \u2014 searching by graph before by string`
-      )
-    };
-  }
-  const reason = first ? "first write of this unit" : "this file is outside what any traversal or query has covered";
-  const route = first ? void 0 : [
-    "Before you change it, in this order:",
-    '  qmd query "<the subject>"        what is already settled or written down',
-    "  graphify (in the leaf)          what calls it, and what it reaches",
-    "  read it at a named revision     the only thing that is authority",
-    "",
-    "Then record what that covered, and this goes quiet on it:",
-    "  wfctl recall route <qmd|graphify|read> --covered <path>",
-    "",
-    "wfctl guide structure \u2014 the full order, and when grep is the right tool"
-  ].join("\n");
-  return {
-    message: [
-      `[wfctl] ${reason}`,
-      input.guidance,
-      route,
-      renderCounterLine(flow.step, flow.recall)
-    ].filter((part) => Boolean(part)).join("\n\n")
-  };
-}
-function normalize2(root, path) {
-  const absolute = resolve18(root, path);
-  return relative6(root, absolute) || absolute;
-}
-var init_write_hook = __esm({
-  "src/core/write-hook.ts"() {
-    "use strict";
-    init_leaves();
-    init_paths();
-    init_recall();
-    init_gates();
-    init_paths_resolve();
-  }
-});
-
-// src/core/debts.ts
-var debts_exports = {};
-__export(debts_exports, {
-  collectDebts: () => collectDebts,
-  renderDebts: () => renderDebts
-});
-async function collectDebts(root) {
-  const gaps = (await listTrajectories(root)).map((trajectory) => deriveGap(trajectory));
-  return {
-    delivery: gaps.filter((gap) => gap.delivery.length > 0),
-    direction: gaps.filter((gap) => gap.direction.length > 0)
-  };
-}
-function renderDebts(report) {
-  if (report.delivery.length === 0 && report.direction.length === 0) {
-    return [
-      "No gaps.",
-      "",
-      "Either everything recorded is delivered, or nothing has been re-read since",
-      "it changed. A gap dies when the subject is read again at a new revision \u2014",
-      "never because somebody said the work was done."
-    ].join("\n");
-  }
-  const lines = [];
-  if (report.delivery.length > 0) {
-    lines.push("Accepted and not delivered:", "");
-    for (const gap of report.delivery) {
-      lines.push(`  ${gap.subject}`);
-      for (const item of gap.delivery) lines.push(`    ${item}`);
-    }
-    lines.push("");
-  }
-  if (report.direction.length > 0) {
-    lines.push("Declared direction not yet reached:", "");
-    for (const gap of report.direction) {
-      lines.push(`  ${gap.subject}`);
-      for (const item of gap.direction) lines.push(`    ${item}`);
-    }
-    lines.push("");
-  }
-  lines.push(
-    "Each becomes work the ordinary way \u2014 put it to the maintainer and open a",
-    "flow. Grouping several of these by the outcome that would close them",
-    "usually turns the list into one decision."
-  );
-  return lines.join("\n");
-}
-var init_debts = __esm({
-  "src/core/debts.ts"() {
-    "use strict";
-    init_trajectory();
   }
 });
 
@@ -5490,20 +1946,20 @@ __export(decided_exports, {
   findDecisions: () => findDecisions,
   renderDecisions: () => renderDecisions
 });
-import { readFile as readFile14, readdir as readdir11 } from "node:fs/promises";
-import { join as join7, relative as relative7, resolve as resolve19 } from "node:path";
+import { readFile as readFile10, readdir as readdir7 } from "node:fs/promises";
+import { join as join4, relative as relative3, resolve as resolve12 } from "node:path";
 function terms(subject) {
   const words = subject.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 0);
-  const meaningful2 = words.filter((term) => !FILLER.has(term));
-  return meaningful2.length > 0 ? meaningful2 : words;
+  const meaningful = words.filter((term) => !FILLER.has(term));
+  return meaningful.length > 0 ? meaningful : words;
 }
 function score(body, want) {
   const text = body.toLowerCase();
   return want.filter((term) => text.includes(term)).length;
 }
 function excerpt(body, want) {
-  const lines = body.split("\n").filter((line) => line.trim().length > 0);
-  const best = lines.map((line) => ({ line: line.trim(), hits: score(line, want) })).filter((entry) => entry.hits > 0).sort((left, right) => right.hits - left.hits)[0];
+  const lines = body.split("\n").filter((line2) => line2.trim().length > 0);
+  const best = lines.map((line2) => ({ line: line2.trim(), hits: score(line2, want) })).filter((entry) => entry.hits > 0).sort((left, right) => right.hits - left.hits)[0];
   return best?.line.replace(/^[-*#>|\s]+/, "").slice(0, 300) ?? "";
 }
 async function adjudications(root) {
@@ -5512,15 +1968,15 @@ async function adjudications(root) {
   for (const dir of [RECONSTRUCTION_DIR2, RECONSTRUCTION_ARCHIVE2]) {
     let cases = [];
     try {
-      cases = (await readdir11(resolve19(root, dir), { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+      cases = (await readdir7(resolve12(root, dir), { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     } catch {
       continue;
     }
     for (const id of cases) {
-      const path = join7(dir, id, "case.json");
+      const path = join4(dir, id, "case.json");
       let record;
       try {
-        record = JSON.parse(await readFile14(resolve19(root, path), "utf8"));
+        record = JSON.parse(await readFile10(resolve12(root, path), "utf8"));
       } catch {
         continue;
       }
@@ -5540,10 +1996,10 @@ async function adjudications(root) {
   return out;
 }
 async function walk(root, dir) {
-  const base = resolve19(root, dir);
+  const base = resolve12(root, dir);
   try {
-    const entries = await readdir11(base, { recursive: true, withFileTypes: true });
-    return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => relative7(root, join7(entry.parentPath ?? base, entry.name)));
+    const entries = await readdir7(base, { recursive: true, withFileTypes: true });
+    return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => relative3(root, join4(entry.parentPath ?? base, entry.name)));
   } catch {
     return [];
   }
@@ -5554,7 +2010,7 @@ async function findDecisions(root, subject) {
   const found = [];
   for (const lane of LANES) {
     for (const path of await walk(root, lane.dir)) {
-      const body = await readFile14(resolve19(root, path), "utf8").catch(() => "");
+      const body = await readFile10(resolve12(root, path), "utf8").catch(() => "");
       if (score(body, want) < Math.min(2, want.length)) continue;
       const said = excerpt(body, want);
       if (!said) continue;
@@ -5655,8 +2111,8 @@ __export(doctor_exports, {
   runDoctor: () => runDoctor
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { access, readFile as readFile15, readdir as readdir12, stat as stat5 } from "node:fs/promises";
-import { resolve as resolve20 } from "node:path";
+import { access, readFile as readFile11, stat as stat4 } from "node:fs/promises";
+import { resolve as resolve13 } from "node:path";
 async function exists2(path) {
   return access(path).then(
     () => true,
@@ -5664,7 +2120,7 @@ async function exists2(path) {
   );
 }
 async function runDoctor(targetInput, options = {}) {
-  const target = resolve20(targetInput);
+  const target = resolve13(targetInput);
   const runner = options.runner ?? run;
   const checks = [];
   let state;
@@ -5702,21 +2158,13 @@ async function runDoctor(targetInput, options = {}) {
     status: "pass",
     message: `wfctl ${state.installedVersion}, ${Object.keys(state.files).length} owned file(s)`
   });
-  if (options.distribution) {
-    const plan = await planInstall({
-      target,
-      distribution: options.distribution,
-      version: state.installedVersion
-    });
+  const plan = options.distribution ? await planInstall({
+    target,
+    distribution: options.distribution,
+    version: state.installedVersion
+  }) : void 0;
+  if (plan) {
     const pending = plan.operations.filter((operation) => operation.kind === "write");
-    if (plan.edited.length > 0) {
-      checks.push({
-        name: "installation-edited",
-        status: "warn",
-        message: `${plan.edited.length} owned file(s) edited since install: ${plan.edited.join(", ")}`,
-        remedy: "Keep them, or delete them and run: wfctl init knowledge"
-      });
-    }
     if (pending.length > 0) {
       checks.push({
         name: "installation-pending",
@@ -5725,10 +2173,19 @@ async function runDoctor(targetInput, options = {}) {
         remedy: "wfctl init knowledge"
       });
     }
+    if (plan.obsolete.length > 0) {
+      checks.push({
+        name: "installation-obsolete",
+        status: "warn",
+        message: `${plan.obsolete.length} retired wfctl file(s) will be removed by init`
+      });
+    }
   }
+  const obsolete = new Set(plan?.obsolete ?? []);
   const missing = [];
   for (const path of Object.keys(state.files)) {
-    if (!await exists2(resolve20(target, path))) missing.push(path);
+    if (obsolete.has(path)) continue;
+    if (!await exists2(resolve13(target, path))) missing.push(path);
   }
   checks.push({
     name: "installed-files",
@@ -5745,7 +2202,7 @@ async function runDoctor(targetInput, options = {}) {
   });
   const absentDirs = [];
   for (const directory of KNOWLEDGE_DIRECTORIES) {
-    const found = await stat5(resolve20(target, directory)).then(
+    const found = await stat4(resolve13(target, directory)).then(
       (entry) => entry.isDirectory(),
       () => false
     );
@@ -5758,9 +2215,9 @@ async function runDoctor(targetInput, options = {}) {
     ...absentDirs.length > 0 ? { remedy: "wfctl init knowledge" } : {}
   });
   for (const directory of SKILL_DIRS) {
-    const skill = resolve20(target, directory, "SKILL.md");
+    const skill = resolve13(target, directory, "SKILL.md");
     const present = await exists2(skill);
-    const frontmatter2 = present ? (await readFile15(skill, "utf8")).startsWith("---\nname: wfctl") : false;
+    const frontmatter2 = present ? (await readFile11(skill, "utf8")).startsWith("---\nname: wfctl") : false;
     checks.push({
       name: `skill:${directory.split("/")[0]}`,
       status: present && frontmatter2 ? "pass" : "fail",
@@ -5768,48 +2225,19 @@ async function runDoctor(targetInput, options = {}) {
       ...present && frontmatter2 ? {} : { remedy: "wfctl init knowledge" }
     });
   }
-  const block = await readFile15(resolve20(target, "AGENTS.md"), "utf8").catch(() => "");
+  const block = await readFile11(resolve13(target, "AGENTS.md"), "utf8").catch(() => "");
   checks.push({
     name: "managed-block",
     status: block.includes("wfctl:begin") ? "pass" : "fail",
     message: block.includes("wfctl:begin") ? "Present in AGENTS.md" : "Absent \u2014 nothing points the agent at the skill",
     ...block.includes("wfctl:begin") ? {} : { remedy: "wfctl init knowledge" }
   });
-  let guards = [];
-  try {
-    guards = await guardStatus(target);
-  } catch (error) {
-    checks.push({
-      name: "guards",
-      status: "fail",
-      message: `.claude/settings.json cannot be read: ${error.message}`,
-      remedy: "Repair the file, then: wfctl init knowledge"
-    });
-  }
-  for (const guard of guards) {
-    const script = await exists2(
-      resolve20(target, RUNTIME_DIR, guard.guard === "bash" ? "guard-background-bash.mjs" : `guard-${guard.guard}.mjs`)
-    );
-    checks.push({
-      name: `guard:${guard.guard}`,
-      status: guard.installed && script ? "pass" : guard.installed ? "fail" : "warn",
-      message: !script ? "Armed in settings, but its script is missing" : guard.installed ? guard.describes : `Off \u2014 ${guard.describes}`,
-      ...guard.installed && script ? {} : { remedy: `wfctl guards on ${guard.guard}` }
-    });
-  }
-  const onPath = runner("wfctl", ["--help"], { cwd: target });
-  checks.push({
-    name: "wfctl-on-path",
-    status: onPath.status === 0 && onPath.stdout.includes("project workflow") ? "pass" : "fail",
-    message: onPath.status === 0 && onPath.stdout.includes("project workflow") ? "The guards can reach it" : "Not on PATH \u2014 every guard will fail open and report nothing",
-    remedy: "Put wfctl on PATH (bun link, or npm i -g wfctl)"
-  });
   const registry = await readRegistry(target);
   if (registry.length === 0) {
     checks.push({
       name: "repositories",
       status: "warn",
-      message: "None registered; no source code can be read or written",
+      message: "None registered for optional cross-repository lookup",
       remedy: "wfctl repo add <owner/name> --path <dir>"
     });
   } else {
@@ -5836,8 +2264,7 @@ async function runDoctor(targetInput, options = {}) {
     checks.push({
       name: "curated-knowledge",
       status: "warn",
-      message: "Empty; nothing has been recorded about this project yet",
-      remedy: "wfctl reconstruct start"
+      message: "No curated pages yet"
     });
   } else {
     const issues = await validateCurated2(target);
@@ -5866,23 +2293,6 @@ async function runDoctor(targetInput, options = {}) {
       ...pending ? { remedy: "qmd embed" } : {}
     });
   }
-  const inbox = await readdir12(resolve20(target, "changes/inbox")).catch(() => []);
-  const captures = inbox.filter((entry) => entry.endsWith(".md"));
-  checks.push({
-    name: "capture-inbox",
-    status: captures.length > 0 ? "warn" : "pass",
-    message: captures.length > 0 ? `${captures.length} unresolved capture(s); a queue nobody opens is the same as no queue` : "Empty",
-    ...captures.length > 0 ? { remedy: "Route or discard each one" } : {}
-  });
-  const queued = await readdir12(resolve20(target, "changes/promotion")).catch(() => []);
-  if (queued.length > 0) {
-    checks.push({
-      name: "promotion-queue",
-      status: "warn",
-      message: `${queued.length} record(s) waiting on the maintainer`,
-      remedy: "wfctl work promotion list"
-    });
-  }
   return { target, checks };
 }
 function renderReport(report) {
@@ -5908,7 +2318,6 @@ var init_doctor = __esm({
   "src/core/doctor.ts"() {
     "use strict";
     init_install();
-    init_install();
     init_leaves();
     init_registry();
     run = (command, args, options) => {
@@ -5926,145 +2335,56 @@ var init_doctor = __esm({
   }
 });
 
-// src/core/continuing.ts
-var continuing_exports = {};
-__export(continuing_exports, {
-  keepWatching: () => keepWatching
-});
-import { mkdir as mkdir12, readFile as readFile16, writeFile as writeFile12, rename as rename3 } from "node:fs/promises";
-import { dirname as dirname12, resolve as resolve21 } from "node:path";
-async function read(root) {
-  try {
-    const value = JSON.parse(await readFile16(resolve21(root, MEMORY), "utf8"));
-    return {
-      key: typeof value.key === "string" ? value.key : "",
-      budget: Number.isInteger(value.budget) ? value.budget : 0,
-      fires: Number.isInteger(value.fires) ? value.fires : 0,
-      answer: typeof value.answer === "string" ? value.answer : ""
-    };
-  } catch {
-    return { key: "", budget: 0, fires: 0, answer: "" };
-  }
-}
-async function keepWatching(root) {
-  const carried = await read(root);
-  const path = resolve21(root, MEMORY);
-  await mkdir12(dirname12(path), { recursive: true });
-  const temporary = `${path}.tmp`;
-  await writeFile12(temporary, `${JSON.stringify({ ...carried, budget: 1 })}
-`, "utf8");
-  await rename3(temporary, path);
-  return [
-    "Watching again. The next turn that ends is checked the same way this one was.",
-    "",
-    "Nothing else changed \u2014 this records no state and moves no work. If the work",
-    "itself moved, that belongs where recovery reads it:",
-    "",
-    '  wfctl checkpoint "<what has happened since>"'
-  ].join("\n");
-}
-var MEMORY;
-var init_continuing = __esm({
-  "src/core/continuing.ts"() {
-    "use strict";
-    MEMORY = ".workflow/current/hooks/stop-guard.json";
-  }
-});
-
 // src/core/cli.ts
-init_commands();
 init_gates();
-import { existsSync as existsSync2, realpathSync as realpathSync2 } from "node:fs";
-import { readFile as readFile17 } from "node:fs/promises";
-import { dirname as dirname13, resolve as resolve22 } from "node:path";
+import { existsSync, realpathSync as realpathSync2 } from "node:fs";
+import { readFile as readFile12 } from "node:fs/promises";
+import { dirname as dirname7, resolve as resolve14 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/core/flags.ts
 init_gates();
 var NONE = { value: [], boolean: [] };
 var COMMAND_FLAGS = {
-  "brief": { value: [], boolean: ["json"] },
-  "handoff": NONE,
-  "checkpoint": { value: ["summary", "handoff", "last", "next", "todo", "about"], boolean: [] },
-  "notes": NONE,
-  "finding": { value: ["about", "artifact"], boolean: [] },
-  "finding list": NONE,
-  "finding resolve": { value: ["how"], boolean: [] },
-  "finding release": NONE,
-  "learned": { value: ["detail", "attested"], boolean: [] },
-  "learned list": NONE,
-  "kit": NONE,
-  "kit survey": NONE,
-  "kit adopt": { value: ["attested"], boolean: [] },
-  "artifact": NONE,
-  "artifact add": { value: ["what", "supersedes"], boolean: [] },
-  "artifact list": NONE,
-  "work start": { value: ["title", "weight", "attested", "from"], boolean: [] },
-  "work adopt": { value: ["attested", "weight", "title", "from"], boolean: [] },
-  "work list": NONE,
-  "work bind": NONE,
-  "work step": NONE,
-  "work issue create": { value: ["title", "satisfies"], boolean: [] },
-  "work issue list": NONE,
-  "work issue note": { value: ["note"], boolean: [] },
-  "work issue claim": { value: ["repository", "worktree"], boolean: [] },
-  "work issue complete": { value: ["evidence", "remainder"], boolean: [] },
-  "work issue drop": { value: ["reason"], boolean: [] },
-  "work park": { value: ["reason", "attested"], boolean: [] },
-  "work release": { value: ["attested"], boolean: [] },
-  "work verify": { value: ["review", "brief", "at"], boolean: [] },
-  "work close": { value: ["outcome"], boolean: [] },
-  "work promote": { value: ["subject", "summary", "bundle", "settles"], boolean: [] },
-  "work promotion draft": NONE,
-  "work promotion list": NONE,
-  "capture": { value: [], boolean: ["awaits"] },
+  "bundle create": { value: ["id", "title", "scope", "agreed"], boolean: [] },
+  "bundle list": NONE,
+  "bundle show": { value: ["id"], boolean: [] },
+  "unit create": { value: ["bundle", "id", "title", "outcome", "boundary", "agreed"], boolean: [] },
+  "unit list": { value: ["bundle"], boolean: [] },
+  "unit show": { value: ["bundle", "id"], boolean: [] },
+  "flow checkpoint": { value: ["namespace", "id", "instruction", "last", "next", "link", "blocker", "checkout", "revision"], boolean: [] },
+  "flow handoff": { value: ["namespace", "id"], boolean: [] },
+  "flow list": { value: ["namespace"], boolean: [] },
   "repo add": { value: ["path", "worktree", "checkout"], boolean: [] },
   "repo list": NONE,
   "repo remove": { value: ["worktree"], boolean: [] },
+  "trajectory append": { value: ["subject", "summary", "axis", "claim", "at", "change", "settles"], boolean: [] },
+  "trajectory list": NONE,
+  "trajectory show": NONE,
   "reconstruct start": NONE,
   "reconstruct status": NONE,
-  "reconstruct scope": {
-    value: ["repository", "revision", "raw", "in", "not"],
-    boolean: []
-  },
+  "reconstruct scope": { value: ["repository", "revision", "raw", "in", "not"], boolean: [] },
   "reconstruct read": { value: ["at"], boolean: [] },
   "reconstruct exclude": { value: ["reason"], boolean: [] },
   "reconstruct contradiction": { value: ["subject", "side"], boolean: [] },
   "reconstruct resolve": { value: ["resolution"], boolean: [] },
   "reconstruct subject": NONE,
-  "reconstruct probe": {
-    value: ["question", "page", "asker", "answer"],
-    boolean: ["passed"]
-  },
+  "reconstruct probe": { value: ["question", "page", "asker", "answer"], boolean: ["passed"] },
   "reconstruct stage": NONE,
   "reconstruct abandon": { value: ["reason"], boolean: [] },
   "reconstruct close": NONE,
-  "trajectory append": {
-    value: ["subject", "summary", "axis", "claim", "at", "change", "settles"],
-    boolean: []
-  },
-  "trajectory list": NONE,
-  "trajectory show": NONE,
-  "recall list": NONE,
-  "recall answer": { value: ["answer", "route", "source"], boolean: [] },
-  "recall route": { value: ["covered"], boolean: [] },
-  "flow close": NONE,
   "init": { value: ["target"], boolean: [] },
   "guide": NONE,
-  "debts": NONE,
   "decided": NONE,
   "knowledge validate": { value: ["page"], boolean: [] },
   "knowledge hash": { value: ["page"], boolean: [] },
-  "continue": NONE,
   "doctor": NONE,
-  "guards": NONE,
-  "hook write": { value: ["target"], boolean: [] },
   "help": NONE
 };
 var ANYWHERE = /* @__PURE__ */ new Map();
 for (const [command, spec] of Object.entries(COMMAND_FLAGS)) {
-  for (const name of [...spec.value, ...spec.boolean]) {
-    ANYWHERE.set(name, [...ANYWHERE.get(name) ?? [], command]);
+  for (const name3 of [...spec.value, ...spec.boolean]) {
+    ANYWHERE.set(name3, [...ANYWHERE.get(name3) ?? [], command]);
   }
 }
 function resolveCommand(argv) {
@@ -6078,36 +2398,30 @@ function resolveCommand(argv) {
 function flagName(token) {
   return token.slice(2).split("=")[0] ?? "";
 }
-var FLAG_SHAPED = /^--[a-z][a-z0-9-]*(=.*)?$/;
-var BODY_COMMANDS = /* @__PURE__ */ new Set(["capture", "checkpoint", "finding", "learned"]);
-function isBody(argv, index) {
-  if (index === 0 || !BODY_COMMANDS.has(argv[0] ?? "")) return false;
-  return !FLAG_SHAPED.test(argv[index] ?? "");
-}
 function normalize(argv) {
   const resolved = resolveCommand(argv);
   if (!resolved) return argv;
   const { spec } = resolved;
   const out = [];
-  for (const [index, token] of argv.entries()) {
-    if (!token.startsWith("--") || !token.includes("=") || isBody(argv, index)) {
+  for (const token of argv) {
+    if (!token.startsWith("--") || !token.includes("=")) {
       out.push(token);
       continue;
     }
-    const name = flagName(token);
-    const value = token.slice(name.length + 3);
-    if (spec.boolean.includes(name)) {
+    const name3 = flagName(token);
+    const value = token.slice(name3.length + 3);
+    if (spec.boolean.includes(name3)) {
       throw new GateRefusal(
-        `--${name} takes no value.`,
-        `--${name}`,
+        `--${name3} takes no value.`,
+        `--${name3}`,
         `It was given as ${token}. Its presence is the whole meaning; a value attached to it is read by nobody.`
       );
     }
-    if (spec.value.includes(name)) {
+    if (spec.value.includes(name3)) {
       if (!value) {
-        throw new GateRefusal(`--${name} was given without a value.`, `--${name} "<value>"`);
+        throw new GateRefusal(`--${name3} was given without a value.`, `--${name3} "<value>"`);
       }
-      out.push(`--${name}`, value);
+      out.push(`--${name3}`, value);
       continue;
     }
     out.push(token);
@@ -6119,19 +2433,19 @@ function validate(argv) {
   if (!resolved) return;
   const { key, spec } = resolved;
   const unknown = [];
-  for (const [index, token] of argv.entries()) {
-    if (!token.startsWith("--") || isBody(argv, index)) continue;
-    const name = flagName(token);
-    if (!name || spec.value.includes(name) || spec.boolean.includes(name)) continue;
-    unknown.push(name);
+  for (const token of argv) {
+    if (!token.startsWith("--")) continue;
+    const name3 = flagName(token);
+    if (!name3 || spec.value.includes(name3) || spec.boolean.includes(name3)) continue;
+    unknown.push(name3);
   }
   if (unknown.length === 0) return;
-  const detail = unknown.map((name) => {
-    const elsewhere = ANYWHERE.get(name);
-    return elsewhere ? `  --${name} belongs to: ${elsewhere.join(", ")}` : `  --${name} is read by no command`;
+  const detail = unknown.map((name3) => {
+    const elsewhere = ANYWHERE.get(name3);
+    return elsewhere ? `  --${name3} belongs to: ${elsewhere.join(", ")}` : `  --${name3} is read by no command`;
   }).join("\n");
   throw new GateRefusal(
-    `${key} does not read ${unknown.map((name) => `--${name}`).join(", ")}.`,
+    `${key} does not read ${unknown.map((name3) => `--${name3}`).join(", ")}.`,
     "wfctl help",
     `${detail}
 
@@ -6140,188 +2454,107 @@ A flag nobody reads is a command running with a meaning you did not intend.`
 }
 
 // src/core/cli.ts
-init_recall();
 init_install();
-init_promotion_queue();
-init_types();
-var USAGE = `wfctl \u2014 project workflow
+var USAGE = `wfctl \u2014 optional project records
 
-  brief [--json]               the state of this repository, and what awaits whom
-  handoff [<flow>]             the full recall body for a flow
-  checkpoint "<anything worth not looking up again>"   [--about <unit>]
-  checkpoint [--summary ...] [--handoff ...] [--last ...] [--next ...] [--todo ...]
-                               a body writes a note; the flags update the index.
-                               Either alone. What you do not name is left as it was.
-  notes                        everything written down for this flow
+  --version
+  bundle create --id <id> --title <title> --scope <delivery> --agreed <agreement>
+  bundle list | show --id <id>
+  unit create --bundle <bundle> --id <id> --title <title>
+              --outcome <result> --boundary <limits> --agreed <agreement>
+  unit list --bundle <bundle> | show --bundle <bundle> --id <id>
 
-  kit                          what this work is equipped with
-  kit survey                   the skills, strategies and personalities it could pick up
-  kit adopt <id>... --attested "<what they said>"
-
-  learned "<the one line>" --detail "<what happened, and what to do>"
-          --attested "<what they said>"
-                               one problem, solved, kept past this work
-  learned list                 what earlier work already found out
-
-  finding "<what you found>" [--about <unit>] [--artifact <path>]
-                               something this work should settle, kept with this work
-  finding list | resolve <id> --how "<what you did>" | release <id>
-
-  artifact add <path> --what "<what it is>" [--supersedes <path>]
-  artifact list                what this work produced, and what still stands
-
-  work start --title ... --weight <significant|lightweight>
-             --attested "<what the maintainer said>" [--from <where it came from>]
-  work adopt <bundle> --attested "<what they said>"
-             [--weight <significant|lightweight>] [--title ...] [--from <where>]
-  work list                    every bundle, and whether anything can reach it
-  work bind <flow>             work in a different open flow
-  work step                    where this work is, and what moves it on
-  work step <step>             record that this step is reached
-  work issue create --title ... [--satisfies AC-01]...
-  work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
-  work issue complete <id> --evidence "<what proves it>" [--remainder "<what is left>"]
-  work issue drop <id> --reason "<why it left the route>"
-  work park --reason ... --attested "<their words>"
-  work release --attested "<their words>"
-  work verify --brief <personality> [--at <revision>]
-                               the brief to hand the reviewing agent
-  work verify --review <artifact>
-  work close --outcome <completed|partial|abandoned>
-  work promote --subject "<product subject>" --summary "<what it now does>"
-               [--bundle <record>] [--settles <event-id>]
-  work promotion draft <page>  create a page draft at the path it will occupy
-  work promotion list          records waiting on the maintainer
-
-  capture "<what you found>" [--awaits]
-                               for what is OUTSIDE this work's fence. Inside it,
-                               use finding \u2014 it stays with the work that found it.
-
-  repo add <owner/name> --path <dir> [--worktree <id>] [--checkout <name>]
-  repo list | repo remove <owner/name> [--worktree <id>]
-
-  reconstruct start            open a case over the registered repositories
-  reconstruct status
-  reconstruct scope --repository <owner/name> [--revision <sha>] [--raw all|selected|none] [--in <path>]...
-  reconstruct read <path> [--at <owner/name>]   record a read, or print the file at the pinned revision
-  reconstruct exclude <path> --reason "<why>"
-  reconstruct contradiction --subject ... --side ... --side ...
-  reconstruct resolve <id> --resolution "<what they decided>"
-  reconstruct subject <trajectory-id>
-  reconstruct probe --question ... --page <path> --asker <agent> [--passed]
-  reconstruct stage            advance when this stage's gate passes
-  reconstruct abandon --reason "<why>"
-  reconstruct close
-
-  trajectory append --subject ... --summary ... --axis <intent|delivery|vision>
-                    [--settles <event-id>]   a delivery names the intent it settles
-  trajectory list | trajectory show <subject>
-
-  recall list                  the checklist
-  recall answer <item> --answer ... --route ... --source ...
-  recall route <route> --covered <path> [--covered <path>]...
-
-  flow close [<flow-id>]       flush the checkpoint and drop the fence
+  flow checkpoint --namespace <agent> --id <thread>
+                  --instruction <current-request> --last <done> --next <action>
+                  [--link <path>]... [--blocker <text>]
+                  [--checkout <path>] [--revision <sha>]
+  flow handoff --namespace <agent> --id <thread>
+  flow list --namespace <agent>
 
   init knowledge [--target <dir>]
-
-  guide [<topic>]              detail for one topic, when the state needs it
-
-  debts                        what is accepted and not delivered, across every subject
-  decided "<subject>"          what has already been settled about it, and where
+  doctor
+  guide [<topic>]
   knowledge validate [--page <path>]
   knowledge hash <path>
+  repo add|list|remove ...
+  reconstruct ...
+  trajectory ...
+  decided <subject>
 
-  doctor                       verify this installation and what it depends on
-
-  continue                     still working \u2014 the turn check re-arms for your next stop
-  guards [status]              which runtime guards are on
-  guards on|off <stop|write|bash>
-
-  hook write --target <path>   used by the pre-write guard, not by hand
-`;
+Ordinary work requires no wfctl command. Bundle and unit creation require an
+explicit agreement. Flow notes are local, short, and selected by namespace.`;
 function ok_(stdout) {
   return { stdout, exitCode: 0 };
 }
 function compose_(parts) {
   return parts.filter((part) => Boolean(part && part.trim())).join("\n\n");
 }
-function flag(argv, name) {
-  const index = argv.indexOf(`--${name}`);
+function flag(argv, name3) {
+  const index = argv.indexOf(`--${name3}`);
   if (index < 0) return void 0;
   const value = argv[index + 1];
   if (value === void 0 || value.startsWith("--")) {
     throw new GateRefusal(
-      `--${name} was given without a value.`,
-      `--${name} "<value>"`,
+      `--${name3} was given without a value.`,
+      `--${name3} "<value>"`,
       value === void 0 ? void 0 : `The next argument was ${value}, which is another flag.`
     );
   }
   return value;
 }
-var FLAG_LIKE = /^--[a-z][a-z0-9-]*$/;
-function bare(argv) {
-  for (const [index, token] of argv.entries()) {
-    if (FLAG_LIKE.test(token)) continue;
-    if (index > 0 && FLAG_LIKE.test(argv[index - 1] ?? "")) continue;
-    return token;
-  }
-  return void 0;
-}
 function optional(key, value) {
   return value === void 0 ? {} : { [key]: value };
 }
-function flags(argv, name) {
+function flags(argv, name3) {
   const values = [];
   argv.forEach((entry, index) => {
-    if (entry !== `--${name}`) return;
+    if (entry !== `--${name3}`) return;
     const value = argv[index + 1];
     if (value === void 0 || value.startsWith("--")) {
-      throw new GateRefusal(`--${name} was given without a value.`, `--${name} "<value>"`);
+      throw new GateRefusal(`--${name3} was given without a value.`, `--${name3} "<value>"`);
     }
     values.push(value);
   });
   return values;
 }
-function oneOf(value, allowed, name, fallback) {
+function exactRecordFlags(argv, repeatable = []) {
+  const seen = /* @__PURE__ */ new Set();
+  for (let index = 0; index < argv.length; index += 2) {
+    const key = argv[index];
+    const value = argv[index + 1];
+    if (!key?.startsWith("--") || value === void 0 || value.startsWith("--")) {
+      throw new GateRefusal("Unexpected record command argument.", "Use named --flags with one value each.");
+    }
+    if (seen.has(key) && !repeatable.includes(key)) {
+      throw new GateRefusal(`${key} was supplied more than once.`, "Use one value for this field.");
+    }
+    seen.add(key);
+  }
+}
+function oneOf(value, allowed, name3, fallback) {
   if (value === void 0) {
     if (fallback !== void 0) return fallback;
-    throw new GateRefusal(`--${name} is required.`, `--${name} <${allowed.join("|")}>`);
+    throw new GateRefusal(`--${name3} is required.`, `--${name3} <${allowed.join("|")}>`);
   }
   if (!allowed.includes(value)) {
     throw new GateRefusal(
-      `${value} is not a valid ${name}.`,
-      `--${name} <${allowed.join("|")}>`
+      `${value} is not a valid ${name3}.`,
+      `--${name3} <${allowed.join("|")}>`
     );
   }
   return value;
 }
 async function run2(argv, context) {
-  const result = await dispatch(argv, context);
-  if (result.exitCode !== 0) return result;
-  try {
-    const { currentFlow: currentFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
-    const { driftLine: driftLine2, lastWritten: lastWritten2 } = await Promise.resolve().then(() => (init_checkpoint(), checkpoint_exports));
-    const flow = await currentFlow2(context.root);
-    if (!flow) return result;
-    if (argv[0] === "hook" || argv[0] === "brief" || argv[0] === "checkpoint") return result;
-    if (argv[0] === "work" && argv[1] === "step") return result;
-    const drift = driftLine2(lastWritten2(flow));
-    if (!drift) return result;
-    return {
-      stdout: `${result.stdout}
-
-\u26A0 ${drift}.
-  wfctl checkpoint "<what has happened since>"`,
-      exitCode: result.exitCode
-    };
-  } catch {
-    return result;
-  }
+  return dispatch(argv, context);
 }
 async function dispatch(argv, context) {
   if (argv.includes("--help")) {
     return { stdout: USAGE, exitCode: 0 };
+  }
+  if (argv.length === 1 && argv[0] === "--version") {
+    const packageFile = resolve14(context.assets, "..", "..", "package.json");
+    const metadata = JSON.parse(await readFile12(packageFile, "utf8"));
+    return ok_(metadata.version ?? "unknown");
   }
   let scanned;
   try {
@@ -6339,334 +2572,65 @@ async function dispatch(argv, context) {
       case void 0:
       case "help":
         return { stdout: USAGE, exitCode: 0 };
-      case "brief": {
-        if (rest.includes("--json")) {
-          const { listFlows: listFlows2, currentFlowId: currentFlowId2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
-          const { deriveBlocker: deriveBlocker2 } = await Promise.resolve().then(() => (init_steps(), steps_exports));
-          const flows = (await listFlows2(context.root)).filter((flow) => !flow.closedAt);
-          const current = await currentFlowId2(context.root);
-          const { briefExtras: briefExtras2 } = await Promise.resolve().then(() => (init_commands(), commands_exports));
-          const extras = await briefExtras2(context);
-          const signals = flows.flatMap((flow) => {
-            const blocker = deriveBlocker2(flow);
-            return blocker ? [{ id: flow.id, awaits: blocker.awaits, summary: blocker.summary, remedy: blocker.remedy }] : [];
-          });
-          for (const id of extras.queued) {
-            signals.push({
-              id,
-              awaits: "maintainer",
-              summary: "waits in the promotion queue",
-              remedy: 'wfctl work promote --subject "<product subject>" --summary "<what it now does>"'
-            });
-          }
-          if (extras.reconstruction) {
-            signals.push({
-              id: extras.reconstruction.id,
-              awaits: "agent",
-              summary: `reconstruction at stage ${extras.reconstruction.stage}`,
-              remedy: "wfctl reconstruct status"
-            });
-          }
-          for (const id of extras.stranded ?? []) {
-            signals.push({
-              id,
-              awaits: "maintainer",
-              summary: "has no flow, so nothing can reach it",
-              remedy: `wfctl work adopt ${id} --weight <significant|lightweight> --attested "<what they said>"`
-            });
-          }
-          for (const broken of extras.unreadable ?? []) {
-            signals.push({
-              id: broken.id,
-              awaits: "agent",
-              summary: `record cannot be read: ${broken.problem}`,
-              remedy: `repair .workflow/flows/${broken.id}.json`
-            });
-          }
-          if (extras.awaitingCaptures) {
-            signals.push({
-              id: "changes/inbox",
-              awaits: "maintainer",
-              summary: `${extras.awaitingCaptures} capture(s) await the maintainer`,
-              remedy: "put them one decision at a time, not as a backlog"
-            });
-          }
-          return ok_(JSON.stringify({ current, signals }, null, 2));
-        }
-        return await brief(context);
-      }
-      case "handoff":
-        return await handoff(context, rest[0]);
-      case "checkpoint": {
-        const body = bare(rest);
-        return await checkpoint(context, {
-          ...body === void 0 ? {} : { body },
-          ...optional("summary", flag(rest, "summary")),
-          ...optional("handoff", flag(rest, "handoff")),
-          ...optional("last", flag(rest, "last")),
-          ...optional("next", flag(rest, "next")),
-          ...optional("about", flag(rest, "about")),
-          todo: flags(rest, "todo")
-        });
-      }
-      case "notes":
-        return await notes(context);
-      case "learned": {
-        if (rest[0] === "list") return await learnedList(context);
-        return await learned(context, {
-          title: bare(rest) ?? "",
-          detail: flag(rest, "detail") ?? "",
-          attested: flag(rest, "attested") ?? ""
-        });
-      }
-      case "kit": {
+      case "bundle": {
+        const { bundleCreate: bundleCreate2, bundleList: bundleList2, bundleShow: bundleShow2 } = await Promise.resolve().then(() => (init_voluntary_records(), voluntary_records_exports));
         const [action, ...args] = rest;
-        if (action === void 0) return await kitList(context);
-        if (action === "survey") return await kitSurvey(context);
-        if (action === "adopt") {
-          const ids = args.filter(
-            (entry, index) => !entry.startsWith("--") && !(args[index - 1] ?? "").startsWith("--")
-          );
-          return await kitAdopt(context, { ids, attested: flag(args, "attested") ?? "" });
-        }
-        return {
-          stdout: new GateRefusal(
-            "kit takes survey or adopt, or nothing at all.",
-            "wfctl kit survey",
-            "`wfctl kit` alone lists what this work is already equipped with."
-          ).render(),
-          exitCode: 2
-        };
+        exactRecordFlags(args);
+        if (action === "list") return ok_(await bundleList2(context.root));
+        if (action === "show") return ok_(await bundleShow2(context.root, flag(args, "id") ?? ""));
+        if (action === "create") return ok_(await bundleCreate2(context.root, {
+          id: flag(args, "id") ?? "",
+          title: flag(args, "title") ?? "",
+          scope: flag(args, "scope") ?? "",
+          agreed: flag(args, "agreed") ?? ""
+        }));
+        throw new GateRefusal("Unknown bundle action.", "wfctl bundle <create|list|show>");
       }
-      case "finding": {
+      case "unit": {
+        const { unitCreate: unitCreate2, unitList: unitList2, unitShow: unitShow2 } = await Promise.resolve().then(() => (init_voluntary_records(), voluntary_records_exports));
         const [action, ...args] = rest;
-        if (action === "list") return await findingList(context);
-        if (action === "resolve") {
-          return await findingResolve(context, {
-            id: args[0] ?? "",
-            how: flag(args, "how") ?? ""
-          });
-        }
-        if (action === "release") return await findingRelease(context, { id: args[0] ?? "" });
-        return await findingAdd(context, {
-          what: bare(rest) ?? "",
-          ...optional("about", flag(rest, "about")),
-          artifacts: flags(rest, "artifact")
-        });
+        exactRecordFlags(args);
+        if (action === "list") return ok_(await unitList2(context.root, flag(args, "bundle") ?? ""));
+        if (action === "show") return ok_(await unitShow2(context.root, flag(args, "bundle") ?? "", flag(args, "id") ?? ""));
+        if (action === "create") return ok_(await unitCreate2(context.root, {
+          bundle: flag(args, "bundle") ?? "",
+          id: flag(args, "id") ?? "",
+          title: flag(args, "title") ?? "",
+          outcome: flag(args, "outcome") ?? "",
+          boundary: flag(args, "boundary") ?? "",
+          agreed: flag(args, "agreed") ?? ""
+        }));
+        throw new GateRefusal("Unknown unit action.", "wfctl unit <create|list|show>");
       }
-      case "artifact": {
+      case "flow": {
+        const { recoveryCheckpoint: recoveryCheckpoint2, recoveryHandoff: recoveryHandoff2, recoveryList: recoveryList2 } = await Promise.resolve().then(() => (init_recovery_notes(), recovery_notes_exports));
         const [action, ...args] = rest;
-        if (action === "list") return await artifactList(context);
-        if (action === "add") {
-          return await artifactAdd(context, {
-            path: bare(args) ?? "",
-            what: flag(args, "what") ?? "",
-            ...optional("supersedes", flag(args, "supersedes"))
-          });
-        }
-        return {
-          stdout: new GateRefusal(
-            "artifact takes add or list.",
-            'wfctl artifact add <path> --what "<what it is>"'
-          ).render(),
-          exitCode: 2
-        };
-      }
-      case "recall": {
-        const [action, ...args] = rest;
-        if (action === "list") {
-          return {
-            stdout: RECALL_ITEMS.map((item) => `${item.id}  ${item.question}`).join("\n"),
-            exitCode: 0
-          };
-        }
-        if (action === "answer") {
-          return await recallAnswer(context, {
-            item: args[0] ?? "",
-            answer: flag(args, "answer") ?? "",
-            route: oneOf(flag(args, "route"), RECALL_ROUTES, "route"),
-            source: flag(args, "source") ?? ""
-          });
-        }
-        if (action === "route") {
-          return await recallRoute(context, {
-            route: oneOf(args[0], RECALL_ROUTES, "route"),
-            covered: flags(args, "covered")
-          });
-        }
-        return { stdout: USAGE, exitCode: 1 };
-      }
-      case "work": {
-        const [action, ...args] = rest;
-        if (action === "adopt") {
-          const { workAdopt: workAdopt2 } = await Promise.resolve().then(() => (init_commands(), commands_exports));
-          return await workAdopt2(context, {
-            bundle: args[0] ?? "",
-            attested: flag(args, "attested") ?? "",
-            ...flag(args, "weight") ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") } : {},
-            ...flag(args, "title") ? { title: flag(args, "title") } : {},
-            ...flag(args, "from") ? { from: flag(args, "from") } : {}
-          });
-        }
-        if (action === "list") {
-          const { workList: workList2 } = await Promise.resolve().then(() => (init_commands(), commands_exports));
-          return await workList2(context);
-        }
-        if (action === "start") {
-          return await workStart(context, {
-            title: flag(args, "title") ?? "",
-            attested: flag(args, "attested") ?? "",
-            ...flag(args, "weight") ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") } : {},
-            ...flag(args, "from") ? { from: flag(args, "from") } : {}
-          });
-        }
-        if (action === "bind") return await workBind(context, args[0] ?? "");
-        if (action === "step") {
-          const step = args[0];
-          if (!step) return await workWhere(context);
-          if (!WORK_STEPS.includes(step)) {
-            return {
-              stdout: new GateRefusal(
-                `There is no step called ${step}.`,
-                "wfctl work step   (with nothing after it, to see where this work is)",
-                `The steps are: ${WORK_STEPS.join(", ")}`
-              ).render(),
-              exitCode: 2
-            };
-          }
-          return await advance(context, step);
-        }
-        if (action === "issue") {
-          const [sub, ...rest_] = args;
-          if (sub === "create") {
-            return await issueCreate(context, {
-              title: flag(rest_, "title") ?? "",
-              acceptance: flags(rest_, "satisfies")
-            });
-          }
-          if (sub === "list") return await issueList(context);
-          if (sub === "note") {
-            return await issueNote(context, {
-              id: rest_[0] ?? "",
-              note: flag(rest_, "note") ?? ""
-            });
-          }
-          if (sub === "claim") {
-            return await issueClaim(context, {
-              id: rest_[0] ?? "",
-              repository: flag(rest_, "repository") ?? "",
-              checkout: flag(rest_, "checkout") ?? "",
-              worktreeId: flag(rest_, "worktree") ?? "main"
-            });
-          }
-          if (sub === "complete") {
-            return await issueComplete(context, {
-              id: rest_[0] ?? "",
-              evidence: flag(rest_, "evidence") ?? "",
-              ...optional("remainder", flag(rest_, "remainder"))
-            });
-          }
-          if (sub === "drop") {
-            return await issueDrop(context, {
-              id: rest_[0] ?? "",
-              reason: flag(rest_, "reason") ?? ""
-            });
-          }
-          return {
-            stdout: [
-              "wfctl work issue <create|list|note|claim|complete>",
-              "",
-              '  create --title "<what it delivers>" [--satisfies AC-01]...',
-              "  list",
-              '  note <id> --note "<what you learned>"',
-              "  claim <id> --repository <owner/name> [--worktree <id>]",
-              "  complete <id>"
-            ].join("\n"),
-            exitCode: 1
-          };
-        }
-        if (action === "verify") {
-          const personality = flag(args, "brief");
-          if (personality !== void 0) {
-            const { renderReviewerBrief: renderReviewerBrief2 } = await Promise.resolve().then(() => (init_verify(), verify_exports));
-            const { loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
-            const { shipped: shipped2 } = await Promise.resolve().then(() => (init_kit(), kit_exports));
-            const body = /^[a-z][a-z0-9-]*$/.test(personality) ? await loadGuidance2({ root: context.assets }, `personality/${personality}`) : void 0;
-            if (!body) {
-              const available = (await shipped2(context.assets, "personality")).map((entry) => entry.id.replace("personality:", "")).filter((name) => name !== "shape");
-              return {
-                stdout: new GateRefusal(
-                  `There is no personality called ${personality}.`,
-                  `wfctl work verify --brief <${available.join("|")}>`,
-                  "A personality is who reviews \u2014 its stance and its protocol. A lens is the question one finding answers, and a reviewer uses several; the brief lists them.\n\nwfctl guide personality/shape \u2014 what a personality is"
-                ).render(),
-                exitCode: 2
-              };
-            }
-            return {
-              stdout: renderReviewerBrief2(
-                personality,
-                body,
-                flag(args, "at") ?? "<pin the revision this work started at>"
-              ),
-              exitCode: 0
-            };
-          }
-          return await verify(context, { review: flag(args, "review") ?? "" });
-        }
-        if (action === "park") {
-          return await park(context, flag(args, "reason") ?? "", flag(args, "attested") ?? "");
-        }
-        if (action === "release") return await release(context, flag(args, "attested") ?? "");
-        if (action === "close") {
-          const outcome = oneOf(
-            flag(args, "outcome"),
-            ["completed", "partial", "abandoned"],
-            "outcome"
-          );
-          return await close(context, { outcome });
-        }
-        if (action === "promote") {
-          return await promote2(context, {
-            subject: flag(args, "subject") ?? "",
-            summary: flag(args, "summary") ?? "",
-            ...flag(args, "bundle") ? { bundle: flag(args, "bundle") } : {},
-            ...flag(args, "settles") ? { settles: flag(args, "settles") } : {}
-          });
-        }
-        if (action === "promotion" && args[0] === "draft") {
-          return await promotionDraft(context, {
-            knowledgeRoot: context.root,
-            page: args[1] ?? ""
-          });
-        }
-        if (action === "promotion" && args[0] === void 0) {
-          return {
-            stdout: [
-              "wfctl work promotion <draft|list>",
-              "",
-              '  draft "<area>/<page>.md"   create the page where it belongs',
-              "  list                       records waiting on the maintainer"
-            ].join("\n"),
-            exitCode: 1
-          };
-        }
-        if (action === "promotion" && args[0] === "list") {
-          const queued = await listQueue(context.root);
-          return {
-            stdout: queued.length ? `waiting on the maintainer:
-  ${queued.join("\n  ")}` : "nothing is waiting to be promoted.",
-            exitCode: 0
-          };
-        }
-        return { stdout: USAGE, exitCode: 1 };
+        exactRecordFlags(args, ["--link"]);
+        const namespace = flag(args, "namespace") ?? "";
+        if (action === "list") return ok_(await recoveryList2(context.root, namespace));
+        if (action === "handoff") return ok_(await recoveryHandoff2(context.root, namespace, flag(args, "id") ?? ""));
+        if (action === "checkpoint") return ok_(await recoveryCheckpoint2(context.root, {
+          namespace,
+          id: flag(args, "id") ?? "",
+          instruction: flag(args, "instruction") ?? "",
+          last: flag(args, "last") ?? "",
+          next: flag(args, "next") ?? "",
+          links: flags(args, "link"),
+          ...optional("blocker", flag(args, "blocker")),
+          ...optional("checkout", flag(args, "checkout")),
+          ...optional("revision", flag(args, "revision"))
+        }));
+        throw new GateRefusal("Unknown flow action.", "wfctl flow <checkpoint|handoff|list>");
       }
       case "guide": {
         const { GUIDE_TOPICS: GUIDE_TOPICS2, loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
         const topic = rest[0];
+        if (topic === "tidy") {
+          return ok_(await readFile12(resolve14(context.assets, "..", "skill/wfctl/references/tidying.md"), "utf8"));
+        }
         if (!topic) {
           return {
-            stdout: `topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
+            stdout: `topics: tidy, ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}`,
             exitCode: 0
           };
         }
@@ -6674,47 +2638,14 @@ async function dispatch(argv, context) {
         if (!key) {
           return {
             stdout: `No guide named ${topic}.
-topics: ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}
+topics: tidy, ${Object.keys(GUIDE_TOPICS2).sort().join(", ")}
 
-Strategies and personalities are read by path \u2014 wfctl kit survey lists them.`,
+Strategies and personalities are read by their guidance path.`,
             exitCode: 1
           };
         }
         const text = await loadGuidance2({ root: context.assets }, key);
         return { stdout: text ?? `The ${topic} guide is missing from this installation.`, exitCode: text ? 0 : 2 };
-      }
-      case "hook": {
-        const [action, ...args] = rest;
-        if (action === "write") {
-          const { currentFlow: currentFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
-          const { decideWrite: decideWrite2 } = await Promise.resolve().then(() => (init_write_hook(), write_hook_exports));
-          const { loadGuidance: loadGuidance2 } = await Promise.resolve().then(() => (init_guidance(), guidance_exports));
-          const { mutateFlow: mutateFlow2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
-          const { recordWritten: recordWritten2 } = await Promise.resolve().then(() => (init_recall(), recall_exports));
-          const { readRegistry: readRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
-          const { inspectLeaves: inspectLeaves2 } = await Promise.resolve().then(() => (init_leaves(), leaves_exports));
-          const flow = await currentFlow2(context.root);
-          const target = flag(args, "target") ?? "";
-          const decision = decideWrite2({
-            flow,
-            knowledgeRoot: context.root,
-            target,
-            leaves: await inspectLeaves2(await readRegistry2(context.root)),
-            writtenThisUnit: flow?.recall.written ?? [],
-            ...flow ? {
-              guidance: await loadGuidance2({ root: context.assets }, "work/implement") ?? ""
-            } : {}
-          });
-          if (decision.refusal) return { stdout: decision.refusal.render(), exitCode: 2 };
-          if (flow) {
-            await mutateFlow2(context.root, flow.id, (current) => ({
-              ...current,
-              recall: recordWritten2(current.recall, target)
-            }));
-          }
-          return { stdout: decision.message ?? "", exitCode: 0 };
-        }
-        return { stdout: USAGE, exitCode: 1 };
       }
       case "repo": {
         const { addRepository: addRepository2, readRegistry: readRegistry2, removeRepository: removeRepository2, renderRegistry: renderRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
@@ -6781,29 +2712,7 @@ Strategies and personalities are read by path \u2014 wfctl kit survey lists them
         const reconstruct = await Promise.resolve().then(() => (init_reconstruct(), reconstruct_exports));
         const { readRegistry: readRegistry2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
         const [action, ...args] = rest;
-        if (action === "adopt") {
-          const { workAdopt: workAdopt2 } = await Promise.resolve().then(() => (init_commands(), commands_exports));
-          return await workAdopt2(context, {
-            bundle: args[0] ?? "",
-            attested: flag(args, "attested") ?? "",
-            ...flag(args, "weight") ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") } : {},
-            ...flag(args, "title") ? { title: flag(args, "title") } : {},
-            ...flag(args, "from") ? { from: flag(args, "from") } : {}
-          });
-        }
-        if (action === "list") {
-          const { workList: workList2 } = await Promise.resolve().then(() => (init_commands(), commands_exports));
-          return await workList2(context);
-        }
         if (action === "start") {
-          const { listFlows: listFlows2 } = await Promise.resolve().then(() => (init_flow(), flow_exports));
-          const openFlows = (await listFlows2(context.root)).filter((entry) => !entry.closedAt);
-          if (openFlows[0]) {
-            throw new GateRefusal(
-              `Flow ${openFlows[0].id} is open; work outside it is out of scope.`,
-              `wfctl flow close ${openFlows[0].id}`
-            );
-          }
           const open = await reconstruct.currentCase(context.root);
           if (open) {
             throw new GateRefusal(
@@ -6865,12 +2774,12 @@ Strategies and personalities are read by path \u2014 wfctl kit survey lists them
           const { readRegistry: readRegistry3 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
           const { head: head2, resolveRevision: resolveRevision2 } = await Promise.resolve().then(() => (init_git(), git_exports));
           const registered = await readRegistry3(context.root);
-          const repositories = flags(args, "repository").map((name) => {
-            const entry = registered.find((candidate) => candidate.repository === name);
+          const repositories = flags(args, "repository").map((name3) => {
+            const entry = registered.find((candidate) => candidate.repository === name3);
             if (!entry) {
               throw new GateRefusal(
-                `${name} is not registered, so there is no checkout to read.`,
-                `wfctl repo add ${name} --path <dir>`
+                `${name3} is not registered, so there is no checkout to read.`,
+                `wfctl repo add ${name3} --path <dir>`
               );
             }
             const asked = flag(args, "revision");
@@ -6892,21 +2801,21 @@ Strategies and personalities are read by path \u2014 wfctl kit survey lists them
         if (action === "read" && flag(args, "at")) {
           const { citation: citation2, readAt: readAt2 } = await Promise.resolve().then(() => (init_git(), git_exports));
           const { readRegistry: readRegistry3 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
-          const name = flag(args, "at") ?? "";
+          const name3 = flag(args, "at") ?? "";
           const entry = (await readRegistry3(context.root)).find(
-            (candidate) => candidate.repository === name
+            (candidate) => candidate.repository === name3
           );
-          const pinned = record.repositories.find((candidate) => candidate.repository === name);
+          const pinned = record.repositories.find((candidate) => candidate.repository === name3);
           if (!entry || !pinned) {
             throw new GateRefusal(
-              `${name} is not in this case's scope.`,
+              `${name3} is not in this case's scope.`,
               "wfctl reconstruct status"
             );
           }
           const file = args[0] ?? "";
           const body = readAt2(entry.path, pinned.revision, file);
           return ok_(
-            [`${citation2(name, pinned.revision, file)}`, "", body].join("\n")
+            [`${citation2(name3, pinned.revision, file)}`, "", body].join("\n")
           );
         }
         if (action === "read") {
@@ -7015,10 +2924,6 @@ ${archived}`);
         }
         return { stdout: USAGE, exitCode: 1 };
       }
-      case "debts": {
-        const { collectDebts: collectDebts2, renderDebts: renderDebts2 } = await Promise.resolve().then(() => (init_debts(), debts_exports));
-        return ok_(renderDebts2(await collectDebts2(context.root)));
-      }
       case "decided": {
         const { findDecisions: findDecisions2, renderDecisions: renderDecisions2 } = await Promise.resolve().then(() => (init_decided(), decided_exports));
         const subject = rest.filter((entry) => !entry.startsWith("--")).join(" ");
@@ -7044,7 +2949,7 @@ ${archived}`);
           const { contentHash: contentHash2, stripSeal: stripSeal2, KNOWLEDGE_DIR: KNOWLEDGE_DIR2, normalizePage: normalizePage2 } = await Promise.resolve().then(() => (init_curated(), curated_exports));
           const asked = args[0] ?? flag(args, "page") ?? "";
           const page = normalizePage2(context.root, asked);
-          const body = await readFile17(resolve22(context.root, KNOWLEDGE_DIR2, page), "utf8").catch(
+          const body = await readFile12(resolve14(context.root, KNOWLEDGE_DIR2, page), "utf8").catch(
             () => void 0
           );
           if (body === void 0) {
@@ -7069,86 +2974,33 @@ ${archived}`);
       case "doctor": {
         const { exitCodeFor: exitCodeFor2, renderReport: renderReport2, runDoctor: runDoctor2 } = await Promise.resolve().then(() => (init_doctor(), doctor_exports));
         const report = await runDoctor2(context.root, {
-          distribution: resolve22(context.assets, "..", "..")
+          distribution: resolve14(context.assets, "..", "..")
         });
         return { stdout: renderReport2(report), exitCode: exitCodeFor2(report) };
       }
-      case "continue": {
-        const { keepWatching: keepWatching2 } = await Promise.resolve().then(() => (init_continuing(), continuing_exports));
-        return ok_(await keepWatching2(context.root));
-      }
-      case "guards": {
-        const { GUARD_NAMES: GUARD_NAMES2, guardStatus: guardStatus2, renderGuards: renderGuards2, setGuard: setGuard2 } = await Promise.resolve().then(() => (init_install(), install_exports));
-        const [action, ...args] = rest;
-        if (action === "on" || action === "off") {
-          const guard = oneOf(args[0], GUARD_NAMES2, "guard");
-          return ok_(await setGuard2(context.root, guard, action === "on"));
-        }
-        if (action === void 0 || action === "status") {
-          return ok_(renderGuards2(await guardStatus2(context.root)));
-        }
-        return { stdout: "wfctl guards [status] | on <guard> | off <guard>", exitCode: 1 };
-      }
-      case "capture": {
-        const awaits = rest.includes("--awaits");
-        const text = rest.filter((entry) => entry !== "--awaits")[0] ?? "";
-        return await capture(context, {
-          text,
-          ...awaits ? { awaits: "maintainer" } : {}
-        });
-      }
-      case "flow":
-        if (rest[0] === "close") return await flowClose(context, rest[1]);
-        return { stdout: "wfctl flow close [<flow-id>]", exitCode: 1 };
       case "init": {
         assertProfileSupported(rest[0] ?? "");
-        const target = resolve22(flag(rest, "target") ?? process.cwd());
-        const distribution = resolve22(context.assets, "..", "..");
+        const target = resolve14(flag(rest, "target") ?? process.cwd());
+        const distribution = resolve14(context.assets, "..", "..");
         const plan = await planInstall({
           target,
           distribution,
-          version: process.env.WFCTL_VERSION ?? "0.9.0"
+          version: process.env.WFCTL_VERSION ?? "0.10.0"
         });
         const result = await applyInstall(plan, {
           distribution,
-          version: process.env.WFCTL_VERSION ?? "0.9.0"
+          version: process.env.WFCTL_VERSION ?? "0.10.0"
         });
         const lines = [
           `installed into ${target}`,
           `  ${result.created.length} directories, ${result.written.length} files written, ${result.skipped.length} unchanged`
         ];
-        const outstanding = [];
-        if (result.conflicts.length) {
-          outstanding.push(
-            `${result.conflicts.length} file(s) were edited after they were installed, and were left alone:`,
-            ...result.conflicts.map((path) => `  ${path}`),
-            "  Compare each against the shipped version and keep the edit or drop it.",
-            "  Nothing here is replaced without you deciding that."
-          );
-        }
-        if (result.obsolete.length) {
-          const groups = /* @__PURE__ */ new Map();
-          for (const path of result.obsolete) {
-            const segments = path.split("/");
-            const key = segments.length > 1 ? segments.slice(0, 2).join("/") : path;
-            groups.set(key, [...groups.get(key) ?? [], path]);
-          }
-          outstanding.push(
-            `${result.obsolete.length} file(s) belong to an older wfctl and are no longer part of it:`,
-            ...[...groups].map(([key, members]) => members.length > 1 ? `  ${key}/  (${members.length} entries)` : `  ${key}`),
-            "  They are not read by anything and are not removed for you.",
-            "  Delete them once you have checked nothing local depends on them."
-          );
-        }
+        if (result.removed.length) lines.push(`  ${result.removed.length} retired wfctl file(s) removed`);
         if (result.replacedHooks.length) {
-          outstanding.push(
-            `${result.replacedHooks.length} hook entr(ies) from an older wfctl were replaced:`,
-            ...result.replacedHooks.map((entry) => `  ${entry}`),
-            "  Reported because a hook you did not expect to change is worth knowing about."
+          lines.push(
+            `${result.replacedHooks.length} hook entr(ies) from an older wfctl were removed:`,
+            ...result.replacedHooks.map((entry) => `  ${entry}`)
           );
-        }
-        if (outstanding.length) {
-          lines.push("", ...outstanding);
         }
         lines.push(
           "",
@@ -7157,8 +3009,7 @@ ${archived}`);
           "",
           "Restart the agent session so the new instructions load."
         );
-        const unresolved = result.conflicts.length + result.obsolete.length;
-        return { stdout: lines.join("\n"), exitCode: unresolved > 0 ? 3 : 0 };
+        return { stdout: lines.join("\n"), exitCode: 0 };
       }
       default:
         return {
@@ -7184,13 +3035,13 @@ ${USAGE}`,
 function findGuidance(start) {
   let current = start;
   for (let depth = 0; depth < 3; depth += 1) {
-    const candidate = resolve22(current, "templates", "guidance");
-    if (existsSync2(candidate)) return candidate;
-    const parent = dirname13(current);
+    const candidate = resolve14(current, "templates", "guidance");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname7(current);
     if (parent === current) break;
     current = parent;
   }
-  return resolve22(start, "templates", "guidance");
+  return resolve14(start, "templates", "guidance");
 }
 var invokedDirectly = (() => {
   const entry = process.argv[1];
@@ -7204,11 +3055,7 @@ var invokedDirectly = (() => {
 if (invokedDirectly) {
   const { findRepositoryRoot: findRepositoryRoot2 } = await Promise.resolve().then(() => (init_paths_resolve(), paths_resolve_exports));
   const context = {
-    /**
-     * The repository, not the directory the command was typed in. Every fence
-     * is relative to this, and taking it from cwd meant `cd changes && wfctl …`
-     * removed all of them.
-     */
+    /** Resolve project records from the repository root. */
     root: process.argv[2] === "init" ? process.cwd() : findRepositoryRoot2(process.cwd()),
     assets: findGuidance(import.meta.dirname),
     actor: process.env.WFCTL_ACTOR ?? "agent:unknown"

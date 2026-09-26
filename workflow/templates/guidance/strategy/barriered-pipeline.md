@@ -21,8 +21,8 @@ end of each stretch:
 3. **Write what the look found**, including what it could not check.
 4. **Decide** from that: continue, correct, or change the shape of what remains.
 
-The barrier's output is an artifact. Register it (`wfctl artifact add`) so the
-next stretch reads it rather than rediscovering it.
+Keep the barrier's findings where the next stretch can find them, linked from
+the relevant tracked record when one exists.
 
 ## What makes a barrier real
 

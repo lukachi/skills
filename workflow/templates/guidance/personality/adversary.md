@@ -23,6 +23,5 @@ whether it survives the attempt, and what specifically was tried.
 
 ## Report
 
-The artifact shape `wfctl work verify --brief <lens>` prints. Every attack
-carries its test source, its output, and whether it broke the work — including
-the ones that did not.
+Every attack carries its test source, its output, and whether it broke the work
+— including the ones that did not.

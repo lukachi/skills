@@ -2,155 +2,50 @@ import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  advance,
-  brief,
-  artifactAdd,
-  artifactList,
-  capture,
-  checkpoint,
-  findingAdd,
-  findingList,
-  findingRelease,
-  findingResolve,
-  kitAdopt,
-  workBind,
-  learned,
-  learnedList,
-  kitList,
-  kitSurvey,
-  notes,
-  workWhere,
-  close,
-  flowClose,
-  handoff,
-  issueClaim,
-  issueComplete,
-  issueCreate,
-  issueDrop,
-  issueList,
-  issueNote,
-  park,
-  promote,
-  promotionDraft,
-  recallAnswer,
-  recallRoute,
-  release,
-  verify,
-  workStart,
-} from "./commands.js";
-import type { CommandContext } from "./commands.js";
 import { GateRefusal } from "./gates.js";
 import { normalize as normalizeFlags, validate as validateFlags } from "./flags.js";
-import { RECALL_ITEMS } from "./recall.js";
 import { applyInstall, assertProfileSupported, planInstall } from "./install.js";
-import { listQueue } from "./promotion-queue.js";
-import { RECALL_ROUTES, WORK_STEPS, WORK_WEIGHTS, type WorkStep } from "./types.js";
+
+export interface CommandContext {
+  root: string;
+  assets: string;
+  actor: string;
+}
 
 /**
  * The command surface.
  *
- * It is deliberately small. Every command either records something or reports
- * something, and each one ends by printing what the state now demands — the
- * agent is never expected to know which command comes next, only to read what
- * the last one said.
+ * Ordinary work is outside the CLI. Record creation and local recovery are
+ * explicit operations rather than a required sequence.
  */
-export const USAGE = `wfctl — project workflow
+export const USAGE = `wfctl — optional project records
 
-  brief [--json]               the state of this repository, and what awaits whom
-  handoff [<flow>]             the full recall body for a flow
-  checkpoint "<anything worth not looking up again>"   [--about <unit>]
-  checkpoint [--summary ...] [--handoff ...] [--last ...] [--next ...] [--todo ...]
-                               a body writes a note; the flags update the index.
-                               Either alone. What you do not name is left as it was.
-  notes                        everything written down for this flow
+  --version
+  bundle create --id <id> --title <title> --scope <delivery> --agreed <agreement>
+  bundle list | show --id <id>
+  unit create --bundle <bundle> --id <id> --title <title>
+              --outcome <result> --boundary <limits> --agreed <agreement>
+  unit list --bundle <bundle> | show --bundle <bundle> --id <id>
 
-  kit                          what this work is equipped with
-  kit survey                   the skills, strategies and personalities it could pick up
-  kit adopt <id>... --attested "<what they said>"
-
-  learned "<the one line>" --detail "<what happened, and what to do>"
-          --attested "<what they said>"
-                               one problem, solved, kept past this work
-  learned list                 what earlier work already found out
-
-  finding "<what you found>" [--about <unit>] [--artifact <path>]
-                               something this work should settle, kept with this work
-  finding list | resolve <id> --how "<what you did>" | release <id>
-
-  artifact add <path> --what "<what it is>" [--supersedes <path>]
-  artifact list                what this work produced, and what still stands
-
-  work start --title ... --weight <significant|lightweight>
-             --attested "<what the maintainer said>" [--from <where it came from>]
-  work adopt <bundle> --attested "<what they said>"
-             [--weight <significant|lightweight>] [--title ...] [--from <where>]
-  work list                    every bundle, and whether anything can reach it
-  work bind <flow>             work in a different open flow
-  work step                    where this work is, and what moves it on
-  work step <step>             record that this step is reached
-  work issue create --title ... [--satisfies AC-01]...
-  work issue list | note <id> --note ... | claim <id> --repository ... --worktree ...
-  work issue complete <id> --evidence "<what proves it>" [--remainder "<what is left>"]
-  work issue drop <id> --reason "<why it left the route>"
-  work park --reason ... --attested "<their words>"
-  work release --attested "<their words>"
-  work verify --brief <personality> [--at <revision>]
-                               the brief to hand the reviewing agent
-  work verify --review <artifact>
-  work close --outcome <completed|partial|abandoned>
-  work promote --subject "<product subject>" --summary "<what it now does>"
-               [--bundle <record>] [--settles <event-id>]
-  work promotion draft <page>  create a page draft at the path it will occupy
-  work promotion list          records waiting on the maintainer
-
-  capture "<what you found>" [--awaits]
-                               for what is OUTSIDE this work's fence. Inside it,
-                               use finding — it stays with the work that found it.
-
-  repo add <owner/name> --path <dir> [--worktree <id>] [--checkout <name>]
-  repo list | repo remove <owner/name> [--worktree <id>]
-
-  reconstruct start            open a case over the registered repositories
-  reconstruct status
-  reconstruct scope --repository <owner/name> [--revision <sha>] [--raw all|selected|none] [--in <path>]...
-  reconstruct read <path> [--at <owner/name>]   record a read, or print the file at the pinned revision
-  reconstruct exclude <path> --reason "<why>"
-  reconstruct contradiction --subject ... --side ... --side ...
-  reconstruct resolve <id> --resolution "<what they decided>"
-  reconstruct subject <trajectory-id>
-  reconstruct probe --question ... --page <path> --asker <agent> [--passed]
-  reconstruct stage            advance when this stage's gate passes
-  reconstruct abandon --reason "<why>"
-  reconstruct close
-
-  trajectory append --subject ... --summary ... --axis <intent|delivery|vision>
-                    [--settles <event-id>]   a delivery names the intent it settles
-  trajectory list | trajectory show <subject>
-
-  recall list                  the checklist
-  recall answer <item> --answer ... --route ... --source ...
-  recall route <route> --covered <path> [--covered <path>]...
-
-  flow close [<flow-id>]       flush the checkpoint and drop the fence
+  flow checkpoint --namespace <agent> --id <thread>
+                  --instruction <current-request> --last <done> --next <action>
+                  [--link <path>]... [--blocker <text>]
+                  [--checkout <path>] [--revision <sha>]
+  flow handoff --namespace <agent> --id <thread>
+  flow list --namespace <agent>
 
   init knowledge [--target <dir>]
-
-  guide [<topic>]              detail for one topic, when the state needs it
-
-  debts                        what is accepted and not delivered, across every subject
-  decided "<subject>"          what has already been settled about it, and where
+  doctor
+  guide [<topic>]
   knowledge validate [--page <path>]
   knowledge hash <path>
+  repo add|list|remove ...
+  reconstruct ...
+  trajectory ...
+  decided <subject>
 
-  doctor                       verify this installation and what it depends on
-
-  continue                     still working — the turn check re-arms for your next stop
-  guards [status]              which runtime guards are on
-  guards on|off <stop|write|bash>
-
-  hook write --target <path>   used by the pre-write guard, not by hand
-`;
+Ordinary work requires no wfctl command. Bundle and unit creation require an
+explicit agreement. Flow notes are local, short, and selected by namespace.`;
 
 function ok_(stdout: string): { stdout: string; exitCode: number } {
   return { stdout, exitCode: 0 };
@@ -163,9 +58,7 @@ function compose_(parts: (string | undefined)[]): string {
 /**
  * Read one flag's value.
  *
- * A value that is itself a flag is refused rather than accepted: `--title
- * --weight significant` used to store the title as "--weight", producing a
- * corrupt record from a dropped argument instead of a refusal.
+ * A value that is itself a flag is refused rather than accepted.
  */
 function flag(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(`--${name}`);
@@ -179,24 +72,6 @@ function flag(argv: string[], name: string): string | undefined {
     );
   }
   return value;
-}
-
-/**
- * The first argument that is prose rather than a flag or a flag's value.
- *
- * Bodies are why this is not simply `argv[0]`: a note phrased "--fix the
- * parser" is a body, and one that has to be re-worded to get past the parser is
- * one that does not get written.
- */
-const FLAG_LIKE = /^--[a-z][a-z0-9-]*$/;
-
-function bare(argv: string[]): string | undefined {
-  for (const [index, token] of argv.entries()) {
-    if (FLAG_LIKE.test(token)) continue;
-    if (index > 0 && FLAG_LIKE.test(argv[index - 1] ?? "")) continue;
-    return token;
-  }
-  return undefined;
 }
 
 /** Omit the key entirely when the flag was absent, rather than passing "". */
@@ -217,15 +92,22 @@ function flags(argv: string[], name: string): string[] {
   return values;
 }
 
-/**
- * One place where every enumerated flag is checked.
- *
- * `--route qmd2`, `--axis delivary` and `--weight BANANA` were all accepted and
- * stored. Each one then behaved as something else: an unknown route satisfied
- * the recall gate while touching no floor, a misspelt axis vanished from every
- * gap calculation while still rendering in the line, and an unknown weight
- * silently took the significant branch.
- */
+function exactRecordFlags(argv: string[], repeatable: string[] = []): void {
+  const seen = new Set<string>();
+  for (let index = 0; index < argv.length; index += 2) {
+    const key = argv[index];
+    const value = argv[index + 1];
+    if (!key?.startsWith("--") || value === undefined || value.startsWith("--")) {
+      throw new GateRefusal("Unexpected record command argument.", "Use named --flags with one value each.");
+    }
+    if (seen.has(key) && !repeatable.includes(key)) {
+      throw new GateRefusal(`${key} was supplied more than once.`, "Use one value for this field.");
+    }
+    seen.add(key);
+  }
+}
+
+/** Require an allowed value for enumerated flags. */
 function oneOf<T extends string>(
   value: string | undefined,
   allowed: readonly T[],
@@ -245,62 +127,12 @@ function oneOf<T extends string>(
   return value as T;
 }
 
-/**
- * Every command enters here, and every command's arguments are normalised and
- * checked against what that command actually reads before anything runs. See
- * `flags.ts` for why both halves exist.
- */
-/**
- * Every command ends by saying how long the work has gone unrecorded.
- *
- * This is the habit, and it is deliberately not a gate. It costs the agent
- * nothing, it is guaranteed to be read because it is the output of a command
- * the agent chose to run, and it names the cheapest possible answer. An agent
- * shown the drift writes something down; an agent refused learns to avoid the
- * command that refuses it.
- *
- * It stays quiet until the gap is real — twenty minutes — so the ordinary rhythm
- * of work is never nagged at. A reminder on every line is a reminder nobody
- * reads.
- */
+/** Dispatch without reminders about unrecorded work. */
 export async function run(
   argv: string[],
   context: CommandContext,
 ): Promise<{ stdout: string; exitCode: number }> {
-  const result = await dispatch(argv, context);
-  if (result.exitCode !== 0) return result;
-
-  try {
-    const { currentFlow } = await import("./flow.js");
-    const { driftLine, lastWritten } = await import("./checkpoint.js");
-    const flow = await currentFlow(context.root);
-    if (!flow) return result;
-    /**
-     * Never on a machine surface.
-     *
-     * `hook write` feeds the pre-write guard, whose contract is that empty
-     * output means stay silent — appending anything to it makes the guard speak
-     * on every edit. `brief --json` is parsed by the Stop guard. Both are read
-     * by programs, and a program does not form habits.
-     *
-     * The brief, `work step` and `checkpoint` say it themselves, in their own
-     * place, so they are not doubled here.
-     */
-    if (argv[0] === "hook" || argv[0] === "brief" || argv[0] === "checkpoint") return result;
-    if (argv[0] === "work" && argv[1] === "step") return result;
-    const drift = driftLine(lastWritten(flow));
-    if (!drift) return result;
-    return {
-      stdout: `${result.stdout}
-
-⚠ ${drift}.
-  wfctl checkpoint "<what has happened since>"`,
-      exitCode: result.exitCode,
-    };
-  } catch {
-    /** Reporting drift must never be the thing that fails a command. */
-    return result;
-  }
+  return dispatch(argv, context);
 }
 
 async function dispatch(argv: string[], context: CommandContext): Promise<{ stdout: string; exitCode: number }> {
@@ -314,6 +146,11 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
    */
   if (argv.includes("--help")) {
     return { stdout: USAGE, exitCode: 0 };
+  }
+  if (argv.length === 1 && argv[0] === "--version") {
+    const packageFile = resolve(context.assets, "..", "..", "package.json");
+    const metadata = JSON.parse(await readFile(packageFile, "utf8")) as { version?: string };
+    return ok_(metadata.version ?? "unknown");
   }
 
   let scanned: string[];
@@ -335,416 +172,69 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
       case "help":
         return { stdout: USAGE, exitCode: 0 };
 
-      case "brief": {
-        if (rest.includes("--json")) {
-          const { listFlows, currentFlowId } = await import("./flow.js");
-          const { deriveBlocker } = await import("./steps.js");
-          const flows = (await listFlows(context.root)).filter((flow) => !flow.closedAt);
-          const current = await currentFlowId(context.root);
-          /**
-           * The Stop guard reads this. It used to call `brief --json`, get the
-           * prose brief, fail to parse it and fall silent — so the turn-boundary
-           * half of the design did nothing at all.
-           */
-          const { briefExtras } = await import("./commands.js");
-          const extras = await briefExtras(context);
-          const signals = flows.flatMap((flow) => {
-            const blocker = deriveBlocker(flow);
-            return blocker
-              ? [{ id: flow.id, awaits: blocker.awaits, summary: blocker.summary, remedy: blocker.remedy }]
-              : [];
-          });
-          for (const id of extras.queued) {
-            signals.push({
-              id,
-              awaits: "maintainer" as const,
-              summary: "waits in the promotion queue",
-              remedy: 'wfctl work promote --subject "<product subject>" --summary "<what it now does>"',
-            });
-          }
-          if (extras.reconstruction) {
-            signals.push({
-              id: extras.reconstruction.id,
-              awaits: "agent" as const,
-              summary: `reconstruction at stage ${extras.reconstruction.stage}`,
-              remedy: "wfctl reconstruct status",
-            });
-          }
-          /**
-           * The two surfaces have to agree.
-           *
-           * `briefExtras` computed stranded bundles, awaiting captures and
-           * unreadable records, and only the prose brief printed them — so the
-           * JSON that every automated consumer reads said the repository held
-           * nothing while the human-readable one listed work nobody could reach.
-           */
-          for (const id of extras.stranded ?? []) {
-            signals.push({
-              id,
-              awaits: "maintainer" as const,
-              summary: "has no flow, so nothing can reach it",
-              remedy: `wfctl work adopt ${id} --weight <significant|lightweight> --attested "<what they said>"`,
-            });
-          }
-          for (const broken of extras.unreadable ?? []) {
-            signals.push({
-              id: broken.id,
-              awaits: "agent" as const,
-              summary: `record cannot be read: ${broken.problem}`,
-              remedy: `repair .workflow/flows/${broken.id}.json`,
-            });
-          }
-          if (extras.awaitingCaptures) {
-            signals.push({
-              id: "changes/inbox",
-              awaits: "maintainer" as const,
-              summary: `${extras.awaitingCaptures} capture(s) await the maintainer`,
-              remedy: "put them one decision at a time, not as a backlog",
-            });
-          }
-          return ok_(JSON.stringify({ current, signals }, null, 2));
-        }
-        return await brief(context);
-      }
-
-      case "handoff":
-        return await handoff(context, rest[0]);
-
-      case "checkpoint": {
-        /**
-         * The body is the first bare argument, if there is one.
-         *
-         * `wfctl checkpoint "<anything>"` is the cheap form and the one the
-         * habit is built on; the named fields update the index a next session
-         * reads. Either may be given alone, and both may be given together.
-         */
-        const body = bare(rest);
-        return await checkpoint(context, {
-          ...(body === undefined ? {} : { body }),
-          ...optional("summary", flag(rest, "summary")),
-          ...optional("handoff", flag(rest, "handoff")),
-          ...optional("last", flag(rest, "last")),
-          ...optional("next", flag(rest, "next")),
-          ...optional("about", flag(rest, "about")),
-          todo: flags(rest, "todo"),
-        });
-      }
-
-      case "notes":
-        return await notes(context);
-
-      case "learned": {
-        if (rest[0] === "list") return await learnedList(context);
-        return await learned(context, {
-          title: bare(rest) ?? "",
-          detail: flag(rest, "detail") ?? "",
-          attested: flag(rest, "attested") ?? "",
-        });
-      }
-
-      case "kit": {
+      case "bundle": {
+        const { bundleCreate, bundleList, bundleShow } = await import("./voluntary-records.js");
         const [action, ...args] = rest;
-        if (action === undefined) return await kitList(context);
-        if (action === "survey") return await kitSurvey(context);
-        if (action === "adopt") {
-          /**
-           * Ids are positional and there may be several: equipping is normally
-           * one decision about a short list, not one decision per item.
-           */
-          const ids = args.filter(
-            (entry, index) => !entry.startsWith("--") && !(args[index - 1] ?? "").startsWith("--"),
-          );
-          return await kitAdopt(context, { ids, attested: flag(args, "attested") ?? "" });
-        }
-        return {
-          stdout: new GateRefusal(
-            "kit takes survey or adopt, or nothing at all.",
-            "wfctl kit survey",
-            "`wfctl kit` alone lists what this work is already equipped with.",
-          ).render(),
-          exitCode: 2,
-        };
+        exactRecordFlags(args);
+        if (action === "list") return ok_(await bundleList(context.root));
+        if (action === "show") return ok_(await bundleShow(context.root, flag(args, "id") ?? ""));
+        if (action === "create") return ok_(await bundleCreate(context.root, {
+          id: flag(args, "id") ?? "",
+          title: flag(args, "title") ?? "",
+          scope: flag(args, "scope") ?? "",
+          agreed: flag(args, "agreed") ?? "",
+        }));
+        throw new GateRefusal("Unknown bundle action.", "wfctl bundle <create|list|show>");
       }
 
-      case "finding": {
+      case "unit": {
+        const { unitCreate, unitList, unitShow } = await import("./voluntary-records.js");
         const [action, ...args] = rest;
-        if (action === "list") return await findingList(context);
-        if (action === "resolve") {
-          return await findingResolve(context, {
-            id: args[0] ?? "",
-            how: flag(args, "how") ?? "",
-          });
-        }
-        if (action === "release") return await findingRelease(context, { id: args[0] ?? "" });
-        return await findingAdd(context, {
-          what: bare(rest) ?? "",
-          ...optional("about", flag(rest, "about")),
-          artifacts: flags(rest, "artifact"),
-        });
+        exactRecordFlags(args);
+        if (action === "list") return ok_(await unitList(context.root, flag(args, "bundle") ?? ""));
+        if (action === "show") return ok_(await unitShow(context.root, flag(args, "bundle") ?? "", flag(args, "id") ?? ""));
+        if (action === "create") return ok_(await unitCreate(context.root, {
+          bundle: flag(args, "bundle") ?? "",
+          id: flag(args, "id") ?? "",
+          title: flag(args, "title") ?? "",
+          outcome: flag(args, "outcome") ?? "",
+          boundary: flag(args, "boundary") ?? "",
+          agreed: flag(args, "agreed") ?? "",
+        }));
+        throw new GateRefusal("Unknown unit action.", "wfctl unit <create|list|show>");
       }
 
-      case "artifact": {
+      case "flow": {
+        const { recoveryCheckpoint, recoveryHandoff, recoveryList } = await import("./recovery-notes.js");
         const [action, ...args] = rest;
-        if (action === "list") return await artifactList(context);
-        if (action === "add") {
-          return await artifactAdd(context, {
-            path: bare(args) ?? "",
-            what: flag(args, "what") ?? "",
-            ...optional("supersedes", flag(args, "supersedes")),
-          });
-        }
-        return {
-          stdout: new GateRefusal(
-            "artifact takes add or list.",
-            'wfctl artifact add <path> --what "<what it is>"',
-          ).render(),
-          exitCode: 2,
-        };
-      }
-
-      case "recall": {
-        const [action, ...args] = rest;
-        if (action === "list") {
-          return {
-            stdout: RECALL_ITEMS.map((item) => `${item.id}  ${item.question}`).join("\n"),
-            exitCode: 0,
-          };
-        }
-        if (action === "answer") {
-          return await recallAnswer(context, {
-            item: args[0] ?? "",
-            answer: flag(args, "answer") ?? "",
-            route: oneOf(flag(args, "route"), RECALL_ROUTES, "route"),
-            source: flag(args, "source") ?? "",
-          });
-        }
-        if (action === "route") {
-          return await recallRoute(context, {
-            route: oneOf(args[0], RECALL_ROUTES, "route"),
-            covered: flags(args, "covered"),
-          });
-        }
-        return { stdout: USAGE, exitCode: 1 };
-      }
-
-      case "work": {
-        const [action, ...args] = rest;
-        if (action === "adopt") {
-          const { workAdopt } = await import("./commands.js");
-          return await workAdopt(context, {
-            bundle: args[0] ?? "",
-            attested: flag(args, "attested") ?? "",
-            ...(flag(args, "weight")
-              ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") }
-              : {}),
-            ...(flag(args, "title") ? { title: flag(args, "title") as string } : {}),
-            ...(flag(args, "from") ? { from: flag(args, "from") as string } : {}),
-          });
-        }
-        if (action === "list") {
-          const { workList } = await import("./commands.js");
-          return await workList(context);
-        }
-        if (action === "start") {
-          return await workStart(context, {
-            title: flag(args, "title") ?? "",
-            attested: flag(args, "attested") ?? "",
-            ...(flag(args, "weight")
-              ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") }
-              : {}),
-            ...(flag(args, "from") ? { from: flag(args, "from") as string } : {}),
-          });
-        }
-        if (action === "bind") return await workBind(context, args[0] ?? "");
-        if (action === "step") {
-          const step = args[0] as WorkStep | undefined;
-          /**
-           * Asked with no argument, this says where the work is.
-           *
-           * It refused — "Unknown step. One of: …" — at an agent that was using
-           * it to *ask*. A tool that answers a question with a refusal teaches
-           * the agent not to ask it, and in a real run the flow then sat at
-           * `split` through eighteen delivered units because nothing ever said
-           * so out loud.
-           */
-          if (!step) return await workWhere(context);
-          if (!WORK_STEPS.includes(step)) {
-            return {
-              stdout: new GateRefusal(
-                `There is no step called ${step}.`,
-                "wfctl work step   (with nothing after it, to see where this work is)",
-                `The steps are: ${WORK_STEPS.join(", ")}`,
-              ).render(),
-              exitCode: 2,
-            };
-          }
-          return await advance(context, step);
-        }
-        if (action === "issue") {
-          const [sub, ...rest_] = args;
-          if (sub === "create") {
-            return await issueCreate(context, {
-              title: flag(rest_, "title") ?? "",
-              acceptance: flags(rest_, "satisfies"),
-            });
-          }
-          if (sub === "list") return await issueList(context);
-          if (sub === "note") {
-            return await issueNote(context, {
-              id: rest_[0] ?? "",
-              note: flag(rest_, "note") ?? "",
-            });
-          }
-          if (sub === "claim") {
-            return await issueClaim(context, {
-              id: rest_[0] ?? "",
-              repository: flag(rest_, "repository") ?? "",
-              checkout: flag(rest_, "checkout") ?? "",
-              worktreeId: flag(rest_, "worktree") ?? "main",
-            });
-          }
-          if (sub === "complete") {
-            return await issueComplete(context, {
-              id: rest_[0] ?? "",
-              evidence: flag(rest_, "evidence") ?? "",
-              ...optional("remainder", flag(rest_, "remainder")),
-            });
-          }
-          if (sub === "drop") {
-            return await issueDrop(context, {
-              id: rest_[0] ?? "",
-              reason: flag(rest_, "reason") ?? "",
-            });
-          }
-          /**
-           * An incomplete command names its own subcommands rather than
-           * reprinting the whole usage, which reads as "this does not exist".
-           */
-          return {
-            stdout: [
-              "wfctl work issue <create|list|note|claim|complete>",
-              "",
-              '  create --title "<what it delivers>" [--satisfies AC-01]...',
-              "  list",
-              '  note <id> --note "<what you learned>"',
-              "  claim <id> --repository <owner/name> [--worktree <id>]",
-              "  complete <id>",
-            ].join("\n"),
-            exitCode: 1,
-          };
-        }
-        if (action === "verify") {
-          /**
-           * The brief the reviewer is given, printed by the tool that checks
-           * what comes back.
-           *
-           * `renderReviewerBrief` existed with no caller and no command, so the
-           * instructions for the one agent this design depends on were composed
-           * from memory — and the stub pass, the highest-yield check on the
-           * page, appeared only in a document that agent may never have opened.
-           */
-          const personality = flag(args, "brief");
-          if (personality !== undefined) {
-            const { renderReviewerBrief } = await import("./verify.js");
-            const { loadGuidance } = await import("./guidance.js");
-            const { shipped } = await import("./kit.js");
-            /**
-             * The personality is the brief. `--brief` used to take a lens and
-             * generate four lines from it, while the real briefs sat in the kit
-             * as personalities nothing printed — so an agent could adopt
-             * `personality:adversary` and then be handed something else.
-             */
-            const body = /^[a-z][a-z0-9-]*$/.test(personality)
-              ? await loadGuidance({ root: context.assets }, `personality/${personality}`)
-              : undefined;
-            if (!body) {
-              const available = (await shipped(context.assets, "personality"))
-                .map((entry) => entry.id.replace("personality:", ""))
-                .filter((name) => name !== "shape");
-              return {
-                stdout: new GateRefusal(
-                  `There is no personality called ${personality}.`,
-                  `wfctl work verify --brief <${available.join("|")}>`,
-                  "A personality is who reviews — its stance and its protocol. A " +
-                    "lens is the question one finding answers, and a reviewer uses " +
-                    "several; the brief lists them.\n\n" +
-                    "wfctl guide personality/shape — what a personality is",
-                ).render(),
-                exitCode: 2,
-              };
-            }
-            return {
-              stdout: renderReviewerBrief(
-                personality,
-                body,
-                flag(args, "at") ?? "<pin the revision this work started at>",
-              ),
-              exitCode: 0,
-            };
-          }
-          return await verify(context, { review: flag(args, "review") ?? "" });
-        }
-        if (action === "park") {
-          return await park(context, flag(args, "reason") ?? "", flag(args, "attested") ?? "");
-        }
-        if (action === "release") return await release(context, flag(args, "attested") ?? "");
-        if (action === "close") {
-          /**
-           * The outcome is stated. It defaulted to `completed` — the most
-           * favourable of the three — so a bare `work close` recorded the best
-           * possible result silently.
-           */
-          const outcome = oneOf(
-            flag(args, "outcome"),
-            ["completed", "partial", "abandoned"] as const,
-            "outcome",
-          );
-          return await close(context, { outcome });
-        }
-        if (action === "promote") {
-          return await promote(context, {
-            subject: flag(args, "subject") ?? "",
-            summary: flag(args, "summary") ?? "",
-            ...(flag(args, "bundle") ? { bundle: flag(args, "bundle") as string } : {}),
-            ...(flag(args, "settles") ? { settles: flag(args, "settles") as string } : {}),
-          });
-        }
-        if (action === "promotion" && args[0] === "draft") {
-          return await promotionDraft(context, {
-            knowledgeRoot: context.root,
-            page: args[1] ?? "",
-          });
-        }
-        if (action === "promotion" && args[0] === undefined) {
-          return {
-            stdout: [
-              "wfctl work promotion <draft|list>",
-              "",
-              '  draft "<area>/<page>.md"   create the page where it belongs',
-              "  list                       records waiting on the maintainer",
-            ].join("\n"),
-            exitCode: 1,
-          };
-        }
-        if (action === "promotion" && args[0] === "list") {
-          const queued = await listQueue(context.root);
-          return {
-            stdout: queued.length
-              ? `waiting on the maintainer:\n  ${queued.join("\n  ")}`
-              : "nothing is waiting to be promoted.",
-            exitCode: 0,
-          };
-        }
-        return { stdout: USAGE, exitCode: 1 };
+        exactRecordFlags(args, ["--link"]);
+        const namespace = flag(args, "namespace") ?? "";
+        if (action === "list") return ok_(await recoveryList(context.root, namespace));
+        if (action === "handoff") return ok_(await recoveryHandoff(context.root, namespace, flag(args, "id") ?? ""));
+        if (action === "checkpoint") return ok_(await recoveryCheckpoint(context.root, {
+          namespace,
+          id: flag(args, "id") ?? "",
+          instruction: flag(args, "instruction") ?? "",
+          last: flag(args, "last") ?? "",
+          next: flag(args, "next") ?? "",
+          links: flags(args, "link"),
+          ...optional("blocker", flag(args, "blocker")),
+          ...optional("checkout", flag(args, "checkout")),
+          ...optional("revision", flag(args, "revision")),
+        }));
+        throw new GateRefusal("Unknown flow action.", "wfctl flow <checkpoint|handoff|list>");
       }
 
       case "guide": {
         const { GUIDE_TOPICS, loadGuidance } = await import("./guidance.js");
         type GuidanceKey = Parameters<typeof loadGuidance>[1];
         const topic = rest[0];
+        if (topic === "tidy") {
+          return ok_(await readFile(resolve(context.assets, "..", "skill/wfctl/references/tidying.md"), "utf8"));
+        }
         if (!topic) {
           return {
-            stdout: `topics: ${Object.keys(GUIDE_TOPICS).sort().join(", ")}`,
+            stdout: `topics: tidy, ${Object.keys(GUIDE_TOPICS).sort().join(", ")}`,
             exitCode: 0,
           };
         }
@@ -764,54 +254,13 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
         if (!key) {
           return {
             stdout:
-              `No guide named ${topic}.\ntopics: ${Object.keys(GUIDE_TOPICS).sort().join(", ")}` +
-              "\n\nStrategies and personalities are read by path — wfctl kit survey lists them.",
+              `No guide named ${topic}.\ntopics: tidy, ${Object.keys(GUIDE_TOPICS).sort().join(", ")}` +
+              "\n\nStrategies and personalities are read by their guidance path.",
             exitCode: 1,
           };
         }
         const text = await loadGuidance({ root: context.assets }, key);
         return { stdout: text ?? `The ${topic} guide is missing from this installation.`, exitCode: text ? 0 : 2 };
-      }
-
-      case "hook": {
-        const [action, ...args] = rest;
-        if (action === "write") {
-          const { currentFlow } = await import("./flow.js");
-          const { decideWrite } = await import("./write-hook.js");
-          const { loadGuidance } = await import("./guidance.js");
-          const { mutateFlow } = await import("./flow.js");
-          const { recordWritten } = await import("./recall.js");
-          const { readRegistry } = await import("./registry.js");
-          const { inspectLeaves } = await import("./leaves.js");
-          const flow = await currentFlow(context.root);
-          const target = flag(args, "target") ?? "";
-          const decision = decideWrite({
-            flow,
-            knowledgeRoot: context.root,
-            target,
-            leaves: await inspectLeaves(await readRegistry(context.root)),
-            writtenThisUnit: flow?.recall.written ?? [],
-            ...(flow
-              ? {
-                  guidance:
-                    (await loadGuidance({ root: context.assets }, "work/implement")) ?? "",
-                }
-              : {}),
-          });
-          if (decision.refusal) return { stdout: decision.refusal.render(), exitCode: 2 };
-          /**
-           * Record the write, so the next edit to the same ground is silent.
-           * This is what makes "fires on scope change, not on every edit" true.
-           */
-          if (flow) {
-            await mutateFlow(context.root, flow.id, (current) => ({
-              ...current,
-              recall: recordWritten(current.recall, target),
-            }));
-          }
-          return { stdout: decision.message ?? "", exitCode: 0 };
-        }
-        return { stdout: USAGE, exitCode: 1 };
       }
 
       case "repo": {
@@ -903,35 +352,7 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
         const { readRegistry } = await import("./registry.js");
         const [action, ...args] = rest;
 
-        if (action === "adopt") {
-          const { workAdopt } = await import("./commands.js");
-          return await workAdopt(context, {
-            bundle: args[0] ?? "",
-            attested: flag(args, "attested") ?? "",
-            ...(flag(args, "weight")
-              ? { weight: oneOf(flag(args, "weight"), WORK_WEIGHTS, "weight") }
-              : {}),
-            ...(flag(args, "title") ? { title: flag(args, "title") as string } : {}),
-            ...(flag(args, "from") ? { from: flag(args, "from") as string } : {}),
-          });
-        }
-        if (action === "list") {
-          const { workList } = await import("./commands.js");
-          return await workList(context);
-        }
         if (action === "start") {
-          /**
-           * The fence spans both cases. An agent told "work outside this flow
-           * is out of scope" simply opened a reconstruction instead.
-           */
-          const { listFlows } = await import("./flow.js");
-          const openFlows = (await listFlows(context.root)).filter((entry) => !entry.closedAt);
-          if (openFlows[0]) {
-            throw new GateRefusal(
-              `Flow ${openFlows[0].id} is open; work outside it is out of scope.`,
-              `wfctl flow close ${openFlows[0].id}`,
-            );
-          }
           const open = await reconstruct.currentCase(context.root);
           if (open) {
             throw new GateRefusal(
@@ -1194,11 +615,6 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
         return { stdout: USAGE, exitCode: 1 };
       }
 
-      case "debts": {
-        const { collectDebts, renderDebts } = await import("./debts.js");
-        return ok_(renderDebts(await collectDebts(context.root)));
-      }
-
       case "decided": {
         const { findDecisions, renderDecisions } = await import("./decided.js");
         const subject = rest.filter((entry) => !entry.startsWith("--")).join(" ");
@@ -1258,44 +674,6 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
         return { stdout: renderReport(report), exitCode: exitCodeFor(report) };
       }
 
-      case "continue": {
-        const { keepWatching } = await import("./continuing.js");
-        return ok_(await keepWatching(context.root));
-      }
-
-      case "guards": {
-        const { GUARD_NAMES, guardStatus, renderGuards, setGuard } = await import("./install.js");
-        const [action, ...args] = rest;
-        if (action === "on" || action === "off") {
-          const guard = oneOf(args[0], GUARD_NAMES, "guard");
-          return ok_(await setGuard(context.root, guard, action === "on"));
-        }
-        if (action === undefined || action === "status") {
-          return ok_(renderGuards(await guardStatus(context.root)));
-        }
-        return { stdout: "wfctl guards [status] | on <guard> | off <guard>", exitCode: 1 };
-      }
-
-      case "capture": {
-        /**
-         * The finding is the first argument, whatever it starts with.
-         *
-         * Skipping anything beginning with `--` made a finding phrased as
-         * "--fix the parser…" unrecordable — and capture is the only sanctioned
-         * outlet while a flow is open.
-         */
-        const awaits = rest.includes("--awaits");
-        const text = rest.filter((entry) => entry !== "--awaits")[0] ?? "";
-        return await capture(context, {
-          text,
-          ...(awaits ? { awaits: "maintainer" as const } : {}),
-        });
-      }
-
-      case "flow":
-        if (rest[0] === "close") return await flowClose(context, rest[1]);
-        return { stdout: "wfctl flow close [<flow-id>]", exitCode: 1 };
-
       case "init": {
         assertProfileSupported(rest[0] ?? "");
         const target = resolve(flag(rest, "target") ?? process.cwd());
@@ -1303,67 +681,24 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
         const plan = await planInstall({
           target,
           distribution,
-          version: process.env.WFCTL_VERSION ?? "0.9.0",
+          version: process.env.WFCTL_VERSION ?? "0.10.0",
         });
         const result = await applyInstall(plan, {
           distribution,
-          version: process.env.WFCTL_VERSION ?? "0.9.0",
+          version: process.env.WFCTL_VERSION ?? "0.10.0",
         });
         const lines = [
           `installed into ${target}`,
           `  ${result.created.length} directories, ${result.written.length} files written, ${result.skipped.length} unchanged`,
         ];
 
-        /**
-         * What the install could not settle is printed as work, not swallowed.
-         *
-         * Nothing here is force-replaced and nothing is silently kept either.
-         * A file this tool cannot cleanly own becomes a line the agent meets
-         * during the install, with what it is and what resolves it — which is
-         * the only place the instruction can arrive in time to be acted on.
-         */
-        const outstanding: string[] = [];
-
-        if (result.conflicts.length) {
-          outstanding.push(
-            `${result.conflicts.length} file(s) were edited after they were installed, and were left alone:`,
-            ...result.conflicts.map((path) => `  ${path}`),
-            "  Compare each against the shipped version and keep the edit or drop it.",
-            "  Nothing here is replaced without you deciding that.",
-          );
-        }
-
-        if (result.obsolete.length) {
-          /**
-           * Grouped, because the list is the point and its length is not.
-           * Upgrading one real repository produced sixty-six lines, which is a
-           * wall an agent skims — the exact failure this tool exists to avoid.
-           */
-          const groups = new Map<string, string[]>();
-          for (const path of result.obsolete) {
-            const segments = path.split("/");
-            const key = segments.length > 1 ? segments.slice(0, 2).join("/") : path;
-            groups.set(key, [...(groups.get(key) ?? []), path]);
-          }
-          outstanding.push(
-            `${result.obsolete.length} file(s) belong to an older wfctl and are no longer part of it:`,
-            ...[...groups].map(([key, members]) =>
-              members.length > 1 ? `  ${key}/  (${members.length} entries)` : `  ${key}`),
-            "  They are not read by anything and are not removed for you.",
-            "  Delete them once you have checked nothing local depends on them.",
-          );
-        }
+        if (result.removed.length) lines.push(`  ${result.removed.length} retired wfctl file(s) removed`);
 
         if (result.replacedHooks.length) {
-          outstanding.push(
-            `${result.replacedHooks.length} hook entr(ies) from an older wfctl were replaced:`,
+          lines.push(
+            `${result.replacedHooks.length} hook entr(ies) from an older wfctl were removed:`,
             ...result.replacedHooks.map((entry) => `  ${entry}`),
-            "  Reported because a hook you did not expect to change is worth knowing about.",
           );
-        }
-
-        if (outstanding.length) {
-          lines.push("", ...outstanding);
         }
 
         lines.push(
@@ -1374,10 +709,7 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
           "Restart the agent session so the new instructions load.",
         );
 
-        // Non-zero while anything is outstanding: an install that reports work
-        // and exits clean is an install nobody finishes.
-        const unresolved = result.conflicts.length + result.obsolete.length;
-        return { stdout: lines.join("\n"), exitCode: unresolved > 0 ? 3 : 0 };
+        return { stdout: lines.join("\n"), exitCode: 0 };
       }
 
       default:
@@ -1388,14 +720,7 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
     }
   } catch (error) {
     if (error instanceof GateRefusal) return { stdout: error.render(), exitCode: 2 };
-    /**
-     * Everything else is still a refusal, not a crash.
-     *
-     * Tampered state, a malformed review artifact and an unwritable target all
-     * used to surface as raw stack traces at exit 1 — indistinguishable from a
-     * usage error, and the review artifact in particular is untrusted input
-     * produced by another agent.
-     */
+    /** Report filesystem and state errors as actionable refusals. */
     const detail = error instanceof Error ? error.message : String(error);
     return {
       stdout: new GateRefusal(
@@ -1408,23 +733,7 @@ async function dispatch(argv: string[], context: CommandContext): Promise<{ stdo
   }
 }
 
-/**
- * Find the guidance bundle by walking up from wherever this file ended up.
- *
- * It runs from two layouts — `src/core/` in the repository and `dist/` in the
- * package — and a fixed number of `..` segments is correct in exactly one of
- * them. Walking up until the directory is actually there is correct in both,
- * and fails loudly rather than installing an empty bundle.
- */
-/**
- * The guidance bundle inside this installation.
- *
- * `start` is the directory this module was loaded from, so the layout is known:
- * `dist/cli.js` sits one level under the package root, and a source run sits
- * two. It climbed six, which walks a global install out of its own package and
- * into `node_modules`, the install root and the home directory — where any
- * unrelated `templates/guidance/` would be read as this tool's own instructions.
- */
+/** Find this package's guidance directory from source or the built CLI. */
 export function findGuidance(start: string): string {
   let current = start;
   for (let depth = 0; depth < 3; depth += 1) {
@@ -1443,15 +752,7 @@ export function findGuidance(start: string): string {
 }
 
 /* c8 ignore start */
-/**
- * Run when invoked as a program, however the program is named.
- *
- * The first version compared `import.meta.url` against argv[1]'s basename. As
- * the `wfctl` bin that is "wfctl" against "cli.js", so the body never ran and
- * every install exited 0 in silence — taking the session hook and the write
- * guard with it, because both shell out to `wfctl`. Resolving argv[1] through
- * the filesystem compares the same thing on both sides.
- */
+/** Run when invoked as a program, whether named cli.js or wfctl. */
 const invokedDirectly = (() => {
   const entry = process.argv[1];
   if (!entry) return false;
@@ -1465,30 +766,14 @@ const invokedDirectly = (() => {
 if (invokedDirectly) {
   const { findRepositoryRoot } = await import("./paths-resolve.js");
   const context: CommandContext = {
-    /**
-     * The repository, not the directory the command was typed in. Every fence
-     * is relative to this, and taking it from cwd meant `cd changes && wfctl …`
-     * removed all of them.
-     */
+    /** Resolve project records from the repository root. */
     root: process.argv[2] === "init" ? process.cwd() : findRepositoryRoot(process.cwd()),
     assets: findGuidance(import.meta.dirname),
     actor: process.env.WFCTL_ACTOR ?? "agent:unknown",
   };
   const result = await run(process.argv.slice(2), context);
 
-  /**
-   * `process.exit` truncates a piped brief at 64KB.
-   *
-   * Writes to a pipe are asynchronous, and `exit` discards whatever has not
-   * drained — with status 0, so nothing downstream can tell. The SessionStart
-   * hook *is* a pipe, and `last:` and `next:` are printed after the handoff
-   * body, which makes the two fields a session acts on the first to go. A
-   * 73,101-byte brief arrived as exactly 65,536 bytes with no marker.
-   *
-   * Setting `exitCode` lets the process end on its own once stdout has
-   * drained. `renderBrief`'s comment already says a truncated brief reads
-   * exactly like a complete one; this is where that was happening.
-   */
+  /** Let stdout drain before the process exits. */
   process.exitCode = result.exitCode;
   process.stdout.write(`${result.stdout}\n`);
 }

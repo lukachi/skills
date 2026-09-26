@@ -4,9 +4,8 @@ The fixed set of code smells the Standards axis carries even when a repository
 documents nothing (Fowler, _Refactoring_, ch. 3). Two rules bind it:
 
 - **The repository overrides.** A documented repository standard always wins.
-  Where it endorses something the baseline would flag, suppress the smell. What
-  each bound repository declares about itself is printed by `wfctl work
-  repositories <id>`.
+  Where it endorses something the baseline would flag, suppress the smell. Read
+  the repository's own instructions and standards directly.
 - **Always a judgement call.** Each smell is a labelled heuristic — "possible
   Feature Envy" — never a hard violation. Skip anything tooling already enforces.
 

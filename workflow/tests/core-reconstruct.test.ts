@@ -23,7 +23,6 @@ import {
   type ReconstructionCase,
 } from "../src/core/reconstruct.js";
 import { appendEvent, deriveGap, listTrajectories, renderTrajectory } from "../src/core/trajectory.js";
-import { walkToVerified } from "./helpers.js";
 
 async function root(): Promise<string> {
   return mkdtemp(join(tmpdir(), "wfctl-recon-"));
@@ -276,45 +275,6 @@ test("an event needs a subject and a summary", async () => {
   );
 });
 
-test("promotion writes the pages and appends to the subject's line", async () => {
-  const { run } = await import("../src/core/cli.js");
-  const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
-  const ctx = { root: await root(), assets, actor: "agent:test" };
-
-  await run(["work", "start", "--title", "part refunds", "--weight", "significant", "--attested", "they asked for it"], ctx);
-  await walkToVerified(ctx);
-  await run(["work", "promotion", "draft", "areas/billing/index.md"], ctx);
-  // An empty draft is refused at promotion now, which is the point of the gate.
-  const { readFile: read } = await import("node:fs/promises");
-  const id = (await read(resolve(ctx.root, ".workflow/flows/current"), "utf8")).trim();
-  await writeFile(
-    resolve(ctx.root, "changes/active", id, "promotion/areas/billing/index.md"),
-    "---\nview: product\npurpose: what billing does today\naudience: stakeholders\n---\n\n# Billing\n\nRefunds can be issued for part of an order.\n",
-    "utf8",
-  );
-  await run(["work", "close", "--outcome", "completed"], ctx);
-
-  const without = await run(["work", "promote"], ctx);
-  assert.equal(without.exitCode, 2);
-  assert.match(without.stdout, /rediscovered by the next reconstruction/);
-
-  const promoted = await run(
-    ["work", "promote", "--subject", "Billing", "--summary", "refunds can be partial"],
-    ctx,
-  );
-  assert.equal(promoted.exitCode, 0);
-  assert.match(promoted.stdout, /now in curated knowledge/);
-  // The page must actually be in the corpus, which is what promote never did.
-  const { existsSync } = await import("node:fs");
-  assert.ok(existsSync(resolve(ctx.root, "knowledge/areas/billing/index.md")));
-  assert.match(promoted.stdout, /refunds can be partial/);
-
-  const [trajectory] = await listTrajectories(ctx.root);
-  assert.ok(trajectory);
-  assert.equal(trajectory.events[0]?.axis, "delivery");
-  assert.match(trajectory.events[0]?.change ?? "", /work-part-refunds/);
-});
-
 test("the whole reconstruction walks stage by stage, and each gate names its remedy", async () => {
   const { run } = await import("../src/core/cli.js");
   const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
@@ -462,19 +422,9 @@ test("unknown enum values are refused rather than stored", async () => {
   const assets = resolve(import.meta.dirname, "..", "templates", "guidance");
   const ctx = { root: await root(), assets, actor: "agent:test" };
 
-  await run(["work", "start", "--title", "t", "--weight", "significant", "--attested", "they asked for it"], ctx);
-
   const axis = await run(["trajectory", "append", "--subject", "S", "--summary", "s", "--axis", "banana"], ctx);
   assert.equal(axis.exitCode, 2);
   assert.match(axis.stdout, /not a valid axis/);
-
-  const route = await run(["recall", "answer", "E14", "--answer", "a", "--route", "qmd2", "--source", "s"], ctx);
-  assert.equal(route.exitCode, 2);
-  assert.match(route.stdout, /not a valid route/);
-
-  const dropped = await run(["work", "issue", "create", "--title", "--satisfies", "AC-01"], ctx);
-  assert.equal(dropped.exitCode, 2);
-  assert.match(dropped.stdout, /given without a value/);
 });
 
 test("an exclusion without a reason is refused", async () => {

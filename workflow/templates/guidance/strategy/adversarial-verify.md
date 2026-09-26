@@ -21,5 +21,6 @@ author. Reviewing harder does not help — the failure is structural.
   tests again. Anything still green asserts nothing. It needs no judgment and it
   catches most fake green.
 
-`wfctl work verify --brief <lens>` prints the brief to hand over, including the
-shape the artifact must come back in. Do not compose it from memory.
+Give the reviewer the agreed scope, current diff, and a concrete reporting
+request. Record the findings with the work they concern when they are worth
+keeping.
