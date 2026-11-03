@@ -57,22 +57,3 @@ metadata.
 The client collection is the canonical, actively maintained source for these
 development practices. Continue validating the guidance against real projects
 and update the owning skill when practice exposes a missing case.
-
-## Project workflow
-
-The [`workflow/`](workflow/) package is the canonical source for `wfctl`, shared
-project-work rules, consumer skills, and knowledge/leaf bootstrap templates.
-It keeps maintainers and coding agents aligned through linked product and
-engineering knowledge, installs versioned assets without replacing existing
-agent instructions, and keeps active work specifications in a configured
-central knowledge repository.
-
-Start with [`workflow/README.md`](workflow/README.md), then read the
-[project idea](workflow/IDEA.md). There are no separate user guides: the CLI
-prints what the state demands at each call site, and
-[`workflow/spec/CLI.md`](workflow/spec/CLI.md) is the reference.
-
-Workflow authors should use the
-[engine contract](workflow/spec/ENGINE.md),
-[knowledge contract](workflow/spec/KNOWLEDGE.md), and
-[development guide](workflow/spec/DEVELOPMENT.md).

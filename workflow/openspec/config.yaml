@@ -1,0 +1,16 @@
+schema: spec-driven
+
+context: |
+  Multi-repository planning store.
+  Reuse research/knowledge when relevant.
+  Ground technical decisions in verified evidence.
+  Mark unverified assumptions explicitly.
+
+rules:
+  proposal:
+    - Reference relevant research findings.
+  design:
+    - Cite sources for important technical decisions.
+    - Distinguish facts from assumptions.
+  tasks:
+    - Include validation for uncertain assumptions.

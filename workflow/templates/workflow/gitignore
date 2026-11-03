@@ -1,8 +1,0 @@
-# Local recovery notes and temporary files.
-*.lock
-*.lock.stale.*
-*.tmp
-
-# Agent recovery notes are local. Delivery history belongs in tracked bundles
-# and units under changes/active/.
-flows/

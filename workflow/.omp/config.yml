@@ -1,0 +1,6 @@
+task:
+  maxRecursionDepth: 0
+
+tools:
+  approval:
+    task: deny
