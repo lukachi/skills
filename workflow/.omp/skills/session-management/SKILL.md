@@ -29,6 +29,20 @@ Agree on the approach before launching implementation
 workers. Keep the discussion proportional to the
 complexity of the work.
 
+## Execution Autonomy
+
+- Once the execution strategy is agreed upon, proceed
+  autonomously within the approved scope.
+- Do not request confirmation for decisions that can
+  be resolved from existing requirements, research,
+  design, or established project conventions.
+- Make reasonable implementation decisions independently.
+- Escalate only genuinely new decisions that require
+  changing the agreed scope, requirements, or direction.
+- Never block unrelated work while awaiting a decision.
+- Do not ask the owner to approve your own recommendation
+  when the decision is already within your authority.
+
 ## Delegation
 
 - Spawn workers exclusively through Herdr.
@@ -131,6 +145,55 @@ Applies to Opus workers with a 1M-token context window.
 - Use the Herdr skill for the actual launch procedure.
 - Do not install OpenSpec or project skills into
   target repositories just to launch workers.
+
+## Pause & Resume
+
+When the owner requests a pause:
+
+- Read `active-workers.md` and reconcile with Herdr.
+- Send `/pause` to active OMP workers through Herdr.
+- Verify that each worker reached its paused state.
+- Do not close sessions, abort work, or modify assignments.
+- Report readiness so the owner can pause the coordinator last.
+
+When the owner resumes the coordinator:
+
+- Reconcile `active-workers.md` with Herdr.
+- Resume paused workers using the appropriate
+  interactive keys, not a new task prompt.
+- Check that workers resume normally.
+- If a worker remains idle unexpectedly, inspect its
+  state and gently remind it of its existing assignment.
+- After resuming a worker, observe its actual state.
+  Do not send additional prompts if work resumes normally.
+- If a worker remains idle, inspect its latest output
+  and determine whether its assignment is still incomplete.
+- Only if unfinished work is awaiting input, send a brief
+  continuation prompt referencing the existing assignment.
+- Do not restart completed work or duplicate instructions.
+- Handle blocked workers according to their actual blocker,
+  rather than blindly prompting them to continue.
+
+## Soft Supervision
+
+- Periodically inspect active workers through Herdr
+  while coordinating ongoing work.
+- Use bounded waits; never block orchestration
+  indefinitely on a single worker.
+- Do not mistake activity for meaningful progress.
+- If a worker appears stalled, inspect its recent output
+  before intervening.
+- Distinguish legitimate long-running work from deadlocks,
+  repeated failures, and unnecessary operations.
+- When progress is unclear, ask the worker for a brief
+  explanation without restarting its assignment.
+- Discourage unnecessarily broad tests, builds, or
+  expensive operations when narrower checks suffice.
+- If an operation is clearly wasteful or stuck, help
+  the worker stop it safely and continue productively.
+- Never interrupt healthy work merely because it is slow.
+- Resolve routine execution problems autonomously.
+- Prefer targeted intervention over blanket restrictions.
 
 ## Reliability
 
