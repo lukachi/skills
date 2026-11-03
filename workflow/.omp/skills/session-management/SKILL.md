@@ -53,6 +53,17 @@ complexity of the work.
   in every initial prompt.
 - Workers must not spawn or manage other agents.
 - Workers focus exclusively on assigned work.
+- Before delegating work, consult the Store-root
+  `AGENTS.md` for project-specific instructions.
+- Include all relevant project instructions in
+  the worker's initial assignment.
+- The Store-root `AGENTS.md` is the canonical source
+  of project-specific guidance.
+- Do not duplicate project instructions in skills,
+  OpenSpec configuration, or other policy files.
+- Resolve conflicts with universal rules or repository
+  constraints rather than silently overriding them.
+
 
 ## Lifecycle
 
