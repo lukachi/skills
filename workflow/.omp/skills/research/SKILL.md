@@ -21,7 +21,7 @@ It does not require an OpenSpec change.
 3. Prepare the assignment and read
    [Worker Lifecycle](references/lifecycle.md).
 
-4. Spawn a dedicated researcher through Herdr.
+4. Spawn a dedicated researcher through native `hc`.
    Include the assignment, researcher responsibilities,
    and full report contract in the initial prompt.
 
@@ -34,7 +34,7 @@ It does not require an OpenSpec change.
 7. Preserve the accepted report in `research/inbox`.
    Update `research/knowledge` when findings are reusable.
 
-8. Close the accepted worker session through Herdr.
+8. Close the accepted worker session through native `hc`.
 
 9. Repeat targeted research whenever new questions arise.
 
@@ -45,7 +45,8 @@ It does not require an OpenSpec change.
 - Workers do not need OpenSpec skills or Store access.
 - Preserve provenance and documented uncertainty.
 - Follow the referenced contracts throughout the workflow.
-- Before operating Herdr, load the `herdr` skill.
-- Follow its documented commands for spawning,
-  communicating with, and closing worker sessions.
+- Before operating Herdr, load the `herdr-core` skill
+  and follow its availability check and `hc --skill` guide.
+- Use native `hc` for spawning, communicating with,
+  and closing research workers under `session-management`.
 - Never invent Herdr commands or lifecycle behavior.

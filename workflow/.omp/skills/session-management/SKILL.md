@@ -10,8 +10,26 @@ The coordinator owns all Herdr worker sessions.
 Use this skill whenever spawning, supervising,
 resuming, or closing workers.
 
-Load the `herdr` skill for actual Herdr operations.
-Never invent commands already covered by Herdr.
+Load the `herdr-core` skill for native `hc` operations.
+Follow its `HC_TERMINAL_ID` check: if unset, ask the owner
+once this session whether to use `hc` for this work.
+Read `hc --skill` for actual commands and launch mechanics.
+Never invent commands already covered by that guide.
+
+## Native Operations
+
+- Use `hc run --bg` for interactive background workers.
+  Delegation does not require visible panes or tabs.
+- Target workers by explicit native terminal addresses
+  such as `t7` or `machine/t7`, never by UI focus.
+  Native terminal addresses are not app pane IDs.
+- Use `hc send` for assignments, feedback, and reports.
+  It is attributed inter-agent messaging, not literal
+  OMP composer input.
+- Enter composer slash commands literally with `hc keys`,
+  not `hc send`; verify the target's state before input.
+- Read `herdr-app --skill` only when the owner requests
+  visible window, tab, pane, or layout changes.
 
 ## Execution Strategy
 
@@ -45,7 +63,7 @@ complexity of the work.
 
 ## Delegation
 
-- Spawn workers exclusively through Herdr.
+- Spawn workers exclusively through native `hc`.
 - Never spawn internal OMP subagents.
 - Never bypass this restriction through shell commands.
 - Launch workers in their assigned working directories.
@@ -68,7 +86,7 @@ complexity of the work.
 ## Lifecycle
 
 - The coordinator owns worker session management.
-- Monitor workers using Herdr's native observability.
+- Monitor workers using native `hc` observability.
 - Idle does not necessarily mean completed.
 - Keep workers alive while their work needs corrections.
 - Close workers after their deliverables are accepted,
@@ -90,22 +108,22 @@ active Herdr worker assignments across handoffs.
 - Never spawn duplicate workers for the same assignment.
 - Record the planned worker name, working directory,
   assignment, and reference before launching.
-- After spawning, update the record with the actual
-  Herdr worker identity if different.
+- After spawning, record the actual native terminal
+  address returned by `hc` alongside the assignment.
 
 ### During Work
 
 - Keep assignments recorded until accepted and closed.
 - Update records when assignments change.
-- Use Herdr for actual worker status and monitoring.
+- Use `hc` for actual worker status and monitoring.
 - Use OpenSpec tasks for implementation progress.
 - Do not create additional tracking systems.
 
 ### After Handoff or Restart
 
 - Read `active-workers.md` before managing workers.
-- Reconcile recorded assignments with actual Herdr
-  sessions using the Herdr skill.
+- Reconcile recorded assignments with actual native
+  terminals using `herdr-core` and its `hc --skill` guide.
 - Continue supervising existing workers.
 - Do not spawn replacements for uncertain sessions
   until their actual state has been established.
@@ -116,7 +134,7 @@ active Herdr worker assignments across handoffs.
 - Accept the deliverable using the relevant workflow.
 - Update OpenSpec tasks or preserve research reports
   as appropriate.
-- Close the accepted worker through Herdr.
+- Close the accepted worker through native `hc`.
 - Remove its entry from `active-workers.md`.
 
 ## Context Management
@@ -138,7 +156,8 @@ Applies to Opus workers with a 1M-token context window.
 - Ask the worker to finish its current coherent unit
   and reach a clean stopping point.
 - Wait until the worker is ready for input.
-- Initiate `/handoff` through Herdr.
+- Enter `/handoff` as literal composer input with
+  `hc keys <terminal> / h a n d o f f enter`, not `hc send`.
 - Confirm successful completion.
 - Tell the same worker to resume its assignment.
 - Never substitute `/compact` for `/handoff`.
@@ -153,7 +172,8 @@ Applies to Opus workers with a 1M-token context window.
   `.omp/policies/opus.yml`.
 - Do not pass the Opus overlay to GPT workers.
 - Select the worker model separately from the overlays.
-- Use the Herdr skill for the actual launch procedure.
+- Use `herdr-core` and `hc --skill` for the actual
+  launch procedure, preserving these OMP overlays.
 - Do not install OpenSpec or project skills into
   target repositories just to launch workers.
 
@@ -161,16 +181,18 @@ Applies to Opus workers with a 1M-token context window.
 
 When the owner requests a pause:
 
-- Read `active-workers.md` and reconcile with Herdr.
-- Send `/pause` to active OMP workers through Herdr.
+- Read `active-workers.md` and reconcile with `hc`.
+- Enter `/pause` as literal composer input to active
+  OMP workers with `hc keys <terminal> / p a u s e enter`,
+  not `hc send`.
 - Verify that each worker reached its paused state.
 - Do not close sessions, abort work, or modify assignments.
 - Report readiness so the owner can pause the coordinator last.
 
 When the owner resumes the coordinator:
 
-- Reconcile `active-workers.md` with Herdr.
-- Resume paused workers using the appropriate
+- Reconcile `active-workers.md` with `hc`.
+- Resume paused workers using `hc keys` for the appropriate
   interactive keys, not a new task prompt.
 - Check that workers resume normally.
 - If a worker remains idle unexpectedly, inspect its
@@ -187,7 +209,7 @@ When the owner resumes the coordinator:
 
 ## Soft Supervision
 
-- Periodically inspect active workers through Herdr
+- Periodically inspect active workers through `hc`
   while coordinating ongoing work.
 - Use bounded waits; never block orchestration
   indefinitely on a single worker.
@@ -212,4 +234,4 @@ When the owner resumes the coordinator:
 - If context telemetry is unavailable, do not guess.
 - Verify session state before sending control commands.
 - Do not blindly retry commands with uncertain outcomes.
-- Prefer native Herdr and OMP mechanisms over custom scripts.
+- Prefer native `hc` and OMP mechanisms over custom scripts.
