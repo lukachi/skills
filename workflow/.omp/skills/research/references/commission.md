@@ -6,7 +6,7 @@ Before spawning a researcher, prepare an assignment containing:
 - **Questions:** Specific questions the research must answer.
 - **Context:** Relevant existing knowledge and constraints.
 - **Scope:** What to investigate and what to exclude.
-- **Deliverable:** Expected report and its location.
+- **Deliverable:** Expected report and its exact path in `.reports/`.
 - **Acceptance:** Conditions for considering the research complete.
 
 ## Principles

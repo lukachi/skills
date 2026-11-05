@@ -67,20 +67,49 @@ complexity of the work.
 - Never spawn internal OMP subagents.
 - Never bypass this restriction through shell commands.
 - Launch workers in their assigned working directories.
-- Pass the worker restrictions and assignment explicitly
-  in every initial prompt.
-- Workers must not spawn or manage other agents.
-- Workers focus exclusively on assigned work.
+- Workers see neither these skills nor the Store rules.
+  Whatever a worker must do or avoid is stated in its
+  initial assignment; never assume it follows a rule it
+  was not given.
+- Every initial assignment states explicitly:
+  - the task and its boundaries, and that the worker
+    works only on it;
+  - that it must not spawn or manage other agents;
+  - that it makes no git writes;
+  - the absolute path of each report it is to write,
+    and that it writes reports nowhere else;
+  - project instructions from the Store-root `AGENTS.md`
+    that the work needs and its repository does not state.
+- Workers read their repository's own instructions. Do
+  not restate those or add prohibitions unrelated to
+  the task.
 - Before delegating work, consult the Store-root
   `AGENTS.md` for project-specific instructions.
-- Include all relevant project instructions in
-  the worker's initial assignment.
+- The coordinator reviews accepted work, integrates and
+  commits it; the owner's manual acceptance closes the
+  work.
 - The Store-root `AGENTS.md` is the canonical source
   of project-specific guidance.
 - Do not duplicate project instructions in skills,
   OpenSpec configuration, or other policy files.
 - Resolve conflicts with universal rules or repository
   constraints rather than silently overriding them.
+
+## Worker Reports
+
+- Worker reports and analyses go to `.reports/` in the
+  Store root, flat, named
+  `<YYYY-MM-DD>-<change-or-topic>-<slug>.md`.
+- Give every worker the absolute path of each report it
+  is to write, in the assignment itself, and tell it to
+  write reports nowhere else.
+- Reports are communication, not knowledge: accepted
+  facts move into change artifacts or specs; accepted
+  research reports move to `research/inbox`.
+- Delete reports when the change they served is
+  archived; delete reports tied to no change once
+  accepted. Delete any report older than two weeks at
+  any cleanup.
 
 
 ## Lifecycle
@@ -116,8 +145,9 @@ active Herdr worker assignments across handoffs.
 - Keep assignments recorded until accepted and closed.
 - Update records when assignments change.
 - Use `hc` for actual worker status and monitoring.
-- Use OpenSpec tasks for implementation progress.
-- Do not create additional tracking systems.
+- `phases/` tracks planned work; OpenSpec tasks track
+  implementation progress. Do not create additional
+  tracking systems.
 
 ### After Handoff or Restart
 
@@ -132,8 +162,9 @@ active Herdr worker assignments across handoffs.
 ### On Completion
 
 - Accept the deliverable using the relevant workflow.
-- Update OpenSpec tasks or preserve research reports
-  as appropriate.
+- Update OpenSpec tasks, move accepted research reports
+  to `research/inbox`, and delete reports no change
+  still needs.
 - Close the accepted worker through native `hc`.
 - Remove its entry from `active-workers.md`.
 
@@ -161,7 +192,9 @@ Applies to Opus workers with a 1M-token context window.
 - Confirm successful completion.
 - Tell the same worker to resume its assignment.
 - Never substitute `/compact` for `/handoff`.
-- Do not let workers initiate manual handoffs themselves.
+- Tell Opus workers in their assignment that the
+  coordinator manages their handoffs and that they never
+  start one themselves.
 
 ## Worker Launch Configuration
 

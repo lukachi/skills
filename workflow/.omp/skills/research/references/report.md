@@ -10,7 +10,7 @@ Key discoveries and conclusions, with traceable evidence for significant claims.
 
 ## Evidence
 Primary sources, URLs, code references, and verification dates.
-Code references should include repository revision and location where possible.
+External code references include the upstream revision and location where possible. Reports never cite our own repositories.
 
 ## Unknowns
 Unresolved questions, conflicting evidence, and investigation limitations.

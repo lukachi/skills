@@ -9,8 +9,18 @@ context: |
 rules:
   proposal:
     - Reference relevant research findings.
+    - Link the phase specs this change starts from and state which part of their work it does.
   design:
     - Cite sources for important technical decisions.
     - Distinguish facts from assumptions.
+    - For large work, the design's product is the architecture the work is built on, not the work itself. It states the significant decisions, those costly to change later (which modules, structures, classes and interfaces are created, changed, replaced or deleted, what each owns, and how they collaborate), from the overall picture down to whatever depth each part needs, with the alternatives considered and why they lost.
+    - For large work, walk through every behaviour of the specs in terms of those collaborating elements.
   tasks:
     - Include validation for uncertain assumptions.
+
+operations:
+  archive:
+    guidance:
+      - Delete the worker reports in .reports/ that served this change.
+      - Delete any .reports/ file older than two weeks.
+      - If the owner has accepted a phase-tree feature or epic that this change completes, mark its folder (done) and lightly update its phase spec.

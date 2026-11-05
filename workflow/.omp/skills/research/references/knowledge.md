@@ -1,5 +1,6 @@
 # Research Knowledge Management
 
+- Research holds topic knowledge, never the state of our code. Reports and notes describe external practice: other products, engines, tools and libraries, their capabilities, limits, licences, options and trade-offs. They never state what our repositories implement, lack or break, never cite our files, modules, symbols or line numbers, and never record our version pins or test results. The state of our code belongs in specs and change artifacts.
 - Preserve accepted worker reports in `research/inbox` without rewriting their findings.
 - Maintain reusable topic notes in `research/knowledge`.
 - Each topic note links to its source reports and records the scope, conclusions, limitations, and research dates.
