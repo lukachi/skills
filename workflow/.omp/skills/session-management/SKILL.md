@@ -170,19 +170,15 @@ active Herdr worker assignments across handoffs.
 
 ## Context Management
 
-### GPT Workers
+Applies to every worker. Workers run Claude Opus or
+Sonnet with a 1M-token context window.
 
-- Do not manually manage their context.
-- Leave context maintenance to OMP.
-- Do not initiate compaction or handoff.
-- Continue normal lifecycle supervision.
-
-### Claude Opus Workers
-
-Applies to Opus workers with a 1M-token context window.
-
-- Monitor context utilization using available tools.
-- At approximately 60%, begin planning a handoff.
+- Monitor context use through the worker's status line
+  (`hc read`).
+- Plan a handoff at the end of a coherent task unit or
+  at roughly 300k tokens, whichever comes first; hand off
+  by 400k at the latest. Quality degrades gradually as
+  context grows.
 - Do not interrupt ongoing coherent work immediately.
 - Ask the worker to finish its current coherent unit
   and reach a clean stopping point.
@@ -192,19 +188,29 @@ Applies to Opus workers with a 1M-token context window.
 - Confirm successful completion.
 - Tell the same worker to resume its assignment.
 - Never substitute `/compact` for `/handoff`.
-- Tell Opus workers in their assignment that the
-  coordinator manages their handoffs and that they never
-  start one themselves.
+- Tell every worker in its assignment that the
+  coordinator manages its handoffs and that it never
+  starts one itself.
+- Give fix rounds to the same worker while its context
+  is warm; start a fresh worker for the next task.
 
 ## Worker Launch Configuration
 
 - Resolve the absolute Store directory before spawning.
-- Launch workers with the Store's `.omp/config.yml`
-  as an explicit OMP `--config` overlay.
-- For Opus 1M workers, additionally pass
-  `.omp/policies/opus.yml`.
-- Do not pass the Opus overlay to GPT workers.
-- Select the worker model separately from the overlays.
+- Launch workers with the Store's `.omp/config.yml` and
+  `.omp/policies/claude.yml` as explicit OMP `--config`
+  overlays.
+- Choose the model and effort from the Model allocation
+  table in `active-workers.md` and set them at spawn with
+  `--model` and `--thinking`. Never change them within a
+  session. At the start of every session, check that the
+  worker runs the model and effort that were set.
+- `hc` starts programs without the coordinator's shell
+  environment, so `omp` may not be found. Launch it
+  through `/usr/bin/env PATH=<coordinator PATH> omp ...`.
+- Launch from the coordinator's own shell so `hc`
+  records the worker as its child; check `parent` with
+  `hc get`.
 - Use `herdr-core` and `hc --skill` for the actual
   launch procedure, preserving these OMP overlays.
 - Do not install OpenSpec or project skills into
