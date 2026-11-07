@@ -18,8 +18,14 @@ Never invent commands already covered by that guide.
 
 ## Native Operations
 
-- Use `hc run --bg` for interactive background workers.
-  Delegation does not require visible panes or tabs.
+- Use `hc run --bg` for interactive workers, and always make
+  them visible to the owner: label each worker with the
+  coordinator's Herdr space (`hc label <t> herdr.space=<id>`;
+  find the space holding `$HC_TERMINAL_ID` in `herdr-app ls`),
+  so Herdr opens it in its own tab, then name that tab after
+  the worker (`herdr-app do tab.rename --id <tab> --name <worker>`).
+  Background helpers that are not agents (servers, builds)
+  stay unlabeled.
 - Target workers by explicit native terminal addresses
   such as `t7` or `machine/t7`, never by UI focus.
   Native terminal addresses are not app pane IDs.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Herdr Mods and Layouts"
+  short_description: "Build, debug, install, and share Herdr window layouts and mods"
+  default_prompt: "Use $herdr-mods-layouts to build, change, debug, install, or share a Herdr layout, mod, theme, or key binding."
