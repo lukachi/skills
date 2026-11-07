@@ -28,6 +28,7 @@ Before spawning a researcher, prepare an assignment containing:
 - Distinguish established facts from interpretations and unknowns.
 - Never invent sources, APIs, capabilities, or verification results.
 - Do not conceal uncertainty or missing evidence.
+- Never access the owner's browsers, browser profiles, cookies, saved passwords or keychain, and never pass browser cookies to download tools (for example `yt-dlp --cookies-from-browser`). Use a headless browser with a fresh, empty profile; if the project provides a shared browser tool, use it.
 
 ## Parallel Research
 
