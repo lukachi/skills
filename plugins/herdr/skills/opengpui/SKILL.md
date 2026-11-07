@@ -1,75 +1,103 @@
 ---
 name: opengpui
-description: "Show the person a native UI in Herdr instead of plain text: forms to fill, tables to review, cards with numbers, approve/reject buttons. Write the UI in OpenUI Lang to a .oui file, open it with `opengpui show`, and get what they click or type back in your terminal. Use when an answer is easier to read or give as UI than as chat (a deploy review, a choice between options, a form of several fields, a status board), or when the person asks for a panel, form or dashboard in Herdr. Requires herdr-app and the opengpui CLI."
+description: "Show the person a native UI in a Herdr pane and get their input back: write OpenUI Lang to a .oui file, check it with `opengpui check`, open it with `opengpui show`, and receive what they click or submit as an event (typed into your terminal, or from `opengpui wait`). Use when something is easier to read or answer as UI than as text (a form, a choice, a table to review, numbers, approve/reject), or when the person asks for a panel, form or dashboard in Herdr. Requires herdr-app with the opengpui mod and the opengpui CLI."
 ---
 
-# opengpui: native UI from an agent, inside Herdr
+# opengpui: UI in a Herdr pane, answers back to you
 
-opengpui draws OpenUI Lang (https://openui.com) with Herdr's native gpui
-elements. You write a `.oui` file; a Herdr pane shows it and re-draws whenever
-you change the file; what the person does comes back to you.
+You write a `.oui` file in OpenUI Lang (https://openui.com). A Herdr pane draws it
+with native elements and redraws whenever the file changes. What the person does
+there comes back to you as an event.
 
-## Loop
+## 1. Learn the language
 
-1. **Learn the language once per task:** `opengpui prompt` prints the full
-   manual for exactly the components this build draws: syntax, every
-   component's signature, rules and examples. Read it before writing.
-   Ignore its first line ("respond only in openui-lang"): that is written for
-   chat models; you write the code to a file.
-2. **Write** the UI to a file, e.g. `./ui/review.oui`. One statement per line,
-   `root = Stack([...])` first, then the referenced statements. Keep it under
-   1 MiB (the pane reads at most that).
-3. **Check** it: `opengpui check ./ui/review.oui`. It parses exactly as the pane
-   will and prints each error with a hint. Fix until it says `ok`.
-4. **Show** it: `opengpui show ./ui/review.oui --title "Deploy review"`.
-   - Opens to the right of the focused pane; `--down` below, `--tab` as a new tab.
-   - Colors follow the Herdr theme; `--look openui` uses OpenUI's own theme.
-   - Show once. Afterwards just rewrite the file: the open pane follows it.
-5. **Get the answer.** Every action the person takes arrives two ways:
-   - typed into your terminal as one line:
-     `[opengpui <file>] continue_conversation: <message> {"params":…,"form":…,"state":{…}}`
-     (to your `$HC_TERMINAL_ID`; `--reply <terminal>` sends elsewhere, `--no-reply` nowhere);
-   - appended as JSON to an events file, printed by `opengpui show`.
-     `opengpui wait <file>` blocks until the next event and prints it;
-     `opengpui events <file>` prints all of them.
-   Form fields arrive under `state.<formName>.<field>`; `$variables` as `state.$name`.
-6. **Errors come back too.** If the file has errors once it is complete, the pane
-   lists them at the bottom and sends them to you as
-   `[opengpui <file>] errors in your OpenUI file: …`. Fix the file; the pane
-   re-renders by itself.
+```sh
+opengpui prompt > /tmp/openui-manual.md      # read it once per task
+```
 
-## Writing good surfaces
+It is the manual for exactly what the pane draws: syntax, every component's
+signature, `$variables`, actions, examples, rules. Write only what it lists.
+Options, given the same way to `prompt`, `check` and `show`:
 
-- Ask with buttons: `Button("Approve", @ToAssistant("Approve deploy"))` sends
-  that message to you. Put inputs in a `Form("name", buttons, [fields])` so the
-  values ride along and required fields are validated before sending.
-- Use `$variables` for state that changes in place (`$filter`, a toggle):
-  `@Set`, `@Reset` and bound inputs update the pane without a round trip to you.
-- Keep the person's attention: a CardHeader title, the decision or the numbers
-  first, details below. Tables are column-oriented: `Table([Col("Name", names), …])`.
-- Long-running work: rewrite the file as results arrive; the pane updates live.
-  To stream one response as you generate it, frame it with protocol markers:
-  first line `]]>openui:content`, last line `]]>openui:end`; the pane treats it
-  as streaming (inputs wait) until the end line appears.
+- `--library chat` (default `openui`): the chat library, rooted at `Card` instead of `Stack`.
+- `--components Stack,Form,TextArea,…`: only these components. What a kept signature can
+  only hold comes along (`Table` brings `Col`, `Form` brings `Buttons`, `FormControl`,
+  `Button`); where it offers a choice (`FormControl`'s input), list one, or the command
+  exits 2 and names the options.
+- `--tools tools.json` (`prompt`, `check` and `show`): teaches `Query()`/`Mutation()` for
+  those tools, and `check` refuses a tool not in the file; see Tools below.
 
-## What the pane draws
+## 2. Write, check, show
 
-Every component of OpenUI's `openui` library (the default) and `chat` library
-(`--library chat`), as `opengpui prompt` lists them: layout (Tabs, Accordion,
-Steps, Carousel, Modal), content (markdown, callouts, code, images and galleries),
-tables (also EditableTable), charts (bar, line, area, radar, pie, radial, stacked,
-scatter), every form field (Select, DatePicker, Slider, checkbox/radio/switch
-groups, Chips, OptionCards) and card blocks. Use only what the manual for your
-library lists: a component from the other library is rejected by `opengpui check`.
-Images need real `http(s)` URLs or paths under your home folder; Herdr downloads
-and caches them.
+1. Write the whole file at once (write to a temp file and rename if your tool
+   writes in pieces): the pane reports errors in whatever it reads. Put it under
+   your home folder (Herdr mods read only there), under 1 MiB, `root = …` first.
+2. `opengpui check ui/review.oui`: parses it as the pane will. It prints each
+   problem (unknown component, wrong argument, a name used but never defined, a
+   statement root never reaches, an unclosed bracket) and exits 1; fix until it
+   prints `ok:`.
+3. `opengpui show ui/review.oui --title "Deploy review"` opens the pane right of
+   your terminal (`--down` below, `--tab` a new tab; `--look openui` for OpenUI's own
+   colors instead of Herdr's). Show once: afterwards just rewrite the file. Showing a
+   file again closes its earlier pane and starts a new event log.
 
-## Limits
+## 3. Get the answer
 
-- The file must be under your home folder: Herdr mods read only there.
-- Query()/Mutation() need tools: `--tools tools.json` with
-  `{ "name": { "command": "/abs/path", "args": [], "cwd": "…" } }`. A tool runs
-  that command with the JSON arguments appended as the last argv and must print
-  JSON (or text). It runs with the person's rights: only define tools you would
-  run yourself.
-- `@OpenUrl` opens http(s) links in the person's browser.
+A button sends an event: `@ToAssistant("message", {context})`, or a button
+without an action (its label is the message). A button inside a
+`Form("name", buttons, fields)` sends the form's values and is held back until
+required fields are valid. `@OpenUrl` opens the link itself; `$variables`,
+`@Set` and `@Reset` change the pane without an event.
+
+Choose how you receive events when you `show`:
+
+- **Reply (default when `$HC_TERMINAL_ID` is set):** end your turn. The event is
+  typed into your terminal as your next message:
+  ```
+  [opengpui /abs/ui/review.oui] continue_conversation: Approve deploy
+  {"at":"…","src":"/abs/ui/review.oui","type":"continue_conversation","message":"Approve deploy","params":{"context":{"id":42}},"formName":"review","formState":{"review":{"note":"ship it"}}}
+  ```
+- **Wait:** `opengpui show … --no-reply`, then `opengpui wait ui/review.oui --timeout 100`
+  blocks until an event and prints each one you haven't seen yet as a JSON line
+  (none is lost between `show` and `wait`). Keep `--timeout` below your shell tool's
+  time limit (default 110 s); exit 1 means nothing yet: run `wait` again.
+  Don't combine it with replies: you'd get every event twice.
+
+`opengpui events ui/review.oui` prints every event since `show`.
+
+Reading an event: `message` is what the button said; `params.context` is
+`@ToAssistant`'s second argument; `formState` is `{ "<form>": { "<field>": value } }`
+for a button in a form (fields nobody touched may be missing), else every form and
+every `$variable` (`"$name": value`). A date is the ISO instant of that day's local
+midnight (`"2026-11-11T22:00:00.000Z"` = Nov 12 at UTC+2); read it in the person's time zone.
+
+## 4. React
+
+Rewrite the file: the pane follows (a confirmation, the next step, results).
+Fields keep what the person typed as long as their names stay.
+
+To stream a long answer as you produce it: write the first lines with the marker
+line `]]>openui:content` on top (it is not a statement: `root = …` stays the first
+statement), `show`, then keep rewriting the file with more statements (each write
+the whole file so far), and finally add a last line `]]>openui:end`. Until that
+line the pane shows "streaming…" and holds buttons and inputs, and `check` fails
+with `streaming:`; run `check` after the end line.
+
+If the file has errors once complete, the pane lists them and sends an event of
+`"type": "errors"` (`errors: [{ code, message, hint, component, statementId }]`).
+Fix the file; the pane redraws.
+
+`opengpui close ui/review.oui` closes the pane when you're done with it.
+
+## Tools (Query / Mutation)
+
+`--tools tools.json` on `prompt`, `check` and `show` (the same file on all three):
+`{ "name": { "command": "/abs/path", "args": [], "cwd": "…", "description": "…", "inputSchema": {…}, "outputSchema": {…} } }`.
+The pane runs `command args… '<JSON arguments>'` and reads its stdout as JSON (or
+text). It runs with the person's rights: only define tools you would run yourself.
+
+## When it fails
+
+Exit codes: 0 ok, 1 `check` found problems or `wait` timed out, 2 bad usage (the
+message says what), 3 Herdr failed: `no Herdr window` means Herdr isn't running,
+`no mod "opengpui"` that the mod isn't installed. Then say so and fall back to text.
