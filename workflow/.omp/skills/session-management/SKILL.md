@@ -1,6 +1,6 @@
 ---
 name: session-management
-description: Coordinate Herdr workers, manage their lifecycle, and handle model-specific context maintenance.
+description: Coordinate Herdr workers, manage their lifecycle, and manage the context of workers and of the coordinator itself.
 ---
 
 # Session Management
@@ -182,9 +182,9 @@ Sonnet with a 1M-token context window.
 - Monitor context use through the worker's status line
   (`hc read`).
 - Plan a handoff at the end of a coherent task unit or
-  at roughly 300k tokens, whichever comes first; hand off
-  by 400k at the latest. Quality degrades gradually as
-  context grows.
+  at roughly 550k tokens, whichever comes first; hand off
+  before 600k at the latest. Quality degrades gradually as
+  context grows, and past 600k the model hallucinates.
 - Do not interrupt ongoing coherent work immediately.
 - Ask the worker to finish its current coherent unit
   and reach a clean stopping point.
@@ -200,12 +200,52 @@ Sonnet with a 1M-token context window.
 - Give fix rounds to the same worker while its context
   is warm; start a fresh worker for the next task.
 
+## Coordinator Context
+
+The coordinator has the same 550k and 600k limits and
+manages its own context through omp's notes-backed context
+windows, enabled in the Store's `.omp/config.yml`. It
+cannot `/handoff` itself: omp refuses the command while
+the coordinator's own response is running.
+
+- The Store config sets the rollover threshold at 582k
+  tokens. Near 550k omp reminds the coordinator once, with
+  a `context-window-reminder`, to save its working state.
+  Treat the reminder as the signal to plan the rollover,
+  not to stop at once.
+- Roll over at the first clean stopping point after the
+  reminder, or earlier at the end of a coherent unit of
+  coordination. Never roll over while waiting for the
+  result of a control command or midway through accepting
+  a deliverable.
+- First bring durable state up to date: `active-workers.md`,
+  OpenSpec tasks, phase folders, and reports.
+- Then replace the notebook with `context_notes`. It holds
+  only what the disk does not: the agreed execution
+  strategy, the owner's open decisions and instructions,
+  what was promised to which worker, reviews and
+  integration in flight, and exact next steps. One line per
+  item, no logs or file bodies, well under 16 KiB.
+- Call `new_context` only once the notebook is current.
+  The rollover commits before the next model request of
+  the same turn: keep working right after the call, do not
+  end the turn to wait for it.
+- After the rollover, follow After Handoff or Restart,
+  continue from the notebook and the retained recent tail,
+  and recover any earlier detail from `history://current/full`
+  with `read` or `grep` instead of guessing.
+- Refresh the notebook at milestones as well, not only at
+  the reminder: at 582k omp rolls over on its own with the
+  latest notebook.
+- Never use `/compact` on the coordinator.
+
 ## Worker Launch Configuration
 
 - Resolve the absolute Store directory before spawning.
 - Launch workers with the Store's `.omp/config.yml` and
-  `.omp/policies/claude.yml` as explicit OMP `--config`
-  overlays.
+  then `.omp/policies/claude.yml` as explicit OMP `--config`
+  overlays, in that order: the worker policy must override
+  the coordinator's context settings.
 - Choose the model and effort from the Model allocation
   table in `active-workers.md` and set them at spawn with
   `--model` and `--thinking`. Never change them within a

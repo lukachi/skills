@@ -4,3 +4,7 @@ task:
 tools:
   approval:
     task: deny
+
+compaction:
+  experimentalContextManagement: true
+  thresholdTokens: 582000
